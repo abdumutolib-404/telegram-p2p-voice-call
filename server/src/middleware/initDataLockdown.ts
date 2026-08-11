@@ -19,6 +19,13 @@ export function validateTelegramInitData(initData: string, botToken: string): { 
     const hash = urlParams.get('hash');
     if (!hash) return { valid: false };
 
+    // Freshness check: reject initData older than 24 hours (86400 sec)
+    const authDate = Number(urlParams.get('auth_date') || 0);
+    const nowInSec = Math.floor(Date.now() / 1000);
+    if (!authDate || nowInSec - authDate > 86400) {
+      return { valid: false };
+    }
+
     urlParams.delete('hash');
 
     const params: string[] = [];
@@ -32,7 +39,10 @@ export function validateTelegramInitData(initData: string, botToken: string): { 
     const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
     const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
 
-    if (calculatedHash === hash) {
+    const calcBuf = Buffer.from(calculatedHash, 'hex');
+    const hashBuf = Buffer.from(hash, 'hex');
+
+    if (calcBuf.length === hashBuf.length && crypto.timingSafeEqual(calcBuf, hashBuf)) {
       const userRaw = urlParams.get('user');
       const user = userRaw ? JSON.parse(userRaw) : undefined;
       return { valid: true, user };

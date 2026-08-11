@@ -5,14 +5,15 @@ import { useLiveKit } from './hooks/useLiveKit';
 import { LockdownScreen } from './components/LockdownScreen';
 import { RadarScreen } from './components/RadarScreen';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
-import { Loader2, PhoneOff, RefreshCw } from 'lucide-react';
+import { Loader2, PhoneOff, RefreshCw, AlertTriangle } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('lockdown');
   const [initData, setInitData] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserMatchData>({
-    userId: 'user_123',
-    band: 7.0,
+    userId: '',
+    band: 6.5,
     weakSkill: 'P',
     strongSkill: 'FC',
   });
@@ -26,33 +27,64 @@ export const App: React.FC = () => {
     analyserNode,
   } = useLiveKit();
 
-  // Telegram WebApp Initialization & Lockdown Guard
+  // Telegram WebApp Initialization & Auth Verification
   useEffect(() => {
-    const tg = window.Telegram?.WebApp;
-    const rawInitData = tg?.initData || '';
+    const initAuth = async () => {
+      const tg = window.Telegram?.WebApp;
+      const rawInitData = tg?.initData || '';
 
-    if (!rawInitData || rawInitData.trim() === '') {
-      setAppState('lockdown');
-      return;
-    }
-
-    setInitData(rawInitData);
-
-    if (tg) {
-      tg.ready();
-      tg.expand();
-
-      // Extract user info from Telegram initDataUnsafe if available
-      const tgUser = tg.initDataUnsafe?.user;
-      if (tgUser) {
-        setUserData((prev) => ({
-          ...prev,
-          userId: tgUser.id ? tgUser.id.toString() : prev.userId,
-        }));
+      if (!rawInitData || rawInitData.trim() === '') {
+        setAppState('lockdown');
+        return;
       }
-    }
 
-    setAppState('radar');
+      setInitData(rawInitData);
+
+      if (tg) {
+        tg.ready();
+        tg.expand();
+      }
+
+      // Verify initData with server to get DB user profile (UUID)
+      try {
+        const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+        const res = await fetch(`${serverUrl}/api/auth/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-telegram-init-data': rawInitData,
+          },
+          body: JSON.stringify({ initData: rawInitData }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          setErrorMessage(errData.error || 'Authentication failed. Please start the Telegram Bot first.');
+          setAppState('lockdown');
+          return;
+        }
+
+        const data = await res.json();
+        if (data.success && data.user) {
+          setUserData({
+            userId: data.user.id, // Verified DB UUID
+            band: data.user.band || 6.5,
+            weakSkill: 'P',
+            strongSkill: 'FC',
+          });
+          setAppState('radar');
+        } else {
+          setErrorMessage('User profile not found. Please complete /start in Telegram Bot.');
+          setAppState('lockdown');
+        }
+      } catch (err) {
+        console.error('Auth verification error:', err);
+        setErrorMessage('Network error connecting to backend server.');
+        setAppState('lockdown');
+      }
+    };
+
+    initAuth();
   }, []);
 
   const handleMatchFound = useCallback(
@@ -61,14 +93,15 @@ export const App: React.FC = () => {
       setAppState('connecting');
 
       const livekitUrl =
-        data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://livekit.example.com';
+        data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://p2p-clcf9vzd.livekit.cloud';
 
       try {
         await connectLiveKit(livekitUrl, data.livekitToken);
         setAppState('in_call');
       } catch (err) {
         console.error('Failed to connect to LiveKit SFU room:', err);
-        setAppState('in_call'); // Fallback into call UI for signaling state
+        setErrorMessage('Failed to establish encrypted audio channel with LiveKit SFU.');
+        setAppState('ended');
       }
     },
     [connectLiveKit]
@@ -81,7 +114,7 @@ export const App: React.FC = () => {
 
   // Socket Connection & Event Listeners
   useEffect(() => {
-    if (!initData || appState === 'lockdown') return;
+    if (!initData || !userData.userId || appState === 'lockdown') return;
 
     const socket = socketService.connect(initData);
 
@@ -113,11 +146,12 @@ export const App: React.FC = () => {
 
   const handleRestart = () => {
     setMatchData(null);
+    setErrorMessage(null);
     setAppState('radar');
   };
 
   if (appState === 'lockdown') {
-    return <LockdownScreen />;
+    return <LockdownScreen message={errorMessage} />;
   }
 
   if (appState === 'radar') {
@@ -137,7 +171,7 @@ export const App: React.FC = () => {
           <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
         </div>
         <h2 className="text-xl font-bold text-slate-100 mb-1">Partner Matched!</h2>
-        <p className="text-sm text-slate-400">Establishing LiveKit encrypted audio channel...</p>
+        <p className="text-sm text-slate-400">Connecting to encrypted LiveKit WebRTC audio channel...</p>
       </div>
     );
   }
@@ -161,12 +195,19 @@ export const App: React.FC = () => {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6 text-center">
       <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-inner">
-        <PhoneOff className="w-10 h-10 text-slate-400" />
+        {errorMessage ? (
+          <AlertTriangle className="w-10 h-10 text-amber-400" />
+        ) : (
+          <PhoneOff className="w-10 h-10 text-slate-400" />
+        )}
       </div>
 
-      <h1 className="text-2xl font-bold text-slate-100 mb-2">Call Session Ended</h1>
+      <h1 className="text-2xl font-bold text-slate-100 mb-2">
+        {errorMessage ? 'Call Connection Issue' : 'Call Session Ended'}
+      </h1>
       <p className="text-sm text-slate-400 max-w-xs mb-8 leading-relaxed">
-        Thank you for practicing! Check your Telegram chat for post-call partner evaluation and recording access.
+        {errorMessage ||
+          'Thank you for practicing! Check your Telegram chat for post-call partner evaluation and recording access.'}
       </p>
 
       <button

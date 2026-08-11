@@ -19,7 +19,7 @@ export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Respons
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, env.JWT_SECRET) as { telegramId: number; role: string };
+    const decoded = jwt.verify(token, env.JWT_SECRET, { algorithms: ['HS256'] }) as { telegramId: number; role: string };
     if (decoded.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
     }

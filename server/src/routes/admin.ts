@@ -25,8 +25,8 @@ router.post('/login', async (req, res) => {
   // Validate and consume single-use 2FA token
   let telegramId = await verifyAndConsumeAdminToken(token);
 
-  // In development/test mode or if token matches test token
-  if (!telegramId && (env.NODE_ENV === 'development' || env.NODE_ENV === 'test')) {
+  // In test environment or if explicitly enabled for dev
+  if (!telegramId && (env.NODE_ENV === 'test' || process.env.ALLOW_DEV_ADMIN_BYPASS === 'true')) {
     if (token === 'dev_admin_token' || token === 'test_admin_token') {
       telegramId = env.ADMIN_TELEGRAM_IDS[0] || 12345678;
     }

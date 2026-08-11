@@ -44,3 +44,12 @@ export const env: EnvConfig = {
   ADMIN_PANEL_URL: process.env.ADMIN_PANEL_URL || process.env.MINI_APP_URL?.replace(/\/client\/?$/, '/admin') || 'http://localhost:3001/admin',
   RECORDINGS_DIR: path.resolve(process.cwd(), process.env.RECORDINGS_DIR || './recordings'),
 };
+
+if (env.NODE_ENV === 'production') {
+  if (env.JWT_SECRET === 'super_secret_jwt_key_987654321') {
+    console.warn('[SECURITY WARNING] Production running with default JWT_SECRET! Please set JWT_SECRET in environment variables.');
+  }
+  if (env.MASTER_PASSWORD === 'admin_master_password_123' || env.MASTER_PASSWORD === 'admin123456') {
+    console.warn('[SECURITY WARNING] Production running with default MASTER_PASSWORD! Please set MASTER_PASSWORD in environment variables.');
+  }
+}

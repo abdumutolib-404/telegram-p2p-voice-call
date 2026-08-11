@@ -63,6 +63,21 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
       return;
     }
 
+    // Verify rater was actually a participant
+    if (session.userAId !== rater.id && session.userBId !== rater.id) {
+      await ctx.answerCallbackQuery({ text: 'Unauthorized: You were not a participant in this call.' });
+      return;
+    }
+
+    // Check if already rated
+    const existing = await prisma.callRating.findFirst({
+      where: { callId, raterId: rater.id },
+    });
+    if (existing) {
+      await ctx.answerCallbackQuery({ text: 'You have already submitted feedback for this session.' });
+      return;
+    }
+
     const targetUserId = session.userAId === rater.id ? session.userBId : session.userAId;
 
     await prisma.callRating.create({
@@ -74,7 +89,7 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
       },
     });
 
-    await ctx.answerCallbackQuery({ text: `Thank you! Saved ${stars}-star rating.` });
+    await ctx.answerCallbackQuery({ text: `Saved ${stars}-star rating!` });
     await ctx.editMessageText(
       `📞 *Practice Session Complete!*\n\n` +
         `⭐ *Audio Quality Rating*: ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}\n` +
@@ -89,10 +104,31 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
     const raterTelegramId = BigInt(ctx.from.id);
 
     const rater = await prisma.user.findUnique({ where: { telegramId: raterTelegramId } });
-    if (!rater) return;
+    if (!rater) {
+      await ctx.answerCallbackQuery({ text: 'User not found.' });
+      return;
+    }
 
     const session = await prisma.callSession.findUnique({ where: { id: callId } });
-    if (!session) return;
+    if (!session) {
+      await ctx.answerCallbackQuery({ text: 'Call session not found.' });
+      return;
+    }
+
+    // Verify reporter was actually a participant
+    if (session.userAId !== rater.id && session.userBId !== rater.id) {
+      await ctx.answerCallbackQuery({ text: 'Unauthorized: You were not a participant in this call.' });
+      return;
+    }
+
+    // Check if already reported
+    const existing = await prisma.callRating.findFirst({
+      where: { callId, raterId: rater.id, reported: true },
+    });
+    if (existing) {
+      await ctx.answerCallbackQuery({ text: 'You have already reported this session.' });
+      return;
+    }
 
     const targetUserId = session.userAId === rater.id ? session.userBId : session.userAId;
 
@@ -101,7 +137,7 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
     await ctx.answerCallbackQuery({ text: 'Report submitted to moderation.' });
     await ctx.editMessageText(
       `⚠️ *Report Submitted*\n\n` +
-        `Your report has been logged. Moderation action taken: ${modResult.penaltyLevel}.\n` +
+        `Your report has been logged. Status: ${modResult.penaltyLevel}.\n` +
         `Thank you for keeping our IELTS community safe.`,
       { parse_mode: 'Markdown' }
     );
