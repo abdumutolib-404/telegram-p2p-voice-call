@@ -1,7 +1,7 @@
 # Multi-Stage Production Dockerfile for Telegram IELTS Speaking P2P Platform
 FROM node:20-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache ffmpeg
+RUN apk add --no-cache ffmpeg openssl libssl3
 
 # --- Stage 1: Build Server ---
 FROM base AS server-builder
