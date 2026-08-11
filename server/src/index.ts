@@ -25,10 +25,10 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+    if (allowedOrigins.some(allowed => allowed && origin.startsWith(allowed))) {
       return callback(null, true);
     }
-    return callback(null, true); // In production Telegram Mini Apps, origin varies
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
@@ -76,8 +76,15 @@ app.get('/', (req, res) => {
 // Setup Socket.io Signaling
 const io = new SocketIOServer(server, {
   cors: {
-    origin: '*',
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.some(allowed => allowed && origin.startsWith(allowed))) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Allow WebApp websocket connections
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 

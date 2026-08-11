@@ -3,6 +3,8 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { moderationService } from '../../services/moderation';
 
+import { notificationQueue } from '../notifications';
+
 export async function sendPostCallReviewCard(
   bot: Bot<MyContext>,
   userTelegramId: number,
@@ -27,10 +29,14 @@ export async function sendPostCallReviewCard(
     inlineKb.text('🎧 Listen Recording', `play_rec:${callSessionId}`).row();
   }
 
-  inlineKb.text('⚠️ Report Bad Partner', `report_partner:${callSessionId}`);
+  inlineKb
+    .text('⭐ Save Partner as Favorite', `favorite_partner:${callSessionId}`)
+    .row()
+    .text('⚠️ Report Bad Partner', `report_partner:${callSessionId}`);
 
   try {
-    await bot.api.sendMessage(
+    await notificationQueue.enqueue(
+      bot,
       userTelegramId,
       `📞 *Practice Session Complete!*\n\n` +
         `• *Partner*: ${partnerAlias}\n` +
@@ -39,7 +45,7 @@ export async function sendPostCallReviewCard(
       { parse_mode: 'Markdown', reply_markup: inlineKb }
     );
   } catch (err) {
-    console.warn(`[PostCall Review] Failed to send review card to ${userTelegramId}:`, err);
+    console.warn(`[PostCall Review] Failed to enqueue review card to ${userTelegramId}:`, err);
   }
 }
 

@@ -216,6 +216,110 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     );
   });
 
+  // Callback: favorite_partner:<callIdOrPartnerId>
+  bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {
+    const idParam = ctx.match[1];
+    const telegramId = BigInt(ctx.from.id);
+
+    try {
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+      if (!user) {
+        await ctx.answerCallbackQuery({ text: 'User not found.' });
+        return;
+      }
+
+      let partnerId = idParam;
+
+      // Check if idParam is a CallSession ID
+      const session = await prisma.callSession.findUnique({ where: { id: idParam } });
+      if (session) {
+        partnerId = session.userAId === user.id ? session.userBId : session.userAId;
+      }
+
+      const partner = await prisma.user.findUnique({ where: { id: partnerId } });
+      if (!partner) {
+        await ctx.answerCallbackQuery({ text: 'Partner not found.' });
+        return;
+      }
+
+      await prisma.favoritePartner.upsert({
+        where: {
+          userId_partnerId: {
+            userId: user.id,
+            partnerId: partner.id,
+          },
+        },
+        create: {
+          userId: user.id,
+          partnerId: partner.id,
+        },
+        update: {},
+      });
+
+      await ctx.answerCallbackQuery({ text: `⭐ ${partner.alias} saved to Favorites!` });
+    } catch (err) {
+      console.error('[Callback] favorite_partner error:', err);
+      await ctx.answerCallbackQuery({ text: 'Failed to save favorite.' });
+    }
+  });
+
+  // Callback: accept_direct:<callerId>
+  bot.callbackQuery(/^accept_direct:(.+)$/, async (ctx) => {
+    const callerId = ctx.match[1];
+    const calleeTelegramId = BigInt(ctx.from.id);
+
+    try {
+      const callee = await prisma.user.findUnique({ where: { telegramId: calleeTelegramId } });
+      if (!callee) {
+        await ctx.answerCallbackQuery({ text: 'User not found.' });
+        return;
+      }
+
+      const caller = await prisma.user.findUnique({ where: { id: callerId } });
+      if (!caller) {
+        await ctx.answerCallbackQuery({ text: 'Caller not found.' });
+        return;
+      }
+
+      await ctx.answerCallbackQuery({ text: 'Accepting call...' });
+
+      const roomName = `direct_${Date.now()}_${caller.id.slice(0, 4)}_${callee.id.slice(0, 4)}`;
+
+      // Create session
+      await prisma.callSession.create({
+        data: {
+          roomName,
+          userAId: caller.id,
+          userBId: callee.id,
+          status: 'ACTIVE',
+        },
+      });
+
+      const inlineKb = new InlineKeyboard().webApp('📞 Open Voice Call', env.MINI_APP_URL);
+
+      await ctx.reply(
+        `✅ *Direct Call Accepted!*\n\n` +
+          `Session with *${caller.alias}* is ready.\n` +
+          `Tap the button below to join:`,
+        { parse_mode: 'Markdown', reply_markup: inlineKb }
+      );
+
+      try {
+        await ctx.api.sendMessage(
+          Number(caller.telegramId),
+          `✅ *${callee.alias} accepted your direct call!*\n\n` +
+            `Tap the button below to join the call:`,
+          { parse_mode: 'Markdown', reply_markup: inlineKb }
+        );
+      } catch (sendErr) {
+        console.warn('[Direct Call] Failed to notify caller:', sendErr);
+      }
+    } catch (err) {
+      console.error('[Callback] accept_direct error:', err);
+      await ctx.answerCallbackQuery({ text: 'An error occurred accepting call.' });
+    }
+  });
+
   // Callback: play_rec:<sessionId>
   bot.callbackQuery(/^play_rec:(.+)$/, async (ctx) => {
     const sessionId = ctx.match[1];
@@ -239,19 +343,26 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      // In production, this would send the audio file via bot.api.sendAudio
-      // For now, acknowledge the request
-      await ctx.answerCallbackQuery({ text: 'Loading recording...' });
-      await ctx.reply(
-        `🎧 *Recording Playback*\n\n` +
-          `Session: \`${sessionId.slice(0, 8)}...\`\n` +
-          `Duration: ${Math.floor(session.duration / 60)} min ${session.duration % 60}s\n\n` +
-          `_Audio file delivery is being processed._`,
-        { parse_mode: 'Markdown' }
-      );
+      const path = await import('path');
+      const fs = await import('fs');
+      const filePath = path.isAbsolute(session.recordingUrl)
+        ? session.recordingUrl
+        : path.join(process.cwd(), session.recordingUrl);
+
+      if (!fs.existsSync(filePath)) {
+        await ctx.answerCallbackQuery({ text: 'Audio file missing from server.' });
+        return;
+      }
+
+      await ctx.answerCallbackQuery({ text: 'Sending audio recording...' });
+      const InputFile = (await import('grammy')).InputFile;
+      await ctx.replyWithAudio(new InputFile(filePath), {
+        caption: `🎙️ *Audio Recording* — Session ${sessionId.slice(0, 8)} (${Math.floor(session.duration / 60)} min)`,
+        parse_mode: 'Markdown',
+      });
     } catch (err) {
       console.error('[Callback] play_rec error:', err);
-      await ctx.answerCallbackQuery({ text: 'An error occurred.' });
+      await ctx.answerCallbackQuery({ text: 'An error occurred sending audio.' });
     }
   });
 

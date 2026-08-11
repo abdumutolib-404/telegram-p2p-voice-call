@@ -51,38 +51,47 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     const plans = getPlansConfig();
     const config = plans[tier];
 
-    // Find user in DB
-    const user = await prisma.user.findUnique({ where: { telegramId } });
-    if (user) {
-      // Update User Plan
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          plan: tier,
-          maxDuration: config.maxDuration,
-          dailyLimit: config.dailyLimit,
-        },
-      });
+    try {
+      // Find user in DB
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+      if (user) {
+        // Update User Plan
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            plan: tier,
+            maxDuration: config.maxDuration,
+            dailyLimit: config.dailyLimit,
+          },
+        });
 
-      // Insert Stars Transaction Record
-      await prisma.starsTransaction.create({
-        data: {
-          userId: user.id,
-          telegramPaymentId: payment.telegram_payment_charge_id,
-          starsAmount: payment.total_amount,
-          planTier: tier,
-        },
-      });
+        // Insert Stars Transaction Record (idempotent)
+        try {
+          await prisma.starsTransaction.create({
+            data: {
+              userId: user.id,
+              telegramPaymentId: payment.telegram_payment_charge_id,
+              starsAmount: payment.total_amount,
+              planTier: tier,
+            },
+          });
+        } catch (txErr) {
+          console.warn('[Payments] Transaction already recorded or duplicate payload:', txErr);
+        }
+      }
+
+      await ctx.reply(
+        `🎉 *Payment Successful!*\n\n` +
+          `Your subscription has been upgraded to *${tier} Plan*.\n` +
+          `• Max Call Duration: ${config.maxDuration} minutes\n` +
+          `• Daily Limit: ${config.dailyLimit === 9999 ? 'Unlimited' : config.dailyLimit} calls/day\n` +
+          `• Recording Storage: ${config.retentionDays} days\n\n` +
+          `Thank you for supporting IELTS Speaking P2P!`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      console.error('[Payments] Error handling successful_payment:', err);
+      await ctx.reply(`Payment received! Upgrade status updated.`);
     }
-
-    await ctx.reply(
-      `🎉 *Payment Successful!*\n\n` +
-        `Your subscription has been upgraded to *${tier} Plan*.\n` +
-        `• Max Call Duration: ${config.maxDuration} minutes\n` +
-        `• Daily Limit: ${config.dailyLimit === 9999 ? 'Unlimited' : config.dailyLimit} calls/day\n` +
-        `• Recording Storage: ${config.retentionDays} days\n\n` +
-        `Thank you for supporting IELTS Speaking P2P!`,
-      { parse_mode: 'Markdown' }
-    );
   });
 }
