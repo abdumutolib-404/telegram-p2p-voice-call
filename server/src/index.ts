@@ -49,14 +49,28 @@ app.get('/health', (req, res) => {
 
 // Serve compiled static frontend Mini App & Admin Panel
 import path from 'path';
+
+// Client Mini App
 app.use('/client', express.static(path.join(__dirname, '../public/client')));
+app.get('/client', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/client/index.html'));
+});
 app.get('/client/*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/client/index.html'));
 });
 
+// Admin Panel
 app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/admin/index.html'));
+});
 app.get('/admin/*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/admin/index.html'));
+});
+
+// Root redirect to health check (useful for Railway health probes)
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', app: 'IELTS Speaking P2P Platform', endpoints: ['/client', '/admin', '/health'] });
 });
 
 // Setup Socket.io Signaling
