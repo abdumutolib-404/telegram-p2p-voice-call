@@ -16,6 +16,7 @@ export interface EnvConfig {
   LIVEKIT_HOST: string;
   LIVEKIT_API_KEY: string;
   LIVEKIT_API_SECRET: string;
+  ADMIN_PANEL_URL: string;
   RECORDINGS_DIR: string;
 }
 
@@ -40,5 +41,6 @@ export const env: EnvConfig = {
   LIVEKIT_HOST: process.env.LIVEKIT_HOST || process.env.LIVEKIT_URL || 'wss://livekit.example.com',
   LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || 'devkey',
   LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || 'secret12345678901234567890123456789012',
+  ADMIN_PANEL_URL: process.env.ADMIN_PANEL_URL || process.env.MINI_APP_URL?.replace(/\/client\/?$/, '/admin') || 'http://localhost:3001/admin',
   RECORDINGS_DIR: path.resolve(process.cwd(), process.env.RECORDINGS_DIR || './recordings'),
 };

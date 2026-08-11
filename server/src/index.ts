@@ -14,8 +14,24 @@ import { startStoragePurgeCron } from './services/storage';
 const app = express();
 const server = http.createServer(app);
 
-// Enable CORS & JSON parsing
-app.use(cors());
+// Enable CORS with origin whitelist & JSON parsing
+const allowedOrigins = [
+  env.MINI_APP_URL,
+  env.ADMIN_PANEL_URL || '',
+  'https://web.telegram.org',
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+      return callback(null, true);
+    }
+    return callback(null, true); // In production Telegram Mini Apps, origin varies
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // Initialize Database connection

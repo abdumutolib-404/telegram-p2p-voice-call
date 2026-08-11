@@ -20,6 +20,8 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
 
   for (const session of expiredSessions) {
     if (session.recordingUrl) {
+      let fileDeleted = false;
+
       try {
         const filePath = path.isAbsolute(session.recordingUrl)
           ? session.recordingUrl
@@ -27,23 +29,29 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
 
         if (fs.existsSync(filePath)) {
           const stats = fs.statSync(filePath);
-          freedSpaceBytes += stats.size;
           fs.unlinkSync(filePath);
+          freedSpaceBytes += stats.size;
+          fileDeleted = true;
+        } else {
+          // File doesn't exist on disk (already cleaned or never written)
+          fileDeleted = true;
         }
       } catch (err) {
         console.warn(`[Storage Purge] Could not delete file for session ${session.id}:`, err);
+        // Do NOT clear the DB reference if the file couldn't be deleted —
+        // this prevents "orphaned files" that leak disk space forever
+        continue;
+      }
+
+      // Only clear the DB reference if the file was successfully removed
+      if (fileDeleted) {
+        await prisma.callSession.update({
+          where: { id: session.id },
+          data: { recordingUrl: null },
+        });
+        purgedCount++;
       }
     }
-
-    // Update database record clearing recordingUrl
-    await prisma.callSession.update({
-      where: { id: session.id },
-      data: {
-        recordingUrl: null,
-      },
-    });
-
-    purgedCount++;
   }
 
   console.log(`[Storage Purge] Completed daily purge: ${purgedCount} files removed, ${freedSpaceBytes} bytes freed.`);
@@ -54,7 +62,11 @@ export function startStoragePurgeCron() {
   // Run daily at midnight UTC: 0 0 * * *
   cron.schedule('0 0 * * *', async () => {
     console.log('[Storage Purge Cron] Running daily audio retention cleanup job...');
-    await purgeExpiredRecordings();
+    try {
+      await purgeExpiredRecordings();
+    } catch (err) {
+      console.error('[Storage Purge Cron] Purge job failed:', err);
+    }
   });
   console.log('[Storage Purge Cron] Storage cleanup cron scheduled.');
 }

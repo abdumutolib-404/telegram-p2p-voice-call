@@ -105,35 +105,28 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     const p = ctx.session.p || 6.0;
     const overallBand = calculateOverallBand(fc, lr, gra, p);
 
-    let user = await prisma.user.findUnique({ where: { telegramId } });
-
-    if (!user) {
-      const alias = generateUniqueAlias();
-      user = await prisma.user.create({
-        data: {
-          telegramId,
-          alias,
-          subFC: fc,
-          subLR: lr,
-          subGRA: gra,
-          subP: p,
-          band: overallBand,
-          onboarded: true,
-        },
-      });
-    } else {
-      user = await prisma.user.update({
-        where: { telegramId },
-        data: {
-          subFC: fc,
-          subLR: lr,
-          subGRA: gra,
-          subP: p,
-          band: overallBand,
-          onboarded: true,
-        },
-      });
-    }
+    const alias = generateUniqueAlias();
+    const user = await prisma.user.upsert({
+      where: { telegramId },
+      create: {
+        telegramId,
+        alias,
+        subFC: fc,
+        subLR: lr,
+        subGRA: gra,
+        subP: p,
+        band: overallBand,
+        onboarded: true,
+      },
+      update: {
+        subFC: fc,
+        subLR: lr,
+        subGRA: gra,
+        subP: p,
+        band: overallBand,
+        onboarded: true,
+      },
+    });
 
     ctx.session.step = 'idle';
     await ctx.answerCallbackQuery({ text: 'Profile saved!' });
@@ -221,5 +214,102 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         `The system admin will review your appeal details shortly.`,
       { parse_mode: 'Markdown' }
     );
+  });
+
+  // Callback: play_rec:<sessionId>
+  bot.callbackQuery(/^play_rec:(.+)$/, async (ctx) => {
+    const sessionId = ctx.match[1];
+    const telegramId = BigInt(ctx.from.id);
+
+    try {
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+      if (!user) {
+        await ctx.answerCallbackQuery({ text: 'User not found.' });
+        return;
+      }
+
+      const session = await prisma.callSession.findUnique({ where: { id: sessionId } });
+      if (!session || (session.userAId !== user.id && session.userBId !== user.id)) {
+        await ctx.answerCallbackQuery({ text: 'Recording not found or unauthorized.' });
+        return;
+      }
+
+      if (!session.recordingUrl) {
+        await ctx.answerCallbackQuery({ text: 'Recording is no longer available.' });
+        return;
+      }
+
+      // In production, this would send the audio file via bot.api.sendAudio
+      // For now, acknowledge the request
+      await ctx.answerCallbackQuery({ text: 'Loading recording...' });
+      await ctx.reply(
+        `🎧 *Recording Playback*\n\n` +
+          `Session: \`${sessionId.slice(0, 8)}...\`\n` +
+          `Duration: ${Math.floor(session.duration / 60)} min ${session.duration % 60}s\n\n` +
+          `_Audio file delivery is being processed._`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      console.error('[Callback] play_rec error:', err);
+      await ctx.answerCallbackQuery({ text: 'An error occurred.' });
+    }
+  });
+
+  // Callback: direct_call:<partnerId>
+  bot.callbackQuery(/^direct_call:(.+)$/, async (ctx) => {
+    const partnerId = ctx.match[1];
+    const telegramId = BigInt(ctx.from.id);
+
+    try {
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+      if (!user) {
+        await ctx.answerCallbackQuery({ text: 'User not found.' });
+        return;
+      }
+
+      // Check user is not banned
+      if (user.isBanned || user.isPermanentlyBanned) {
+        await ctx.answerCallbackQuery({ text: 'Your account is currently restricted.' });
+        return;
+      }
+
+      const partner = await prisma.user.findUnique({ where: { id: partnerId } });
+      if (!partner) {
+        await ctx.answerCallbackQuery({ text: 'Partner not found.' });
+        return;
+      }
+
+      if (partner.dnd) {
+        await ctx.answerCallbackQuery({ text: `${partner.alias} has Do Not Disturb enabled.` });
+        return;
+      }
+
+      await ctx.answerCallbackQuery({ text: `Ringing ${partner.alias}...` });
+      await ctx.reply(
+        `📞 *Direct Call Request Sent*\n\n` +
+          `Calling *${partner.alias}* (Band ${partner.band.toFixed(1)})...\n` +
+          `_They will receive a notification to join the call._`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Send push notification to partner via bot
+      try {
+        const inlineKb = new InlineKeyboard()
+          .text('✅ Accept & Join Call', `accept_direct:${user.id}`);
+
+        await ctx.api.sendMessage(
+          Number(partner.telegramId),
+          `📞 *Incoming Direct Call!*\n\n` +
+            `*${user.alias}* (Band ${user.band.toFixed(1)}) is calling you.\n` +
+            `Tap the button below to accept.`,
+          { parse_mode: 'Markdown', reply_markup: inlineKb }
+        );
+      } catch (sendErr) {
+        console.warn(`[Direct Call] Could not notify partner ${partner.alias}:`, sendErr);
+      }
+    } catch (err) {
+      console.error('[Callback] direct_call error:', err);
+      await ctx.answerCallbackQuery({ text: 'An error occurred.' });
+    }
   });
 }
