@@ -10,7 +10,7 @@ export const prisma = new PrismaClient();
 export async function connectDB() {
   try {
     await prisma.$connect();
-    console.log('[Database] SQLite Prisma client connected.');
+    console.log('[Database] PostgreSQL Prisma client connected.');
   } catch (err) {
     console.error('[Database] Connection error:', err);
   }

@@ -34,7 +34,14 @@ app.get('/health', (req, res) => {
 // Serve compiled static frontend Mini App & Admin Panel
 import path from 'path';
 app.use('/client', express.static(path.join(__dirname, '../public/client')));
+app.get('/client/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/client/index.html'));
+});
+
 app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
+app.get('/admin/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/admin/index.html'));
+});
 
 // Setup Socket.io Signaling
 const io = new SocketIOServer(server, {
@@ -53,6 +60,8 @@ if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
       onStart: (botInfo: any) => {
         console.log(`[Grammy Bot] Bot @${botInfo.username} launched successfully.`);
       },
+    }).catch((botErr: any) => {
+      console.warn('[Grammy Bot Conflict Warning] Long polling instance conflict detected or network drop. Grammy will auto-retry polling.', botErr.message);
     });
   } catch (err) {
     console.warn('[Grammy Bot] Could not start polling:', err);
