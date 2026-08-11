@@ -31,6 +31,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Serve compiled static frontend Mini App & Admin Panel
+import path from 'path';
+app.use('/client', express.static(path.join(__dirname, '../public/client')));
+app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
+
 // Setup Socket.io Signaling
 const io = new SocketIOServer(server, {
   cors: {
