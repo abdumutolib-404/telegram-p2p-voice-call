@@ -1,0 +1,111 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String             @id @default(uuid())
+  telegramId          BigInt             @unique
+  alias               String             @unique
+  subFC               Float              @default(6.0)
+  subLR               Float              @default(6.0)
+  subGRA              Float              @default(6.0)
+  subP                Float              @default(6.0)
+  band                Float              @default(6.0)
+  plan                String             @default("FREE") // "FREE", "PLUS", "PRO"
+  maxDuration         Int                @default(15) // max call duration in minutes
+  dailyLimit          Int                @default(3)
+  dailyCallsUsed      Int                @default(0)
+  lastCallDate        String?            // YYYY-MM-DD
+  warningCount        Int                @default(0)
+  isBanned            Boolean            @default(false)
+  bannedUntil         DateTime?
+  isPermanentlyBanned Boolean            @default(false)
+  dnd                 Boolean            @default(false)
+  onboarded           Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  callsAsA            CallSession[]      @relation("UserACalls")
+  callsAsB            CallSession[]      @relation("UserBCalls")
+  ratingsGiven        CallRating[]       @relation("RatingsGiven")
+  ratingsReceived     CallRating[]       @relation("RatingsReceived")
+  appeals             UnblockAppeal[]
+  starsTransactions   StarsTransaction[]
+  favorites           FavoritePartner[]  @relation("UserFavorites")
+  favoritedBy         FavoritePartner[]  @relation("PartnerFavorites")
+}
+
+model CallSession {
+  id                 String       @id @default(uuid())
+  roomName           String       @unique
+  userAId            String
+  userBId            String
+  userA              User         @relation("UserACalls", fields: [userAId], references: [id])
+  userB              User         @relation("UserBCalls", fields: [userBId], references: [id])
+  status             String       @default("ACTIVE") // "ACTIVE", "COMPLETED", "CANCELLED"
+  egressId           String?
+  recordingUrl       String?
+  recordingExpiresAt DateTime?
+  duration           Int          @default(0) // call duration in seconds
+  createdAt          DateTime     @default(now())
+  endedAt            DateTime?
+
+  ratings            CallRating[]
+}
+
+model CallRating {
+  id         String      @id @default(uuid())
+  callId     String
+  raterId    String
+  ratedId    String
+  stars      Int         // 1-5
+  feedback   String?     // feedback or report reason
+  reported   Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+
+  call       CallSession @relation(fields: [callId], references: [id])
+  rater      User        @relation("RatingsGiven", fields: [raterId], references: [id])
+  rated      User        @relation("RatingsReceived", fields: [ratedId], references: [id])
+}
+
+model UnblockAppeal {
+  id          String    @id @default(uuid())
+  userId      String
+  telegramId  BigInt
+  alias       String
+  banReason   String
+  appealText  String
+  status      String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  createdAt   DateTime  @default(now())
+  reviewedAt  DateTime?
+
+  user        User      @relation(fields: [userId], references: [id])
+}
+
+model StarsTransaction {
+  id                String   @id @default(uuid())
+  userId            String
+  telegramPaymentId String   @unique
+  starsAmount       Int
+  planTier          String   // "PLUS", "PRO"
+  createdAt         DateTime @default(now())
+
+  user              User     @relation(fields: [userId], references: [id])
+}
+
+model FavoritePartner {
+  id        String   @id @default(uuid())
+  userId    String
+  partnerId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation("UserFavorites", fields: [userId], references: [id])
+  partner   User     @relation("PartnerFavorites", fields: [partnerId], references: [id])
+
+  @@unique([userId, partnerId])
+}
