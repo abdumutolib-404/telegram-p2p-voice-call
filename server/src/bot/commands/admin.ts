@@ -62,14 +62,26 @@ export function setupAdminCommand(bot: Bot<MyContext>) {
     }
 
     const token = await generateAdminToken(userId);
-    const adminLoginUrl = `${env.MINI_APP_URL}/admin/login?token=${token}`;
+    const adminLoginUrl = `${env.MINI_APP_URL.replace(/\/client\/?$/, '')}/admin?token=${token}`;
 
     await ctx.reply(
       `🔐 *Stealth Admin 2FA Link Generated*\n\n` +
-        `This link is single-use and valid for *5 minutes*:\n\n` +
-        `🔗 [Open Web Admin Dashboard](${adminLoginUrl})\n\n` +
-        `_Master password will be required upon accessing the dashboard._`,
-      { parse_mode: 'Markdown' }
+        `Tap the button below to open the Admin WebApp directly inside Telegram.\n` +
+        `This link is single-use and valid for *5 minutes*.\n\n` +
+        `_Master password challenge is required upon opening._`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: '🛡️ Open Admin WebApp',
+                web_app: { url: adminLoginUrl },
+              },
+            ],
+          ],
+        },
+      }
     );
   });
 }
