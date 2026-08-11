@@ -3,9 +3,12 @@ import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
 
-const router = Router();
+import { createRateLimiter } from '../middleware/rateLimit';
 
-router.post('/verify', async (req, res) => {
+const router = Router();
+const authLimiter = createRateLimiter(20, 60 * 1000); // 20 requests per minute
+
+router.post('/verify', authLimiter, async (req, res) => {
   const initData = req.headers['x-telegram-init-data'] as string || req.body?.initData;
 
   // Unit test bypass

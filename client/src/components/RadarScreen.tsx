@@ -27,12 +27,12 @@ export const RadarScreen: React.FC<RadarScreenProps> = ({
       <div className="z-10 text-center mt-6">
         <div className="flex items-center justify-center gap-2 mb-2 text-indigo-400">
           <Radio className="w-5 h-5 animate-pulse" />
-          <span className="text-xs font-bold tracking-widest uppercase">Matchmaking Engine</span>
+          <span className="text-xs font-bold tracking-widest uppercase">P2P Partner Match</span>
         </div>
         <h1 className="text-2xl font-bold text-slate-100">Finding IELTS Practice Partner</h1>
         {targetBand !== undefined && (
           <p className="text-sm text-slate-400 mt-1">
-            Matching Target Band <span className="font-semibold text-indigo-300">{targetBand.toFixed(1)}</span> complementary sub-scores
+            Target Band <span className="font-semibold text-indigo-300">{targetBand.toFixed(1)}</span> • Skill-based pairing
           </p>
         )}
       </div>
@@ -72,7 +72,7 @@ export const RadarScreen: React.FC<RadarScreenProps> = ({
       <div className="z-10 w-full max-w-xs flex flex-col items-center gap-4 mb-8">
         <div className="flex items-center gap-2 text-slate-300 text-sm bg-slate-900/90 px-4 py-2 rounded-full border border-slate-800 shadow-sm">
           <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-          <span>Searching Redis $O(1)$ matchmaking queue...</span>
+          <span>Searching for practice partner...</span>
         </div>
 
         <button

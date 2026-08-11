@@ -7,10 +7,13 @@ import { getAdminAnalytics } from '../services/analytics';
 import { getPlansConfig, updatePlansConfig } from '../services/plan';
 import { prisma } from '../config/database';
 
+import { createRateLimiter } from '../middleware/rateLimit';
+
 const router = Router();
+const adminLoginLimiter = createRateLimiter(5, 60 * 1000); // 5 attempts per minute max
 
 // POST /api/admin/login (Stealth 2FA token + Master Password Exchange)
-router.post('/login', async (req, res) => {
+router.post('/login', adminLoginLimiter, async (req, res) => {
   const { token, masterPassword } = req.body;
 
   if (!token || !masterPassword) {

@@ -87,7 +87,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       <div className="flex flex-col items-center mt-4 gap-2 z-10">
         <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-4 py-1.5 rounded-full text-xs text-slate-400">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>LiveKit SFU Encrypted Voice Session</span>
+          <span>Encrypted P2P Voice Call</span>
         </div>
 
         <div
