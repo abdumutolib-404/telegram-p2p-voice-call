@@ -20,6 +20,10 @@ prisma/*.db-journal
 recordings/
 uploads/
 
+# Agent Metadata & Logs
+.agents/
+.gemini/
+
 # OS / IDE
 .DS_Store
 Thumbs.db
