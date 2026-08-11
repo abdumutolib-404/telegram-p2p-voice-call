@@ -48,7 +48,11 @@ COPY --from=admin-builder /app/admin/dist ./server/public/admin
 # Create recordings directory
 RUN mkdir -p /app/server/recordings
 
+# Copy docker entrypoint script
+COPY server/docker-entrypoint.sh ./server/docker-entrypoint.sh
+RUN chmod +x ./server/docker-entrypoint.sh
+
 WORKDIR /app/server
 EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
