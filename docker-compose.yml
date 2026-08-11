@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_MASTER_PASSWORD=${ADMIN_MASTER_PASSWORD:-admin123456}
+      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_change_me_in_production}
+      - LIVEKIT_HOST=${LIVEKIT_HOST:-ws://livekit:7880}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-secret}
+      - DATABASE_URL=file:./dev.db
+      - REDIS_URL=redis://redis:6379
+      - MINI_APP_URL=${MINI_APP_URL:-http://localhost:3001/client}
+      - ADMIN_PANEL_URL=${ADMIN_PANEL_URL:-http://localhost:3001/admin}
+      - RECORDINGS_DIR=/app/server/recordings
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
