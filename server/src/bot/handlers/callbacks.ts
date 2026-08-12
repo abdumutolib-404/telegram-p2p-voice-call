@@ -130,9 +130,10 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           onboarded: true,
         },
       });
-    } catch (dbErr: any) {
+    } catch (dbErr: unknown) {
+      const prismaError = dbErr as { code?: unknown };
       // Retry with a new alias if unique constraint violation
-      if (dbErr?.code === 'P2002') {
+      if (prismaError.code === 'P2002') {
         const retryAlias = generateUniqueAlias();
         user = await prisma.user.upsert({
           where: { telegramId },
@@ -332,7 +333,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       try {
         await ctx.api.sendMessage(
-          Number(caller.telegramId),
+          caller.telegramId.toString(),
           `✅ *${callee.alias} accepted your direct call!*\n\n` +
             `Tap the button below to join the call:`,
           { parse_mode: 'Markdown', reply_markup: inlineKb }
@@ -435,7 +436,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           .text('✅ Accept & Join Call', `accept_direct:${user.id}`);
 
         await ctx.api.sendMessage(
-          Number(partner.telegramId),
+          partner.telegramId.toString(),
           `📞 *Incoming Direct Call!*\n\n` +
             `*${user.alias}* (Band ${user.band.toFixed(1)}) is calling you.\n` +
             `Tap the button below to accept.`,

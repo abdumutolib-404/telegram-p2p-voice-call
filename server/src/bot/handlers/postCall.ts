@@ -7,7 +7,7 @@ import { notificationQueue } from '../notifications';
 
 export async function sendPostCallReviewCard(
   bot: Bot<MyContext>,
-  userTelegramId: number,
+  userTelegramId: string,
   callSessionId: string,
   partnerAlias: string,
   durationSeconds: number,

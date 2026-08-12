@@ -1,15 +1,15 @@
-import { Request, Response, NextFunction } from 'express';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
+import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
 
 export interface TelegramUser {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
-  is_premium?: boolean;
-  allows_write_to_pm?: boolean;
+  readonly id: number;
+  readonly first_name?: string;
+  readonly last_name?: string;
+  readonly username?: string;
+  readonly language_code?: string;
+  readonly is_premium?: boolean;
+  readonly allows_write_to_pm?: boolean;
 }
 
 export interface AuthenticatedTelegramRequest extends Request {
@@ -21,87 +21,118 @@ export interface InitDataValidationResult {
   user?: TelegramUser;
 }
 
-/**
- * Validates Telegram WebApp initData HMAC-SHA256 signature and freshness.
- */
-export function validateTelegramInitData(initData: string, botToken: string): InitDataValidationResult {
-  if (!initData || typeof initData !== 'string') {
-    return { valid: false };
-  }
+const MAX_AGE_SECONDS = 24 * 60 * 60;
+const MAX_FUTURE_SECONDS = 60;
+const HEX_HASH_PATTERN = /^[a-f0-9]{64}$/i;
+const INTEGER_PATTERN = /^\d+$/;
+
+function parseTelegramUser(raw: string | null): TelegramUser | undefined {
+  if (raw === null) return undefined;
 
   try {
-    const urlParams = new URLSearchParams(initData);
-    const hash = urlParams.get('hash');
-    if (!hash) return { valid: false };
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
 
-    // Freshness check: reject initData older than 24 hours (86400 sec) or in future (>60 sec)
-    const authDate = Number(urlParams.get('auth_date') || 0);
-    const nowInSec = Math.floor(Date.now() / 1000);
-    if (!authDate || nowInSec - authDate > 86400 || authDate - nowInSec > 60) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.id !== 'number' && typeof record.id !== 'string') return undefined;
+    if (typeof record.id === 'number' && !Number.isSafeInteger(record.id)) return undefined;
+
+    const idText = String(record.id);
+    if (!INTEGER_PATTERN.test(idText) || idText === '0') return undefined;
+
+    return {
+      id: Number(idText),
+      first_name: typeof record.first_name === 'string' ? record.first_name : undefined,
+      last_name: typeof record.last_name === 'string' ? record.last_name : undefined,
+      username: typeof record.username === 'string' ? record.username : undefined,
+      language_code: typeof record.language_code === 'string' ? record.language_code : undefined,
+      is_premium: typeof record.is_premium === 'boolean' ? record.is_premium : undefined,
+      allows_write_to_pm: typeof record.allows_write_to_pm === 'boolean' ? record.allows_write_to_pm : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Validates Telegram WebApp initData using Telegram's documented HMAC-SHA256 scheme. */
+export function validateTelegramInitData(initData: string, botToken: string): InitDataValidationResult {
+  if (!initData || !botToken) return { valid: false };
+
+  try {
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    const authDateRaw = params.get('auth_date');
+
+    if (!hash || !HEX_HASH_PATTERN.test(hash) || !authDateRaw || !/^\d+$/.test(authDateRaw)) {
       return { valid: false };
     }
 
-    urlParams.delete('hash');
+    const authDate = Number(authDateRaw);
+    if (!Number.isSafeInteger(authDate)) return { valid: false };
 
-    const params: string[] = [];
-    urlParams.forEach((val, key) => {
-      params.push(`${key}=${val}`);
-    });
-    params.sort();
+    const now = Math.floor(Date.now() / 1000);
+    if (now - authDate > MAX_AGE_SECONDS || authDate - now > MAX_FUTURE_SECONDS) {
+      return { valid: false };
+    }
 
-    const dataCheckString = params.join('\n');
+    params.delete('hash');
+    const dataCheckString = [...params.entries()]
+      .sort(([keyA], [keyB]) => (keyA < keyB ? -1 : keyA > keyB ? 1 : 0))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
 
     const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-    const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+    const expectedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest();
+    const providedHash = Buffer.from(hash, 'hex');
 
-    const calcBuf = Buffer.from(calculatedHash, 'hex');
-    const hashBuf = Buffer.from(hash, 'hex');
-
-    // Constant-time comparison with explicit buffer length verification
-    if (calcBuf.length === hashBuf.length && crypto.timingSafeEqual(calcBuf, hashBuf)) {
-      const userRaw = urlParams.get('user');
-      let user: TelegramUser | undefined = undefined;
-
-      if (userRaw) {
-        try {
-          const parsed = JSON.parse(userRaw);
-          if (parsed && typeof parsed === 'object' && typeof parsed.id === 'number') {
-            user = parsed as TelegramUser;
-          }
-        } catch {
-          return { valid: false };
-        }
-      }
-
-      return { valid: true, user };
+    if (expectedHash.length !== providedHash.length || !crypto.timingSafeEqual(expectedHash, providedHash)) {
+      return { valid: false };
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[InitData Lockdown] Signature parsing error:', message);
-  }
 
-  return { valid: false };
+    const user = parseTelegramUser(params.get('user'));
+    if (!user) return { valid: false };
+
+    return { valid: true, user };
+  } catch (error: unknown) {
+    console.error('[InitData] validation_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    return { valid: false };
+  }
 }
 
-export function initDataLockdownMiddleware(req: AuthenticatedTelegramRequest, res: Response, next: NextFunction) {
-  const initData = req.headers['x-telegram-init-data'] as string;
+export function initDataLockdownMiddleware(
+  req: AuthenticatedTelegramRequest,
+  res: Response,
+  next: NextFunction,
+): void {
+  try {
+    const header = req.headers['x-telegram-init-data'];
+    const initData = typeof header === 'string' ? header : undefined;
 
-  // In unit test environment without initData, allow bypass if header is 'test-allowed'
-  if (env.NODE_ENV === 'test' && initData === 'test-allowed') {
-    req.telegramUser = { id: 12345678, first_name: 'TestUser' };
-    return next();
+    if (env.NODE_ENV === 'test' && initData === 'test-allowed') {
+      req.telegramUser = { id: 12345678, first_name: 'TestUser' };
+      next();
+      return;
+    }
+
+    if (!initData) {
+      res.status(403).json({ error: 'Access Restricted: Telegram WebApp initData missing.' });
+      return;
+    }
+
+    const result = validateTelegramInitData(initData, env.BOT_TOKEN);
+    if (!result.valid || !result.user) {
+      res.status(403).json({ error: 'Access Restricted: Invalid initData signature.' });
+      return;
+    }
+
+    req.telegramUser = result.user;
+    next();
+  } catch (error: unknown) {
+    console.error('[InitData] middleware_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    res.status(500).json({ error: 'Internal authentication error.' });
   }
-
-  if (!initData) {
-    return res.status(403).json({ error: 'Access Restricted: Telegram WebApp initData missing.' });
-  }
-
-  const { valid, user } = validateTelegramInitData(initData, env.BOT_TOKEN);
-
-  if (!valid) {
-    return res.status(403).json({ error: 'Access Restricted: Invalid initData signature.' });
-  }
-
-  req.telegramUser = user;
-  next();
 }

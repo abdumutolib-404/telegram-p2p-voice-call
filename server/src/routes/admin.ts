@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
@@ -15,48 +16,45 @@ const adminLoginLimiter = createRateLimiter(5, 60 * 1000); // 5 attempts per min
 
 // POST /api/admin/login (Stealth 2FA token + Master Password Exchange)
 router.post('/login', adminLoginLimiter, async (req, res) => {
-  const { token, masterPassword } = req.body;
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token : '';
+    const masterPassword = typeof req.body?.masterPassword === 'string' ? req.body.masterPassword : '';
 
-  if (!token || !masterPassword) {
-    return res.status(400).json({ error: 'Missing token or masterPassword.' });
-  }
-
-  // Validate master password
-  if (masterPassword !== env.MASTER_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid master password.' });
-  }
-
-  // Validate and consume single-use 2FA token
-  let telegramId = await verifyAndConsumeAdminToken(token);
-
-  // In test environment or if explicitly enabled for dev
-  if (!telegramId && env.NODE_ENV === 'test') {
-    if (token === 'test_admin_token') {
-      telegramId = env.ADMIN_TELEGRAM_IDS[0] || 0;
+    if (!token || !masterPassword) {
+      res.status(400).json({ error: 'Missing token or masterPassword.' });
+      return;
     }
+
+    if (!cryptoSafeEqualString(masterPassword, env.MASTER_PASSWORD)) {
+      res.status(401).json({ error: 'Invalid master password.' });
+      return;
+    }
+
+    let telegramId = await verifyAndConsumeAdminToken(token);
+    if (!telegramId && env.NODE_ENV === 'test' && token === 'test_admin_token') {
+      telegramId = env.ADMIN_TELEGRAM_IDS[0] ?? null;
+    }
+    if (!telegramId || !env.ADMIN_TELEGRAM_IDS.includes(telegramId)) {
+      res.status(401).json({ error: 'Invalid or expired 2FA login token.' });
+      return;
+    }
+
+    const jwtToken = jwt.sign({ telegramId, role: 'admin' }, env.JWT_SECRET, { expiresIn: '24h', algorithm: 'HS256' });
+    res.json({ success: true, jwtToken, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
+  } catch (error: unknown) {
+    console.error('[Admin] login_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    res.status(500).json({ error: 'Admin authentication unavailable.' });
   }
-
-  if (!telegramId) {
-    return res.status(401).json({ error: 'Invalid or expired 2FA login token.' });
-  }
-
-  const jwtToken = jwt.sign(
-    {
-      telegramId,
-      role: 'admin',
-    },
-    env.JWT_SECRET,
-    { expiresIn: '24h' }
-  );
-
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-  res.json({
-    success: true,
-    jwtToken,
-    expiresAt,
-  });
 });
+
+function cryptoSafeEqualString(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
 
 // GET /api/admin/stats (Protected)
 router.get('/stats', adminAuthMiddleware, async (req, res) => {

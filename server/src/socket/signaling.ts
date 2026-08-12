@@ -1,388 +1,528 @@
 import { Server, Socket } from 'socket.io';
-import { matchmakingService } from '../services/matchmaking';
+import type { Prisma } from '@prisma/client';
+import { Bot } from 'grammy';
+import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
 import { calculateMixedPlanDuration, getRetentionDaysForPlan } from '../services/plan';
-import { generateLiveKitToken, startAudioEgress, stopAudioEgress } from '../config/livekit';
+import { generateLiveKitToken, startAudioEgress, stopAudioEgress, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
 import { sendPostCallReviewCard } from '../bot/handlers/postCall';
 import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
-import { Bot } from 'grammy';
 import { MyContext } from '../bot/types';
 
-export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>) {
-  // Socket mapping: userId -> Set<socketId>
-  const userSockets = new Map<string, Set<string>>();
-  const activeEgresses = new Map<string, { egressId: string; relativeUrl: string }>(); // roomName -> { egressId, relativeUrl }
+interface ToggleRecordPayload {
+  readonly roomName: string;
+  readonly record: boolean;
+}
 
-  function addUserSocket(userId: string, socketId: string) {
-    const sockets = userSockets.get(userId) || new Set();
+interface FinishCallPayload {
+  readonly roomName: string;
+}
+
+interface SocketData {
+  userId?: string;
+  telegramId?: string;
+}
+
+interface ActiveEgress extends EgressResult {}
+
+function isToggleRecordPayload(value: unknown): value is ToggleRecordPayload {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return typeof data.roomName === 'string' && data.roomName.length > 0 && data.roomName.length <= 128 && typeof data.record === 'boolean';
+}
+
+function isFinishCallPayload(value: unknown): value is FinishCallPayload {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return typeof data.roomName === 'string' && data.roomName.length > 0 && data.roomName.length <= 128;
+}
+
+function getUserBucket(user: {
+  band: number;
+  subFC: number;
+  subLR: number;
+  subGRA: number;
+  subP: number;
+}): string {
+  const { weakSkill, strongSkill } = determineWeakAndStrongSkills({
+    subFC: user.subFC,
+    subLR: user.subLR,
+    subGRA: user.subGRA,
+    subP: user.subP,
+  });
+  return matchmakingService.getBucketKey(user.band, weakSkill, strongSkill);
+}
+
+export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
+  const userSockets = new Map<string, Set<string>>();
+  const activeEgresses = new Map<string, ActiveEgress>();
+  const roomOperationTails = new Map<string, Promise<void>>();
+  const userJoinTails = new Map<string, Promise<void>>();
+
+  const runSerialized = async <T>(map: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> => {
+    const previous = map.get(key) ?? Promise.resolve();
+    let release: (() => void) | undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    map.set(key, current);
+
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release?.();
+      if (map.get(key) === current) map.delete(key);
+    }
+  };
+
+  const addUserSocket = (userId: string, socketId: string): void => {
+    const sockets = userSockets.get(userId) ?? new Set<string>();
     sockets.add(socketId);
     userSockets.set(userId, sockets);
-  }
+  };
 
-  function removeUserSocket(userId: string, socketId: string) {
+  const removeUserSocket = (userId: string, socketId: string): void => {
     const sockets = userSockets.get(userId);
-    if (sockets) {
-      sockets.delete(socketId);
-      if (sockets.size === 0) userSockets.delete(userId);
+    if (!sockets) return;
+    sockets.delete(socketId);
+    if (sockets.size === 0) userSockets.delete(userId);
+  };
+
+  const getConnectedSocket = (userId: string): Socket | undefined => {
+    const sockets = userSockets.get(userId);
+    if (!sockets) return undefined;
+    for (const socketId of sockets) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) return socket as Socket;
     }
-  }
+    return undefined;
+  };
 
-  function getLatestSocketId(userId: string): string | undefined {
-    const sockets = userSockets.get(userId);
-    if (!sockets || sockets.size === 0) return undefined;
-    return Array.from(sockets).pop();
-  }
-
-  // Socket Authorization Middleware
   io.use(async (socket: Socket, next) => {
-    const token = socket.handshake.auth?.token || (socket.handshake.headers['x-telegram-init-data'] as string);
-
-    if (env.NODE_ENV === 'test' && token === 'test-allowed') {
-      socket.data.userId = 'test_user_id';
-      socket.data.telegramId = 12345678;
-      return next();
-    }
-
-    if (!token) {
-      return next(new Error('Authentication failed: Missing initData token.'));
-    }
-
-    const { valid, user: tgUser } = validateTelegramInitData(token, env.BOT_TOKEN);
-    if (!valid || !tgUser) {
-      return next(new Error('Authentication failed: Invalid initData signature.'));
-    }
-
     try {
-      const telegramId = BigInt(tgUser.id);
-      const dbUser = await prisma.user.findUnique({ where: { telegramId } });
-      if (!dbUser) {
-        return next(new Error('Authentication failed: User profile not found. Please type /start in Telegram.'));
+      const authToken = socket.handshake.auth?.token;
+      const headerToken = socket.handshake.headers['x-telegram-init-data'];
+      const token = typeof authToken === 'string' ? authToken : typeof headerToken === 'string' ? headerToken : undefined;
+
+      if (env.NODE_ENV === 'test' && token === 'test-allowed') {
+        socket.data.userId = 'test_user_id';
+        socket.data.telegramId = '12345678';
+        next();
+        return;
       }
 
-      // Lock down the socket to verified DB user ID
+      if (!token) {
+        next(new Error('Authentication failed: Missing initData token.'));
+        return;
+      }
+
+      const { valid, user: tgUser } = validateTelegramInitData(token, env.BOT_TOKEN);
+      if (!valid || !tgUser) {
+        next(new Error('Authentication failed: Invalid initData signature.'));
+        return;
+      }
+
+      const dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
+      if (!dbUser) {
+        next(new Error('Authentication failed: User profile not found. Please type /start in Telegram.'));
+        return;
+      }
+
       socket.data.userId = dbUser.id;
-      socket.data.telegramId = Number(dbUser.telegramId);
+      socket.data.telegramId = dbUser.telegramId.toString();
       next();
-    } catch (err) {
+    } catch (error: unknown) {
+      console.error('[Socket] auth_failed', {
+        socketId: socket.id,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
       next(new Error('Authentication error.'));
     }
   });
 
   io.on('connection', (socket: Socket) => {
-    const userId = socket.data.userId;
-    if (userId) {
-      addUserSocket(userId, socket.id);
-    }
+    const userId = socket.data.userId as string | undefined;
+    if (userId) addUserSocket(userId, socket.id);
 
-    console.log(`[Socket] Authenticated client connected: socketId=${socket.id}, userId=${userId}`);
+    console.log('[Socket] connected', { socketId: socket.id, userId });
 
-    // 1. join_queue
     socket.on('join_queue', async () => {
-      const currentUserId = socket.data.userId;
+      const currentUserId = socket.data.userId as string | undefined;
       if (!currentUserId) {
         socket.emit('error', { message: 'Unauthenticated socket session.' });
         return;
       }
 
-      addUserSocket(currentUserId, socket.id);
-
       try {
-        // Ban check
-        const banStatus = await moderationService.isUserBanned(currentUserId);
-        if (banStatus.banned) {
-          socket.emit('error', { message: banStatus.reason || 'User is banned.' });
-          return;
-        }
-
-        // Fetch user from DB
-        const user = await prisma.user.findUnique({ where: { id: currentUserId } });
-        if (!user) {
-          socket.emit('error', { message: 'User profile not found.' });
-          return;
-        }
-
-        // Check daily call limit
-        const todayStr = new Date().toISOString().split('T')[0];
-        let currentDailyUsed = user.dailyCallsUsed;
-
-        if (user.lastCallDate !== todayStr) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { dailyCallsUsed: 0, lastCallDate: todayStr },
-          });
-          currentDailyUsed = 0;
-        } else if (currentDailyUsed >= user.dailyLimit) {
-          socket.emit('error', {
-            message: `Daily call limit reached (${user.dailyLimit}/${user.dailyLimit}). Upgrade plan for more calls!`,
-          });
-          return;
-        }
-
-        const matchResult = await matchmakingService.joinQueue(user.id, user.band, {
-          subFC: user.subFC,
-          subLR: user.subLR,
-          subGRA: user.subGRA,
-          subP: user.subP,
-        });
-
-        if (matchResult.matched && matchResult.partnerId && matchResult.roomName) {
-          const partner = await prisma.user.findUnique({ where: { id: matchResult.partnerId } });
-          if (!partner) {
-            socket.emit('error', { message: 'Matched partner not found. Retrying...' });
+        await runSerialized(userJoinTails, currentUserId, async () => {
+          const banStatus = await moderationService.isUserBanned(currentUserId);
+          if (banStatus.banned) {
+            socket.emit('error', { message: banStatus.reason || 'User is banned.' });
             return;
           }
 
-          // Verify partner socket is still connected
-          const partnerSocketId = getLatestSocketId(partner.id);
-          const socketPartner = partnerSocketId ? io.sockets.sockets.get(partnerSocketId) : undefined;
-          if (!socketPartner) {
-            // Partner disconnected; cancel their stale queue entry and re-emit join_queue
-            await matchmakingService.cancelQueue(partner.id);
-            socket.emit('queue_joined', { status: 'searching' });
-            // Re-add user to queue (don't recurse — let client re-trigger if needed)
-            await matchmakingService.joinQueue(user.id, user.band, {
-              subFC: user.subFC,
-              subLR: user.subLR,
-              subGRA: user.subGRA,
-              subP: user.subP,
-            });
+          const user = await prisma.user.findUnique({ where: { id: currentUserId } });
+          if (!user) {
+            socket.emit('error', { message: 'User profile not found.' });
             return;
           }
 
-          const roomName = matchResult.roomName;
-          const callDurationLimit = calculateMixedPlanDuration(user.plan, partner.plan);
-
-          // Generate tokens with AWAIT
-          const tokenUser = await generateLiveKitToken(roomName, user.id, user.alias);
-          const tokenPartner = await generateLiveKitToken(roomName, partner.id, partner.alias);
-
-          // Create DB session
-          await prisma.callSession.create({
-            data: {
-              roomName,
-              userAId: user.id,
-              userBId: partner.id,
+          const activeCall = await prisma.callSession.findFirst({
+            where: {
               status: 'ACTIVE',
+              OR: [{ userAId: user.id }, { userBId: user.id }],
             },
           });
+          if (activeCall) {
+            socket.emit('error', { message: 'You are already in an active call.' });
+            return;
+          }
 
-          // Update daily calls used (atomic transaction)
-          await prisma.$transaction([
-            prisma.user.update({
-              where: { id: user.id },
-              data: { dailyCallsUsed: { increment: 1 } },
-            }),
-            prisma.user.update({
-              where: { id: partner.id },
-              data: { dailyCallsUsed: { increment: 1 } },
-            }),
-          ]);
+          const matchResult = await matchmakingService.joinQueue(user.id, user.band, {
+            subFC: user.subFC,
+            subLR: user.subLR,
+            subGRA: user.subGRA,
+            subP: user.subP,
+          });
 
-          // Join sockets to room
-          const userSocketId = getLatestSocketId(user.id);
-          const socketUser = userSocketId ? io.sockets.sockets.get(userSocketId) : undefined;
+          if (!matchResult.matched || !matchResult.partnerId || !matchResult.roomName || !matchResult.partnerBucketKey) {
+            socket.emit('queue_joined', { status: 'searching' });
+            return;
+          }
 
-          if (socketUser) socketUser.join(roomName);
-          if (socketPartner) socketPartner.join(roomName);
+          const partner = await prisma.user.findUnique({ where: { id: matchResult.partnerId } });
+          const partnerSocket = partner ? getConnectedSocket(partner.id) : undefined;
+          if (!partner || !partnerSocket) {
+            if (partner) await matchmakingService.cancelQueue(partner.id).catch(() => undefined);
+            const ownBucket = getUserBucket(user);
+            await matchmakingService.restoreQueue(user.id, ownBucket).catch((error: unknown) => {
+              console.error('[Socket] match_requeue_failed', {
+                userId: user.id,
+                error: error instanceof Error ? error.message : 'unknown_error',
+              });
+            });
+            socket.emit('queue_joined', { status: 'searching' });
+            return;
+          }
 
-          // Emit match_found
-          if (socketUser) {
-            socketUser.emit('match_found', {
+          const callDurationLimit = calculateMixedPlanDuration(user.plan, partner.plan);
+          const tokenTtlSeconds = Math.min(3600, Math.max(60, callDurationLimit * 60 + 300));
+          const roomName = matchResult.roomName;
+
+          try {
+            await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+              const today = new Date().toISOString().slice(0, 10);
+              await tx.user.updateMany({
+                where: {
+                  id: { in: [user.id, partner.id] },
+                  OR: [{ lastCallDate: null }, { lastCallDate: { not: today } }],
+                },
+                data: { dailyCallsUsed: 0, lastCallDate: today },
+              });
+
+              const userQuota = await tx.user.updateMany({
+                where: { id: user.id, lastCallDate: today, dailyCallsUsed: { lt: user.dailyLimit } },
+                data: { dailyCallsUsed: { increment: 1 } },
+              });
+              const partnerQuota = await tx.user.updateMany({
+                where: { id: partner.id, lastCallDate: today, dailyCallsUsed: { lt: partner.dailyLimit } },
+                data: { dailyCallsUsed: { increment: 1 } },
+              });
+
+              if (userQuota.count !== 1 || partnerQuota.count !== 1) {
+                throw new Error('Daily call limit reached');
+              }
+
+              await tx.callSession.create({
+                data: { roomName, userAId: user.id, userBId: partner.id, status: 'ACTIVE' },
+              });
+            });
+
+            const [tokenUser, tokenPartner] = await Promise.all([
+              generateLiveKitToken(roomName, user.id, user.alias, tokenTtlSeconds),
+              generateLiveKitToken(roomName, partner.id, partner.alias, tokenTtlSeconds),
+            ]);
+
+            const userSocket = getConnectedSocket(user.id);
+            if (!userSocket || !partnerSocket.connected) {
+              throw new Error('Participant disconnected during match setup');
+            }
+
+            userSocket.join(roomName);
+            partnerSocket.join(roomName);
+
+            userSocket.emit('match_found', {
               roomName,
               livekitToken: tokenUser,
               partnerAlias: partner.alias,
               partnerBand: partner.band,
               callDurationLimit,
             });
-          }
-
-          if (socketPartner) {
-            socketPartner.emit('match_found', {
+            partnerSocket.emit('match_found', {
               roomName,
               livekitToken: tokenPartner,
               partnerAlias: user.alias,
               partnerBand: user.band,
               callDurationLimit,
             });
+          } catch (error: unknown) {
+            try {
+              await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                const cancelled = await tx.callSession.updateMany({
+                  where: { roomName, status: 'ACTIVE' },
+                  data: { status: 'CANCELLED', endedAt: new Date() },
+                });
+                if (cancelled.count !== 1) return;
+
+                const today = new Date().toISOString().slice(0, 10);
+                await tx.user.updateMany({
+                  where: { id: user.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
+                  data: { dailyCallsUsed: { decrement: 1 } },
+                });
+                await tx.user.updateMany({
+                  where: { id: partner.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
+                  data: { dailyCallsUsed: { decrement: 1 } },
+                });
+              });
+            } catch (rollbackError: unknown) {
+              console.error('[Socket] match_rollback_failed', {
+                roomName,
+                error: rollbackError instanceof Error ? rollbackError.message : 'unknown_error',
+              });
+            }
+
+            const bucketUser = getUserBucket(user);
+            const bucketPartner = getUserBucket(partner);
+            await Promise.allSettled([
+              matchmakingService.restoreQueue(user.id, bucketUser),
+              matchmakingService.restoreQueue(partner.id, bucketPartner),
+            ]);
+            socket.emit('error', {
+              message: error instanceof Error && error.message === 'Daily call limit reached'
+                ? 'Daily call limit reached.'
+                : 'Unable to establish the call. You have been returned to the queue.',
+            });
           }
-        } else {
-          socket.emit('queue_joined', { status: 'searching' });
-        }
-      } catch (err) {
-        console.error('[Socket] join_queue error:', err);
-        socket.emit('error', { message: 'An error occurred while joining the queue. Please try again.' });
+        });
+      } catch (error: unknown) {
+        console.error('[Socket] join_queue_failed', {
+          socketId: socket.id,
+          userId: currentUserId,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+        socket.emit('error', { message: 'Unable to join matchmaking right now.' });
       }
     });
 
-    // 2. cancel_queue
     socket.on('cancel_queue', async () => {
-      const currentUserId = socket.data.userId;
-      if (currentUserId) {
-        await matchmakingService.cancelQueue(currentUserId);
+      const currentUserId = socket.data.userId as string | undefined;
+      if (!currentUserId) return;
+      try {
+        if ((userSockets.get(currentUserId)?.size ?? 0) <= 1) {
+          await matchmakingService.cancelQueue(currentUserId);
+        }
         socket.emit('queue_cancelled', { success: true });
+      } catch (error: unknown) {
+        console.error('[Socket] cancel_queue_failed', {
+          userId: currentUserId,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+        socket.emit('error', { message: 'Failed to cancel matchmaking.' });
       }
     });
 
-    // 3. toggle_record (Authorization check via socket.data.userId)
-    socket.on('toggle_record', async (data: { roomName: string; record: boolean }) => {
-      const { roomName, record } = data;
-      const requesterId = socket.data.userId;
+    socket.on('toggle_record', async (payload: unknown) => {
+      if (!isToggleRecordPayload(payload)) {
+        socket.emit('error', { message: 'Invalid recording request.' });
+        return;
+      }
+      const requesterId = socket.data.userId as string | undefined;
+      if (!requesterId) {
+        socket.emit('error', { message: 'Unauthenticated socket session.' });
+        return;
+      }
 
       try {
-        const session = await prisma.callSession.findUnique({ where: { roomName } });
-        if (!session || (session.userAId !== requesterId && session.userBId !== requesterId)) {
-          socket.emit('error', { message: 'Unauthorized: You are not a participant in this call.' });
-          return;
-        }
-
-        if (record) {
-          const egress = await startAudioEgress(roomName);
-          activeEgresses.set(roomName, egress);
-
-          await prisma.callSession.update({
-            where: { id: session.id },
-            data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl },
-          });
-
-          io.to(roomName).emit('record_status', { record: true });
-        } else {
-          const egress = activeEgresses.get(roomName);
-          if (egress) {
-            await stopAudioEgress(egress.egressId);
-            activeEgresses.delete(roomName);
+        await runSerialized(roomOperationTails, payload.roomName, async () => {
+          const session = await prisma.callSession.findUnique({ where: { roomName: payload.roomName } });
+          if (!session || session.status !== 'ACTIVE' || (session.userAId !== requesterId && session.userBId !== requesterId)) {
+            socket.emit('error', { message: 'Unauthorized or inactive call.' });
+            return;
           }
 
-          io.to(roomName).emit('record_status', { record: false });
-        }
-      } catch (err) {
-        console.error('[Socket] toggle_record error:', err);
+          if (payload.record) {
+            if (session.egressId) {
+              activeEgresses.set(payload.roomName, {
+                egressId: session.egressId,
+                relativeUrl: session.recordingUrl ?? '',
+              });
+              io.to(payload.roomName).emit('record_status', { record: true });
+              return;
+            }
+
+            const egress = await startAudioEgress(payload.roomName);
+            const updated = await prisma.callSession.updateMany({
+              where: { id: session.id, status: 'ACTIVE', egressId: null },
+              data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl },
+            });
+            if (updated.count !== 1) {
+              await stopAudioEgress(egress.egressId).catch((error: unknown) => {
+                console.error('[Socket] rollback_egress_stop_failed', {
+                  roomName: payload.roomName,
+                  error: error instanceof Error ? error.message : 'unknown_error',
+                });
+              });
+              return;
+            }
+
+            activeEgresses.set(payload.roomName, egress);
+            io.to(payload.roomName).emit('record_status', { record: true });
+            return;
+          }
+
+          const egressId = session.egressId ?? activeEgresses.get(payload.roomName)?.egressId;
+          if (egressId) {
+            await stopAudioEgress(egressId);
+            await prisma.callSession.updateMany({
+              where: { id: session.id, status: 'ACTIVE', egressId },
+              data: { egressId: null },
+            });
+            activeEgresses.delete(payload.roomName);
+          }
+          io.to(payload.roomName).emit('record_status', { record: false });
+        });
+      } catch (error: unknown) {
+        console.error('[Socket] toggle_record_failed', {
+          roomName: payload.roomName,
+          requesterId,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
         socket.emit('error', { message: 'Failed to toggle recording.' });
       }
     });
 
-    // 4. finish_call (Authorization check via socket.data.userId)
-    socket.on('finish_call', async (data: { roomName: string }) => {
-      const { roomName } = data;
-      const requesterId = socket.data.userId;
+    socket.on('finish_call', async (payload: unknown) => {
+      if (!isFinishCallPayload(payload)) {
+        socket.emit('error', { message: 'Invalid call completion request.' });
+        return;
+      }
+      const requesterId = socket.data.userId as string | undefined;
+      if (!requesterId) {
+        socket.emit('error', { message: 'Unauthenticated socket session.' });
+        return;
+      }
 
       try {
-        const session = await prisma.callSession.findUnique({
-          where: { roomName },
-          include: { userA: true, userB: true },
-        });
-
-        if (!session || session.status !== 'ACTIVE') return;
-
-        if (session.userAId !== requesterId && session.userBId !== requesterId) {
-          socket.emit('error', { message: 'Unauthorized: You are not a participant in this call.' });
-          return;
-        }
-
-        const endedAt = new Date();
-        const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - session.createdAt.getTime()) / 1000));
-
-        // Stop egress if active
-        const egress = activeEgresses.get(roomName);
-        let recordingUrl: string | undefined = session.recordingUrl || undefined;
-        let recordingExpiresAt: Date | undefined = undefined;
-
-        if (egress) {
-          try {
-            await stopAudioEgress(egress.egressId);
-          } catch (egressErr) {
-            console.warn('[Socket] Failed to stop egress:', egressErr);
+        await runSerialized(roomOperationTails, payload.roomName, async () => {
+          const session = await prisma.callSession.findUnique({
+            where: { roomName: payload.roomName },
+            include: { userA: true, userB: true },
+          });
+          if (!session) return;
+          if (session.userAId !== requesterId && session.userBId !== requesterId) {
+            socket.emit('error', { message: 'Unauthorized: You are not a participant in this call.' });
+            return;
           }
-          activeEgresses.delete(roomName);
-          recordingUrl = egress.relativeUrl;
 
-          const maxRetentionDays = Math.max(
-            getRetentionDaysForPlan(session.userA.plan),
-            getRetentionDaysForPlan(session.userB.plan)
-          );
-          recordingExpiresAt = new Date(Date.now() + maxRetentionDays * 24 * 60 * 60 * 1000);
-        }
+          const endedAt = new Date();
+          const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - session.createdAt.getTime()) / 1000));
+          const claimed = await prisma.callSession.updateMany({
+            where: { id: session.id, status: 'ACTIVE' },
+            data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
+          });
+          if (claimed.count !== 1) return;
 
-        await prisma.callSession.update({
-          where: { id: session.id },
-          data: {
-            status: 'COMPLETED',
-            endedAt,
-            duration: durationSeconds,
-            recordingUrl,
-            recordingExpiresAt,
-          },
-        });
-
-        io.to(roomName).emit('call_finished', { duration: durationSeconds });
-
-        if (bot) {
-          try {
-            await sendPostCallReviewCard(
-              bot,
-              Number(session.userA.telegramId),
-              session.id,
-              session.userB.alias,
-              durationSeconds,
-              recordingUrl
-            );
-
-            await sendPostCallReviewCard(
-              bot,
-              Number(session.userB.telegramId),
-              session.id,
-              session.userA.alias,
-              durationSeconds,
-              recordingUrl
-            );
-          } catch (postCallErr) {
-            console.warn('[Socket] Failed to send post-call review cards:', postCallErr);
+          const egress = activeEgresses.get(payload.roomName);
+          const egressId = egress?.egressId ?? session.egressId;
+          const recordingUrl = egress?.relativeUrl || session.recordingUrl || undefined;
+          if (egressId) {
+            try {
+              await stopAudioEgress(egressId);
+            } catch (error: unknown) {
+              console.error('[Socket] finish_egress_stop_failed', {
+                roomName: payload.roomName,
+                egressId,
+                error: error instanceof Error ? error.message : 'unknown_error',
+              });
+            }
           }
-        }
-      } catch (err) {
-        console.error('[Socket] finish_call error:', err);
+          activeEgresses.delete(payload.roomName);
+
+          const recordingExpiresAt = recordingUrl
+            ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(session.userA.plan), getRetentionDaysForPlan(session.userB.plan)) * 24 * 60 * 60 * 1000)
+            : null;
+
+          await prisma.callSession.update({
+            where: { id: session.id },
+            data: { egressId: egressId ?? null, recordingUrl: recordingUrl ?? null, recordingExpiresAt },
+          });
+
+          io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
+
+          if (bot) {
+            await Promise.allSettled([
+              sendPostCallReviewCard(bot, session.userA.telegramId.toString(), session.id, session.userB.alias, durationSeconds, recordingUrl),
+              sendPostCallReviewCard(bot, session.userB.telegramId.toString(), session.id, session.userA.alias, durationSeconds, recordingUrl),
+            ]);
+          }
+        });
+      } catch (error: unknown) {
+        console.error('[Socket] finish_call_failed', {
+          roomName: payload.roomName,
+          requesterId,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+        socket.emit('error', { message: 'Failed to finish call.' });
       }
     });
 
-    socket.on('disconnect', async () => {
-      const disconnectedUserId = socket.data.userId;
-      if (!disconnectedUserId) return;
+    socket.on('disconnect', (reason: string) => {
+      void (async (): Promise<void> => {
+        const disconnectedUserId = socket.data.userId as string | undefined;
+        if (!disconnectedUserId) return;
 
-      // Cancel matchmaking queue
-      matchmakingService.cancelQueue(disconnectedUserId).catch((err) => {
-        console.warn('[Socket] Failed to cancel queue on disconnect:', err);
-      });
+        try {
+          removeUserSocket(disconnectedUserId, socket.id);
+          const remainingSockets = userSockets.get(disconnectedUserId);
+          if (remainingSockets && remainingSockets.size > 0) return;
 
-      removeUserSocket(disconnectedUserId, socket.id);
+          await matchmakingService.cancelQueue(disconnectedUserId);
 
-      // Check if user has any remaining sockets — if not, clean up orphaned egresses
-      const remainingSockets = userSockets.get(disconnectedUserId);
-      if (!remainingSockets || remainingSockets.size === 0) {
-        // Find active rooms this user was part of
-        for (const [roomName, egress] of activeEgresses.entries()) {
-          try {
-            const session = await prisma.callSession.findUnique({ where: { roomName } });
-            if (session && (session.userAId === disconnectedUserId || session.userBId === disconnectedUserId)) {
-              // Check if the other participant is also fully disconnected
+          for (const [roomName, egress] of activeEgresses.entries()) {
+            try {
+              const session = await prisma.callSession.findUnique({ where: { roomName } });
+              if (!session || (session.userAId !== disconnectedUserId && session.userBId !== disconnectedUserId)) continue;
+
               const otherUserId = session.userAId === disconnectedUserId ? session.userBId : session.userAId;
-              const otherSockets = userSockets.get(otherUserId);
-              if (!otherSockets || otherSockets.size === 0) {
-                // Both users disconnected — stop orphaned egress
-                try {
-                  await stopAudioEgress(egress.egressId);
-                  console.log(`[Socket] Cleaned up orphaned egress for room ${roomName}`);
-                } catch (egressErr) {
-                  console.warn(`[Socket] Failed to stop orphaned egress for room ${roomName}:`, egressErr);
-                }
-                activeEgresses.delete(roomName);
-              }
+              if ((userSockets.get(otherUserId)?.size ?? 0) > 0) continue;
+
+              await stopAudioEgress(egress.egressId);
+              activeEgresses.delete(roomName);
+            } catch (error: unknown) {
+              console.error('[Socket] disconnect_egress_cleanup_failed', {
+                roomName,
+                reason,
+                error: error instanceof Error ? error.message : 'unknown_error',
+              });
             }
-          } catch (err) {
-            console.warn(`[Socket] Error checking egress cleanup for room ${roomName}:`, err);
           }
+        } catch (error: unknown) {
+          console.error('[Socket] disconnect_cleanup_failed', {
+            socketId: socket.id,
+            userId: disconnectedUserId,
+            reason,
+            error: error instanceof Error ? error.message : 'unknown_error',
+          });
         }
-      }
+      })().catch((error: unknown) => {
+        console.error('[Socket] disconnect_unhandled', {
+          socketId: socket.id,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+      });
     });
   });
 }

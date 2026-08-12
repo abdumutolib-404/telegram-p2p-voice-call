@@ -1,435 +1,488 @@
-import { PrismaClient } from '@prisma/client';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
+
+type IdSelector = { id?: string; telegramId?: bigint | string | number; alias?: string };
+type DateFilter = { gte?: Date | string; lte?: Date | string; not?: string | null };
+type UserWhere = {
+  id?: string | { in: string[] };
+  telegramId?: bigint | string | number;
+  alias?: string;
+  updatedAt?: DateFilter;
+  lastCallDate?: string | null | { not?: string };
+  dailyCallsUsed?: { lt?: number; gt?: number };
+  OR?: UserWhere[];
+  isBanned?: boolean;
+  isPermanentlyBanned?: boolean;
+  warningCount?: { gt?: number };
+};
+type UserData = Record<string, unknown>;
+type CallSessionWhere = {
+  id?: string;
+  roomName?: string;
+  status?: string;
+  egressId?: string | null;
+  OR?: Array<{ userAId?: string; userBId?: string }>;
+};
+type CallSessionData = Record<string, unknown>;
+type RatingWhere = { callId?: string; raterId?: string; reported?: boolean };
+type AppealWhere = { id?: string };
+type FavoriteWhere = { userId?: string; partnerId?: string };
+
+interface UserRow {
+  id: string;
+  telegramId: bigint;
+  alias: string;
+  subFC: number;
+  subLR: number;
+  subGRA: number;
+  subP: number;
+  band: number;
+  plan: string;
+  maxDuration: number;
+  dailyLimit: number;
+  dailyCallsUsed: number;
+  lastCallDate: string | null;
+  warningCount: number;
+  isBanned: boolean;
+  bannedUntil: Date | null;
+  isPermanentlyBanned: boolean;
+  dnd: boolean;
+  onboarded: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface CallSessionRow {
+  id: string;
+  roomName: string;
+  userAId: string;
+  userBId: string;
+  status: string;
+  egressId: string | null;
+  recordingUrl: string | null;
+  recordingExpiresAt: Date | null;
+  duration: number;
+  createdAt: Date;
+  endedAt: Date | null;
+}
+
+interface CallRatingRow {
+  id: string;
+  callId: string;
+  raterId: string;
+  ratedId: string;
+  stars: number;
+  feedback: string | null;
+  reported: boolean;
+  createdAt: Date;
+}
+
+interface AppealRow {
+  id: string;
+  userId: string;
+  telegramId: bigint;
+  alias: string;
+  banReason: string;
+  appealText: string;
+  status: string;
+  createdAt: Date;
+  reviewedAt: Date | null;
+}
+
+interface StarsTransactionRow {
+  id: string;
+  userId: string;
+  telegramPaymentId: string;
+  starsAmount: number;
+  planTier: string;
+  createdAt: Date;
+}
+
+interface FavoriteRow {
+  id: string;
+  userId: string;
+  partnerId: string;
+  createdAt: Date;
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function booleanValue(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function dateValue(value: unknown, fallback: Date): Date {
+  return value instanceof Date ? value : typeof value === 'string' ? new Date(value) : fallback;
+}
+
+function applyIncrement(current: number, value: unknown): number {
+  const record = recordOf(value);
+  if (typeof record.increment === 'number') return current + record.increment;
+  if (typeof record.decrement === 'number') return current - record.decrement;
+  return numberValue(value, current);
+}
+
+function safeJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => typeof item === 'bigint' ? item.toString() : item);
+}
 
 export class InMemoryPrismaMock {
-  private users = new Map<string, any>();
-  private callSessions = new Map<string, any>();
-  private callRatings = new Map<string, any>();
-  private unblockAppeals = new Map<string, any>();
-  private starsTransactions = new Map<string, any>();
-  private favoritePartners = new Map<string, any>();
+  private readonly users = new Map<string, UserRow>();
+  private readonly callSessions = new Map<string, CallSessionRow>();
+  private readonly callRatings = new Map<string, CallRatingRow>();
+  private readonly unblockAppeals = new Map<string, AppealRow>();
+  private readonly starsTransactions = new Map<string, StarsTransactionRow>();
+  private readonly favoritePartners = new Map<string, FavoriteRow>();
 
-  async $connect() {
-    return Promise.resolve();
-  }
-
-  async $disconnect() {
-    return Promise.resolve();
+  async $connect(): Promise<void> {}
+  async $disconnect(): Promise<void> {}
+  async $transaction<T>(operation: (tx: InMemoryPrismaMock) => Promise<T>): Promise<T> {
+    return operation(this);
   }
 
   user = {
-    create: async (args: { data: any }) => {
-      const id = args.data.id || crypto.randomUUID();
+    create: async (args: { data: UserData }): Promise<UserRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
       const now = new Date();
-      const user = {
+      const row: UserRow = {
         id,
-        telegramId: args.data.telegramId !== undefined ? BigInt(args.data.telegramId) : BigInt(0),
-        alias: args.data.alias || `P2P-Partner-${Math.floor(1000 + Math.random() * 9000)}`,
-        subFC: args.data.subFC ?? 6.0,
-        subLR: args.data.subLR ?? 6.0,
-        subGRA: args.data.subGRA ?? 6.0,
-        subP: args.data.subP ?? 6.0,
-        band: args.data.band ?? 6.0,
-        plan: args.data.plan || 'FREE',
-        maxDuration: args.data.maxDuration ?? 15,
-        dailyLimit: args.data.dailyLimit ?? 3,
-        dailyCallsUsed: args.data.dailyCallsUsed ?? 0,
-        lastCallDate: args.data.lastCallDate || null,
-        warningCount: args.data.warningCount ?? 0,
-        isBanned: args.data.isBanned ?? false,
-        bannedUntil: args.data.bannedUntil ? new Date(args.data.bannedUntil) : null,
-        isPermanentlyBanned: args.data.isPermanentlyBanned ?? false,
-        dnd: args.data.dnd ?? false,
-        onboarded: args.data.onboarded ?? false,
-        createdAt: args.data.createdAt ? new Date(args.data.createdAt) : now,
-        updatedAt: args.data.updatedAt ? new Date(args.data.updatedAt) : now,
+        telegramId: args.data.telegramId === undefined ? 0n : BigInt(String(args.data.telegramId)),
+        alias: stringValue(args.data.alias, `P2P-Partner-${Math.floor(1000 + Math.random() * 9000)}`),
+        subFC: numberValue(args.data.subFC, 6),
+        subLR: numberValue(args.data.subLR, 6),
+        subGRA: numberValue(args.data.subGRA, 6),
+        subP: numberValue(args.data.subP, 6),
+        band: numberValue(args.data.band, 6),
+        plan: stringValue(args.data.plan, 'FREE'),
+        maxDuration: numberValue(args.data.maxDuration, 15),
+        dailyLimit: numberValue(args.data.dailyLimit, 3),
+        dailyCallsUsed: numberValue(args.data.dailyCallsUsed, 0),
+        lastCallDate: args.data.lastCallDate == null ? null : stringValue(args.data.lastCallDate),
+        warningCount: numberValue(args.data.warningCount, 0),
+        isBanned: booleanValue(args.data.isBanned, false),
+        bannedUntil: args.data.bannedUntil ? dateValue(args.data.bannedUntil, now) : null,
+        isPermanentlyBanned: booleanValue(args.data.isPermanentlyBanned, false),
+        dnd: booleanValue(args.data.dnd, false),
+        onboarded: booleanValue(args.data.onboarded, false),
+        createdAt: dateValue(args.data.createdAt, now),
+        updatedAt: dateValue(args.data.updatedAt, now),
       };
-      this.users.set(id, user);
-      return { ...user };
+      this.users.set(id, row);
+      return { ...row };
     },
 
-    upsert: async (args: { where: any; update: any; create: any }) => {
-      let existing: any = null;
-      if (args.where.telegramId !== undefined) {
-        const tid = BigInt(args.where.telegramId);
-        existing = Array.from(this.users.values()).find((u) => u.telegramId === tid);
-      } else if (args.where.id !== undefined) {
-        existing = this.users.get(args.where.id);
-      } else if (args.where.alias !== undefined) {
-        existing = Array.from(this.users.values()).find((u) => u.alias === args.where.alias);
-      }
-
+    upsert: async (args: { where: IdSelector; update: UserData; create: UserData }): Promise<UserRow> => {
+      const existing = this.findUser(args.where);
       if (existing) {
-        const updated = {
-          ...existing,
-          ...args.update,
-          updatedAt: new Date(),
-        };
+        const updated = this.mergeUser(existing, args.update);
         this.users.set(existing.id, updated);
         return { ...updated };
-      } else {
-        return this.user.create({ data: args.create });
       }
+      return this.user.create({ data: args.create });
     },
 
-    findUnique: async (args: { where: any }) => {
-      let user: any = null;
-      if (args.where.id !== undefined) {
-        user = this.users.get(args.where.id);
-      } else if (args.where.telegramId !== undefined) {
-        const tid = BigInt(args.where.telegramId);
-        user = Array.from(this.users.values()).find((u) => u.telegramId === tid);
-      } else if (args.where.alias !== undefined) {
-        user = Array.from(this.users.values()).find((u) => u.alias === args.where.alias);
-      }
+    findUnique: async (args: { where: IdSelector }): Promise<UserRow | null> => {
+      const user = this.findUser(args.where);
       return user ? { ...user } : null;
     },
 
-    findMany: async (args?: { where?: any; orderBy?: any; take?: number }) => {
-      let list = Array.from(this.users.values());
-      if (args?.where) {
-        if (args.where.id?.in) {
-          const ids = new Set(args.where.id.in);
-          list = list.filter((u) => ids.has(u.id));
-        }
-        if (args.where.updatedAt?.gte) {
-          const gte = new Date(args.where.updatedAt.gte).getTime();
-          list = list.filter((u) => u.updatedAt.getTime() >= gte);
-        }
-      }
-      if (args?.orderBy?.createdAt === 'desc') {
-        list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      }
-      if (args?.take) {
-        list = list.slice(0, args.take);
-      }
-      return list.map((u) => ({ ...u }));
+    findMany: async (args?: { where?: UserWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<UserRow[]> => {
+      let list = [...this.users.values()].filter((user) => this.matchesUser(user, args?.where));
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (args?.orderBy?.createdAt === 'asc') list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      if (args?.take !== undefined) list = list.slice(0, args.take);
+      return list.map((user) => ({ ...user }));
     },
 
-    update: async (args: { where: any; data: any }) => {
-      let user: any = null;
-      if (args.where.id !== undefined) {
-        user = this.users.get(args.where.id);
-      } else if (args.where.telegramId !== undefined) {
-        const tid = BigInt(args.where.telegramId);
-        user = Array.from(this.users.values()).find((u) => u.telegramId === tid);
-      }
-      if (!user) throw new Error(`User not found for update: ${JSON.stringify(args.where)}`);
-
-      const updated = {
-        ...user,
-        ...args.data,
-        updatedAt: new Date(),
-      };
+    update: async (args: { where: IdSelector; data: UserData }): Promise<UserRow> => {
+      const user = this.findUser(args.where);
+      if (!user) throw new Error(`User not found for update: ${safeJson(args.where)}`);
+      const updated = this.mergeUser(user, args.data);
       this.users.set(user.id, updated);
       return { ...updated };
     },
 
-    count: async (args?: { where?: any }) => {
-      if (!args?.where) return this.users.size;
+    updateMany: async (args: { where?: UserWhere; data: UserData }): Promise<{ count: number }> => {
       let count = 0;
-      for (const u of this.users.values()) {
-        let match = true;
-        if (args.where.updatedAt?.gte) {
-          const gte = new Date(args.where.updatedAt.gte).getTime();
-          if (u.updatedAt.getTime() < gte) match = false;
-        }
-        if (match) count++;
+      for (const [id, user] of this.users) {
+        if (!this.matchesUser(user, args.where)) continue;
+        const updated = this.mergeUser(user, args.data);
+        this.users.set(id, updated);
+        count += 1;
       }
-      return count;
+      return { count };
     },
 
-    deleteMany: async (args?: { where?: any }) => {
+    count: async (args?: { where?: UserWhere }): Promise<number> => [...this.users.values()].filter((user) => this.matchesUser(user, args?.where)).length,
+
+    deleteMany: async (args?: { where?: UserWhere }): Promise<{ count: number }> => {
       if (!args?.where) {
         const count = this.users.size;
         this.users.clear();
         return { count };
       }
-      let deleted = 0;
-      if (args.where.id?.in) {
-        const ids = new Set(args.where.id.in);
-        for (const id of ids) {
-          if (this.users.delete(id as string)) deleted++;
+      let count = 0;
+      for (const [id, user] of this.users) {
+        if (this.matchesUser(user, args.where)) {
+          this.users.delete(id);
+          count += 1;
         }
       }
-      return { count: deleted };
+      return { count };
     },
   };
 
   callSession = {
-    create: async (args: { data: any }) => {
-      const id = args.data.id || crypto.randomUUID();
+    create: async (args: { data: CallSessionData }): Promise<CallSessionRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
       const now = new Date();
-      const session = {
+      const row: CallSessionRow = {
         id,
-        roomName: args.data.roomName,
-        userAId: args.data.userAId,
-        userBId: args.data.userBId,
-        status: args.data.status || 'ACTIVE',
-        egressId: args.data.egressId || null,
-        recordingUrl: args.data.recordingUrl || null,
-        recordingExpiresAt: args.data.recordingExpiresAt ? new Date(args.data.recordingExpiresAt) : null,
-        duration: args.data.duration ?? 0,
-        createdAt: args.data.createdAt ? new Date(args.data.createdAt) : now,
-        endedAt: args.data.endedAt ? new Date(args.data.endedAt) : null,
+        roomName: stringValue(args.data.roomName),
+        userAId: stringValue(args.data.userAId),
+        userBId: stringValue(args.data.userBId),
+        status: stringValue(args.data.status, 'ACTIVE'),
+        egressId: args.data.egressId == null ? null : stringValue(args.data.egressId),
+        recordingUrl: args.data.recordingUrl == null ? null : stringValue(args.data.recordingUrl),
+        recordingExpiresAt: args.data.recordingExpiresAt ? dateValue(args.data.recordingExpiresAt, now) : null,
+        duration: numberValue(args.data.duration, 0),
+        createdAt: dateValue(args.data.createdAt, now),
+        endedAt: args.data.endedAt ? dateValue(args.data.endedAt, now) : null,
       };
-      this.callSessions.set(id, session);
-      return { ...session };
+      this.callSessions.set(id, row);
+      return { ...row };
     },
 
-    findUnique: async (args: { where: any }) => {
-      let session: any = null;
-      if (args.where.id !== undefined) {
-        session = this.callSessions.get(args.where.id);
-      } else if (args.where.roomName !== undefined) {
-        session = Array.from(this.callSessions.values()).find((s) => s.roomName === args.where.roomName);
-      }
-      return session ? { ...session } : null;
+    findUnique: async (args: { where: { id?: string; roomName?: string } }): Promise<CallSessionRow | null> => {
+      const row = args.where.id ? this.callSessions.get(args.where.id) : [...this.callSessions.values()].find((session) => session.roomName === args.where.roomName);
+      return row ? { ...row } : null;
     },
 
-    findMany: async (args?: { where?: any; orderBy?: any; take?: number }) => {
-      let list = Array.from(this.callSessions.values());
-      if (args?.where) {
-        if (args.where.status) {
-          list = list.filter((s) => s.status === args.where.status);
-        }
-        if (args.where.recordingUrl !== undefined) {
-          if (args.where.recordingUrl?.not === null) {
-            list = list.filter((s) => s.recordingUrl !== null);
-          }
-        }
-        if (args.where.recordingExpiresAt?.lte) {
-          const lte = new Date(args.where.recordingExpiresAt.lte).getTime();
-          list = list.filter((s) => s.recordingExpiresAt && s.recordingExpiresAt.getTime() <= lte);
-        }
-        if (args.where.OR) {
-          const orConditions = args.where.OR;
-          list = list.filter((s) =>
-            orConditions.some((cond: any) => {
-              if (cond.userAId && s.userAId === cond.userAId) return true;
-              if (cond.userBId && s.userBId === cond.userBId) return true;
-              return false;
-            })
-          );
-        }
-      }
-      if (args?.orderBy?.createdAt === 'desc') {
-        list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      }
-      if (args?.take) {
-        list = list.slice(0, args.take);
-      }
-      return list.map((s) => ({ ...s }));
+    findFirst: async (args: { where?: CallSessionWhere }): Promise<CallSessionRow | null> => {
+      return [...this.callSessions.values()].find((session) => this.matchesCallSession(session, args.where)) ?? null;
     },
 
-    update: async (args: { where: any; data: any }) => {
+    findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<CallSessionRow[]> => {
+      let list = [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where));
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (args?.take !== undefined) list = list.slice(0, args.take);
+      return list.map((session) => ({ ...session }));
+    },
+
+    update: async (args: { where: { id: string }; data: CallSessionData }): Promise<CallSessionRow> => {
       const session = this.callSessions.get(args.where.id);
       if (!session) throw new Error(`CallSession not found: ${args.where.id}`);
-      const updated = {
-        ...session,
-        ...args.data,
-      };
+      const updated = this.mergeCallSession(session, args.data);
       this.callSessions.set(session.id, updated);
       return { ...updated };
     },
 
-    count: async (args?: { where?: any }) => {
-      if (!args?.where) return this.callSessions.size;
+    updateMany: async (args: { where?: CallSessionWhere; data: CallSessionData }): Promise<{ count: number }> => {
       let count = 0;
-      for (const s of this.callSessions.values()) {
-        let match = true;
-        if (args.where.status && s.status !== args.where.status) match = false;
-        if (match) count++;
+      for (const [id, session] of this.callSessions) {
+        if (!this.matchesCallSession(session, args.where)) continue;
+        this.callSessions.set(id, this.mergeCallSession(session, args.data));
+        count += 1;
       }
-      return count;
+      return { count };
     },
 
-    deleteMany: async (args?: { where?: any }) => {
+    count: async (args?: { where?: CallSessionWhere }): Promise<number> => [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where)).length,
+
+    deleteMany: async (args?: { where?: { id?: string } }): Promise<{ count: number }> => {
       if (!args?.where) {
         const count = this.callSessions.size;
         this.callSessions.clear();
         return { count };
       }
-      let deleted = 0;
-      if (args.where.id) {
-        if (this.callSessions.delete(args.where.id)) deleted++;
-      }
-      return { count: deleted };
+      return { count: this.callSessions.delete(args.where.id ?? '') ? 1 : 0 };
     },
   };
 
   callRating = {
-    create: async (args: { data: any }) => {
-      const id = args.data.id || crypto.randomUUID();
-      const rating = {
-        id,
-        callId: args.data.callId,
-        raterId: args.data.raterId,
-        ratedId: args.data.ratedId,
-        stars: args.data.stars,
-        feedback: args.data.feedback || null,
-        reported: args.data.reported ?? false,
-        createdAt: new Date(),
-      };
-      this.callRatings.set(id, rating);
-      return { ...rating };
+    create: async (args: { data: CallRatingRow }): Promise<CallRatingRow> => {
+      const row = { ...args.data, id: args.data.id || crypto.randomUUID(), createdAt: args.data.createdAt ?? new Date() };
+      this.callRatings.set(row.id, row);
+      return { ...row };
     },
 
-    findFirst: async (args: { where: any }) => {
-      for (const r of this.callRatings.values()) {
-        let match = true;
-        if (args.where.callId && r.callId !== args.where.callId) match = false;
-        if (args.where.raterId && r.raterId !== args.where.raterId) match = false;
-        if (match) return { ...r };
-      }
-      return null;
+    findFirst: async (args: { where: RatingWhere }): Promise<CallRatingRow | null> => {
+      return [...this.callRatings.values()].find((rating) =>
+        (args.where.callId === undefined || rating.callId === args.where.callId) &&
+        (args.where.raterId === undefined || rating.raterId === args.where.raterId) &&
+        (args.where.reported === undefined || rating.reported === args.where.reported),
+      ) ?? null;
     },
 
-    findMany: async (args?: { where?: any }) => {
-      let list = Array.from(this.callRatings.values());
-      if (args?.where?.callId) {
-        list = list.filter((r) => r.callId === args.where.callId);
-      }
-      return list.map((r) => ({ ...r }));
+    findMany: async (args?: { where?: RatingWhere }): Promise<CallRatingRow[]> => {
+      return [...this.callRatings.values()].filter((rating) =>
+        !args?.where?.callId || rating.callId === args.where.callId,
+      ).map((rating) => ({ ...rating }));
     },
 
-    deleteMany: async (args?: { where?: any }) => {
+    deleteMany: async (args?: { where?: RatingWhere }): Promise<{ count: number }> => {
       if (!args?.where) {
         const count = this.callRatings.size;
         this.callRatings.clear();
         return { count };
       }
-      let deleted = 0;
-      if (args.where.callId) {
-        for (const [id, r] of Array.from(this.callRatings.entries())) {
-          if (r.callId === args.where.callId) {
-            this.callRatings.delete(id);
-            deleted++;
-          }
-        }
+      let count = 0;
+      for (const [id, rating] of this.callRatings) {
+        if (args.where.callId && rating.callId !== args.where.callId) continue;
+        this.callRatings.delete(id);
+        count += 1;
       }
-      return { count: deleted };
+      return { count };
     },
   };
 
   unblockAppeal = {
-    create: async (args: { data: any }) => {
-      const id = args.data.id || crypto.randomUUID();
-      const appeal = {
+    create: async (args: { data: Record<string, unknown> }): Promise<AppealRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const row: AppealRow = {
         id,
-        userId: args.data.userId,
-        telegramId: BigInt(args.data.telegramId),
-        alias: args.data.alias,
-        banReason: args.data.banReason,
-        appealText: args.data.appealText,
-        status: args.data.status || 'PENDING',
+        userId: stringValue(args.data.userId),
+        telegramId: BigInt(String(args.data.telegramId)),
+        alias: stringValue(args.data.alias),
+        banReason: stringValue(args.data.banReason),
+        appealText: stringValue(args.data.appealText),
+        status: stringValue(args.data.status, 'PENDING'),
         createdAt: new Date(),
         reviewedAt: null,
       };
-      this.unblockAppeals.set(id, appeal);
-      return { ...appeal };
+      this.unblockAppeals.set(id, row);
+      return { ...row };
     },
-
-    findMany: async (args?: { where?: any; orderBy?: any; include?: any }) => {
-      let list = Array.from(this.unblockAppeals.values());
-      if (args?.orderBy?.createdAt === 'desc') {
-        list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      }
-      return list.map((a) => {
-        const res = { ...a };
-        if (args?.include?.user) {
-          res.user = this.users.get(a.userId) || {
-            subFC: 6.0,
-            subLR: 6.0,
-            subGRA: 6.0,
-            subP: 6.0,
-            band: 6.0,
-          };
-        }
-        return res;
-      });
+    findMany: async (args?: { orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<Array<AppealRow & { user?: UserRow }>> => {
+      let list = [...this.unblockAppeals.values()];
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return list.map((appeal) => ({ ...appeal, ...(args?.include?.user ? { user: this.users.get(appeal.userId) } : {}) }));
     },
-
-    findUnique: async (args: { where: any }) => {
-      const a = this.unblockAppeals.get(args.where.id);
-      return a ? { ...a } : null;
-    },
-
-    update: async (args: { where: any; data: any }) => {
-      const appeal = this.unblockAppeals.get(args.where.id);
+    findUnique: async (args: { where: AppealWhere }): Promise<AppealRow | null> => this.unblockAppeals.get(args.where.id ?? '') ?? null,
+    update: async (args: { where: AppealWhere; data: Record<string, unknown> }): Promise<AppealRow> => {
+      const appeal = this.unblockAppeals.get(args.where.id ?? '');
       if (!appeal) throw new Error(`Appeal not found: ${args.where.id}`);
-      const updated = {
-        ...appeal,
-        ...args.data,
-      };
+      const updated = { ...appeal, ...args.data } as AppealRow;
       this.unblockAppeals.set(appeal.id, updated);
       return { ...updated };
     },
   };
 
   starsTransaction = {
-    create: async (args: { data: any }) => {
-      const id = args.data.id || crypto.randomUUID();
-      const tx = {
+    create: async (args: { data: Record<string, unknown> }): Promise<StarsTransactionRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const row: StarsTransactionRow = {
         id,
-        userId: args.data.userId,
-        telegramPaymentId: args.data.telegramPaymentId,
-        starsAmount: args.data.starsAmount,
-        planTier: args.data.planTier,
+        userId: stringValue(args.data.userId),
+        telegramPaymentId: stringValue(args.data.telegramPaymentId),
+        starsAmount: numberValue(args.data.starsAmount, 0),
+        planTier: stringValue(args.data.planTier),
         createdAt: new Date(),
       };
-      this.starsTransactions.set(id, tx);
-      return { ...tx };
+      this.starsTransactions.set(id, row);
+      return { ...row };
     },
-
-    findMany: async () => {
-      return Array.from(this.starsTransactions.values()).map((t) => ({ ...t }));
-    },
+    findMany: async (): Promise<StarsTransactionRow[]> => [...this.starsTransactions.values()].map((row) => ({ ...row })),
   };
 
   favoritePartner = {
-    create: async (args: { data: any }) => {
-      const id = args.data.id || crypto.randomUUID();
-      const fav = {
+    create: async (args: { data: Record<string, unknown> }): Promise<FavoriteRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const row: FavoriteRow = {
         id,
-        userId: args.data.userId,
-        partnerId: args.data.partnerId,
+        userId: stringValue(args.data.userId),
+        partnerId: stringValue(args.data.partnerId),
         createdAt: new Date(),
       };
-      this.favoritePartners.set(id, fav);
-      return { ...fav };
+      this.favoritePartners.set(id, row);
+      return { ...row };
     },
-
-    findMany: async (args?: { where?: any; include?: any }) => {
-      let list = Array.from(this.favoritePartners.values());
-      if (args?.where?.userId) {
-        list = list.filter((f) => f.userId === args.where.userId);
-      }
-      return list.map((f) => {
-        const res = { ...f };
-        if (args?.include?.partner) {
-          res.partner = this.users.get(f.partnerId);
-        }
-        return res;
-      });
+    findMany: async (args?: { where?: FavoriteWhere; include?: { partner?: boolean } }): Promise<Array<FavoriteRow & { partner?: UserRow }>> => {
+      return [...this.favoritePartners.values()].filter((row) => !args?.where?.userId || row.userId === args.where.userId).map((row) => ({
+        ...row,
+        ...(args?.include?.partner ? { partner: this.users.get(row.partnerId) } : {}),
+      }));
     },
-
-    deleteMany: async (args?: { where?: any }) => {
+    deleteMany: async (args?: { where?: FavoriteWhere }): Promise<{ count: number }> => {
       if (!args?.where) {
         const count = this.favoritePartners.size;
         this.favoritePartners.clear();
         return { count };
       }
-      let deleted = 0;
-      if (args.where.userId && args.where.partnerId) {
-        for (const [id, f] of Array.from(this.favoritePartners.entries())) {
-          if (f.userId === args.where.userId && f.partnerId === args.where.partnerId) {
-            this.favoritePartners.delete(id);
-            deleted++;
-          }
-        }
+      let count = 0;
+      for (const [id, row] of this.favoritePartners) {
+        if (args.where.userId && row.userId !== args.where.userId) continue;
+        if (args.where.partnerId && row.partnerId !== args.where.partnerId) continue;
+        this.favoritePartners.delete(id);
+        count += 1;
       }
-      return { count: deleted };
+      return { count };
     },
   };
+
+  private findUser(selector: IdSelector): UserRow | undefined {
+    if (selector.id) return this.users.get(selector.id);
+    if (selector.alias) return [...this.users.values()].find((user) => user.alias === selector.alias);
+    if (selector.telegramId !== undefined) {
+      const telegramId = BigInt(String(selector.telegramId));
+      return [...this.users.values()].find((user) => user.telegramId === telegramId);
+    }
+    return undefined;
+  }
+
+  private matchesUser(user: UserRow, where?: UserWhere): boolean {
+    if (!where) return true;
+    if (typeof where.id === 'string' && user.id !== where.id) return false;
+    if (typeof where.id === 'object' && !where.id.in.includes(user.id)) return false;
+    if (where.telegramId !== undefined && user.telegramId !== BigInt(String(where.telegramId))) return false;
+    if (where.alias && user.alias !== where.alias) return false;
+    if (where.updatedAt?.gte && user.updatedAt.getTime() < dateValue(where.updatedAt.gte, user.updatedAt).getTime()) return false;
+    if (where.lastCallDate && typeof where.lastCallDate !== 'string' && where.lastCallDate.not !== undefined && user.lastCallDate === where.lastCallDate.not) return false;
+    if (where.lastCallDate === null && user.lastCallDate !== null) return false;
+    if (where.dailyCallsUsed?.lt !== undefined && user.dailyCallsUsed >= where.dailyCallsUsed.lt) return false;
+    if (where.dailyCallsUsed?.gt !== undefined && user.dailyCallsUsed <= where.dailyCallsUsed.gt) return false;
+    if (where.isBanned !== undefined && user.isBanned !== where.isBanned) return false;
+    if (where.isPermanentlyBanned !== undefined && user.isPermanentlyBanned !== where.isPermanentlyBanned) return false;
+    if (where.warningCount?.gt !== undefined && user.warningCount <= where.warningCount.gt) return false;
+    if (where.OR && !where.OR.some((condition) => this.matchesUser(user, condition))) return false;
+    return true;
+  }
+
+  private matchesCallSession(session: CallSessionRow, where?: CallSessionWhere): boolean {
+    if (!where) return true;
+    if (where.id && session.id !== where.id) return false;
+    if (where.roomName && session.roomName !== where.roomName) return false;
+    if (where.status && session.status !== where.status) return false;
+    if (where.egressId !== undefined && session.egressId !== where.egressId) return false;
+    if (where.OR && !where.OR.some((condition) => condition.userAId === session.userAId || condition.userBId === session.userBId)) return false;
+    return true;
+  }
+
+  private mergeUser(user: UserRow, data: UserData): UserRow {
+    const updated: UserRow = { ...user };
+    for (const [key, value] of Object.entries(data)) {
+      if (key === 'dailyCallsUsed') updated.dailyCallsUsed = applyIncrement(user.dailyCallsUsed, value);
+      else if (key === 'telegramId') updated.telegramId = BigInt(String(value));
+      else if (key in updated) (updated as unknown as Record<string, unknown>)[key] = value;
+    }
+    updated.updatedAt = new Date();
+    return updated;
+  }
+
+  private mergeCallSession(session: CallSessionRow, data: CallSessionData): CallSessionRow {
+    const updated = { ...session };
+    for (const [key, value] of Object.entries(data)) {
+      if (key in updated) (updated as unknown as Record<string, unknown>)[key] = value;
+    }
+    return updated;
+  }
 }

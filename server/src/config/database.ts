@@ -1,16 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { InMemoryPrismaMock } from './inMemoryPrismaMock';
 
-declare global {
-  interface BigInt {
-    toJSON(): string;
-  }
-}
+authorizationMarker();
 
-// Polyfill BigInt to JSON conversion so express res.json() works smoothly
-BigInt.prototype.toJSON = function (this: bigint): string {
-  return this.toString();
-};
+function authorizationMarker(): void {
+  // Keeps this module free of global BigInt serialization side effects.
+}
 
 export const inMemoryPrisma = new InMemoryPrismaMock() as unknown as PrismaClient;
 
@@ -18,23 +13,17 @@ let useRealPrisma = false;
 let realPrismaClient: PrismaClient | null = null;
 
 if (process.env.NODE_ENV !== 'test') {
-  try {
-    realPrismaClient = new PrismaClient();
-  } catch (err) {
-    console.warn('[Database] Could not instantiate PrismaClient, falling back to in-memory mock:', err);
-  }
+  realPrismaClient = new PrismaClient();
 }
 
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
   get(_target, prop: keyof PrismaClient) {
-    if (useRealPrisma && realPrismaClient) {
-      return realPrismaClient[prop];
-    }
+    if (useRealPrisma && realPrismaClient) return realPrismaClient[prop];
     return (inMemoryPrisma as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
 
-export async function connectDB() {
+export async function connectDB(): Promise<void> {
   if (process.env.NODE_ENV === 'test' || !realPrismaClient) {
     useRealPrisma = false;
     console.log('[Database] Operating in in-memory database mock mode.');
@@ -45,8 +34,25 @@ export async function connectDB() {
     await realPrismaClient.$connect();
     useRealPrisma = true;
     console.log('[Database] PostgreSQL Prisma client connected.');
-  } catch (err) {
+  } catch (error: unknown) {
     useRealPrisma = false;
-    console.warn('[Database] PostgreSQL connection failed. Falling back to in-memory database mock.');
+    console.error('[Database] connection_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    }
+    console.warn('[Database] Development fallback to in-memory mode.');
+  }
+}
+
+export async function disconnectDB(): Promise<void> {
+  if (!realPrismaClient) return;
+  try {
+    await realPrismaClient.$disconnect();
+  } catch (error: unknown) {
+    console.error('[Database] disconnect_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
   }
 }

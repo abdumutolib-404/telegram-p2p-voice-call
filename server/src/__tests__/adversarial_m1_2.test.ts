@@ -51,8 +51,8 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
 
     it('1.3 High-concurrency matching stress test (100 complementary user pairs)', async () => {
       const NUM_PAIRS = 100;
-      const groupA: Array<{ id: string; band: number; skills: any }> = [];
-      const groupB: Array<{ id: string; band: number; skills: any }> = [];
+      const groupA: Array<{ id: string; band: number; skills: unknown }> = [];
+      const groupB: Array<{ id: string; band: number; skills: unknown }> = [];
 
       for (let i = 0; i < NUM_PAIRS; i++) {
         groupA.push({
@@ -229,9 +229,9 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
   // SECTION 3: Moderation Penalty Escalation Ladder Stress Test
   // =========================================================================
   describe('3. Moderation Penalty Escalation Ladder', () => {
-    let targetUser: any;
-    let reporterUser: any;
-    let callSession: any;
+    let targetUser: unknown;
+    let reporterUser: unknown;
+    let callSession: unknown;
 
     beforeAll(async () => {
       targetUser = await prisma.user.create({

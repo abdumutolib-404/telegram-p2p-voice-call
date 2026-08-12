@@ -140,14 +140,14 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
   describe('2. Stealth /admin Command 2FA Security', () => {
     it('2.1 Non-admin Telegram ID probe receives exact decoy response', async () => {
       let repliedText = '';
-      const mockCtx: any = {
+      const mockCtx: unknown = {
         from: { id: 999999999 }, // Non-admin ID
         reply: async (text: string) => {
           repliedText = text;
         },
       };
 
-      const mockBot: any = {
+      const mockBot: unknown = {
         command: (cmd: string, handler: Function) => {
           if (cmd === 'admin') {
             handler(mockCtx);
@@ -162,18 +162,18 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
     it('2.2 Authorized admin ID receives 2FA link button with single-use token', async () => {
       const adminId = 12345678;
       let repliedText = '';
-      let replyExtra: any = null;
+      let replyExtra: unknown = null;
       let handlerPromise: Promise<void> | null = null;
 
-      const mockCtx: any = {
+      const mockCtx: unknown = {
         from: { id: adminId },
-        reply: async (text: string, extra: any) => {
+        reply: async (text: string, extra: unknown) => {
           repliedText = text;
           replyExtra = extra;
         },
       };
 
-      const mockBot: any = {
+      const mockBot: unknown = {
         command: (cmd: string, handler: Function) => {
           if (cmd === 'admin') {
             handlerPromise = handler(mockCtx);
@@ -204,7 +204,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       expect(res.body.jwtToken).toBeDefined();
 
       // Verify decoded JWT claims
-      const decoded = jwt.verify(res.body.jwtToken, env.JWT_SECRET) as any;
+      const decoded = jwt.verify(res.body.jwtToken, env.JWT_SECRET) as unknown;
       expect(decoded.role).toBe('admin');
       expect(decoded.telegramId).toBe(adminId);
     });
@@ -257,7 +257,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       ];
 
       for (const ep of endpoints) {
-        const res = await (request(app) as any)[ep.method](ep.url);
+        const res = await (request(app) as unknown)[ep.method](ep.url);
         expect(res.status).toBe(401);
         expect(res.body.error).toContain('Unauthorized');
       }
@@ -286,7 +286,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
   // SECTION 3: Telegram Stars Payments Idempotency Stress Tests
   // =========================================================================
   describe('3. Telegram Stars Payments Idempotency', () => {
-    let testUser: any;
+    let testUser: unknown;
 
     beforeAll(async () => {
       testUser = await prisma.user.create({
@@ -308,7 +308,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       let registeredHandler: Function | null = null;
       let replyMessage = '';
 
-      const mockBot: any = {
+      const mockBot: unknown = {
         on: (event: string, handler: Function) => {
           if (event === 'message:successful_payment') {
             registeredHandler = handler;
@@ -320,7 +320,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       setupPaymentHandlers(mockBot);
       expect(registeredHandler).not.toBeNull();
 
-      const mockCtx: any = {
+      const mockCtx: unknown = {
         from: { id: 99001122 },
         message: {
           successful_payment: {
@@ -354,7 +354,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       let registeredHandler: Function | null = null;
       let replyMessage = '';
 
-      const mockBot: any = {
+      const mockBot: unknown = {
         on: (event: string, handler: Function) => {
           if (event === 'message:successful_payment') {
             registeredHandler = handler;
@@ -365,7 +365,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
 
       setupPaymentHandlers(mockBot);
 
-      const duplicateCtx: any = {
+      const duplicateCtx: unknown = {
         from: { id: 99001122 },
         message: {
           successful_payment: {

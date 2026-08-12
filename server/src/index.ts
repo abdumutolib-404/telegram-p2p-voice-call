@@ -1,7 +1,10 @@
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
+import path from 'node:path';
 import { Server as SocketIOServer } from 'socket.io';
+import { Bot } from 'grammy';
+import type { BotInfo } from 'grammy/types';
 import { env } from './config/env';
 import { connectDB } from './config/database';
 import authRoutes from './routes/auth';
@@ -10,119 +13,106 @@ import adminRoutes from './routes/admin';
 import { setupSocketSignaling } from './socket/signaling';
 import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
+import type { MyContext } from './bot/types';
 
 const app = express();
 const server = http.createServer(app);
 
-// Enable CORS with origin whitelist & JSON parsing
-const allowedOrigins = [
+const allowedOrigins = new Set([
   env.MINI_APP_URL,
-  env.ADMIN_PANEL_URL || '',
+  env.ADMIN_PANEL_URL,
   'https://web.telegram.org',
-].filter(Boolean);
+].filter((origin): origin is string => Boolean(origin)));
+
+const isAllowedOrigin = (origin: string | undefined): boolean => !origin || allowedOrigins.has(origin);
 
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, server-to-server)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.some(allowed => allowed && origin.startsWith(allowed))) {
-      return callback(null, true);
-    }
-    return callback(new Error('Not allowed by CORS'));
-  },
+  origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '256kb' }));
 
-// Initialize Database connection
-connectDB();
-
-// Register REST API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Serve compiled static frontend Mini App & Admin Panel
-import path from 'path';
-
-// Client Mini App
 app.use('/client', express.static(path.join(__dirname, '../public/client')));
-app.get('/client', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/client/index.html'));
-});
-app.get('/client/*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/client/index.html'));
-});
+app.get('/client', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));
+app.get('/client/*', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));
 
-// Admin Panel
 app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/admin/index.html'));
-});
-app.get('/admin/*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/admin/index.html'));
-});
+app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '../public/admin/index.html')));
+app.get('/admin/*', (_req, res) => res.sendFile(path.join(__dirname, '../public/admin/index.html')));
 
-// Root redirect to health check (useful for Railway health probes)
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({ status: 'ok', app: 'IELTS Speaking P2P Platform', endpoints: ['/client', '/admin', '/health'] });
 });
 
-// Setup Socket.io Signaling
 const io = new SocketIOServer(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.some(allowed => allowed && origin.startsWith(allowed))) {
-        return callback(null, true);
-      }
-      return callback(new Error('Not allowed by CORS'));
-    },
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
     methods: ['GET', 'POST'],
     credentials: true,
   },
 });
 
-// Initialize Grammy Telegram Bot
-let bot: any = null;
+let bot: Bot<MyContext> | null = null;
 if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
   try {
     bot = createBot(env.BOT_TOKEN);
     bot.start({
-      onStart: (botInfo: any) => {
+      onStart: (botInfo: BotInfo) => {
         console.log(`[Grammy Bot] Bot @${botInfo.username} launched successfully.`);
       },
-    }).catch((botErr: any) => {
-      console.warn('[Grammy Bot Conflict Warning] Long polling instance conflict detected or network drop. Grammy will auto-retry polling.', botErr.message);
+    }).catch((error: unknown) => {
+      console.error('[Grammy Bot] polling_failed', {
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
     });
-  } catch (err) {
-    console.warn('[Grammy Bot] Could not start polling:', err);
+  } catch (error: unknown) {
+    console.error('[Grammy Bot] startup_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
   }
 } else {
   console.log('[Grammy Bot] Mock bot token configured. Bot polling disabled.');
 }
 
-setupSocketSignaling(io, bot);
+async function bootstrap(): Promise<void> {
+  try {
+    await connectDB();
+    setupSocketSignaling(io, bot ?? undefined);
+    startStoragePurgeCron();
 
-// Start Daily Storage Retention Purge Cron
-startStoragePurgeCron();
-
-// Start HTTP Server
-if (process.env.NODE_ENV !== 'test') {
-  server.listen(env.PORT, () => {
-    console.log(`[Server] IELTS Speaking P2P Backend running on port ${env.PORT}`);
-  });
+    if (env.NODE_ENV !== 'test') {
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(env.PORT, resolve);
+      });
+      console.log(`[Server] IELTS Speaking P2P Backend running on port ${env.PORT}`);
+    }
+  } catch (error: unknown) {
+    console.error('[Server] bootstrap_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    if (env.NODE_ENV === 'production') process.exitCode = 1;
+  }
 }
 
-// Global error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+void bootstrap().catch((error: unknown) => {
+  console.error('[Server] bootstrap_unhandled', {
+    error: error instanceof Error ? error.message : 'unknown_error',
+  });
+  process.exitCode = 1;
+});
+
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[Express Error]', err.message);
-  res.status(500).json({ error: 'Internal server error.' });
+  if (!res.headersSent) res.status(500).json({ error: 'Internal server error.' });
 });
 
 export { app, server, io, bot };

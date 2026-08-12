@@ -1,100 +1,198 @@
-import { getRedis, inMemoryRedis } from '../config/redis';
+import crypto from 'node:crypto';
+import { getRedis, type RedisClientInterface } from '../config/redis';
 
 export interface UserSkills {
-  subFC: number;
-  subLR: number;
-  subGRA: number;
-  subP: number;
+  readonly subFC: number;
+  readonly subLR: number;
+  readonly subGRA: number;
+  readonly subP: number;
 }
 
-export function determineWeakAndStrongSkills(skills: UserSkills): { weakSkill: string; strongSkill: string } {
-  const list = [
-    { name: 'FC', score: skills.subFC },
-    { name: 'LR', score: skills.subLR },
-    { name: 'GRA', score: skills.subGRA },
-    { name: 'P', score: skills.subP },
-  ];
-  list.sort((a, b) => a.score - b.score);
-  
-  const weakSkill = list[0].name;
-  const strongSkill = list[list.length - 1].name;
-  return { weakSkill, strongSkill };
-}
+export type SkillCode = 'FC' | 'LR' | 'GRA' | 'P';
 
 export interface MatchResult {
-  matched: boolean;
-  partnerId?: string;
-  roomName?: string;
-  bucketKey?: string;
+  readonly matched: boolean;
+  readonly partnerId?: string;
+  readonly roomName?: string;
+  readonly bucketKey?: string;
+  readonly partnerBucketKey?: string;
+}
+
+const USER_QUEUE_PREFIX = 'user_queue:';
+const MATCH_QUEUE_PREFIX = 'match_queue:';
+const QUEUE_TTL_SECONDS = 15 * 60;
+const USER_LOCK_PREFIX = 'match_lock:';
+const USER_LOCK_TTL_MS = 5000;
+
+const MATCH_QUEUE_CLAIM_SCRIPT = `-- MATCH_QUEUE_CLAIM
+local candidate = redis.call('SPOP', KEYS[1])
+while candidate do
+  if candidate ~= ARGV[1] then
+    local pointer = redis.call('GET', KEYS[2] .. candidate)
+    if pointer == KEYS[1] then
+      redis.call('DEL', KEYS[2] .. candidate)
+      redis.call('DEL', KEYS[2] .. ARGV[1])
+      return candidate
+    end
+  end
+  candidate = redis.call('SPOP', KEYS[1])
+end
+return false`;
+
+const LOCK_RELEASE_SCRIPT = `-- LOCK_RELEASE
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`;
+
+export function determineWeakAndStrongSkills(skills: UserSkills): { weakSkill: SkillCode; strongSkill: SkillCode } {
+  const ranked: ReadonlyArray<readonly [SkillCode, number]> = [
+    ['FC', skills.subFC],
+    ['LR', skills.subLR],
+    ['GRA', skills.subGRA],
+    ['P', skills.subP],
+  ];
+
+  for (const [, value] of ranked) {
+    if (!Number.isFinite(value) || value < 0 || value > 9) {
+      throw new RangeError('Skill scores must be finite values between 0 and 9');
+    }
+  }
+
+  const sorted = [...ranked].sort((a, b) => a[1] - b[1]);
+  return {
+    weakSkill: sorted[0][0],
+    strongSkill: sorted[sorted.length - 1][0],
+  };
 }
 
 export class MatchmakingService {
-  private get redis() {
-    try {
-      return getRedis();
-    } catch {
-      return inMemoryRedis;
-    }
+  private get redis(): RedisClientInterface {
+    return getRedis();
   }
 
   public getBandKey(band: number): string {
-    const rounded = Math.round(band * 2) / 2;
-    return rounded.toFixed(1);
+    if (!Number.isFinite(band) || band < 0 || band > 9) {
+      throw new RangeError('band must be a finite number between 0 and 9');
+    }
+    return (Math.round(band * 2) / 2).toFixed(1);
   }
 
-  public getBucketKey(band: number, weakSkill: string, strongSkill: string): string {
-    const bandKey = this.getBandKey(band);
-    return `match_queue:${bandKey}:${weakSkill}:${strongSkill}`;
+  public getBucketKey(band: number, weakSkill: SkillCode, strongSkill: SkillCode): string {
+    return `${MATCH_QUEUE_PREFIX}${this.getBandKey(band)}:${weakSkill}:${strongSkill}`;
   }
 
-  /**
-   * Joins matchmaking queue with $O(1)$ SPOP on complementary bucket
-   */
-  async joinQueue(userId: string, band: number, skills: UserSkills): Promise<MatchResult> {
+  public async joinQueue(userId: string, band: number, skills: UserSkills): Promise<MatchResult> {
+    this.validateUserId(userId);
     const { weakSkill, strongSkill } = determineWeakAndStrongSkills(skills);
-    const bandKey = this.getBandKey(band);
+    const ownBucketKey = this.getBucketKey(band, weakSkill, strongSkill);
+    const complementaryBucketKey = this.getBucketKey(band, strongSkill, weakSkill);
 
-    const complementaryKey = `match_queue:${bandKey}:${strongSkill}:${weakSkill}`;
-    const ownBucketKey = `match_queue:${bandKey}:${weakSkill}:${strongSkill}`;
+    try {
+      await this.cancelQueueUnlocked(userId);
 
-    // First ensure user is not already queued elsewhere
-    await this.cancelQueue(userId);
+      const claimedPartner = await this.redis.eval(MATCH_QUEUE_CLAIM_SCRIPT, 2, complementaryBucketKey, USER_QUEUE_PREFIX, userId);
 
-    // Try popping a complementary partner (O(1))
-    const partnerId = await this.redis.spop(complementaryKey);
+      if (typeof claimedPartner === 'string' && claimedPartner !== userId) {
+        return {
+          matched: true,
+          partnerId: claimedPartner,
+          roomName: `room_${crypto.randomUUID()}`,
+          partnerBucketKey: complementaryBucketKey,
+        };
+      }
 
-    if (partnerId && partnerId !== userId) {
-      // Complementary match found!
-      await this.redis.del(`user_queue:${partnerId}`);
-      await this.redis.del(`user_queue:${userId}`);
-      return {
-        matched: true,
-        partnerId,
-        roomName: `room_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      };
+      try {
+        await this.redis.sadd(ownBucketKey, userId);
+        await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS);
+      } catch (error: unknown) {
+        await this.redis.srem(ownBucketKey, userId).catch((cleanupError: unknown) => {
+          console.error('[Matchmaking] queue_cleanup_failed', {
+            userId,
+            error: cleanupError instanceof Error ? cleanupError.message : 'unknown_error',
+          });
+        });
+        throw error;
+      }
+
+      return { matched: false, bucketKey: ownBucketKey };
+    } catch (error: unknown) {
+      console.error('[Matchmaking] join_failed', {
+        userId,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+      throw error;
     }
-
-    // No partner in complementary bucket, add self to own bucket (O(1))
-    await this.redis.sadd(ownBucketKey, userId);
-    await this.redis.set(`user_queue:${userId}`, ownBucketKey);
-
-    return {
-      matched: false,
-      bucketKey: ownBucketKey,
-    };
   }
 
-  /**
-   * Instant queue cancellation with O(1) SREM
-   */
-  async cancelQueue(userId: string): Promise<boolean> {
-    const bucketKey = await this.redis.get(`user_queue:${userId}`);
-    if (bucketKey) {
-      await this.redis.srem(bucketKey, userId);
-      await this.redis.del(`user_queue:${userId}`);
-      return true;
+  public async restoreQueue(userId: string, bucketKey: string): Promise<void> {
+    this.validateUserId(userId);
+    if (!bucketKey.startsWith(MATCH_QUEUE_PREFIX)) throw new TypeError('Invalid queue bucket');
+
+    try {
+      await this.redis.sadd(bucketKey, userId);
+      await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS);
+    } catch (error: unknown) {
+      console.error('[Matchmaking] restore_failed', {
+        userId,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+      throw error;
     }
-    return false;
+  }
+
+  public async cancelQueue(userId: string): Promise<boolean> {
+    this.validateUserId(userId);
+    try {
+      return await this.cancelQueueUnlocked(userId);
+    } catch (error: unknown) {
+      console.error('[Matchmaking] cancel_failed', {
+        userId,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+      throw error;
+    }
+  }
+
+  private async cancelQueueUnlocked(userId: string): Promise<boolean> {
+    const pointerKey = `${USER_QUEUE_PREFIX}${userId}`;
+    const bucketKey = await this.redis.get(pointerKey);
+    if (!bucketKey) return false;
+
+    await this.redis.srem(bucketKey, userId);
+    await this.redis.del(pointerKey);
+    return true;
+  }
+
+  private async withUserLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+    const lockKey = `${USER_LOCK_PREFIX}${userId}`;
+    const token = crypto.randomUUID();
+    const deadline = Date.now() + USER_LOCK_TTL_MS;
+
+    while (Date.now() < deadline) {
+      const acquired = await this.redis.set(lockKey, token, 'PX', USER_LOCK_TTL_MS, 'NX');
+      if (acquired === 'OK') {
+        try {
+          return await operation();
+        } finally {
+          try {
+            await this.redis.eval(LOCK_RELEASE_SCRIPT, 1, lockKey, token);
+          } catch (error: unknown) {
+            console.error('[Matchmaking] lock_release_failed', {
+              userId,
+              error: error instanceof Error ? error.message : 'unknown_error',
+            });
+          }
+        }
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    }
+
+    throw new Error('Unable to acquire matchmaking lock');
+  }
+
+  private validateUserId(userId: string): void {
+    if (!userId || userId.length > 128) throw new TypeError('Invalid userId');
   }
 }
 

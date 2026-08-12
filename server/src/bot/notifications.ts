@@ -4,7 +4,7 @@ import { MyContext } from './types';
 type SendMessageOptions = Parameters<Bot<MyContext>['api']['sendMessage']>[2];
 
 interface QueueItem {
-  telegramId: number;
+  telegramId: string;
   text: string;
   options?: SendMessageOptions;
   retries?: number;
@@ -14,7 +14,7 @@ export class NotificationQueue {
   private queue: QueueItem[] = [];
   private isProcessing = false;
 
-  async enqueue(bot: Bot<MyContext>, telegramId: number, text: string, options?: SendMessageOptions) {
+  async enqueue(bot: Bot<MyContext>, telegramId: string, text: string, options?: SendMessageOptions) {
     this.queue.push({ telegramId, text, options, retries: 0 });
     this.process(bot);
   }
