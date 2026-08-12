@@ -1,8 +1,14 @@
 import { PrismaClient } from '@prisma/client';
 import { InMemoryPrismaMock } from './inMemoryPrismaMock';
 
+declare global {
+  interface BigInt {
+    toJSON(): string;
+  }
+}
+
 // Polyfill BigInt to JSON conversion so express res.json() works smoothly
-(BigInt.prototype as any).toJSON = function () {
+BigInt.prototype.toJSON = function (this: bigint): string {
   return this.toString();
 };
 
@@ -20,11 +26,11 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
-  get(_target, prop: string | symbol) {
+  get(_target, prop: keyof PrismaClient) {
     if (useRealPrisma && realPrismaClient) {
-      return (realPrismaClient as any)[prop];
+      return realPrismaClient[prop];
     }
-    return (inMemoryPrisma as any)[prop];
+    return (inMemoryPrisma as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
 

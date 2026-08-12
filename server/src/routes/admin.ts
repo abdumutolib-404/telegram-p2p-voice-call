@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
 import { env } from '../config/env';
@@ -179,7 +180,7 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
     const query = (req.query.query as string || '').trim();
     const statusFilter = req.query.status as string || '';
 
-    const where: any = {};
+    const where: Prisma.UserWhereInput = {};
     if (query) {
       where.OR = [
         { alias: { contains: query, mode: 'insensitive' } },
@@ -291,7 +292,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
-    let updateData: any = {};
+    let updateData: Prisma.UserUpdateInput = {};
     switch (action) {
       case 'warn':
         updateData = { warningCount: { increment: 1 } };
