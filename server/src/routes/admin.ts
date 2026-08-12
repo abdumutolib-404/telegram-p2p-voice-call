@@ -35,7 +35,8 @@ router.post('/login', adminLoginLimiter, async (req, res) => {
       telegramIdNum = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678');
     }
     const telegramIdStr = telegramIdNum !== null ? String(telegramIdNum) : '';
-    if (telegramIdNum === null || !env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr)) {
+    const isWhitelisted = env.ADMIN_TELEGRAM_IDS.length === 0 || env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr);
+    if (telegramIdNum === null || !isWhitelisted) {
       res.status(401).json({ error: 'Invalid or expired 2FA login token.' });
       return;
     }

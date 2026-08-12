@@ -26,8 +26,9 @@ export async function adminFetch<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = getAdminToken();
-  const baseUrl = import.meta.env.VITE_API_URL || '';
-  const url = `${baseUrl}${endpoint}`;
+  const rawBaseUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${rawBaseUrl}${cleanEndpoint}`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

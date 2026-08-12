@@ -18,18 +18,44 @@ import type { MyContext } from './bot/types';
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigins = new Set([
-  env.MINI_APP_URL,
-  env.ADMIN_PANEL_URL,
-  'https://web.telegram.org',
-].filter((origin): origin is string => Boolean(origin)));
+const extractOrigin = (urlStr: string | undefined): string | null => {
+  if (!urlStr) return null;
+  try {
+    const parsed = new URL(urlStr);
+    return parsed.origin;
+  } catch {
+    return urlStr.replace(/\/+$/, '');
+  }
+};
 
-const isAllowedOrigin = (origin: string | undefined): boolean => !origin || allowedOrigins.has(origin);
+const configuredOrigins = [
+  extractOrigin(env.MINI_APP_URL),
+  extractOrigin(env.ADMIN_PANEL_URL),
+  'https://web.telegram.org',
+  'https://webk.telegram.org',
+  'https://webz.telegram.org',
+].filter((o): o is string => Boolean(o));
+
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true; // Same-origin, mobile apps, or server-to-server calls
+  if (configuredOrigins.includes(origin)) return true;
+  // Allow all Netlify, Railway, Vercel, and local dev origins
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
+    return true;
+  }
+  return false;
+};
 
 app.use(cors({
-  origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
+  origin: (origin, callback) => {
+    callback(null, isAllowedOrigin(origin));
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data'],
 }));
+
+app.options('*', cors());
 app.use(express.json({ limit: '256kb' }));
 
 app.use('/api/auth', authRoutes);
