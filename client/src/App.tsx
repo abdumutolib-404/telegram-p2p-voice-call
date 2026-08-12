@@ -36,7 +36,17 @@ export const App: React.FC = () => {
   useEffect(() => {
     const initAuth = async () => {
       const tg = window.Telegram?.WebApp;
-      const rawInitData = tg?.initData || '';
+      let rawInitData = tg?.initData || '';
+
+      if (!rawInitData || rawInitData.trim() === '') {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const searchParams = new URLSearchParams(window.location.search);
+        rawInitData =
+          hashParams.get('tgWebAppData') ||
+          searchParams.get('tgWebAppData') ||
+          searchParams.get('initData') ||
+          '';
+      }
 
       if (!rawInitData || rawInitData.trim() === '') {
         setAppState('lockdown');
