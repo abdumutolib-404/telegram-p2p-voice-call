@@ -30,16 +30,17 @@ router.post('/login', adminLoginLimiter, async (req, res) => {
       return;
     }
 
-    let telegramId = await verifyAndConsumeAdminToken(token);
-    if (!telegramId && env.NODE_ENV === 'test' && token === 'test_admin_token') {
-      telegramId = env.ADMIN_TELEGRAM_IDS[0] ?? null;
+    let telegramIdNum = await verifyAndConsumeAdminToken(token);
+    if (telegramIdNum === null && env.NODE_ENV === 'test' && token === 'test_admin_token') {
+      telegramIdNum = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678');
     }
-    if (!telegramId || !env.ADMIN_TELEGRAM_IDS.includes(telegramId)) {
+    const telegramIdStr = telegramIdNum !== null ? String(telegramIdNum) : '';
+    if (telegramIdNum === null || !env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr)) {
       res.status(401).json({ error: 'Invalid or expired 2FA login token.' });
       return;
     }
 
-    const jwtToken = jwt.sign({ telegramId, role: 'admin' }, env.JWT_SECRET, { expiresIn: '24h', algorithm: 'HS256' });
+    const jwtToken = jwt.sign({ telegramId: telegramIdNum, role: 'admin' }, env.JWT_SECRET, { expiresIn: '24h', algorithm: 'HS256' });
     res.json({ success: true, jwtToken, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
   } catch (error: unknown) {
     console.error('[Admin] login_failed', {
@@ -180,20 +181,16 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
 
     const where: Prisma.UserWhereInput = {};
     if (query) {
-      where.OR = [
-        { alias: { contains: query, mode: 'insensitive' } },
-        { telegramId: BigInt(query) || undefined },
-      ].filter(Boolean);
       // Handle non-numeric query gracefully for telegramId
       try {
         const numId = BigInt(query);
         where.OR = [
-          { alias: { contains: query, mode: 'insensitive' } },
+          { alias: { contains: query, mode: 'insensitive' as const } },
           { telegramId: numId },
         ];
       } catch {
         where.OR = [
-          { alias: { contains: query, mode: 'insensitive' } },
+          { alias: { contains: query, mode: 'insensitive' as const } },
         ];
       }
     }

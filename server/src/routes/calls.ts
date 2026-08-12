@@ -35,7 +35,8 @@ router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: Auth
       return;
     }
 
-    if (session.userA.telegramId !== tgUser.id && session.userB.telegramId !== tgUser.id) {
+    const requesterId = BigInt(tgUser.id);
+    if (session.userA.telegramId !== requesterId && session.userB.telegramId !== requesterId) {
       res.status(403).json({ error: 'Forbidden.' });
       return;
     }

@@ -197,5 +197,5 @@ export function getRedis(): RedisClientInterface {
   if (!realRedisInstance || !isRealRedisReady) {
     throw new Error('Redis is not ready');
   }
-  return realRedisInstance;
+  return realRedisInstance as unknown as RedisClientInterface;
 }

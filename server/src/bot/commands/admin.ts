@@ -51,7 +51,7 @@ export async function verifyAndConsumeAdminToken(token: string): Promise<number 
 export function setupAdminCommand(bot: Bot<MyContext>): void {
   bot.command('admin', async (ctx) => {
     try {
-      const userId = ctx.from?.id;
+      const userId = ctx.from?.id ? String(ctx.from.id) : undefined;
       if (!userId || !env.ADMIN_TELEGRAM_IDS.includes(userId)) {
         await ctx.reply('Unknown command. Type /start to open main menu.');
         return;

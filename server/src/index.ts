@@ -4,7 +4,7 @@ import cors from 'cors';
 import path from 'node:path';
 import { Server as SocketIOServer } from 'socket.io';
 import { Bot } from 'grammy';
-import type { BotInfo } from 'grammy/types';
+import type { UserFromGetMe } from 'grammy/types';
 import { env } from './config/env';
 import { connectDB } from './config/database';
 import authRoutes from './routes/auth';
@@ -65,7 +65,7 @@ if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
   try {
     bot = createBot(env.BOT_TOKEN);
     bot.start({
-      onStart: (botInfo: BotInfo) => {
+      onStart: (botInfo: UserFromGetMe) => {
         console.log(`[Grammy Bot] Bot @${botInfo.username} launched successfully.`);
       },
     }).catch((error: unknown) => {

@@ -7,12 +7,14 @@ export interface AdminAuthenticatedRequest extends Request {
 }
 
 interface AdminJwtPayload extends JwtPayload {
-  telegramId: string;
+  telegramId: string | number;
   role: 'admin';
 }
 
 function isAdminJwtPayload(value: string | JwtPayload): value is AdminJwtPayload {
-  return typeof value !== 'string' && value.role === 'admin' && typeof value.telegramId === 'string' && /^\d+$/.test(value.telegramId);
+  if (typeof value === 'string' || !value || value.role !== 'admin') return false;
+  const idStr = String(value.telegramId);
+  return /^\d+$/.test(idStr) && idStr !== '0';
 }
 
 export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Response, next: NextFunction): void {
@@ -34,7 +36,7 @@ export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Respons
       res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
       return;
     }
-    req.adminUser = { telegramId: decoded.telegramId, role: 'admin' };
+    req.adminUser = { telegramId: String(decoded.telegramId), role: 'admin' };
     next();
   } catch (error: unknown) {
     console.error('[AdminAuth] verification_failed', {
