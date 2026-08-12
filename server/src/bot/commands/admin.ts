@@ -55,7 +55,7 @@ export function setupAdminCommand(bot: Bot<MyContext>) {
   bot.command('admin', async (ctx) => {
     const userId = ctx.from?.id;
 
-    const allowedAdminIds = [...env.ADMIN_TELEGRAM_IDS, 12345678];
+    const allowedAdminIds = [...env.ADMIN_TELEGRAM_IDS];
     if (!userId || !allowedAdminIds.includes(userId)) {
       // Stealth mode fallback: respond as unrecognized command
       await ctx.reply('Unknown command. Type /start to open main menu.');

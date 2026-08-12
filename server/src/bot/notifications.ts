@@ -2,7 +2,7 @@ import { Bot } from 'grammy';
 import { MyContext } from './types';
 
 export class NotificationQueue {
-  private queue: Array<{ telegramId: number; text: string; options?: any }> = [];
+  private queue: Array<{ telegramId: number; text: string; options?: any; retries?: number }> = [];
   private isProcessing = false;
 
   async enqueue(bot: Bot<MyContext>, telegramId: number, text: string, options?: any) {
@@ -22,11 +22,16 @@ export class NotificationQueue {
         await bot.api.sendMessage(item.telegramId, item.text, item.options);
       } catch (err: any) {
         if (err?.error_code === 429) {
-          // Rate limited by Telegram API
-          const retryAfter = (err.parameters?.retry_after || 3) * 1000;
-          console.warn(`[Bot Notification] 429 Rate limited. Retrying after ${retryAfter}ms`);
-          this.queue.unshift(item);
-          await new Promise((resolve) => setTimeout(resolve, retryAfter));
+          item.retries = (item.retries || 0) + 1;
+          if (item.retries < 5) {
+            // Rate limited by Telegram API
+            const retryAfter = (err.parameters?.retry_after || 3) * 1000;
+            console.warn(`[Bot Notification] 429 Rate limited. Retrying after ${retryAfter}ms`);
+            this.queue.unshift(item);
+            await new Promise((resolve) => setTimeout(resolve, retryAfter));
+          } else {
+            console.warn(`[Bot Notification] Dropping message to ${item.telegramId} after max retries`);
+          }
         } else {
           console.warn(`[Bot Notification] Failed to send message to ${item.telegramId}:`, err.message);
         }

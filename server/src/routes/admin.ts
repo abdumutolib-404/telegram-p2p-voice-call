@@ -29,9 +29,9 @@ router.post('/login', adminLoginLimiter, async (req, res) => {
   let telegramId = await verifyAndConsumeAdminToken(token);
 
   // In test environment or if explicitly enabled for dev
-  if (!telegramId && (env.NODE_ENV === 'test' || process.env.ALLOW_DEV_ADMIN_BYPASS === 'true')) {
-    if (token === 'dev_admin_token' || token === 'test_admin_token') {
-      telegramId = env.ADMIN_TELEGRAM_IDS[0] || 12345678;
+  if (!telegramId && env.NODE_ENV === 'test') {
+    if (token === 'test_admin_token') {
+      telegramId = env.ADMIN_TELEGRAM_IDS[0] || 0;
     }
   }
 
@@ -176,18 +176,81 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
 // GET /api/admin/users (Protected)
 router.get('/users', adminAuthMiddleware, async (req, res) => {
   try {
+    const query = (req.query.query as string || '').trim();
+    const statusFilter = req.query.status as string || '';
+
+    const where: any = {};
+    if (query) {
+      where.OR = [
+        { alias: { contains: query, mode: 'insensitive' } },
+        { telegramId: BigInt(query) || undefined },
+      ].filter(Boolean);
+      // Handle non-numeric query gracefully for telegramId
+      try {
+        const numId = BigInt(query);
+        where.OR = [
+          { alias: { contains: query, mode: 'insensitive' } },
+          { telegramId: numId },
+        ];
+      } catch {
+        where.OR = [
+          { alias: { contains: query, mode: 'insensitive' } },
+        ];
+      }
+    }
+
+    // Status-based filtering
+    if (statusFilter === 'banned') {
+      where.isPermanentlyBanned = true;
+    } else if (statusFilter === 'blocked') {
+      where.isBanned = true;
+      where.isPermanentlyBanned = false;
+    } else if (statusFilter === 'warned') {
+      where.warningCount = { gt: 0 };
+      where.isBanned = false;
+    } else if (statusFilter === 'active') {
+      where.isBanned = false;
+      where.isPermanentlyBanned = false;
+      where.warningCount = 0;
+    }
+
     const users = await prisma.user.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
 
-    res.json(
-      users.map((u) => ({
-        ...u,
+    const now = new Date();
+    const formatted = users.map((u) => {
+      let status: string = 'active';
+      if (u.isPermanentlyBanned) {
+        status = 'banned';
+      } else if (u.isBanned && u.bannedUntil && u.bannedUntil > now) {
+        status = 'blocked';
+      } else if (u.warningCount > 0 && !u.isBanned) {
+        status = 'warned';
+      }
+
+      return {
+        id: u.id,
         telegramId: u.telegramId.toString(),
-      }))
-    );
+        alias: u.alias,
+        planTier: u.plan.toLowerCase(),
+        status,
+        subscores: {
+          fc: u.subFC,
+          lr: u.subLR,
+          gra: u.subGRA,
+          p: u.subP,
+        },
+        warningCount: u.warningCount,
+        createdAt: u.createdAt.toISOString(),
+      };
+    });
+
+    res.json(formatted);
   } catch (err) {
+    console.error('[Admin] Failed to fetch users:', err);
     res.status(500).json({ error: 'Failed to fetch users.' });
   }
 });
@@ -210,6 +273,82 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
     res.json({ success: true, user: { ...user, telegramId: user.telegramId.toString() } });
   } catch (err) {
     res.status(500).json({ error: 'Failed to ban user.' });
+  }
+});
+
+// POST /api/admin/users/:id/moderate (Protected)
+router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { action, reason } = req.body;
+
+  if (!action || !['warn', 'block', 'ban', 'unblock'].includes(action)) {
+    return res.status(400).json({ error: 'Invalid moderation action. Must be warn, block, ban, or unblock.' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    let updateData: any = {};
+    switch (action) {
+      case 'warn':
+        updateData = { warningCount: { increment: 1 } };
+        break;
+      case 'block':
+        updateData = {
+          isBanned: true,
+          isPermanentlyBanned: false,
+          bannedUntil: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6 hours
+        };
+        break;
+      case 'ban':
+        updateData = {
+          isBanned: true,
+          isPermanentlyBanned: true,
+          bannedUntil: null,
+        };
+        break;
+      case 'unblock':
+        updateData = {
+          isBanned: false,
+          isPermanentlyBanned: false,
+          bannedUntil: null,
+          warningCount: 0,
+        };
+        break;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: updateData,
+    });
+
+    const now = new Date();
+    let status = 'active';
+    if (updated.isPermanentlyBanned) status = 'banned';
+    else if (updated.isBanned && updated.bannedUntil && updated.bannedUntil > now) status = 'blocked';
+    else if (updated.warningCount > 0 && !updated.isBanned) status = 'warned';
+
+    res.json({
+      id: updated.id,
+      telegramId: updated.telegramId.toString(),
+      alias: updated.alias,
+      planTier: updated.plan.toLowerCase(),
+      status,
+      subscores: {
+        fc: updated.subFC,
+        lr: updated.subLR,
+        gra: updated.subGRA,
+        p: updated.subP,
+      },
+      warningCount: updated.warningCount,
+      createdAt: updated.createdAt.toISOString(),
+    });
+  } catch (err) {
+    console.error('[Admin] Moderation action failed:', err);
+    res.status(500).json({ error: 'Failed to execute moderation action.' });
   }
 });
 

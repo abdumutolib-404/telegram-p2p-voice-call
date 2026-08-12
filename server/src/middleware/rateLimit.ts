@@ -7,6 +7,18 @@ interface RateLimitStore {
 export function createRateLimiter(maxRequests: number, windowMs: number) {
   const store: RateLimitStore = {};
 
+  // Periodic cleanup of expired entries to prevent memory leak
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const ip of Object.keys(store)) {
+      if (now > store[ip].resetTime) {
+        delete store[ip];
+      }
+    }
+  }, 60_000); // Clean every 60 seconds
+  // Prevent interval from keeping the process alive
+  if (cleanupInterval.unref) cleanupInterval.unref();
+
   return (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();

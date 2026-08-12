@@ -6,7 +6,7 @@ declare global {
   }
 }
 
-export type AppState = 'lockdown' | 'radar' | 'connecting' | 'in_call' | 'ended' | 'idle';
+export type AppState = 'lockdown' | 'ready' | 'radar' | 'connecting' | 'in_call' | 'ended' | 'idle';
 
 export interface UserMatchData {
   userId: string;

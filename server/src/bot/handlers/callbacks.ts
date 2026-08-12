@@ -82,7 +82,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     const inlineKb = new InlineKeyboard()
       .text('✅ Save & Lock Profile', 'confirm_subscores')
       .row()
-      .text('🔄 Start Over', 'restart_onboarding');
+      .text('🔄 Start Over', 're_evaluate_subscores');
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
@@ -107,27 +107,52 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     const overallBand = calculateOverallBand(fc, lr, gra, p);
 
     const alias = generateUniqueAlias();
-    const user = await prisma.user.upsert({
-      where: { telegramId },
-      create: {
-        telegramId,
-        alias,
-        subFC: fc,
-        subLR: lr,
-        subGRA: gra,
-        subP: p,
-        band: overallBand,
-        onboarded: true,
-      },
-      update: {
-        subFC: fc,
-        subLR: lr,
-        subGRA: gra,
-        subP: p,
-        band: overallBand,
-        onboarded: true,
-      },
-    });
+    let user;
+    try {
+      user = await prisma.user.upsert({
+        where: { telegramId },
+        create: {
+          telegramId,
+          alias,
+          subFC: fc,
+          subLR: lr,
+          subGRA: gra,
+          subP: p,
+          band: overallBand,
+          onboarded: true,
+        },
+        update: {
+          subFC: fc,
+          subLR: lr,
+          subGRA: gra,
+          subP: p,
+          band: overallBand,
+          onboarded: true,
+        },
+      });
+    } catch (dbErr: any) {
+      // Retry with a new alias if unique constraint violation
+      if (dbErr?.code === 'P2002') {
+        const retryAlias = generateUniqueAlias();
+        user = await prisma.user.upsert({
+          where: { telegramId },
+          create: {
+            telegramId,
+            alias: retryAlias,
+            subFC: fc, subLR: lr, subGRA: gra, subP: p,
+            band: overallBand,
+            onboarded: true,
+          },
+          update: {
+            subFC: fc, subLR: lr, subGRA: gra, subP: p,
+            band: overallBand,
+            onboarded: true,
+          },
+        });
+      } else {
+        throw dbErr;
+      }
+    }
 
     ctx.session.step = 'idle';
     await ctx.answerCallbackQuery({ text: 'Profile saved!' });

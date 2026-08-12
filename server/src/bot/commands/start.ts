@@ -22,8 +22,9 @@ export function calculateOverallBand(fc: number, lr: number, gra: number, p: num
 }
 
 export function generateUniqueAlias(): string {
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  return `P2P-Partner-${randomNum}`;
+  const crypto = require('crypto');
+  const hex = crypto.randomBytes(4).toString('hex');
+  return `P2P-${hex.toUpperCase()}`;
 }
 
 export function setupStartCommand(bot: Bot<MyContext>) {

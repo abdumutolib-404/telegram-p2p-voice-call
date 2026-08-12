@@ -81,7 +81,7 @@ const io = new SocketIOServer(server, {
       if (allowedOrigins.some(allowed => allowed && origin.startsWith(allowed))) {
         return callback(null, true);
       }
-      return callback(null, true); // Allow WebApp websocket connections
+      return callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'POST'],
     credentials: true,
@@ -118,5 +118,11 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`[Server] IELTS Speaking P2P Backend running on port ${env.PORT}`);
   });
 }
+
+// Global error handler
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[Express Error]', err.message);
+  res.status(500).json({ error: 'Internal server error.' });
+});
 
 export { app, server, io, bot };

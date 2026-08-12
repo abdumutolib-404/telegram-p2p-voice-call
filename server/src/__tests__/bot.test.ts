@@ -17,12 +17,12 @@ describe('Bot Utilities & Stealth Admin 2FA', () => {
     expect(calculateOverallBand(7.5, 8.0, 7.5, 8.0)).toBe(8.0);
   });
 
-  it('generates unique locked partner aliases matching P2P-Partner-XXXX pattern', () => {
+  it('generates unique locked partner aliases matching P2P-<HEX> pattern', () => {
     const alias1 = generateUniqueAlias();
     const alias2 = generateUniqueAlias();
 
-    expect(alias1).toMatch(/^P2P-Partner-\d{4}$/);
-    expect(alias2).toMatch(/^P2P-Partner-\d{4}$/);
+    expect(alias1).toMatch(/^P2P-[A-F0-9]{8}$/);
+    expect(alias2).toMatch(/^P2P-[A-F0-9]{8}$/);
   });
 
   it('generates and consumes single-use stealth 2FA admin tokens', async () => {

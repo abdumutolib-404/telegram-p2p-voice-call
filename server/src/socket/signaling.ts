@@ -138,7 +138,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>) {
           const partnerSocketId = getLatestSocketId(partner.id);
           const socketPartner = partnerSocketId ? io.sockets.sockets.get(partnerSocketId) : undefined;
           if (!socketPartner) {
+            // Partner disconnected; cancel their stale queue entry and re-emit join_queue
+            await matchmakingService.cancelQueue(partner.id);
             socket.emit('queue_joined', { status: 'searching' });
+            // Re-add user to queue (don't recurse — let client re-trigger if needed)
             await matchmakingService.joinQueue(user.id, user.band, {
               subFC: user.subFC,
               subLR: user.subLR,
@@ -165,15 +168,17 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>) {
             },
           });
 
-          // Update daily calls used
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { dailyCallsUsed: { increment: 1 } },
-          });
-          await prisma.user.update({
-            where: { id: partner.id },
-            data: { dailyCallsUsed: { increment: 1 } },
-          });
+          // Update daily calls used (atomic transaction)
+          await prisma.$transaction([
+            prisma.user.update({
+              where: { id: user.id },
+              data: { dailyCallsUsed: { increment: 1 } },
+            }),
+            prisma.user.update({
+              where: { id: partner.id },
+              data: { dailyCallsUsed: { increment: 1 } },
+            }),
+          ]);
 
           // Join sockets to room
           const userSocketId = getLatestSocketId(user.id);
@@ -340,12 +345,43 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>) {
       }
     });
 
-    socket.on('disconnect', () => {
-      if (socket.data.userId) {
-        matchmakingService.cancelQueue(socket.data.userId).catch((err) => {
-          console.warn('[Socket] Failed to cancel queue on disconnect:', err);
-        });
-        removeUserSocket(socket.data.userId, socket.id);
+    socket.on('disconnect', async () => {
+      const disconnectedUserId = socket.data.userId;
+      if (!disconnectedUserId) return;
+
+      // Cancel matchmaking queue
+      matchmakingService.cancelQueue(disconnectedUserId).catch((err) => {
+        console.warn('[Socket] Failed to cancel queue on disconnect:', err);
+      });
+
+      removeUserSocket(disconnectedUserId, socket.id);
+
+      // Check if user has any remaining sockets — if not, clean up orphaned egresses
+      const remainingSockets = userSockets.get(disconnectedUserId);
+      if (!remainingSockets || remainingSockets.size === 0) {
+        // Find active rooms this user was part of
+        for (const [roomName, egress] of activeEgresses.entries()) {
+          try {
+            const session = await prisma.callSession.findUnique({ where: { roomName } });
+            if (session && (session.userAId === disconnectedUserId || session.userBId === disconnectedUserId)) {
+              // Check if the other participant is also fully disconnected
+              const otherUserId = session.userAId === disconnectedUserId ? session.userBId : session.userAId;
+              const otherSockets = userSockets.get(otherUserId);
+              if (!otherSockets || otherSockets.size === 0) {
+                // Both users disconnected — stop orphaned egress
+                try {
+                  await stopAudioEgress(egress.egressId);
+                  console.log(`[Socket] Cleaned up orphaned egress for room ${roomName}`);
+                } catch (egressErr) {
+                  console.warn(`[Socket] Failed to stop orphaned egress for room ${roomName}:`, egressErr);
+                }
+                activeEgresses.delete(roomName);
+              }
+            }
+          } catch (err) {
+            console.warn(`[Socket] Error checking egress cleanup for room ${roomName}:`, err);
+          }
+        }
       }
     });
   });
