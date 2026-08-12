@@ -32,10 +32,21 @@ router.post('/verify', authLimiter, async (req, res) => {
       return;
     }
 
-    const dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
+    let dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
     if (!dbUser) {
-      res.status(404).json({ error: 'User not onboarded. Please start bot first.' });
-      return;
+      const randomAlias = `P2P-Partner-${Math.floor(1000 + Math.random() * 9000)}`;
+      dbUser = await prisma.user.create({
+        data: {
+          telegramId: tgUser.id,
+          alias: randomAlias,
+          band: 6.5,
+          subFC: 6.5,
+          subLR: 6.5,
+          subGRA: 6.5,
+          subP: 6.5,
+          plan: 'FREE',
+        },
+      });
     }
 
     res.json({

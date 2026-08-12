@@ -35,17 +35,32 @@ export const App: React.FC = () => {
   // Telegram WebApp Initialization & Auth Verification
   useEffect(() => {
     const initAuth = async () => {
-      const tg = window.Telegram?.WebApp;
-      let rawInitData = tg?.initData || '';
+      const getRawInitData = (): string => {
+        const tg = window.Telegram?.WebApp;
+        if (tg?.initData && tg.initData.trim() !== '') {
+          return tg.initData;
+        }
 
-      if (!rawInitData || rawInitData.trim() === '') {
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const searchParams = new URLSearchParams(window.location.search);
-        rawInitData =
+
+        return (
           hashParams.get('tgWebAppData') ||
           searchParams.get('tgWebAppData') ||
           searchParams.get('initData') ||
-          '';
+          ''
+        );
+      };
+
+      let rawInitData = getRawInitData();
+
+      // Poll up to 1000ms (10 x 100ms) to allow Telegram WebApp SDK script to finish initializing
+      if (!rawInitData) {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          rawInitData = getRawInitData();
+          if (rawInitData) break;
+        }
       }
 
       if (!rawInitData || rawInitData.trim() === '') {
@@ -55,6 +70,7 @@ export const App: React.FC = () => {
 
       setInitData(rawInitData);
 
+      const tg = window.Telegram?.WebApp;
       if (tg) {
         tg.ready();
         tg.expand();
