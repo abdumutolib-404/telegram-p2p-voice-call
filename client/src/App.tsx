@@ -19,6 +19,11 @@ export const App: React.FC = () => {
   });
   const [matchData, setMatchData] = useState<MatchFoundPayload | null>(null);
 
+  const appStateRef = React.useRef<AppState>(appState);
+  useEffect(() => {
+    appStateRef.current = appState;
+  }, [appState]);
+
   const {
     connect: connectLiveKit,
     disconnect: disconnectLiveKit,
@@ -69,8 +74,8 @@ export const App: React.FC = () => {
           setUserData({
             userId: data.user.id, // Verified DB UUID
             band: data.user.band || 6.5,
-            weakSkill: 'P',
-            strongSkill: 'FC',
+            weakSkill: data.user.weakSkill || 'P',
+            strongSkill: data.user.strongSkill || 'FC',
           });
           setAppState('radar');
         } else {
@@ -89,6 +94,11 @@ export const App: React.FC = () => {
 
   const handleMatchFound = useCallback(
     async (data: MatchFoundPayload) => {
+      if (appStateRef.current === 'ended' || appStateRef.current === 'idle') {
+        console.warn(`Ignoring late match_found event because app state is ${appStateRef.current}`);
+        return;
+      }
+
       setMatchData(data);
       setAppState('connecting');
 
@@ -97,6 +107,13 @@ export const App: React.FC = () => {
 
       try {
         await connectLiveKit(livekitUrl, data.livekitToken);
+
+        const currentState = appStateRef.current as AppState;
+        if (currentState === 'ended' || currentState === 'idle') {
+          disconnectLiveKit();
+          return;
+        }
+
         setAppState('in_call');
       } catch (err) {
         console.error('Failed to connect to LiveKit SFU room:', err);
@@ -104,7 +121,7 @@ export const App: React.FC = () => {
         setAppState('ended');
       }
     },
-    [connectLiveKit]
+    [connectLiveKit, disconnectLiveKit]
   );
 
   const handleCallEnded = useCallback(() => {
@@ -133,6 +150,9 @@ export const App: React.FC = () => {
   }, [initData, appState, userData, handleMatchFound, handleCallEnded]);
 
   const handleCancelMatchmaking = () => {
+    if (userData.userId) {
+      socketService.cancelQueue(userData.userId);
+    }
     setAppState('ended');
   };
 

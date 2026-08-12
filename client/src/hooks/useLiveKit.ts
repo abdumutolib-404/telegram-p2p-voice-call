@@ -34,6 +34,10 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const [isMicMuted, setIsMicMutedState] = useState<boolean>(false);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
+  const roomRef = useRef<Room | null>(null);
+  const isConnectingRef = useRef<boolean>(false);
+  const cancelConnectRef = useRef<boolean>(false);
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -54,6 +58,33 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         audioElementRef.current = null;
       }
     };
+  }, []);
+
+  // Teardown Web Audio API nodes, AudioContext, and audio elements
+  const cleanupAudio = useCallback(() => {
+    if (mediaStreamSourceRef.current) {
+      try {
+        mediaStreamSourceRef.current.disconnect();
+      } catch (err) {
+        console.warn('Error disconnecting media stream source:', err);
+      }
+      mediaStreamSourceRef.current = null;
+    }
+
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      try {
+        audioContextRef.current.close().catch(() => {});
+      } catch (err) {
+        console.warn('Error closing audio context:', err);
+      }
+      audioContextRef.current = null;
+    }
+
+    if (audioElementRef.current) {
+      audioElementRef.current.srcObject = null;
+    }
+
+    setAnalyserNode(null);
   }, []);
 
   // Web Audio API setup for remote audio track
@@ -96,30 +127,25 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   }, []);
 
   const disconnect = useCallback(() => {
-    if (room) {
-      room.disconnect();
+    cancelConnectRef.current = true;
+    isConnectingRef.current = false;
+
+    if (roomRef.current) {
+      try {
+        roomRef.current.disconnect();
+      } catch (err) {
+        console.warn('Error disconnecting LiveKit room:', err);
+      }
+      roomRef.current = null;
       setRoom(null);
     }
 
-    if (mediaStreamSourceRef.current) {
-      mediaStreamSourceRef.current.disconnect();
-      mediaStreamSourceRef.current = null;
-    }
+    cleanupAudio();
 
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
-
-    if (audioElementRef.current) {
-      audioElementRef.current.srcObject = null;
-    }
-
-    setAnalyserNode(null);
     setIsConnected(false);
     setIsConnecting(false);
     setIsMicMutedState(false);
-  }, [room]);
+  }, [cleanupAudio]);
 
   const connect = useCallback(
     async (url: string, token: string) => {
@@ -128,11 +154,15 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         return;
       }
 
+      cancelConnectRef.current = false;
+      isConnectingRef.current = true;
       setIsConnecting(true);
       setError(null);
 
+      let livekitRoom: Room | null = null;
+
       try {
-        const livekitRoom = new Room({
+        livekitRoom = new Room({
           adaptiveStream: true,
           dynacast: true,
           audioCaptureDefaults: {
@@ -180,54 +210,92 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
 
         // Room disconnect event
         livekitRoom.on(RoomEvent.Disconnected, () => {
+          roomRef.current = null;
+          setRoom(null);
+          cleanupAudio();
           setIsConnected(false);
           setIsConnecting(false);
-          setAnalyserNode(null);
+          isConnectingRef.current = false;
         });
 
         await livekitRoom.connect(url, token);
+
+        // Check if disconnect() was called while connect() was in-flight
+        if (cancelConnectRef.current) {
+          try {
+            livekitRoom.disconnect();
+          } catch {
+            // Ignore error on cleanup
+          }
+          setIsConnecting(false);
+          isConnectingRef.current = false;
+          return;
+        }
 
         // Enable microphone by default upon joining voice room
         await livekitRoom.localParticipant.setMicrophoneEnabled(true);
         setIsMicMutedState(false);
 
+        // Check again if disconnect() was called while setMicrophoneEnabled was in-flight
+        if (cancelConnectRef.current) {
+          try {
+            livekitRoom.disconnect();
+          } catch {
+            // Ignore error on cleanup
+          }
+          setIsConnecting(false);
+          isConnectingRef.current = false;
+          return;
+        }
+
+        roomRef.current = livekitRoom;
         setRoom(livekitRoom);
         setIsConnected(true);
         setIsConnecting(false);
+        isConnectingRef.current = false;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to connect to LiveKit room.';
-        setError(msg);
+        if (livekitRoom && cancelConnectRef.current) {
+          try {
+            livekitRoom.disconnect();
+          } catch {
+            // Ignore error on cleanup
+          }
+        }
+        if (!cancelConnectRef.current) {
+          const msg = err instanceof Error ? err.message : 'Failed to connect to LiveKit room.';
+          setError(msg);
+        }
         setIsConnecting(false);
         setIsConnected(false);
+        isConnectingRef.current = false;
       }
     },
-    [setupAudioAnalyzer]
+    [setupAudioAnalyzer, cleanupAudio]
   );
 
   const toggleMic = useCallback(async () => {
-    if (!room) return;
+    const activeRoom = roomRef.current;
+    if (!activeRoom) return;
     try {
-      const currentEnabled = room.localParticipant.isMicrophoneEnabled;
+      const currentEnabled = activeRoom.localParticipant.isMicrophoneEnabled;
       const targetState = !currentEnabled;
-      await room.localParticipant.setMicrophoneEnabled(targetState);
+      await activeRoom.localParticipant.setMicrophoneEnabled(targetState);
       setIsMicMutedState(!targetState);
     } catch (err) {
       console.error('Failed to toggle microphone state:', err);
     }
-  }, [room]);
+  }, []);
 
-  const setMicMuted = useCallback(
-    async (muted: boolean) => {
-      if (!room) return;
-      try {
-        await room.localParticipant.setMicrophoneEnabled(!muted);
-        setIsMicMutedState(muted);
-      } catch (err) {
-        console.error('Failed to set microphone state:', err);
-      }
-    },
-    [room]
-  );
+  const setMicMuted = useCallback(async (muted: boolean) => {
+    const activeRoom = roomRef.current;
+    if (!activeRoom) return;
+    try {
+      await activeRoom.localParticipant.setMicrophoneEnabled(!muted);
+      setIsMicMutedState(muted);
+    } catch (err) {
+      console.error('Failed to set microphone state:', err);
+    }
+  }, []);
 
   const autoConnect = options.autoConnect;
   const serverUrl = options.serverUrl;

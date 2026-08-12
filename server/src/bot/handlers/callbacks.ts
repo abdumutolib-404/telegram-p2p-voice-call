@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
+import { env } from '../../config/env';
 import { calculateOverallBand, generateUniqueAlias, getMainMenuKeyboard } from '../commands/start';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Mic, MicOff, PhoneOff, Circle, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { socketService } from '../services/socket';
 import { AudioVisualizer } from './AudioVisualizer';
@@ -36,12 +36,17 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     onFinishCall();
   }, [roomName, userId, onFinishCall]);
 
+  const handleFinishCallRef = useRef(handleFinishCall);
+  useEffect(() => {
+    handleFinishCallRef.current = handleFinishCall;
+  }, [handleFinishCall]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => {
         if (prev + 1 >= callDurationLimit) {
           clearInterval(timer);
-          handleFinishCall();
+          handleFinishCallRef.current();
           return callDurationLimit;
         }
         return prev + 1;
@@ -49,7 +54,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [callDurationLimit, handleFinishCall]);
+  }, [callDurationLimit]);
 
   useEffect(() => {
     const socket = socketService.getSocket();
@@ -112,7 +117,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 p-1 shadow-xl shadow-indigo-500/20">
           <div className="w-full h-full bg-slate-900 rounded-full flex items-center justify-center border border-indigo-400/30">
             <span className="text-3xl font-bold text-indigo-300">
-              {partnerAlias.charAt(0).toUpperCase()}
+              {(partnerAlias || 'Partner').charAt(0).toUpperCase()}
             </span>
           </div>
         </div>

@@ -40,7 +40,7 @@ export async function startAudioEgress(roomName: string): Promise<{ egressId: st
   if (egressClient && env.NODE_ENV === 'production') {
     try {
       const output = new EncodedFileOutput({
-        fileType: EncodedFileType.MP4,
+        fileType: EncodedFileType.MP3,
         filepath,
       });
       const info = await egressClient.startRoomCompositeEgress(roomName, { file: output });

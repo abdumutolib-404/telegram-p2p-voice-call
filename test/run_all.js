@@ -119,9 +119,10 @@ function runAll() {
     }
 
     console.log(`----------------------------------------------------------------------`);
-    console.log(`  Tier Subtotal: ${tierPassed} passed, ${tierFailed} failed\n`);
+    const tierTestCount = fileResults.reduce((sum, r) => sum + r.testCount, 0);
+    console.log(`  Tier Subtotal: ${tierPassed} passed, ${tierFailed} failed (${tierTestCount} test cases)\n`);
 
-    tierResults.push({ tier, fileResults, passedCount: tierPassed, failedCount: tierFailed });
+    tierResults.push({ tier, fileResults, passedCount: tierPassed, failedCount: tierFailed, testCount: tierTestCount });
   }
 
   const totalDuration = Date.now() - startTime;
@@ -132,13 +133,15 @@ function runAll() {
   for (const tr of tierResults) {
     const statusLabel = tr.fileResults.length === 0 
       ? 'NO TESTS ' 
-      : `${tr.passedCount}/${tr.fileResults.length} Passed`;
+      : `${tr.passedCount}/${tr.fileResults.length} Files Passed (${tr.testCount} test cases)`;
     console.log(`  ${tr.tier.name.padEnd(45)}: ${statusLabel}`);
   }
   console.log(`----------------------------------------------------------------------`);
   console.log(`  Total Test Files Run : ${totalFilesRun}`);
   console.log(`  Passed Test Files    : ${totalPassedFiles}`);
   console.log(`  Failed Test Files    : ${totalFailedFiles}`);
+  console.log(`  Total Test Cases     : ${totalAssertions}`);
+  console.log(`  Pass Rate            : ${totalFilesRun > 0 ? ((totalPassedFiles / totalFilesRun) * 100).toFixed(1) : 0}%`);
   console.log(`  Total Duration       : ${totalDuration}ms`);
   console.log(`======================================================================\n`);
 

@@ -19,22 +19,36 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
+  const dimensionsRef = useRef<{ width: number; height: number }>({ width: 300, height });
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const updateDimensions = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width || 300;
+      const h = height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      dimensionsRef.current = { width: w, height: h };
+    };
 
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = (rect.width || 300) * dpr;
-    canvas.height = height * dpr;
-    ctx.scale(dpr, dpr);
+    updateDimensions();
 
-    const displayWidth = rect.width || 300;
-    const displayHeight = height;
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        updateDimensions();
+      });
+      if (canvas.parentElement) {
+        resizeObserver.observe(canvas.parentElement);
+      }
+      resizeObserver.observe(canvas);
+    } else {
+      window.addEventListener('resize', updateDimensions);
+    }
 
     const dataArray = analyserNode
       ? new Uint8Array(analyserNode.frequencyBinCount)
@@ -43,60 +57,67 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     let phase = 0;
 
     const renderFrame = () => {
-      ctx.clearRect(0, 0, displayWidth, displayHeight);
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const dpr = window.devicePixelRatio || 1;
+        const { width: displayWidth, height: displayHeight } = dimensionsRef.current;
 
-      if (analyserNode && dataArray && !isMuted) {
-        analyserNode.getByteFrequencyData(dataArray);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, displayWidth, displayHeight);
 
-        const totalBins = dataArray.length;
-        const step = Math.max(1, Math.floor(totalBins / barCount));
-        const gap = 3;
-        const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
+        if (analyserNode && dataArray && !isMuted) {
+          analyserNode.getByteFrequencyData(dataArray);
 
-        for (let i = 0; i < barCount; i++) {
-          const binIndex = Math.min(i * step, totalBins - 1);
-          const value = dataArray[binIndex] || 0;
-          const percent = value / 255;
-          const minHeight = 4;
-          const barHeight = Math.max(minHeight, percent * (displayHeight - 12));
+          const totalBins = dataArray.length;
+          const step = Math.max(1, Math.floor(totalBins / barCount));
+          const gap = 3;
+          const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
 
-          const x = i * (barWidth + gap);
-          const y = (displayHeight - barHeight) / 2;
+          for (let i = 0; i < barCount; i++) {
+            const binIndex = Math.min(i * step, totalBins - 1);
+            const value = dataArray[binIndex] || 0;
+            const percent = value / 255;
+            const minHeight = 4;
+            const barHeight = Math.max(minHeight, percent * (displayHeight - 12));
 
-          ctx.fillStyle = barColor;
-          ctx.beginPath();
-          if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(x, y, barWidth, barHeight, barWidth / 2);
-          } else {
-            ctx.rect(x, y, barWidth, barHeight);
+            const x = i * (barWidth + gap);
+            const y = (displayHeight - barHeight) / 2;
+
+            ctx.fillStyle = barColor;
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+              ctx.roundRect(x, y, barWidth, barHeight, barWidth / 2);
+            } else {
+              ctx.rect(x, y, barWidth, barHeight);
+            }
+            ctx.fill();
           }
-          ctx.fill();
-        }
-      } else {
-        phase += 0.05;
-        const gap = 3;
-        const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
+        } else {
+          phase += 0.05;
+          const gap = 3;
+          const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
 
-        for (let i = 0; i < barCount; i++) {
-          const sineVal = Math.sin(phase + i * 0.3);
-          const normalized = (sineVal + 1) / 2;
-          const barHeight = 4 + normalized * 16;
+          for (let i = 0; i < barCount; i++) {
+            const sineVal = Math.sin(phase + i * 0.3);
+            const normalized = (sineVal + 1) / 2;
+            const barHeight = 4 + normalized * 16;
 
-          const x = i * (barWidth + gap);
-          const y = (displayHeight - barHeight) / 2;
+            const x = i * (barWidth + gap);
+            const y = (displayHeight - barHeight) / 2;
 
-          ctx.fillStyle = isMuted ? '#64748b' : '#818cf8';
-          ctx.globalAlpha = isMuted ? 0.3 : 0.5;
+            ctx.fillStyle = isMuted ? '#64748b' : '#818cf8';
+            ctx.globalAlpha = isMuted ? 0.3 : 0.5;
 
-          ctx.beginPath();
-          if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(x, y, barWidth, barHeight, barWidth / 2);
-          } else {
-            ctx.rect(x, y, barWidth, barHeight);
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+              ctx.roundRect(x, y, barWidth, barHeight, barWidth / 2);
+            } else {
+              ctx.rect(x, y, barWidth, barHeight);
+            }
+            ctx.fill();
           }
-          ctx.fill();
+          ctx.globalAlpha = 1.0;
         }
-        ctx.globalAlpha = 1.0;
       }
 
       animFrameIdRef.current = requestAnimationFrame(renderFrame);
@@ -108,6 +129,11 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       if (animFrameIdRef.current !== null) {
         cancelAnimationFrame(animFrameIdRef.current);
         animFrameIdRef.current = null;
+      }
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      } else {
+        window.removeEventListener('resize', updateDimensions);
       }
     };
   }, [analyserNode, isMuted, barCount, height, barColor]);

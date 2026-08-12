@@ -5,7 +5,7 @@
 
 const assert = require('assert');
 const { generateInitData, generateInvalidInitData, verifyInitData, parseInitData } = require('./webappAuth');
-const { createMockSocketHub, waitForEvent } = require('./socketClient');
+const { MockSocketHub, waitForEvent } = require('./socketClient');
 const { db, MemoryDatabase, resolveMixedPlanDuration, resolveHigherPlanTier } = require('./dbHelper');
 const { botMock, TelegramBotMock } = require('./botMock');
 
@@ -37,7 +37,7 @@ async function testWebappAuth() {
 
 async function testSocketClient() {
   console.log('Testing socketClient...');
-  const hub = new createMockSocketHub();
+  const hub = new MockSocketHub();
   const socketA = hub.createClient('user_1');
   const socketB = hub.createClient('user_2');
 
