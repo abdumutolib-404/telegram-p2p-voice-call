@@ -40,9 +40,11 @@ const configuredOrigins = [
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true; // Same-origin, mobile apps, or server-to-server calls
   if (configuredOrigins.includes(origin)) return true;
-  // Allow all Netlify, Railway, Vercel, and local dev origins
-  if (/^https?:\/\/(localhost|127\.0\.0\.1|.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
-    return true;
+  if (env.NODE_ENV !== 'production') {
+    // Local development and staging preview origins
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
+      return true;
+    }
   }
   return false;
 };

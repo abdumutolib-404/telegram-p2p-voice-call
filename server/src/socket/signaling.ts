@@ -264,9 +264,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             userSocket.join(roomName);
             partnerSocket.join(roomName);
 
-            // Server-side call duration enforcement timer (limit seconds + 15s grace period)
+            // Server-side call duration enforcement timer at exact entitlement boundary
             clearSessionTimer(roomName);
-            const gracePeriodSeconds = 15;
             const timer = setTimeout(() => {
               void (async () => {
                 try {
@@ -315,7 +314,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   console.error('[Socket] duration_timeout_enforcement_failed', { roomName, error: err });
                 }
               })();
-            }, (callDurationLimitSeconds + gracePeriodSeconds) * 1000);
+            }, callDurationLimitSeconds * 1000);
 
             serverSessionTimers.set(roomName, timer);
 
@@ -629,4 +628,76 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       });
     });
   });
+
+  // Startup Reconciliation for Active Calls (Restores timers across server restarts)
+  void (async () => {
+    try {
+      const activeSessions = await prisma.callSession.findMany({
+        where: { status: 'ACTIVE' },
+        include: { userA: true, userB: true },
+      });
+
+      const now = Date.now();
+      for (const session of activeSessions) {
+        const limitMinutes = calculateMixedPlanDuration(session.userA.plan, session.userB.plan);
+        const limitSeconds = limitMinutes * 60;
+        const elapsedSeconds = Math.floor((now - session.createdAt.getTime()) / 1000);
+        const remainingSeconds = limitSeconds - elapsedSeconds;
+
+        if (remainingSeconds <= 0) {
+          const endedAt = new Date(session.createdAt.getTime() + limitSeconds * 1000);
+          await prisma.callSession.updateMany({
+            where: { id: session.id, status: 'ACTIVE' },
+            data: { status: 'COMPLETED', endedAt, duration: limitSeconds },
+          });
+          if (session.egressId) {
+            await stopAudioEgress(session.egressId).catch(() => undefined);
+          }
+          io.to(session.roomName).emit('call_finished', { duration: limitSeconds, reason: 'duration_limit_exceeded' });
+        } else {
+          clearSessionTimer(session.roomName);
+          const timer = setTimeout(() => {
+            void (async () => {
+              try {
+                await runSerialized(roomOperationTails, session.roomName, async () => {
+                  const currentSession = await prisma.callSession.findUnique({
+                    where: { id: session.id },
+                    include: { userA: true, userB: true },
+                  });
+                  if (!currentSession || currentSession.status !== 'ACTIVE') return;
+
+                  const endedAt = new Date();
+                  const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - currentSession.createdAt.getTime()) / 1000));
+                  await prisma.callSession.updateMany({
+                    where: { id: currentSession.id, status: 'ACTIVE' },
+                    data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
+                  });
+
+                  if (currentSession.egressId) {
+                    await stopAudioEgress(currentSession.egressId).catch(() => undefined);
+                  }
+
+                  io.to(currentSession.roomName).emit('call_finished', { duration: durationSeconds, reason: 'duration_limit_exceeded' });
+
+                  if (bot) {
+                    await Promise.allSettled([
+                      sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, currentSession.recordingUrl || undefined),
+                      sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, currentSession.recordingUrl || undefined),
+                    ]);
+                  }
+                });
+              } catch (err) {
+                console.error('[Socket] reconciled_timer_failed', { roomName: session.roomName, error: err });
+              }
+            })();
+          }, remainingSeconds * 1000);
+
+          serverSessionTimers.set(session.roomName, timer);
+        }
+      }
+      console.log(`[Signaling] Reconciled ${activeSessions.length} active call sessions on startup.`);
+    } catch (err) {
+      console.error('[Signaling] startup_reconciliation_failed', { error: err });
+    }
+  })();
 }
