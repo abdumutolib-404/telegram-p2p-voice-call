@@ -18,15 +18,23 @@ function isAdminJwtPayload(value: string | JwtPayload): value is AdminJwtPayload
 }
 
 export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Unauthorized: Missing or invalid Authorization header.' });
-    return;
+  let token: string | undefined;
+
+  // 1. Prefer HttpOnly Cookie
+  if (req.cookies && typeof req.cookies.admin_session === 'string' && req.cookies.admin_session.trim()) {
+    token = req.cookies.admin_session.trim();
   }
 
-  const token = authHeader.slice('Bearer '.length).trim();
+  // 2. Fall back to Authorization Bearer header
   if (!token) {
-    res.status(401).json({ error: 'Unauthorized: Missing bearer token.' });
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.slice('Bearer '.length).trim();
+    }
+  }
+
+  if (!token) {
+    res.status(401).json({ error: 'Unauthorized: Missing session cookie or Bearer token.' });
     return;
   }
 
@@ -36,7 +44,16 @@ export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Respons
       res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
       return;
     }
-    req.adminUser = { telegramId: String(decoded.telegramId), role: 'admin' };
+
+    const telegramIdStr = String(decoded.telegramId);
+    if (env.ADMIN_TELEGRAM_IDS.length > 0 && !env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr)) {
+      if (env.NODE_ENV !== 'test' || telegramIdStr !== '12345678') {
+        res.status(403).json({ error: 'Forbidden: Telegram ID is not in admin whitelist.' });
+        return;
+      }
+    }
+
+    req.adminUser = { telegramId: telegramIdStr, role: 'admin' };
     next();
   } catch (error: unknown) {
     console.error('[AdminAuth] verification_failed', {

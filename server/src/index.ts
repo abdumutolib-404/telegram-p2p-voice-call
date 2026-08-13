@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
@@ -55,10 +56,11 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data', 'Cookie'],
 }));
 
 app.options('*', cors());
+app.use(cookieParser());
 app.use(express.json({ limit: '256kb' }));
 
 app.use('/api/auth', authRoutes);

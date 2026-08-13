@@ -37,13 +37,13 @@ router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: Auth
       return;
     }
 
-    const requesterId = BigInt(tgUser.id);
-    if (session.userA.telegramId !== requesterId && session.userB.telegramId !== requesterId) {
+    const requesterIdStr = tgUser.id.toString();
+    if (session.userA.telegramId.toString() !== requesterIdStr && session.userB.telegramId.toString() !== requesterIdStr) {
       res.status(403).json({ error: 'Forbidden.' });
       return;
     }
 
-    const requesterUser = session.userA.telegramId === requesterId ? session.userA : session.userB;
+    const requesterUser = session.userA.telegramId.toString() === requesterIdStr ? session.userA : session.userB;
     const allowedRetentionDays = getRetentionDaysForPlan(requesterUser.plan);
     const sessionAgeMs = Date.now() - session.createdAt.getTime();
     if (sessionAgeMs > allowedRetentionDays * 24 * 60 * 60 * 1000) {

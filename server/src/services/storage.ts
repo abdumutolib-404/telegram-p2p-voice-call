@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
 import { prisma } from '../config/database';
+import { env } from '../config/env';
 
 export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; freedSpaceBytes: number }> {
   const now = new Date();
@@ -23,9 +24,10 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
       let fileDeleted = false;
 
       try {
+        const normalized = session.recordingUrl.replace(/^recordings[\\/]/, '');
         const filePath = path.isAbsolute(session.recordingUrl)
           ? session.recordingUrl
-          : path.join(process.cwd(), session.recordingUrl);
+          : path.resolve(env.RECORDINGS_DIR, normalized);
 
         if (fs.existsSync(filePath)) {
           const stats = fs.statSync(filePath);

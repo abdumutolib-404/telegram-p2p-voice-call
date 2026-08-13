@@ -41,6 +41,7 @@ export async function adminFetch<T>(
 
   const config: RequestInit = {
     ...options,
+    credentials: 'include',
     headers,
   };
 

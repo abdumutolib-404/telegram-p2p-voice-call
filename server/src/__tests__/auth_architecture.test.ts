@@ -231,16 +231,16 @@ describe('Final Authentication Architecture Test Suite', () => {
   });
 
   // =========================================================================
-  // SECTION 3: Admin Authorization & JWT Verification
+  // SECTION 3: Admin Authorization & Cookie / JWT Verification
   // =========================================================================
-  describe('3. Admin Endpoint Authorization & JWT Verification', () => {
-    it('3.1 Rejects access to admin endpoints without JWT (401 Unauthorized)', async () => {
+  describe('3. Admin Endpoint Authorization & Cookie Verification', () => {
+    it('3.1 Rejects access to admin endpoints without session cookie or JWT (401 Unauthorized)', async () => {
       const res = await request(app).get('/api/admin/stats');
       expect(res.status).toBe(401);
-      expect(res.body.error).toContain('Missing or invalid Authorization header.');
+      expect(res.body.error).toContain('Missing session cookie or Bearer token.');
     });
 
-    it('3.2 Rejects access with expired admin JWT (401 Unauthorized)', async () => {
+    it('3.2 Rejects access with expired admin session (401 Unauthorized)', async () => {
       const expiredJwt = jwt.sign(
         { role: 'admin', telegramId: '12345678' },
         env.JWT_SECRET,
@@ -249,13 +249,13 @@ describe('Final Authentication Architecture Test Suite', () => {
 
       const res = await request(app)
         .get('/api/admin/stats')
-        .set('Authorization', `Bearer ${expiredJwt}`);
+        .set('Cookie', [`admin_session=${expiredJwt}`]);
 
       expect(res.status).toBe(401);
       expect(res.body.error).toContain('Token expired or invalid.');
     });
 
-    it('3.3 Grants access to admin endpoints with valid admin JWT', async () => {
+    it('3.3 Grants access to admin endpoints with valid HttpOnly admin_session cookie', async () => {
       const step1Res = await request(app)
         .post('/api/admin/auth/password')
         .set('x-test-otp', 'true')
@@ -268,14 +268,26 @@ describe('Final Authentication Architecture Test Suite', () => {
         .post('/api/admin/auth/otp')
         .send({ challengeId, otp: testOtp });
 
-      const jwtToken = otpRes.body.jwtToken;
+      expect(otpRes.status).toBe(200);
+      const cookies = otpRes.headers['set-cookie'] as string[] | undefined;
+      expect(cookies).toBeDefined();
+      expect(cookies?.[0]).toContain('admin_session=');
+      expect(cookies?.[0]).toContain('HttpOnly');
 
       const res = await request(app)
         .get('/api/admin/stats')
-        .set('Authorization', `Bearer ${jwtToken}`);
+        .set('Cookie', cookies!);
 
       expect(res.status).toBe(200);
       expect(res.body.totalUsers).toBeDefined();
+    });
+
+    it('3.4 Clears session cookie on logout', async () => {
+      const logoutRes = await request(app).post('/api/admin/auth/logout');
+      expect(logoutRes.status).toBe(200);
+      const cookies = logoutRes.headers['set-cookie'] as string[] | undefined;
+      expect(cookies).toBeDefined();
+      expect(cookies?.[0]).toContain('admin_session=;');
     });
   });
 });

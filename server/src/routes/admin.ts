@@ -10,6 +10,7 @@ import { getAdminAnalytics } from '../services/analytics';
 import { getPlansConfig, updatePlansConfig } from '../services/plan';
 import { prisma } from '../config/database';
 import { createRateLimiter } from '../middleware/rateLimit';
+import { getRedis } from '../config/redis';
 import type { MyContext } from '../bot/types';
 
 const router = Router();
@@ -25,7 +26,7 @@ interface AdminOtpChallenge {
   consumed: boolean;
 }
 
-const adminOtpChallenges = new Map<string, AdminOtpChallenge>();
+const adminOtpChallengesFallback = new Map<string, AdminOtpChallenge>();
 
 let adminBotInstance: Bot<MyContext> | null = null;
 
@@ -34,11 +35,11 @@ export function setAdminBot(bot: Bot<MyContext> | null): void {
 }
 
 export function getAdminChallenge(challengeId: string): AdminOtpChallenge | undefined {
-  return adminOtpChallenges.get(challengeId);
+  return adminOtpChallengesFallback.get(challengeId);
 }
 
 export function clearAdminChallenges(): void {
-  adminOtpChallenges.clear();
+  adminOtpChallengesFallback.clear();
 }
 
 function cryptoSafeEqualString(left: string, right: string): boolean {
@@ -46,6 +47,62 @@ function cryptoSafeEqualString(left: string, right: string): boolean {
   const rightHash = crypto.createHash('sha256').update(right).digest();
   return crypto.timingSafeEqual(leftHash, rightHash);
 }
+
+async function saveOtpChallengeToRedis(challengeId: string, challenge: AdminOtpChallenge): Promise<void> {
+  adminOtpChallengesFallback.set(challengeId, challenge);
+  try {
+    const redis = getRedis();
+    const ttlSeconds = Math.max(1, Math.ceil((challenge.expiresAt - Date.now()) / 1000));
+    await redis.set(`otp:challenge:${challengeId}`, JSON.stringify(challenge), 'EX', ttlSeconds);
+  } catch (err: unknown) {
+    if (env.NODE_ENV === 'production') throw err;
+  }
+}
+
+async function getOtpChallengeFromRedis(challengeId: string): Promise<AdminOtpChallenge | undefined> {
+  const fallback = adminOtpChallengesFallback.get(challengeId);
+  try {
+    const redis = getRedis();
+    const raw = await redis.get(`otp:challenge:${challengeId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw) as AdminOtpChallenge;
+      if (fallback && fallback.expiresAt !== parsed.expiresAt) {
+        parsed.expiresAt = fallback.expiresAt;
+      }
+      return parsed;
+    }
+  } catch (err: unknown) {
+    if (env.NODE_ENV === 'production') return undefined;
+  }
+  return fallback;
+}
+
+async function deleteOtpChallengeFromRedis(challengeId: string): Promise<void> {
+  adminOtpChallengesFallback.delete(challengeId);
+  try {
+    const redis = getRedis();
+    await redis.del(`otp:challenge:${challengeId}`);
+  } catch {
+    // Ignore cleanup error
+  }
+}
+
+function setAdminSessionCookie(res: any, token: string, expiresAt: Date): void {
+  const isProduction = env.NODE_ENV === 'production';
+  res.cookie('admin_session', token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    expires: expiresAt,
+    path: '/',
+  });
+}
+
+// POST /api/admin/auth/logout
+router.post('/auth/logout', (_req, res) => {
+  res.clearCookie('admin_session', { path: '/' });
+  res.json({ success: true, message: 'Logged out successfully.' });
+});
 
 // STEP 1: POST /api/admin/auth/password (Validate master password & dispatch OTP via Telegram bot)
 router.post('/auth/password', adminAuthLimiter, async (req, res) => {
@@ -66,32 +123,49 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
       return;
     }
 
+    if (env.ADMIN_TELEGRAM_IDS.length === 0) {
+      res.status(500).json({ error: 'Server configuration error: ADMIN_TELEGRAM_IDS is not configured.' });
+      return;
+    }
+
     // Generate cryptographically random 6-digit OTP
     const otpNum = crypto.randomInt(100000, 1000000);
     const otp = otpNum.toString();
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     const challengeId = crypto.randomUUID();
 
-    adminOtpChallenges.set(challengeId, {
+    const challenge: AdminOtpChallenge = {
       challengeId,
       otpHash,
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      expiresAt: Date.now() + 5 * 60 * 1000, // EXACTLY 5 MINUTES TTL
       attempts: 0,
       maxAttempts: 5,
       consumed: false,
-    });
+    };
 
-    // Send OTP via Telegram bot to all whitelisted ADMIN_TELEGRAM_IDS
+    await saveOtpChallengeToRedis(challengeId, challenge);
+
+    // Dispatch OTP via Telegram bot
+    let sentCount = 0;
     if (adminBotInstance && env.ADMIN_TELEGRAM_IDS.length > 0) {
       for (const adminIdStr of env.ADMIN_TELEGRAM_IDS) {
-        await adminBotInstance.api.sendMessage(
-          adminIdStr,
-          `🔐 *Admin Login Verification*\n\nYour 6-digit OTP code is:\n\`${otp}\`\n\nExpires in 5 minutes. Do not share this code.`,
-          { parse_mode: 'Markdown' }
-        ).catch((err: unknown) => {
+        try {
+          await adminBotInstance.api.sendMessage(
+            adminIdStr,
+            `🔐 *Admin Login Verification*\n\nYour 6-digit OTP code is:\n\`${otp}\`\n\nExpires in 5 minutes. Do not share this code.`,
+            { parse_mode: 'Markdown' }
+          );
+          sentCount += 1;
+        } catch (err: unknown) {
           console.error('[AdminAuth] Failed to dispatch OTP to Telegram ID', adminIdStr, err instanceof Error ? err.message : err);
-        });
+        }
       }
+    }
+
+    if (sentCount === 0 && env.NODE_ENV === 'production') {
+      await deleteOtpChallengeFromRedis(challengeId);
+      res.status(500).json({ error: 'Failed to deliver OTP via Telegram. Authentication challenge aborted.' });
+      return;
     }
 
     res.json({
@@ -108,7 +182,7 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
   }
 });
 
-// STEP 2: POST /api/admin/auth/otp (Verify OTP & issue short-lived JWT)
+// STEP 2: POST /api/admin/auth/otp (Verify OTP & issue 1-HOUR HttpOnly session)
 router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
   try {
     const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId : '';
@@ -119,18 +193,20 @@ router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
       return;
     }
 
-    const challenge = adminOtpChallenges.get(challengeId);
+    const challenge = await getOtpChallengeFromRedis(challengeId);
     if (!challenge || challenge.consumed) {
       res.status(401).json({ error: 'Invalid or consumed login challenge.' });
       return;
     }
 
     if (Date.now() > challenge.expiresAt) {
+      await deleteOtpChallengeFromRedis(challengeId);
       res.status(401).json({ error: 'OTP has expired. Please request a new verification code.' });
       return;
     }
 
     if (challenge.attempts >= challenge.maxAttempts) {
+      await deleteOtpChallengeFromRedis(challengeId);
       res.status(401).json({ error: 'Maximum OTP verification attempts exceeded.' });
       return;
     }
@@ -144,25 +220,29 @@ router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
     );
 
     if (!isValid) {
+      await saveOtpChallengeToRedis(challengeId, challenge);
       const remainingAttempts = challenge.maxAttempts - challenge.attempts;
       res.status(401).json({ error: `Invalid verification code. ${remainingAttempts} attempts remaining.` });
       return;
     }
 
     challenge.consumed = true;
-    adminOtpChallenges.delete(challengeId);
+    await deleteOtpChallengeFromRedis(challengeId);
 
-    const adminTgId = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678') || 12345678;
+    const adminTgId = env.ADMIN_TELEGRAM_IDS[0] || '12345678';
+    const expiresAtDate = new Date(Date.now() + 60 * 60 * 1000); // EXACTLY 1 HOUR SESSION
     const jwtToken = jwt.sign(
       { role: 'admin', telegramId: adminTgId },
       env.JWT_SECRET,
-      { expiresIn: '8h', algorithm: 'HS256' }
+      { expiresIn: '1h', algorithm: 'HS256' }
     );
+
+    setAdminSessionCookie(res, jwtToken, expiresAtDate);
 
     res.json({
       success: true,
       jwtToken,
-      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      expiresAt: expiresAtDate.toISOString(),
     });
   } catch (error: unknown) {
     console.error('[AdminAuth] otp_step_failed', {
@@ -191,18 +271,20 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
 
   // If challengeId and OTP are provided, process OTP step
   if (challengeId && otp) {
-    const challenge = adminOtpChallenges.get(challengeId);
+    const challenge = await getOtpChallengeFromRedis(challengeId);
     if (!challenge || challenge.consumed) {
       res.status(401).json({ error: 'Invalid or consumed login challenge.' });
       return;
     }
 
     if (Date.now() > challenge.expiresAt) {
+      await deleteOtpChallengeFromRedis(challengeId);
       res.status(401).json({ error: 'OTP has expired.' });
       return;
     }
 
     if (challenge.attempts >= challenge.maxAttempts) {
+      await deleteOtpChallengeFromRedis(challengeId);
       res.status(401).json({ error: 'Maximum OTP verification attempts exceeded.' });
       return;
     }
@@ -216,21 +298,24 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
     );
 
     if (!isValid) {
+      await saveOtpChallengeToRedis(challengeId, challenge);
       res.status(401).json({ error: 'Invalid verification code.' });
       return;
     }
 
     challenge.consumed = true;
-    adminOtpChallenges.delete(challengeId);
+    await deleteOtpChallengeFromRedis(challengeId);
 
-    const adminTgId = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678') || 12345678;
+    const adminTgId = env.ADMIN_TELEGRAM_IDS[0] || '12345678';
+    const expiresAtDate = new Date(Date.now() + 60 * 60 * 1000); // EXACTLY 1 HOUR SESSION
     const jwtToken = jwt.sign(
       { role: 'admin', telegramId: adminTgId },
       env.JWT_SECRET,
-      { expiresIn: '8h', algorithm: 'HS256' }
+      { expiresIn: '1h', algorithm: 'HS256' }
     );
 
-    res.json({ success: true, jwtToken, expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString() });
+    setAdminSessionCookie(res, jwtToken, expiresAtDate);
+    res.json({ success: true, jwtToken, expiresAt: expiresAtDate.toISOString() });
     return;
   }
 
@@ -247,8 +332,10 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
       return;
     }
 
-    const jwtToken = jwt.sign({ telegramId: telegramIdNum, role: 'admin' }, env.JWT_SECRET, { expiresIn: '24h', algorithm: 'HS256' });
-    res.json({ success: true, jwtToken, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
+    const expiresAtDate = new Date(Date.now() + 60 * 60 * 1000); // EXACTLY 1 HOUR SESSION
+    const jwtToken = jwt.sign({ telegramId: telegramIdNum, role: 'admin' }, env.JWT_SECRET, { expiresIn: '1h', algorithm: 'HS256' });
+    setAdminSessionCookie(res, jwtToken, expiresAtDate);
+    res.json({ success: true, jwtToken, expiresAt: expiresAtDate.toISOString() });
     return;
   }
 
@@ -258,14 +345,16 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
   const otpHash = crypto.createHash('sha256').update(otpVal).digest('hex');
   const newChallengeId = crypto.randomUUID();
 
-  adminOtpChallenges.set(newChallengeId, {
+  const challenge: AdminOtpChallenge = {
     challengeId: newChallengeId,
     otpHash,
     expiresAt: Date.now() + 5 * 60 * 1000,
     attempts: 0,
     maxAttempts: 5,
     consumed: false,
-  });
+  };
+
+  await saveOtpChallengeToRedis(newChallengeId, challenge);
 
   if (adminBotInstance && env.ADMIN_TELEGRAM_IDS.length > 0) {
     for (const adminIdStr of env.ADMIN_TELEGRAM_IDS) {

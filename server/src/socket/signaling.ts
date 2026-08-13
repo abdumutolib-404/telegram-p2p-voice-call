@@ -222,6 +222,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           const tokenTtlSeconds = Math.min(3600, Math.max(60, callDurationLimitSeconds + 300));
           const roomName = matchResult.roomName;
 
+          let transactionSucceeded = false;
           try {
             await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
               const today = new Date().toISOString().slice(0, 10);
@@ -250,6 +251,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 data: { roomName, userAId: user.id, userBId: partner.id, status: 'ACTIVE' },
               });
             });
+            transactionSucceeded = true;
 
             const [tokenUser, tokenPartner] = await Promise.all([
               generateLiveKitToken(roomName, user.id, user.alias, tokenTtlSeconds),
@@ -333,29 +335,31 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               callDurationLimit: callDurationLimitSeconds, // in seconds
             });
           } catch (error: unknown) {
-            try {
-              await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-                const cancelled = await tx.callSession.updateMany({
-                  where: { roomName, status: 'ACTIVE' },
-                  data: { status: 'CANCELLED', endedAt: new Date() },
-                });
-                if (cancelled.count !== 1) return;
+            if (transactionSucceeded) {
+              try {
+                await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                  const cancelled = await tx.callSession.updateMany({
+                    where: { roomName, status: 'ACTIVE' },
+                    data: { status: 'CANCELLED', endedAt: new Date() },
+                  });
+                  if (cancelled.count !== 1) return;
 
-                const today = new Date().toISOString().slice(0, 10);
-                await tx.user.updateMany({
-                  where: { id: user.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
-                  data: { dailyCallsUsed: { decrement: 1 } },
+                  const today = new Date().toISOString().slice(0, 10);
+                  await tx.user.updateMany({
+                    where: { id: user.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
+                    data: { dailyCallsUsed: { decrement: 1 } },
+                  });
+                  await tx.user.updateMany({
+                    where: { id: partner.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
+                    data: { dailyCallsUsed: { decrement: 1 } },
+                  });
                 });
-                await tx.user.updateMany({
-                  where: { id: partner.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
-                  data: { dailyCallsUsed: { decrement: 1 } },
+              } catch (rollbackError: unknown) {
+                console.error('[Socket] match_rollback_failed', {
+                  roomName,
+                  error: rollbackError instanceof Error ? rollbackError.message : 'unknown_error',
                 });
-              });
-            } catch (rollbackError: unknown) {
-              console.error('[Socket] match_rollback_failed', {
-                roomName,
-                error: rollbackError instanceof Error ? rollbackError.message : 'unknown_error',
-              });
+              }
             }
 
             const bucketUser = getUserBucket(user);
