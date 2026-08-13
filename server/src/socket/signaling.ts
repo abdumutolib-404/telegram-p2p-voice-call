@@ -491,19 +491,48 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           await matchmakingService.cancelQueue(disconnectedUserId);
 
-          for (const [roomName, egress] of activeEgresses.entries()) {
+          // Find ALL active sessions involving this user, not just ones with egresses
+          const activeSessions = await prisma.callSession.findMany({
+            where: {
+              status: 'ACTIVE',
+              OR: [{ userAId: disconnectedUserId }, { userBId: disconnectedUserId }],
+            },
+          });
+
+          for (const session of activeSessions) {
+            const otherUserId = session.userAId === disconnectedUserId ? session.userBId : session.userAId;
+            // Only complete if the other user has also fully disconnected
+            if ((userSockets.get(otherUserId)?.size ?? 0) > 0) continue;
+
             try {
-              const session = await prisma.callSession.findUnique({ where: { roomName } });
-              if (!session || (session.userAId !== disconnectedUserId && session.userBId !== disconnectedUserId)) continue;
+              await runSerialized(roomOperationTails, session.roomName, async () => {
+                const currentSession = await prisma.callSession.findUnique({ where: { id: session.id } });
+                if (!currentSession || currentSession.status !== 'ACTIVE') return;
 
-              const otherUserId = session.userAId === disconnectedUserId ? session.userBId : session.userAId;
-              if ((userSockets.get(otherUserId)?.size ?? 0) > 0) continue;
+                const endedAt = new Date();
+                const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - currentSession.createdAt.getTime()) / 1000));
 
-              await stopAudioEgress(egress.egressId);
-              activeEgresses.delete(roomName);
+                await prisma.callSession.update({
+                  where: { id: session.id },
+                  data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
+                });
+
+                const egress = activeEgresses.get(session.roomName);
+                const egressId = egress?.egressId ?? currentSession.egressId;
+                if (egressId) {
+                  await stopAudioEgress(egressId).catch((stopErr: unknown) => {
+                    console.error('[Socket] disconnect_egress_stop_failed', {
+                      roomName: session.roomName,
+                      error: stopErr instanceof Error ? stopErr.message : 'unknown_error',
+                    });
+                  });
+                  activeEgresses.delete(session.roomName);
+                }
+              });
             } catch (error: unknown) {
-              console.error('[Socket] disconnect_egress_cleanup_failed', {
-                roomName,
+              console.error('[Socket] disconnect_session_cleanup_failed', {
+                sessionId: session.id,
+                roomName: session.roomName,
                 reason,
                 error: error instanceof Error ? error.message : 'unknown_error',
               });

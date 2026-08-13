@@ -154,6 +154,10 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         return;
       }
 
+      if (isConnectingRef.current || roomRef.current) {
+        return;
+      }
+
       cancelConnectRef.current = false;
       isConnectingRef.current = true;
       setIsConnecting(true);

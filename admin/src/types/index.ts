@@ -26,9 +26,9 @@ export interface PlanTierConfig {
 }
 
 export interface PlansResponse {
-  free: PlanTierConfig;
-  plus: PlanTierConfig;
-  pro: PlanTierConfig;
+  FREE: PlanTierConfig;
+  PLUS: PlanTierConfig;
+  PRO: PlanTierConfig;
 }
 
 export interface Subscores {

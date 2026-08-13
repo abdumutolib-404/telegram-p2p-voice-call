@@ -45,6 +45,15 @@ if redis.call('GET', KEYS[1]) == ARGV[1] then
 end
 return 0`;
 
+const CANCEL_QUEUE_SCRIPT = `-- CANCEL_QUEUE
+local bucket = redis.call('GET', KEYS[1])
+if bucket then
+  redis.call('SREM', bucket, ARGV[1])
+  redis.call('DEL', KEYS[1])
+  return 1
+end
+return 0`;
+
 export function determineWeakAndStrongSkills(skills: UserSkills): { weakSkill: SkillCode; strongSkill: SkillCode } {
   const ranked: ReadonlyArray<readonly [SkillCode, number]> = [
     ['FC', skills.subFC],
@@ -84,84 +93,86 @@ export class MatchmakingService {
 
   public async joinQueue(userId: string, band: number, skills: UserSkills): Promise<MatchResult> {
     this.validateUserId(userId);
-    const { weakSkill, strongSkill } = determineWeakAndStrongSkills(skills);
-    const ownBucketKey = this.getBucketKey(band, weakSkill, strongSkill);
-    const complementaryBucketKey = this.getBucketKey(band, strongSkill, weakSkill);
-
-    try {
-      await this.cancelQueueUnlocked(userId);
-
-      const claimedPartner = await this.redis.eval(MATCH_QUEUE_CLAIM_SCRIPT, 2, complementaryBucketKey, USER_QUEUE_PREFIX, userId);
-
-      if (typeof claimedPartner === 'string' && claimedPartner !== userId) {
-        return {
-          matched: true,
-          partnerId: claimedPartner,
-          roomName: `room_${crypto.randomUUID()}`,
-          partnerBucketKey: complementaryBucketKey,
-        };
-      }
+    return this.withUserLock(userId, async () => {
+      const { weakSkill, strongSkill } = determineWeakAndStrongSkills(skills);
+      const ownBucketKey = this.getBucketKey(band, weakSkill, strongSkill);
+      const complementaryBucketKey = this.getBucketKey(band, strongSkill, weakSkill);
 
       try {
-        await this.redis.sadd(ownBucketKey, userId);
-        await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS);
-      } catch (error: unknown) {
-        await this.redis.srem(ownBucketKey, userId).catch((cleanupError: unknown) => {
-          console.error('[Matchmaking] queue_cleanup_failed', {
-            userId,
-            error: cleanupError instanceof Error ? cleanupError.message : 'unknown_error',
+        await this.cancelQueueUnlocked(userId);
+
+        const claimedPartner = await this.redis.eval(MATCH_QUEUE_CLAIM_SCRIPT, 2, complementaryBucketKey, USER_QUEUE_PREFIX, userId);
+
+        if (typeof claimedPartner === 'string' && claimedPartner !== userId) {
+          return {
+            matched: true,
+            partnerId: claimedPartner,
+            roomName: `room_${crypto.randomUUID()}`,
+            partnerBucketKey: complementaryBucketKey,
+          };
+        }
+
+        try {
+          await this.redis.sadd(ownBucketKey, userId);
+          await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS);
+        } catch (error: unknown) {
+          await this.redis.srem(ownBucketKey, userId).catch((cleanupError: unknown) => {
+            console.error('[Matchmaking] queue_cleanup_failed', {
+              userId,
+              error: cleanupError instanceof Error ? cleanupError.message : 'unknown_error',
+            });
           });
+          throw error;
+        }
+
+        return { matched: false, bucketKey: ownBucketKey };
+      } catch (error: unknown) {
+        console.error('[Matchmaking] join_failed', {
+          userId,
+          error: error instanceof Error ? error.message : 'unknown_error',
         });
         throw error;
       }
-
-      return { matched: false, bucketKey: ownBucketKey };
-    } catch (error: unknown) {
-      console.error('[Matchmaking] join_failed', {
-        userId,
-        error: error instanceof Error ? error.message : 'unknown_error',
-      });
-      throw error;
-    }
+    });
   }
 
   public async restoreQueue(userId: string, bucketKey: string): Promise<void> {
     this.validateUserId(userId);
     if (!bucketKey.startsWith(MATCH_QUEUE_PREFIX)) throw new TypeError('Invalid queue bucket');
 
-    try {
-      await this.redis.sadd(bucketKey, userId);
-      await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS);
-    } catch (error: unknown) {
-      console.error('[Matchmaking] restore_failed', {
-        userId,
-        error: error instanceof Error ? error.message : 'unknown_error',
-      });
-      throw error;
-    }
+    return this.withUserLock(userId, async () => {
+      try {
+        await this.redis.sadd(bucketKey, userId);
+        await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS);
+      } catch (error: unknown) {
+        console.error('[Matchmaking] restore_failed', {
+          userId,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+        throw error;
+      }
+    });
   }
 
   public async cancelQueue(userId: string): Promise<boolean> {
     this.validateUserId(userId);
-    try {
-      return await this.cancelQueueUnlocked(userId);
-    } catch (error: unknown) {
-      console.error('[Matchmaking] cancel_failed', {
-        userId,
-        error: error instanceof Error ? error.message : 'unknown_error',
-      });
-      throw error;
-    }
+    return this.withUserLock(userId, async () => {
+      try {
+        return await this.cancelQueueUnlocked(userId);
+      } catch (error: unknown) {
+        console.error('[Matchmaking] cancel_failed', {
+          userId,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+        throw error;
+      }
+    });
   }
 
   private async cancelQueueUnlocked(userId: string): Promise<boolean> {
     const pointerKey = `${USER_QUEUE_PREFIX}${userId}`;
-    const bucketKey = await this.redis.get(pointerKey);
-    if (!bucketKey) return false;
-
-    await this.redis.srem(bucketKey, userId);
-    await this.redis.del(pointerKey);
-    return true;
+    const result = await this.redis.eval(CANCEL_QUEUE_SCRIPT, 1, pointerKey, userId);
+    return result === 1;
   }
 
   private async withUserLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {

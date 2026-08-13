@@ -16,6 +16,7 @@ import { startStoragePurgeCron } from './services/storage';
 import type { MyContext } from './bot/types';
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 const extractOrigin = (urlStr: string | undefined): string | null => {

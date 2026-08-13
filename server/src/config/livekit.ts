@@ -33,7 +33,7 @@ export async function generateLiveKitToken(
     const accessToken = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
       identity: participantIdentity,
       name: participantName,
-      ttl: `${ttlSeconds}s`,
+      ttl: ttlSeconds,
     });
     accessToken.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
     return await accessToken.toJwt();

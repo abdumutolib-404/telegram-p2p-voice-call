@@ -9,6 +9,7 @@ WORKDIR /app/server
 COPY server/package*.json ./
 COPY server/prisma ./prisma/
 RUN npm ci
+RUN npx prisma generate
 COPY server/ ./
 RUN npm run build
 

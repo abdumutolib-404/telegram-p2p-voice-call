@@ -13,79 +13,105 @@ export class ModerationService {
    * Process a report against a target user following the Moderation Penalty Ladder
    */
   async processReport(targetUserId: string, reporterUserId: string, callId: string, reason: string): Promise<ModerationResult> {
-    const targetUser = await prisma.user.findUnique({
-      where: { id: targetUserId },
-    });
-
-    if (!targetUser) {
-      throw new Error('Target user not found');
+    if (!targetUserId || !reporterUserId || !callId || !reason) {
+      throw new Error('Missing required fields');
     }
 
-    // Save CallRating with reported=true
-    await prisma.callRating.create({
-      data: {
-        callId,
-        raterId: reporterUserId,
-        ratedId: targetUserId,
-        stars: 1,
-        feedback: reason,
-        reported: true,
-      },
-    });
+    if (targetUserId === reporterUserId) {
+      throw new Error('Cannot report yourself');
+    }
 
-    const newWarningCount = targetUser.warningCount + 1;
+    return await prisma.$transaction(async (tx) => {
+      // Validate that both users were actual participants in this call
+      const session = await tx.callSession.findUnique({ where: { id: callId } });
+      if (!session) {
+        throw new Error('Call session not found');
+      }
 
-    if (newWarningCount === 1) {
-      // 1st report -> Warning
-      await prisma.user.update({
-        where: { id: targetUserId },
-        data: { warningCount: newWarningCount },
+      const participants = [session.userAId, session.userBId];
+      if (!participants.includes(targetUserId) || !participants.includes(reporterUserId)) {
+        throw new Error('Users were not participants in this call');
+      }
+
+      // Prevent duplicate reports for the same call
+      const existingReport = await tx.callRating.findFirst({
+        where: { callId, raterId: reporterUserId, ratedId: targetUserId, reported: true },
+      });
+      if (existingReport) {
+        throw new Error('You have already reported this user for this call');
+      }
+
+      const targetUser = await tx.user.findUnique({ where: { id: targetUserId } });
+      if (!targetUser) {
+        throw new Error('Target user not found');
+      }
+
+      // Save CallRating with reported=true
+      await tx.callRating.create({
+        data: {
+          callId,
+          raterId: reporterUserId,
+          ratedId: targetUserId,
+          stars: 1,
+          feedback: reason,
+          reported: true,
+        },
       });
 
-      return {
-        penaltyLevel: 'WARNING',
-        warningCount: newWarningCount,
-        isPermanentlyBanned: false,
-        message: 'Warning issued to user for 1st offense.',
-      };
-    } else if (newWarningCount === 2) {
-      // 2nd report -> 6-hour temporary ban
-      const bannedUntil = new Date(Date.now() + 6 * 60 * 60 * 1000);
-      await prisma.user.update({
-        where: { id: targetUserId },
-        data: {
+      const newWarningCount = targetUser.warningCount + 1;
+
+      if (newWarningCount === 1) {
+        // 1st report -> Warning
+        await tx.user.update({
+          where: { id: targetUserId },
+          data: { warningCount: newWarningCount },
+        });
+
+        return {
+          penaltyLevel: 'WARNING' as const,
           warningCount: newWarningCount,
-          isBanned: true,
+          isPermanentlyBanned: false,
+          message: 'Warning issued to user for 1st offense.',
+        };
+      } else if (newWarningCount === 2) {
+        // 2nd report -> 6-hour temporary ban
+        const bannedUntil = new Date(Date.now() + 6 * 60 * 60 * 1000);
+        await tx.user.update({
+          where: { id: targetUserId },
+          data: {
+            warningCount: newWarningCount,
+            isBanned: true,
+            bannedUntil,
+          },
+        });
+
+        return {
+          penaltyLevel: 'TEMP_BAN' as const,
+          warningCount: newWarningCount,
           bannedUntil,
-        },
-      });
+          isPermanentlyBanned: false,
+          message: 'User temporary banned for 6 hours (2nd offense).',
+        };
+      } else {
+        // 3rd report or higher -> Permanent Lock
+        await tx.user.update({
+          where: { id: targetUserId },
+          data: {
+            warningCount: newWarningCount,
+            isBanned: true,
+            isPermanentlyBanned: true,
+            bannedUntil: null,
+          },
+        });
 
-      return {
-        penaltyLevel: 'TEMP_BAN',
-        warningCount: newWarningCount,
-        bannedUntil,
-        isPermanentlyBanned: false,
-        message: 'User temporary banned for 6 hours (2nd offense).',
-      };
-    } else {
-      // 3rd report or higher -> Permanent Lock
-      await prisma.user.update({
-        where: { id: targetUserId },
-        data: {
+        return {
+          penaltyLevel: 'PERM_BAN' as const,
           warningCount: newWarningCount,
-          isBanned: true,
           isPermanentlyBanned: true,
-          bannedUntil: null,
-        },
-      });
-
-      return {
-        penaltyLevel: 'PERM_BAN',
-        warningCount: newWarningCount,
-        isPermanentlyBanned: true,
-        message: 'User permanently locked (3rd offense).',
-      };
-    }
+          message: 'User permanently locked (3rd offense).',
+        };
+      }
+    });
   }
 
   /**

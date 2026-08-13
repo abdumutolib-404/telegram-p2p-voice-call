@@ -90,9 +90,12 @@ class InMemoryRedisMock {
       if (!set) return null;
 
       for (const candidate of [...set]) {
-        if (candidate === selfId) continue;
+        if (candidate === selfId) {
+          set.delete(candidate);
+          continue;
+        }
         const entry = this.kv.get(`${pointerPrefix}${candidate}`);
-        const pointer = entry ? entry.value : null;
+        const pointer = entry && (entry.expiresAt === undefined || Date.now() < entry.expiresAt) ? entry.value : null;
         if (pointer !== bucketKey) {
           set.delete(candidate);
           continue;
@@ -105,6 +108,23 @@ class InMemoryRedisMock {
       }
       if (set.size === 0) this.sets.delete(bucketKey);
       return null;
+    }
+
+    if (script.includes('CANCEL_QUEUE')) {
+      const pointerKey = keys[0];
+      const userId = args[0];
+      const entry = this.kv.get(pointerKey);
+      if (entry && (entry.expiresAt === undefined || Date.now() < entry.expiresAt)) {
+        const bucket = entry.value;
+        const set = this.sets.get(bucket);
+        if (set) {
+          set.delete(userId);
+          if (set.size === 0) this.sets.delete(bucket);
+        }
+        this.kv.delete(pointerKey);
+        return 1;
+      }
+      return 0;
     }
 
     if (script.includes('ADMIN_TOKEN_CONSUME')) {

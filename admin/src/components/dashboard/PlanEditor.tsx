@@ -6,9 +6,9 @@ import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, S
 
 export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse>({
-    free: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0 },
-    plus: { maxDuration: 30, dailyLimit: 10, retentionDays: 7, starsPrice: 150 },
-    pro: { maxDuration: 60, dailyLimit: 99, retentionDays: 30, starsPrice: 350 },
+    FREE: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0 },
+    PLUS: { maxDuration: 30, dailyLimit: 10, retentionDays: 7, starsPrice: 150 },
+    PRO: { maxDuration: 60, dailyLimit: 99, retentionDays: 30, starsPrice: 350 },
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -52,22 +52,22 @@ export function PlanEditor() {
     setSuccessMessage(null);
 
     // Validation
-    for (const tierName of ['free', 'plus', 'pro'] as const) {
+    for (const tierName of ['FREE', 'PLUS', 'PRO'] as const) {
       const tier = plans[tierName];
       if (tier.maxDuration <= 0) {
-        setError(`${tierName.toUpperCase()} tier duration limit must be greater than 0 minutes.`);
+        setError(`${tierName} tier duration limit must be greater than 0 minutes.`);
         return;
       }
       if (tier.dailyLimit <= 0) {
-        setError(`${tierName.toUpperCase()} tier daily limit must be at least 1 call.`);
+        setError(`${tierName} tier daily limit must be at least 1 call.`);
         return;
       }
       if (![1, 7, 30].includes(tier.retentionDays)) {
-        setError(`${tierName.toUpperCase()} tier retention must be 1, 7, or 30 days.`);
+        setError(`${tierName} tier retention must be 1, 7, or 30 days.`);
         return;
       }
-      if (tierName !== 'free' && (tier.starsPrice === undefined || tier.starsPrice < 0)) {
-        setError(`${tierName.toUpperCase()} tier price must be a valid positive Telegram Stars amount.`);
+      if (tierName !== 'FREE' && (tier.starsPrice === undefined || tier.starsPrice < 0)) {
+        setError(`${tierName} tier price must be a valid positive Telegram Stars amount.`);
         return;
       }
     }
@@ -302,9 +302,9 @@ export function PlanEditor() {
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: '1.5rem'
       }}>
-        {renderTierCard('free', 'Free Tier', 'Base access for standard partners', <Shield size={24} color="#94a3b8" />, true)}
-        {renderTierCard('plus', 'Plus Tier', 'Enhanced duration and 7-day recordings', <Sparkles size={24} color="#38bdf8" />, false)}
-        {renderTierCard('pro', 'Pro Tier', 'Unlimited access and 30-day recordings', <Star size={24} color="#fbbf24" />, false)}
+        {renderTierCard('FREE', 'Free Tier', 'Base access for standard partners', <Shield size={24} color="#94a3b8" />, true)}
+        {renderTierCard('PLUS', 'Plus Tier', 'Enhanced duration and 7-day recordings', <Sparkles size={24} color="#38bdf8" />, false)}
+        {renderTierCard('PRO', 'Pro Tier', 'Unlimited access and 30-day recordings', <Star size={24} color="#fbbf24" />, false)}
       </div>
     </form>
   );

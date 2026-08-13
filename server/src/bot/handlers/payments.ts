@@ -78,20 +78,28 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         } catch (txErr) {
           console.warn('[Payments] Transaction already recorded or duplicate payload:', txErr);
         }
-      }
 
-      await ctx.reply(
-        `🎉 *Payment Successful!*\n\n` +
-          `Your subscription has been upgraded to *${tier} Plan*.\n` +
-          `• Max Call Duration: ${config.maxDuration} minutes\n` +
-          `• Daily Limit: ${config.dailyLimit === 9999 ? 'Unlimited' : config.dailyLimit} calls/day\n` +
-          `• Recording Storage: ${config.retentionDays} days\n\n` +
-          `Thank you for supporting IELTS Speaking P2P!`,
-        { parse_mode: 'Markdown' }
-      );
+        await ctx.reply(
+          `🎉 *Payment Successful!*\n\n` +
+            `Your subscription has been upgraded to *${tier} Plan*.\n` +
+            `• Max Call Duration: ${config.maxDuration} minutes\n` +
+            `• Daily Limit: ${config.dailyLimit === 9999 ? 'Unlimited' : config.dailyLimit} calls/day\n` +
+            `• Recording Storage: ${config.retentionDays} days\n\n` +
+            `Thank you for supporting IELTS Speaking P2P!`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        console.error('[Payments] User not found after successful payment', { telegramId: telegramId.toString() });
+        await ctx.reply(
+          `⚠️ Payment received, but we could not find your user profile.\n` +
+            `Please contact support with your payment ID: \`${payment.telegram_payment_charge_id}\`\n\n` +
+            `Try typing /start first, then contact an admin.`,
+          { parse_mode: 'Markdown' }
+        );
+      }
     } catch (err) {
       console.error('[Payments] Error handling successful_payment:', err);
-      await ctx.reply(`Payment received! Upgrade status updated.`);
+      await ctx.reply(`Payment received! However, an error occurred during upgrade. Please contact support.`);
     }
   });
 }

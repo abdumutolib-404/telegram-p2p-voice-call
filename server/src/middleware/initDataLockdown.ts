@@ -3,7 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
 
 export interface TelegramUser {
-  readonly id: number;
+  readonly id: bigint;
   readonly first_name?: string;
   readonly last_name?: string;
   readonly username?: string;
@@ -24,24 +24,23 @@ export interface InitDataValidationResult {
 const MAX_AGE_SECONDS = 24 * 60 * 60;
 const MAX_FUTURE_SECONDS = 60;
 const HEX_HASH_PATTERN = /^[a-f0-9]{64}$/i;
-const INTEGER_PATTERN = /^\d+$/;
 
 function parseTelegramUser(raw: string | null): TelegramUser | undefined {
   if (raw === null) return undefined;
 
   try {
+    const idMatch = raw.match(/"id"\s*:\s*"?(\d+)"?/);
+    if (!idMatch) return undefined;
+    const idText = idMatch[1];
+    if (idText === '0') return undefined;
+
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
 
     const record = value as Record<string, unknown>;
-    if (typeof record.id !== 'number' && typeof record.id !== 'string') return undefined;
-    if (typeof record.id === 'number' && !Number.isSafeInteger(record.id)) return undefined;
-
-    const idText = String(record.id);
-    if (!INTEGER_PATTERN.test(idText) || idText === '0') return undefined;
 
     return {
-      id: Number(idText),
+      id: BigInt(idText),
       first_name: typeof record.first_name === 'string' ? record.first_name : undefined,
       last_name: typeof record.last_name === 'string' ? record.last_name : undefined,
       username: typeof record.username === 'string' ? record.username : undefined,
@@ -76,8 +75,8 @@ export function validateTelegramInitData(initData: string, botToken: string): In
     }
 
     params.delete('hash');
+    params.sort();
     const dataCheckString = [...params.entries()]
-      .sort(([keyA], [keyB]) => (keyA < keyB ? -1 : keyA > keyB ? 1 : 0))
       .map(([key, value]) => `${key}=${value}`)
       .join('\n');
 
@@ -111,7 +110,7 @@ export function initDataLockdownMiddleware(
     const initData = typeof header === 'string' ? header : undefined;
 
     if (env.NODE_ENV === 'test' && initData === 'test-allowed') {
-      req.telegramUser = { id: 12345678, first_name: 'TestUser' };
+      req.telegramUser = { id: BigInt(12345678), first_name: 'TestUser' };
       next();
       return;
     }

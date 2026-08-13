@@ -18,7 +18,6 @@ export const RadarScreen: React.FC<RadarScreenProps> = ({
   onCancel,
 }) => {
   const handleCancel = () => {
-    socketService.cancelQueue(userId);
     onCancel();
   };
 

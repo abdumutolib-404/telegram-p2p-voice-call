@@ -2,7 +2,9 @@
 
 declare global {
   interface Window {
-    Telegram?: Telegram;
+    Telegram?: {
+      WebApp: any;
+    };
   }
 }
 

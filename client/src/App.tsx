@@ -8,7 +8,7 @@ import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { Loader2, PhoneOff, RefreshCw, AlertTriangle } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [appState, setAppState] = useState<AppState>('lockdown');
+  const [appState, setAppState] = useState<AppState>('idle');
   const [initData, setInitData] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserMatchData>({
@@ -20,6 +20,7 @@ export const App: React.FC = () => {
   const [matchData, setMatchData] = useState<MatchFoundPayload | null>(null);
 
   const appStateRef = React.useRef<AppState>(appState);
+  const hasJoinedQueueRef = React.useRef(false);
   useEffect(() => {
     appStateRef.current = appState;
   }, [appState]);
@@ -41,15 +42,16 @@ export const App: React.FC = () => {
           return tg.initData;
         }
 
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const searchParams = new URLSearchParams(window.location.search);
+        const hashMatch = window.location.hash.match(/[#&]tgWebAppData=([^&]+)/);
+        if (hashMatch) return hashMatch[1];
 
-        return (
-          hashParams.get('tgWebAppData') ||
-          searchParams.get('tgWebAppData') ||
-          searchParams.get('initData') ||
-          ''
-        );
+        const searchMatch = window.location.search.match(/[?&]tgWebAppData=([^&]+)/);
+        if (searchMatch) return searchMatch[1];
+
+        const initDataMatch = window.location.search.match(/[?&]initData=([^&]+)/);
+        if (initDataMatch) return initDataMatch[1];
+
+        return '';
       };
 
       let rawInitData = getRawInitData();
@@ -157,7 +159,10 @@ export const App: React.FC = () => {
 
   // Socket Connection & Event Listeners
   useEffect(() => {
-    if (!initData || !userData.userId || appState === 'lockdown' || appState === 'ready') return;
+    if (!initData || !userData.userId || appState === 'lockdown' || appState === 'ready' || appState === 'idle') {
+      hasJoinedQueueRef.current = false;
+      return;
+    }
 
     const socket = socketService.connect(initData);
 
@@ -166,7 +171,12 @@ export const App: React.FC = () => {
 
     // Auto-join queue when in radar state
     if (appState === 'radar') {
-      socketService.joinQueue(userData);
+      if (!hasJoinedQueueRef.current) {
+        socketService.joinQueue(userData);
+        hasJoinedQueueRef.current = true;
+      }
+    } else {
+      hasJoinedQueueRef.current = false;
     }
 
     return () => {
@@ -200,6 +210,14 @@ export const App: React.FC = () => {
   const handleStartSearching = () => {
     setAppState('radar');
   };
+
+  if (appState === 'idle') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6">
+        <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+      </div>
+    );
+  }
 
   if (appState === 'lockdown') {
     return <LockdownScreen message={errorMessage} />;
@@ -269,6 +287,8 @@ export const App: React.FC = () => {
     );
   }
 
+  const isCancelled = !errorMessage && !matchData;
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6 text-center">
       <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-inner">
@@ -280,11 +300,12 @@ export const App: React.FC = () => {
       </div>
 
       <h1 className="text-2xl font-bold text-slate-100 mb-2">
-        {errorMessage ? 'Call Connection Issue' : 'Call Session Ended'}
+        {errorMessage ? 'Call Connection Issue' : isCancelled ? 'Search Cancelled' : 'Call Session Ended'}
       </h1>
       <p className="text-sm text-slate-400 max-w-xs mb-8 leading-relaxed">
-        {errorMessage ||
-          'Thank you for practicing! Check your Telegram chat for post-call partner evaluation and recording access.'}
+        {errorMessage || (isCancelled 
+          ? 'You have cancelled the matchmaking search. Tap the button below when you are ready to try again.'
+          : 'Thank you for practicing! Check your Telegram chat for post-call partner evaluation and recording access.')}
       </p>
 
       <button
@@ -292,7 +313,7 @@ export const App: React.FC = () => {
         className="py-3.5 px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-600/30"
       >
         <RefreshCw className="w-5 h-5" />
-        <span>Find Next Partner</span>
+        <span>{isCancelled ? 'Try Again' : 'Find Next Partner'}</span>
       </button>
     </div>
   );

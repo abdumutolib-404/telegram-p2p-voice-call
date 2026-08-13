@@ -18,7 +18,7 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   match_found: (data: MatchFoundPayload) => void;
   record_status: (data: RecordStatusPayload) => void;
-  call_ended: (data: CallEndedPayload) => void;
+  call_finished: (data: CallEndedPayload) => void;
   error: (data: SocketErrorPayload) => void;
 }
 
@@ -28,7 +28,7 @@ class SocketService {
   private socket: AppSocket | null = null;
 
   public connect(initData: string): AppSocket {
-    if (this.socket && this.socket.connected) {
+    if (this.socket) {
       return this.socket;
     }
 

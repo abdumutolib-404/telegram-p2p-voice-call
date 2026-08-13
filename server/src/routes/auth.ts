@@ -32,22 +32,21 @@ router.post('/verify', authLimiter, async (req, res) => {
       return;
     }
 
-    let dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
-    if (!dbUser) {
-      const randomAlias = `P2P-Partner-${Math.floor(1000 + Math.random() * 9000)}`;
-      dbUser = await prisma.user.create({
-        data: {
-          telegramId: tgUser.id,
-          alias: randomAlias,
-          band: 6.5,
-          subFC: 6.5,
-          subLR: 6.5,
-          subGRA: 6.5,
-          subP: 6.5,
-          plan: 'FREE',
-        },
-      });
-    }
+    const randomAlias = `P2P-Partner-${Math.floor(1000 + Math.random() * 9000)}`;
+    const dbUser = await prisma.user.upsert({
+      where: { telegramId: tgUser.id },
+      update: {},
+      create: {
+        telegramId: tgUser.id,
+        alias: randomAlias,
+        band: 6.5,
+        subFC: 6.5,
+        subLR: 6.5,
+        subGRA: 6.5,
+        subP: 6.5,
+        plan: 'FREE',
+      },
+    });
 
     res.json({
       success: true,

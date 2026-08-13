@@ -43,18 +43,17 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setElapsedSeconds((prev) => {
-        if (prev + 1 >= callDurationLimit) {
-          clearInterval(timer);
-          handleFinishCallRef.current();
-          return callDurationLimit;
-        }
-        return prev + 1;
-      });
+      setElapsedSeconds((prev) => prev + 1);
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [callDurationLimit]);
+  }, []);
+
+  useEffect(() => {
+    if (elapsedSeconds >= callDurationLimit) {
+      handleFinishCallRef.current();
+    }
+  }, [elapsedSeconds, callDurationLimit]);
 
   useEffect(() => {
     const socket = socketService.getSocket();
