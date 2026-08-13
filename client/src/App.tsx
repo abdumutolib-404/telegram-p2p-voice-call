@@ -2,13 +2,15 @@ import React, { useEffect, useState, useCallback } from 'react';
 import type { AppState, MatchFoundPayload, UserMatchData } from './types';
 import { socketService } from './services/socket';
 import { useLiveKit } from './hooks/useLiveKit';
-import { LockdownScreen } from './components/LockdownScreen';
+import { LockdownScreen, type LockdownReason } from './components/LockdownScreen';
 import { RadarScreen } from './components/RadarScreen';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
+import { logger } from './services/logger';
 import { Loader2, PhoneOff, RefreshCw, AlertTriangle } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('idle');
+  const [lockdownReason, setLockdownReason] = useState<LockdownReason>('browser_direct');
   const [initData, setInitData] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserMatchData>({
@@ -66,114 +68,150 @@ export const App: React.FC = () => {
   );
 
   // Telegram WebApp Initialization & Auth Verification
-  useEffect(() => {
-    const initAuth = async () => {
-      const getRawInitData = (): string => {
-        const tg = window.Telegram?.WebApp;
-        if (tg?.initData && tg.initData.trim() !== '') {
-          return tg.initData;
-        }
+  const initAuth = useCallback(async () => {
+    logger.info('BOOT', 'APP_BOOT: Initializing authentication check');
 
-        const hashMatch = window.location.hash.match(/[#&]tgWebAppData=([^&]+)/);
-        if (hashMatch) return hashMatch[1];
+    const tgPresent = Boolean(window.Telegram);
+    const webAppPresent = Boolean(window.Telegram?.WebApp);
 
-        const searchMatch = window.location.search.match(/[?&]tgWebAppData=([^&]+)/);
-        if (searchMatch) return searchMatch[1];
+    logger.info('TELEGRAM', `TELEGRAM_SDK_PRESENT: ${tgPresent}`);
+    logger.info('TELEGRAM', `TELEGRAM_WEBAPP_PRESENT: ${webAppPresent}`);
 
-        const initDataMatch = window.location.search.match(/[?&]initData=([^&]+)/);
-        if (initDataMatch) return initDataMatch[1];
-
-        return '';
-      };
-
-      let rawInitData = getRawInitData();
-
-      // Poll up to 1000ms (10 x 100ms) to allow Telegram WebApp SDK script to finish initializing
-      if (!rawInitData) {
-        for (let attempt = 0; attempt < 10; attempt++) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          rawInitData = getRawInitData();
-          if (rawInitData) break;
-        }
+    const getRawInitData = (): string => {
+      const tg = window.Telegram?.WebApp;
+      if (tg?.initData && tg.initData.trim() !== '') {
+        return tg.initData;
       }
 
-      if (!rawInitData || rawInitData.trim() === '') {
+      const hashMatch = window.location.hash.match(/[#&]tgWebAppData=([^&]+)/);
+      if (hashMatch) return hashMatch[1];
+
+      const searchMatch = window.location.search.match(/[?&]tgWebAppData=([^&]+)/);
+      if (searchMatch) return searchMatch[1];
+
+      const initDataMatch = window.location.search.match(/[?&]initData=([^&]+)/);
+      if (initDataMatch) return initDataMatch[1];
+
+      return '';
+    };
+
+    let rawInitData = getRawInitData();
+
+    // Poll up to 1000ms (10 x 100ms) to allow Telegram WebApp SDK script to finish initializing
+    if (!rawInitData) {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        rawInitData = getRawInitData();
+        if (rawInitData) break;
+      }
+    }
+
+    if (!rawInitData || rawInitData.trim() === '') {
+      logger.warn('TELEGRAM', 'TELEGRAM_INIT_DATA_MISSING');
+      const isTelegramWebview = webAppPresent || /Telegram/i.test(navigator.userAgent);
+      const reason: LockdownReason = isTelegramWebview ? 'telegram_no_initdata' : 'browser_direct';
+      setLockdownReason(reason);
+      setErrorMessage(
+        isTelegramWebview
+          ? 'You are opening this page inside Telegram, but not as a Telegram Mini App. Please launch using the Bot Menu Button or WebApp button in Telegram.'
+          : 'This application can only be launched inside Telegram as a Mini App. Direct web browser access is restricted.'
+      );
+      logger.warn('STATE', `APP_LOCKDOWN: ${reason}`);
+      setAppState('lockdown');
+      return;
+    }
+
+    logger.info('TELEGRAM', 'TELEGRAM_INIT_DATA_PRESENT');
+    setInitData(rawInitData);
+
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    // Verify initData with server to get DB user profile (UUID)
+    try {
+      const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+      logger.info('AUTH', `AUTH_REQUEST_STARTED: Calling /api/auth/verify`);
+
+      const res = await fetch(`${serverUrl}/api/auth/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-init-data': rawInitData,
+        },
+        body: JSON.stringify({ initData: rawInitData }),
+      });
+
+      logger.info('AUTH', `AUTH_RESPONSE_RECEIVED: HTTP ${res.status}`);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        if (res.status === 403) {
+          logger.error('AUTH', 'AUTH_REJECTED: Server rejected initData signature');
+          setLockdownReason('auth_rejected');
+        } else {
+          logger.error('AUTH', `AUTH_FAILED: Server returned HTTP ${res.status}`);
+          setLockdownReason('server_unavailable');
+        }
+        setErrorMessage(errData.error || 'Authentication failed. Please start the Telegram Bot first.');
+        logger.warn('STATE', 'APP_LOCKDOWN: Auth failed');
         setAppState('lockdown');
         return;
       }
 
-      setInitData(rawInitData);
-
-      const tg = window.Telegram?.WebApp;
-      if (tg) {
-        tg.ready();
-        tg.expand();
-      }
-
-      // Verify initData with server to get DB user profile (UUID)
-      try {
-        const serverUrl = import.meta.env.VITE_SERVER_URL || '';
-        const res = await fetch(`${serverUrl}/api/auth/verify`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-telegram-init-data': rawInitData,
-          },
-          body: JSON.stringify({ initData: rawInitData }),
+      const data = await res.json();
+      if (data.success && data.user) {
+        logger.info('AUTH', 'AUTH_SUCCESS: Profile verified');
+        setUserData({
+          userId: data.user.id, // Verified DB UUID
+          band: data.user.band || 6.5,
+          weakSkill: data.user.weakSkill || 'P',
+          strongSkill: data.user.strongSkill || 'FC',
         });
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          setErrorMessage(errData.error || 'Authentication failed. Please start the Telegram Bot first.');
-          setAppState('lockdown');
-          return;
-        }
-
-        const data = await res.json();
-        if (data.success && data.user) {
-          setUserData({
-            userId: data.user.id, // Verified DB UUID
-            band: data.user.band || 6.5,
-            weakSkill: data.user.weakSkill || 'P',
-            strongSkill: data.user.strongSkill || 'FC',
+        // Check if there is an active call session (e.g. direct call accepted or reconnect)
+        try {
+          const activeRes = await fetch(`${serverUrl}/api/calls/active`, {
+            headers: { 'x-telegram-init-data': rawInitData },
           });
-
-          // Check if there is an active call session (e.g. direct call accepted or reconnect)
-          try {
-            const activeRes = await fetch(`${serverUrl}/api/calls/active`, {
-              headers: { 'x-telegram-init-data': rawInitData },
-            });
-            if (activeRes.ok) {
-              const activeData = await activeRes.json();
-              if (activeData.hasActiveCall) {
-                handleMatchFound({
-                  roomName: activeData.roomName,
-                  livekitToken: activeData.livekitToken,
-                  partnerAlias: activeData.partnerAlias,
-                  partnerBand: activeData.partnerBand,
-                  callDurationLimit: activeData.callDurationLimit,
-                });
-                return;
-              }
+          if (activeRes.ok) {
+            const activeData = await activeRes.json();
+            if (activeData.hasActiveCall) {
+              handleMatchFound({
+                roomName: activeData.roomName,
+                livekitToken: activeData.livekitToken,
+                partnerAlias: activeData.partnerAlias,
+                partnerBand: activeData.partnerBand,
+                callDurationLimit: activeData.callDurationLimit,
+              });
+              return;
             }
-          } catch (activeErr) {
-            console.warn('Active call check warning:', activeErr);
           }
-
-          setAppState('ready');
-        } else {
-          setErrorMessage('User profile not found. Please complete /start in Telegram Bot.');
-          setAppState('lockdown');
+        } catch (activeErr) {
+          console.warn('Active call check warning:', activeErr);
         }
-      } catch (err) {
-        console.error('Auth verification error:', err);
-        setErrorMessage('Network error connecting to backend server.');
+
+        setAppState('ready');
+      } else {
+        logger.warn('AUTH', 'AUTH_FAILED: User profile not found');
+        setErrorMessage('User profile not found. Please complete /start in Telegram Bot.');
+        setLockdownReason('auth_rejected');
         setAppState('lockdown');
       }
-    };
-
-    initAuth();
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      logger.error('AUTH', `AUTH_NETWORK_ERROR: ${errorMsg}`);
+      setLockdownReason('server_unavailable');
+      setErrorMessage('Network error connecting to backend server.');
+      setAppState('lockdown');
+    }
   }, [handleMatchFound]);
+
+  useEffect(() => {
+    initAuth();
+  }, [initAuth]);
 
   const handleCallEnded = useCallback(() => {
     disconnectLiveKit();
@@ -243,7 +281,7 @@ export const App: React.FC = () => {
   }
 
   if (appState === 'lockdown') {
-    return <LockdownScreen message={errorMessage} />;
+    return <LockdownScreen reason={lockdownReason} message={errorMessage} onRetry={initAuth} />;
   }
 
   if (appState === 'ready') {

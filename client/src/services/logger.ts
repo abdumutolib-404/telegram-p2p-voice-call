@@ -57,7 +57,7 @@ class FrontendLogger {
         const copy: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
           const lowerKey = key.toLowerCase();
-          if (['initdata', 'authorization', 'x-telegram-init-data', 'token', 'jwttoken', 'livekittoken', 'password', 'masterpassword'].includes(lowerKey)) {
+          if (['initdata', 'authorization', 'x-telegram-init-data', 'token', 'jwttoken', 'livekittoken', 'password', 'masterpassword', 'hash', 'auth_date', 'tgwebappdata'].includes(lowerKey)) {
             copy[key] = '[REDACTED]';
           } else {
             copy[key] = this.sanitize(value);
@@ -83,8 +83,7 @@ class FrontendLogger {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method || 'GET';
 
-      const sanitizedHeaders = init?.headers ? this.sanitize(init.headers) : undefined;
-      this.info('HTTP', `➡️ ${method} ${url}`, { headers: sanitizedHeaders });
+      this.info('HTTP', `➡️ ${method} ${url}`);
 
       try {
         const response = await originalFetch(...args);
