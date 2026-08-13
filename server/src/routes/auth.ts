@@ -3,6 +3,7 @@ import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { createRateLimiter } from '../middleware/rateLimit';
+import { generateUniqueAlias } from '../bot/commands/start';
 
 const router = Router();
 const authLimiter = createRateLimiter(20, 60 * 1000);
@@ -32,13 +33,13 @@ router.post('/verify', authLimiter, async (req, res) => {
       return;
     }
 
-    const randomAlias = `P2P-Partner-${Math.floor(1000 + Math.random() * 9000)}`;
+    const alias = generateUniqueAlias();
     const dbUser = await prisma.user.upsert({
       where: { telegramId: tgUser.id },
       update: {},
       create: {
         telegramId: tgUser.id,
-        alias: randomAlias,
+        alias,
         band: 6.5,
         subFC: 6.5,
         subLR: 6.5,

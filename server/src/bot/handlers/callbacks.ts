@@ -313,7 +313,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       const roomName = `direct_${Date.now()}_${caller.id.slice(0, 4)}_${callee.id.slice(0, 4)}`;
 
       // Create session
-      await prisma.callSession.create({
+      const session = await prisma.callSession.create({
         data: {
           roomName,
           userAId: caller.id,
@@ -322,7 +322,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         },
       });
 
-      const inlineKb = new InlineKeyboard().webApp('📞 Open Voice Call', env.MINI_APP_URL);
+      const callUrl = `${env.MINI_APP_URL.replace(/\/$/, '')}?active_call=${session.id}`;
+      const inlineKb = new InlineKeyboard().webApp('📞 Open Voice Call', callUrl);
 
       await ctx.reply(
         `✅ *Direct Call Accepted!*\n\n` +
@@ -367,6 +368,13 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       if (!session.recordingUrl) {
         await ctx.answerCallbackQuery({ text: 'Recording is no longer available.' });
+        return;
+      }
+
+      const allowedRetentionDays = getRetentionDaysForPlan(user.plan);
+      const sessionAgeMs = Date.now() - session.createdAt.getTime();
+      if (sessionAgeMs > allowedRetentionDays * 24 * 60 * 60 * 1000) {
+        await ctx.answerCallbackQuery({ text: 'Recording retention expired for your plan level.' });
         return;
       }
 

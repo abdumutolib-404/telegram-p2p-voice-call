@@ -35,7 +35,7 @@ router.post('/login', adminLoginLimiter, async (req, res) => {
       telegramIdNum = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678');
     }
     const telegramIdStr = telegramIdNum !== null ? String(telegramIdNum) : '';
-    const isWhitelisted = env.ADMIN_TELEGRAM_IDS.length === 0 || env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr);
+    const isWhitelisted = env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr);
     if (telegramIdNum === null || !isWhitelisted) {
       res.status(401).json({ error: 'Invalid or expired 2FA login token.' });
       return;
@@ -128,6 +128,10 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Appeal not found.' });
     }
 
+    if (appeal.status !== 'PENDING') {
+      return res.status(400).json({ error: `Appeal cannot be approved because it is already in state '${appeal.status}'.` });
+    }
+
     // Update appeal status
     await prisma.unblockAppeal.update({
       where: { id },
@@ -160,6 +164,10 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
 
     if (!appeal) {
       return res.status(404).json({ error: 'Appeal not found.' });
+    }
+
+    if (appeal.status !== 'PENDING') {
+      return res.status(400).json({ error: `Appeal cannot be rejected because it is already in state '${appeal.status}'.` });
     }
 
     await prisma.unblockAppeal.update({

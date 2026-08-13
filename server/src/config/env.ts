@@ -43,6 +43,33 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT m
 
 const production = nodeEnv === 'production';
 
+const adminTelegramIds = parseTelegramIds(process.env.ADMIN_TELEGRAM_IDS);
+const masterPassword = process.env.MASTER_PASSWORD ?? process.env.ADMIN_MASTER_PASSWORD ?? 'admin123456';
+const jwtSecret = process.env.JWT_SECRET ?? 'super_secret_jwt_key_change_me_in_production';
+const livekitApiKey = process.env.LIVEKIT_API_KEY ?? 'devkey';
+const livekitApiSecret = process.env.LIVEKIT_API_SECRET ?? 'secret';
+
+if (production) {
+  if (!process.env.MASTER_PASSWORD && !process.env.ADMIN_MASTER_PASSWORD) {
+    throw new Error('Production config error: Missing MASTER_PASSWORD or ADMIN_MASTER_PASSWORD.');
+  }
+  if (masterPassword === 'admin123456') {
+    throw new Error('Production config error: Insecure default MASTER_PASSWORD is not allowed in production.');
+  }
+  if (!process.env.JWT_SECRET) {
+    throw new Error('Production config error: Missing JWT_SECRET.');
+  }
+  if (jwtSecret === 'super_secret_jwt_key_change_me_in_production') {
+    throw new Error('Production config error: Insecure default JWT_SECRET is not allowed in production.');
+  }
+  if (adminTelegramIds.length === 0) {
+    throw new Error('Production config error: ADMIN_TELEGRAM_IDS must be specified in production and cannot be empty.');
+  }
+  if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET || livekitApiKey === 'devkey' || livekitApiSecret === 'secret') {
+    throw new Error('Production config error: Valid LiveKit production credentials (LIVEKIT_API_KEY / LIVEKIT_API_SECRET) are required.');
+  }
+}
+
 export const env: EnvConfig = {
   PORT: port,
   NODE_ENV: nodeEnv,
@@ -50,12 +77,13 @@ export const env: EnvConfig = {
   REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
   BOT_TOKEN: production ? required('BOT_TOKEN') : (process.env.BOT_TOKEN ?? 'mock_bot_token'),
   MINI_APP_URL: process.env.MINI_APP_URL ?? 'http://localhost:3001/client',
-  ADMIN_TELEGRAM_IDS: parseTelegramIds(process.env.ADMIN_TELEGRAM_IDS),
-  MASTER_PASSWORD: process.env.MASTER_PASSWORD ?? process.env.ADMIN_MASTER_PASSWORD ?? 'admin123456',
-  JWT_SECRET: process.env.JWT_SECRET ?? 'super_secret_jwt_key_change_me_in_production',
+  ADMIN_TELEGRAM_IDS: adminTelegramIds,
+  MASTER_PASSWORD: masterPassword,
+  JWT_SECRET: jwtSecret,
   LIVEKIT_HOST: process.env.LIVEKIT_HOST ?? process.env.LIVEKIT_URL ?? 'ws://localhost:7880',
-  LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY ?? 'devkey',
-  LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET ?? 'secret',
+  LIVEKIT_API_KEY: livekitApiKey,
+  LIVEKIT_API_SECRET: livekitApiSecret,
   ADMIN_PANEL_URL: process.env.ADMIN_PANEL_URL ?? `${process.env.MINI_APP_URL ?? 'http://localhost:3001/client'}/admin`,
   RECORDINGS_DIR: path.resolve(process.cwd(), process.env.RECORDINGS_DIR ?? './recordings'),
 };
+

@@ -105,6 +105,29 @@ export const App: React.FC = () => {
             weakSkill: data.user.weakSkill || 'P',
             strongSkill: data.user.strongSkill || 'FC',
           });
+
+          // Check if there is an active call session (e.g. direct call accepted or reconnect)
+          try {
+            const activeRes = await fetch(`${serverUrl}/api/calls/active`, {
+              headers: { 'x-telegram-init-data': rawInitData },
+            });
+            if (activeRes.ok) {
+              const activeData = await activeRes.json();
+              if (activeData.hasActiveCall) {
+                handleMatchFound({
+                  roomName: activeData.roomName,
+                  livekitToken: activeData.livekitToken,
+                  partnerAlias: activeData.partnerAlias,
+                  partnerBand: activeData.partnerBand,
+                  callDurationLimit: activeData.callDurationLimit,
+                });
+                return;
+              }
+            }
+          } catch (activeErr) {
+            console.warn('Active call check warning:', activeErr);
+          }
+
           setAppState('ready');
         } else {
           setErrorMessage('User profile not found. Please complete /start in Telegram Bot.');
@@ -118,39 +141,7 @@ export const App: React.FC = () => {
     };
 
     initAuth();
-  }, []);
-
-  const handleMatchFound = useCallback(
-    async (data: MatchFoundPayload) => {
-      if (appStateRef.current === 'ended' || appStateRef.current === 'idle') {
-        console.warn(`Ignoring late match_found event because app state is ${appStateRef.current}`);
-        return;
-      }
-
-      setMatchData(data);
-      setAppState('connecting');
-
-      const livekitUrl =
-        data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://p2p-clcf9vzd.livekit.cloud';
-
-      try {
-        await connectLiveKit(livekitUrl, data.livekitToken);
-
-        const currentState = appStateRef.current as AppState;
-        if (currentState === 'ended' || currentState === 'idle') {
-          disconnectLiveKit();
-          return;
-        }
-
-        setAppState('in_call');
-      } catch (err) {
-        console.error('Failed to connect to LiveKit SFU room:', err);
-        setErrorMessage('Failed to establish encrypted audio channel with LiveKit SFU.');
-        setAppState('ended');
-      }
-    },
-    [connectLiveKit, disconnectLiveKit]
-  );
+  }, [handleMatchFound]);
 
   const handleCallEnded = useCallback(() => {
     disconnectLiveKit();
@@ -167,7 +158,7 @@ export const App: React.FC = () => {
     const socket = socketService.connect(initData);
 
     socket.on('match_found', handleMatchFound);
-    socket.on('call_ended', handleCallEnded);
+    socket.on('call_finished', handleCallEnded);
 
     // Auto-join queue when in radar state
     if (appState === 'radar') {
@@ -181,7 +172,7 @@ export const App: React.FC = () => {
 
     return () => {
       socket.off('match_found', handleMatchFound);
-      socket.off('call_ended', handleCallEnded);
+      socket.off('call_finished', handleCallEnded);
     };
   }, [initData, appState, userData, handleMatchFound, handleCallEnded]);
 

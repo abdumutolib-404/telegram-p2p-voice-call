@@ -60,6 +60,15 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
   const activeEgresses = new Map<string, ActiveEgress>();
   const roomOperationTails = new Map<string, Promise<void>>();
   const userJoinTails = new Map<string, Promise<void>>();
+  const serverSessionTimers = new Map<string, NodeJS.Timeout>();
+
+  const clearSessionTimer = (roomName: string) => {
+    const existing = serverSessionTimers.get(roomName);
+    if (existing) {
+      clearTimeout(existing);
+      serverSessionTimers.delete(roomName);
+    }
+  };
 
   const runSerialized = async <T>(map: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> => {
     const previous = map.get(key) ?? Promise.resolve();
@@ -208,8 +217,9 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
-          const callDurationLimit = calculateMixedPlanDuration(user.plan, partner.plan);
-          const tokenTtlSeconds = Math.min(3600, Math.max(60, callDurationLimit * 60 + 300));
+          const callDurationLimitMinutes = calculateMixedPlanDuration(user.plan, partner.plan);
+          const callDurationLimitSeconds = callDurationLimitMinutes * 60;
+          const tokenTtlSeconds = Math.min(3600, Math.max(60, callDurationLimitSeconds + 300));
           const roomName = matchResult.roomName;
 
           try {
@@ -254,19 +264,74 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             userSocket.join(roomName);
             partnerSocket.join(roomName);
 
+            // Server-side call duration enforcement timer (limit seconds + 15s grace period)
+            clearSessionTimer(roomName);
+            const gracePeriodSeconds = 15;
+            const timer = setTimeout(() => {
+              void (async () => {
+                try {
+                  await runSerialized(roomOperationTails, roomName, async () => {
+                    const currentSession = await prisma.callSession.findUnique({
+                      where: { roomName },
+                      include: { userA: true, userB: true },
+                    });
+                    if (!currentSession || currentSession.status !== 'ACTIVE') return;
+
+                    const endedAt = new Date();
+                    const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - currentSession.createdAt.getTime()) / 1000));
+                    const claimed = await prisma.callSession.updateMany({
+                      where: { id: currentSession.id, status: 'ACTIVE' },
+                      data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
+                    });
+                    if (claimed.count !== 1) return;
+
+                    const egress = activeEgresses.get(roomName);
+                    const egressId = egress?.egressId ?? currentSession.egressId;
+                    const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
+                    if (egressId) {
+                      await stopAudioEgress(egressId).catch(() => undefined);
+                    }
+                    activeEgresses.delete(roomName);
+
+                    const recordingExpiresAt = recordingUrl
+                      ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(currentSession.userA.plan), getRetentionDaysForPlan(currentSession.userB.plan)) * 24 * 60 * 60 * 1000)
+                      : null;
+
+                    await prisma.callSession.update({
+                      where: { id: currentSession.id },
+                      data: { egressId: egressId ?? null, recordingUrl: recordingUrl ?? null, recordingExpiresAt },
+                    });
+
+                    io.to(roomName).emit('call_finished', { duration: durationSeconds, reason: 'duration_limit_exceeded' });
+
+                    if (bot) {
+                      await Promise.allSettled([
+                        sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, recordingUrl),
+                        sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, recordingUrl),
+                      ]);
+                    }
+                  });
+                } catch (err) {
+                  console.error('[Socket] duration_timeout_enforcement_failed', { roomName, error: err });
+                }
+              })();
+            }, (callDurationLimitSeconds + gracePeriodSeconds) * 1000);
+
+            serverSessionTimers.set(roomName, timer);
+
             userSocket.emit('match_found', {
               roomName,
               livekitToken: tokenUser,
               partnerAlias: partner.alias,
               partnerBand: partner.band,
-              callDurationLimit,
+              callDurationLimit: callDurationLimitSeconds, // in seconds
             });
             partnerSocket.emit('match_found', {
               roomName,
               livekitToken: tokenPartner,
               partnerAlias: user.alias,
               partnerBand: user.band,
-              callDurationLimit,
+              callDurationLimit: callDurationLimitSeconds, // in seconds
             });
           } catch (error: unknown) {
             try {
@@ -427,13 +492,23 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
+          clearSessionTimer(payload.roomName);
+
+          if (session.status !== 'ACTIVE') {
+            socket.emit('call_finished', { duration: session.duration ?? 0 });
+            return;
+          }
+
           const endedAt = new Date();
           const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - session.createdAt.getTime()) / 1000));
           const claimed = await prisma.callSession.updateMany({
             where: { id: session.id, status: 'ACTIVE' },
             data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
           });
-          if (claimed.count !== 1) return;
+          if (claimed.count !== 1) {
+            socket.emit('call_finished', { duration: session.duration ?? 0 });
+            return;
+          }
 
           const egress = activeEgresses.get(payload.roomName);
           const egressId = egress?.egressId ?? session.egressId;

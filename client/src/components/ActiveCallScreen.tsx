@@ -31,7 +31,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
 
+  const hasFinishedRef = useRef(false);
   const handleFinishCall = useCallback(() => {
+    if (hasFinishedRef.current) return;
+    hasFinishedRef.current = true;
     socketService.finishCall(roomName, userId);
     onFinishCall();
   }, [roomName, userId, onFinishCall]);

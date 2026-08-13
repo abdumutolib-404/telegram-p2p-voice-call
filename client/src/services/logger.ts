@@ -42,6 +42,32 @@ class FrontendLogger {
     (window as unknown as Record<string, unknown>).__EXPORT_LOGS__ = () => this.exportLogs();
   }
 
+  private sanitize(data: unknown): unknown {
+    if (!data) return data;
+    if (typeof data === 'string') {
+      return data.replace(/(initData=)[^&]+/gi, '$1[REDACTED]')
+                 .replace(/(Bearer\s+)[^\s"']+/gi, '$1[REDACTED]')
+                 .replace(/(livekitToken=)[^&]+/gi, '$1[REDACTED]');
+    }
+    if (typeof data === 'object') {
+      try {
+        const copy: Record<string, unknown> = Array.isArray(data) ? [] : {};
+        for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+          const lowerKey = key.toLowerCase();
+          if (['initdata', 'authorization', 'x-telegram-init-data', 'token', 'jwttoken', 'livekittoken', 'password', 'masterpassword'].includes(lowerKey)) {
+            copy[key] = '[REDACTED]';
+          } else {
+            copy[key] = this.sanitize(value);
+          }
+        }
+        return copy;
+      } catch {
+        return '[Unserializable]';
+      }
+    }
+    return data;
+  }
+
   private setupFetchInterceptor() {
     if (typeof window === 'undefined' || !window.fetch) return;
 
@@ -54,7 +80,8 @@ class FrontendLogger {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method || 'GET';
 
-      this.info('HTTP', `➡️ ${method} ${url}`, { headers: init?.headers });
+      const sanitizedHeaders = init?.headers ? this.sanitize(init.headers) : undefined;
+      this.info('HTTP', `➡️ ${method} ${url}`, { headers: sanitizedHeaders });
 
       try {
         const response = await originalFetch(...args);
@@ -77,13 +104,14 @@ class FrontendLogger {
   }
 
   public log(level: 'info' | 'warn' | 'error', category: string, message: string, details?: unknown) {
+    const sanitizedDetails = this.sanitize(details);
     const entry: LogEntry = {
       id: Math.random().toString(36).substring(2, 9),
       timestamp: new Date().toISOString(),
       level,
       category,
       message,
-      details,
+      details: sanitizedDetails,
     };
 
     this.logs.push(entry);
@@ -94,11 +122,11 @@ class FrontendLogger {
     // Console output for standard DevTools inspection
     const prefix = `[Client:${category}]`;
     if (level === 'error') {
-      console.error(prefix, message, details ?? '');
+      console.error(prefix, message, sanitizedDetails ?? '');
     } else if (level === 'warn') {
-      console.warn(prefix, message, details ?? '');
+      console.warn(prefix, message, sanitizedDetails ?? '');
     } else {
-      console.log(prefix, message, details ?? '');
+      console.log(prefix, message, sanitizedDetails ?? '');
     }
 
     this.notifyListeners();
