@@ -45,7 +45,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       const result = validateTelegramInitData(initData, botToken);
       expect(result.valid).toBe(true);
       expect(result.user).toBeDefined();
-      expect(result.user.id).toBe(7771234);
+      expect(result.user.id).toBe(BigInt(7771234));
     });
 
     it('1.2 Rejects missing initData header (403 Forbidden)', async () => {

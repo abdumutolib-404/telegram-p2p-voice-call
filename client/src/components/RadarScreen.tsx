@@ -1,9 +1,7 @@
 import React from 'react';
 import { Loader2, X, Radio, User } from 'lucide-react';
-import { socketService } from '../services/socket';
 
 interface RadarScreenProps {
-  userId: string;
   userAvatarUrl?: string;
   userAlias?: string;
   targetBand?: number;
@@ -11,7 +9,6 @@ interface RadarScreenProps {
 }
 
 export const RadarScreen: React.FC<RadarScreenProps> = ({
-  userId,
   userAvatarUrl,
   userAlias = 'You',
   targetBand,

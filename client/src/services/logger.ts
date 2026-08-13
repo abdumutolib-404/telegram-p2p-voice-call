@@ -51,7 +51,10 @@ class FrontendLogger {
     }
     if (typeof data === 'object') {
       try {
-        const copy: Record<string, unknown> = Array.isArray(data) ? [] : {};
+        if (Array.isArray(data)) {
+          return data.map((item) => this.sanitize(item));
+        }
+        const copy: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
           const lowerKey = key.toLowerCase();
           if (['initdata', 'authorization', 'x-telegram-init-data', 'token', 'jwttoken', 'livekittoken', 'password', 'masterpassword'].includes(lowerKey)) {

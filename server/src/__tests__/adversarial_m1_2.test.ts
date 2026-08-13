@@ -269,7 +269,10 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
     });
 
     it('3.1 Step 1: 1st report triggers Warning notice only', async () => {
-      const res1 = await moderationService.processReport(targetUser.id, reporterUser.id, callSession.id, '1st report reason');
+      const call = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_1`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+      });
+      const res1 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '1st report reason');
 
       expect(res1.penaltyLevel).toBe('WARNING');
       expect(res1.warningCount).toBe(1);
@@ -281,7 +284,10 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
     });
 
     it('3.2 Step 2: 2nd report triggers 6-hour Temporary Ban', async () => {
-      const res2 = await moderationService.processReport(targetUser.id, reporterUser.id, callSession.id, '2nd report reason');
+      const call = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_2`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+      });
+      const res2 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '2nd report reason');
 
       expect(res2.penaltyLevel).toBe('TEMP_BAN');
       expect(res2.warningCount).toBe(2);
@@ -313,7 +319,10 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
     });
 
     it('3.4 Step 4: 3rd report triggers Permanent Lock', async () => {
-      const res3 = await moderationService.processReport(targetUser.id, reporterUser.id, callSession.id, '3rd report reason');
+      const call = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_3`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+      });
+      const res3 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '3rd report reason');
 
       expect(res3.penaltyLevel).toBe('PERM_BAN');
       expect(res3.warningCount).toBe(3);
@@ -325,7 +334,10 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
     });
 
     it('3.5 Step 5: Permanent Lock persists on 4th+ report and cannot auto-expire', async () => {
-      const res4 = await moderationService.processReport(targetUser.id, reporterUser.id, callSession.id, '4th report reason');
+      const call = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_4`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+      });
+      const res4 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '4th report reason');
 
       expect(res4.penaltyLevel).toBe('PERM_BAN');
       expect(res4.warningCount).toBe(4);

@@ -49,7 +49,10 @@ describe('Moderation Penalty Ladder', () => {
   });
 
   it('1st report issues warning notice', async () => {
-    const res1 = await moderationService.processReport(userBId, userAId, callSessionId, 'Inappropriate language');
+    const call = await prisma.callSession.create({
+      data: { roomName: 'room_mod_test_1', userAId, userBId, status: 'COMPLETED' },
+    });
+    const res1 = await moderationService.processReport(userBId, userAId, call.id, 'Inappropriate language');
 
     expect(res1.penaltyLevel).toBe('WARNING');
     expect(res1.warningCount).toBe(1);
@@ -60,7 +63,10 @@ describe('Moderation Penalty Ladder', () => {
   });
 
   it('2nd report triggers 6-hour temporary ban', async () => {
-    const res2 = await moderationService.processReport(userBId, userAId, callSessionId, 'Spamming');
+    const call = await prisma.callSession.create({
+      data: { roomName: 'room_mod_test_2', userAId, userBId, status: 'COMPLETED' },
+    });
+    const res2 = await moderationService.processReport(userBId, userAId, call.id, 'Spamming');
 
     expect(res2.penaltyLevel).toBe('TEMP_BAN');
     expect(res2.warningCount).toBe(2);
@@ -72,7 +78,10 @@ describe('Moderation Penalty Ladder', () => {
   });
 
   it('3rd report triggers permanent lock', async () => {
-    const res3 = await moderationService.processReport(userBId, userAId, callSessionId, 'Severe abuse');
+    const call = await prisma.callSession.create({
+      data: { roomName: 'room_mod_test_3', userAId, userBId, status: 'COMPLETED' },
+    });
+    const res3 = await moderationService.processReport(userBId, userAId, call.id, 'Severe abuse');
 
     expect(res3.penaltyLevel).toBe('PERM_BAN');
     expect(res3.warningCount).toBe(3);

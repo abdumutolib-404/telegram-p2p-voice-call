@@ -20,7 +20,7 @@ describe('Telegram WebApp initData HMAC Lockdown', () => {
     const result = validateTelegramInitData(validInitData, botToken);
 
     expect(result.valid).toBe(true);
-    expect(result.user?.id).toBe(987654321);
+    expect(result.user?.id).toBe(BigInt(987654321));
   });
 
   it('rejects tampered initData hash with HTTP 403 equivalent', () => {

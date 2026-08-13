@@ -33,6 +33,38 @@ export const App: React.FC = () => {
     analyserNode,
   } = useLiveKit();
 
+  const handleMatchFound = useCallback(
+    async (data: MatchFoundPayload) => {
+      if (appStateRef.current === 'ended' || appStateRef.current === 'idle') {
+        console.warn(`Ignoring late match_found event because app state is ${appStateRef.current}`);
+        return;
+      }
+
+      setMatchData(data);
+      setAppState('connecting');
+
+      const livekitUrl =
+        data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://p2p-clcf9vzd.livekit.cloud';
+
+      try {
+        await connectLiveKit(livekitUrl, data.livekitToken);
+
+        const currentState = appStateRef.current as AppState;
+        if (currentState === 'ended' || currentState === 'idle') {
+          disconnectLiveKit();
+          return;
+        }
+
+        setAppState('in_call');
+      } catch (err) {
+        console.error('Failed to connect to LiveKit SFU room:', err);
+        setErrorMessage('Failed to establish encrypted audio channel with LiveKit SFU.');
+        setAppState('ended');
+      }
+    },
+    [connectLiveKit, disconnectLiveKit]
+  );
+
   // Telegram WebApp Initialization & Auth Verification
   useEffect(() => {
     const initAuth = async () => {
@@ -243,7 +275,6 @@ export const App: React.FC = () => {
   if (appState === 'radar') {
     return (
       <RadarScreen
-        userId={userData.userId}
         targetBand={userData.band}
         onCancel={handleCancelMatchmaking}
       />
