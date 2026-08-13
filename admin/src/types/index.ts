@@ -71,4 +71,18 @@ export interface AuthResponse {
   expiresAt: string;
 }
 
+export interface PasswordResponse {
+  success: boolean;
+  challengeId: string;
+  expiresAt: string;
+  step?: string;
+  testOtp?: string;
+}
+
+export interface OtpResponse {
+  success: boolean;
+  jwtToken: string;
+  expiresAt: string;
+}
+
 export type ModerationAction = 'warn' | 'block' | 'ban' | 'unblock';

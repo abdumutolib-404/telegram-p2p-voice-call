@@ -2,34 +2,240 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import { Bot } from 'grammy';
 import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
 import { env } from '../config/env';
 import { adminAuthMiddleware } from '../middleware/adminAuth';
 import { getAdminAnalytics } from '../services/analytics';
 import { getPlansConfig, updatePlansConfig } from '../services/plan';
 import { prisma } from '../config/database';
-
 import { createRateLimiter } from '../middleware/rateLimit';
+import type { MyContext } from '../bot/types';
 
 const router = Router();
-const adminLoginLimiter = createRateLimiter(5, 60 * 1000); // 5 attempts per minute max
+const adminAuthLimiter = createRateLimiter(5, 15 * 60 * 1000); // 5 attempts per 15 minutes max
+const otpVerifyLimiter = createRateLimiter(10, 15 * 60 * 1000); // 10 attempts per 15 minutes max
 
-// POST /api/admin/login (Stealth 2FA token + Master Password Exchange)
-router.post('/login', adminLoginLimiter, async (req, res) => {
+interface AdminOtpChallenge {
+  challengeId: string;
+  otpHash: string;
+  expiresAt: number;
+  attempts: number;
+  maxAttempts: number;
+  consumed: boolean;
+}
+
+const adminOtpChallenges = new Map<string, AdminOtpChallenge>();
+
+let adminBotInstance: Bot<MyContext> | null = null;
+
+export function setAdminBot(bot: Bot<MyContext> | null): void {
+  adminBotInstance = bot;
+}
+
+export function getAdminChallenge(challengeId: string): AdminOtpChallenge | undefined {
+  return adminOtpChallenges.get(challengeId);
+}
+
+export function clearAdminChallenges(): void {
+  adminOtpChallenges.clear();
+}
+
+function cryptoSafeEqualString(left: string, right: string): boolean {
+  const leftHash = crypto.createHash('sha256').update(left).digest();
+  const rightHash = crypto.createHash('sha256').update(right).digest();
+  return crypto.timingSafeEqual(leftHash, rightHash);
+}
+
+// STEP 1: POST /api/admin/auth/password (Validate master password & dispatch OTP via Telegram bot)
+router.post('/auth/password', adminAuthLimiter, async (req, res) => {
   try {
-    const token = typeof req.body?.token === 'string' ? req.body.token : '';
-    const masterPassword = typeof req.body?.masterPassword === 'string' ? req.body.masterPassword : '';
+    const password = typeof req.body?.password === 'string'
+      ? req.body.password
+      : typeof req.body?.masterPassword === 'string'
+      ? req.body.masterPassword
+      : '';
 
-    if (!token || !masterPassword) {
-      res.status(400).json({ error: 'Missing token or masterPassword.' });
+    if (!password) {
+      res.status(400).json({ error: 'Master password is required.' });
       return;
     }
 
-    if (!cryptoSafeEqualString(masterPassword, env.MASTER_PASSWORD)) {
+    if (!cryptoSafeEqualString(password, env.MASTER_PASSWORD)) {
       res.status(401).json({ error: 'Invalid master password.' });
       return;
     }
 
+    // Generate cryptographically random 6-digit OTP
+    const otpNum = crypto.randomInt(100000, 1000000);
+    const otp = otpNum.toString();
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const challengeId = crypto.randomUUID();
+
+    adminOtpChallenges.set(challengeId, {
+      challengeId,
+      otpHash,
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      attempts: 0,
+      maxAttempts: 5,
+      consumed: false,
+    });
+
+    // Send OTP via Telegram bot to all whitelisted ADMIN_TELEGRAM_IDS
+    if (adminBotInstance && env.ADMIN_TELEGRAM_IDS.length > 0) {
+      for (const adminIdStr of env.ADMIN_TELEGRAM_IDS) {
+        await adminBotInstance.api.sendMessage(
+          adminIdStr,
+          `🔐 *Admin Login Verification*\n\nYour 6-digit OTP code is:\n\`${otp}\`\n\nExpires in 5 minutes. Do not share this code.`,
+          { parse_mode: 'Markdown' }
+        ).catch((err: unknown) => {
+          console.error('[AdminAuth] Failed to dispatch OTP to Telegram ID', adminIdStr, err instanceof Error ? err.message : err);
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      challengeId,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      ...(env.NODE_ENV === 'test' && req.headers['x-test-otp'] === 'true' ? { testOtp: otp } : {}),
+    });
+  } catch (error: unknown) {
+    console.error('[AdminAuth] password_step_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    res.status(500).json({ error: 'Admin password authentication unavailable.' });
+  }
+});
+
+// STEP 2: POST /api/admin/auth/otp (Verify OTP & issue short-lived JWT)
+router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
+  try {
+    const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId : '';
+    const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+
+    if (!challengeId || !otp) {
+      res.status(400).json({ error: 'Missing challengeId or OTP.' });
+      return;
+    }
+
+    const challenge = adminOtpChallenges.get(challengeId);
+    if (!challenge || challenge.consumed) {
+      res.status(401).json({ error: 'Invalid or consumed login challenge.' });
+      return;
+    }
+
+    if (Date.now() > challenge.expiresAt) {
+      res.status(401).json({ error: 'OTP has expired. Please request a new verification code.' });
+      return;
+    }
+
+    if (challenge.attempts >= challenge.maxAttempts) {
+      res.status(401).json({ error: 'Maximum OTP verification attempts exceeded.' });
+      return;
+    }
+
+    challenge.attempts += 1;
+
+    const providedHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(providedHash, 'hex'),
+      Buffer.from(challenge.otpHash, 'hex')
+    );
+
+    if (!isValid) {
+      const remainingAttempts = challenge.maxAttempts - challenge.attempts;
+      res.status(401).json({ error: `Invalid verification code. ${remainingAttempts} attempts remaining.` });
+      return;
+    }
+
+    challenge.consumed = true;
+    adminOtpChallenges.delete(challengeId);
+
+    const adminTgId = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678') || 12345678;
+    const jwtToken = jwt.sign(
+      { role: 'admin', telegramId: adminTgId },
+      env.JWT_SECRET,
+      { expiresIn: '8h', algorithm: 'HS256' }
+    );
+
+    res.json({
+      success: true,
+      jwtToken,
+      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    });
+  } catch (error: unknown) {
+    console.error('[AdminAuth] otp_step_failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    res.status(500).json({ error: 'Admin OTP verification unavailable.' });
+  }
+});
+
+// Legacy / fallback endpoint POST /api/admin/login
+router.post('/login', adminAuthLimiter, async (req, res) => {
+  const masterPassword = typeof req.body?.masterPassword === 'string'
+    ? req.body.masterPassword
+    : typeof req.body?.password === 'string'
+    ? req.body.password
+    : '';
+
+  if (!masterPassword || !cryptoSafeEqualString(masterPassword, env.MASTER_PASSWORD)) {
+    res.status(401).json({ error: 'Invalid master password.' });
+    return;
+  }
+
+  const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId : '';
+  const otp = typeof req.body?.otp === 'string' ? req.body.otp : '';
+  const token = typeof req.body?.token === 'string' ? req.body.token : '';
+
+  // If challengeId and OTP are provided, process OTP step
+  if (challengeId && otp) {
+    const challenge = adminOtpChallenges.get(challengeId);
+    if (!challenge || challenge.consumed) {
+      res.status(401).json({ error: 'Invalid or consumed login challenge.' });
+      return;
+    }
+
+    if (Date.now() > challenge.expiresAt) {
+      res.status(401).json({ error: 'OTP has expired.' });
+      return;
+    }
+
+    if (challenge.attempts >= challenge.maxAttempts) {
+      res.status(401).json({ error: 'Maximum OTP verification attempts exceeded.' });
+      return;
+    }
+
+    challenge.attempts += 1;
+
+    const providedHash = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(providedHash, 'hex'),
+      Buffer.from(challenge.otpHash, 'hex')
+    );
+
+    if (!isValid) {
+      res.status(401).json({ error: 'Invalid verification code.' });
+      return;
+    }
+
+    challenge.consumed = true;
+    adminOtpChallenges.delete(challengeId);
+
+    const adminTgId = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678') || 12345678;
+    const jwtToken = jwt.sign(
+      { role: 'admin', telegramId: adminTgId },
+      env.JWT_SECRET,
+      { expiresIn: '8h', algorithm: 'HS256' }
+    );
+
+    res.json({ success: true, jwtToken, expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString() });
+    return;
+  }
+
+  // Handle single-use 2FA token (stealth token or test harness token)
+  if (token) {
     let telegramIdNum = await verifyAndConsumeAdminToken(token);
     if (telegramIdNum === null && env.NODE_ENV === 'test' && token === 'test_admin_token') {
       telegramIdNum = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678');
@@ -43,19 +249,41 @@ router.post('/login', adminLoginLimiter, async (req, res) => {
 
     const jwtToken = jwt.sign({ telegramId: telegramIdNum, role: 'admin' }, env.JWT_SECRET, { expiresIn: '24h', algorithm: 'HS256' });
     res.json({ success: true, jwtToken, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
-  } catch (error: unknown) {
-    console.error('[Admin] login_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
-    res.status(500).json({ error: 'Admin authentication unavailable.' });
+    return;
   }
-});
 
-function cryptoSafeEqualString(left: string, right: string): boolean {
-  const leftHash = crypto.createHash('sha256').update(left).digest();
-  const rightHash = crypto.createHash('sha256').update(right).digest();
-  return crypto.timingSafeEqual(leftHash, rightHash);
-}
+  // Default: process password step and generate new OTP challenge
+  const otpNum = crypto.randomInt(100000, 1000000);
+  const otpVal = otpNum.toString();
+  const otpHash = crypto.createHash('sha256').update(otpVal).digest('hex');
+  const newChallengeId = crypto.randomUUID();
+
+  adminOtpChallenges.set(newChallengeId, {
+    challengeId: newChallengeId,
+    otpHash,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+    attempts: 0,
+    maxAttempts: 5,
+    consumed: false,
+  });
+
+  if (adminBotInstance && env.ADMIN_TELEGRAM_IDS.length > 0) {
+    for (const adminIdStr of env.ADMIN_TELEGRAM_IDS) {
+      await adminBotInstance.api.sendMessage(
+        adminIdStr,
+        `🔐 *Admin Login Verification*\n\nYour 6-digit OTP code is:\n\`${otpVal}\`\n\nExpires in 5 minutes.`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => undefined);
+    }
+  }
+
+  res.json({
+    success: true,
+    step: 'otp_required',
+    challengeId: newChallengeId,
+    ...(env.NODE_ENV === 'test' ? { testOtp: otpVal } : {}),
+  });
+});
 
 // GET /api/admin/stats (Protected)
 router.get('/stats', adminAuthMiddleware, async (req, res) => {

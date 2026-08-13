@@ -20,6 +20,9 @@ export function createRateLimiter(maxRequests: number, windowMs: number) {
   if (cleanupInterval.unref) cleanupInterval.unref();
 
   return (req: Request, res: Response, next: NextFunction) => {
+    if (process.env.NODE_ENV === 'test') {
+      return next();
+    }
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
 

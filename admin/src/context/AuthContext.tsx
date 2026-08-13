@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import type { AuthResponse } from '../types/index.ts';
+import type { PasswordResponse, OtpResponse } from '../types/index.ts';
 import { getAdminToken, setAdminToken, clearAdminToken, adminFetch } from '../api/client.ts';
 
 interface AuthContextType {
@@ -8,6 +8,8 @@ interface AuthContextType {
   urlToken: string | null;
   jwtToken: string | null;
   isLoading: boolean;
+  requestOtp: (password: string) => Promise<{ challengeId: string }>;
+  verifyOtp: (challengeId: string, otp: string) => Promise<void>;
   login: (masterPassword: string, overrideToken?: string) => Promise<void>;
   logout: () => void;
 }
@@ -54,10 +56,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const requestOtp = useCallback(async (password: string) => {
+    const res = await adminFetch<PasswordResponse>('/api/admin/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+
+    if (res.success && res.challengeId) {
+      return { challengeId: res.challengeId };
+    }
+    throw new Error('Failed to initiate login challenge');
+  }, []);
+
+  const verifyOtp = useCallback(async (challengeId: string, otp: string) => {
+    const res = await adminFetch<OtpResponse>('/api/admin/auth/otp', {
+      method: 'POST',
+      body: JSON.stringify({ challengeId, otp }),
+    });
+
+    if (res.success && res.jwtToken) {
+      setAdminToken(res.jwtToken);
+      setJwtTokenState(res.jwtToken);
+      setIsAuthenticated(true);
+    } else {
+      throw new Error('Invalid OTP verification response');
+    }
+  }, []);
+
   const login = useCallback(async (masterPassword: string, overrideToken?: string) => {
     const tokenToUse = overrideToken || urlToken || '';
-    
-    const response = await adminFetch<AuthResponse>('/api/admin/login', {
+
+    const response = await adminFetch<{ jwtToken?: string; challengeId?: string; step?: string }>('/api/admin/login', {
       method: 'POST',
       body: JSON.stringify({
         token: tokenToUse,
@@ -69,6 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAdminToken(response.jwtToken);
       setJwtTokenState(response.jwtToken);
       setIsAuthenticated(true);
+    } else if (response.challengeId) {
+      throw new Error('OTP verification code has been dispatched to your Telegram admin account.');
     } else {
       throw new Error('Invalid authentication response');
     }
@@ -87,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         urlToken,
         jwtToken,
         isLoading,
+        requestOtp,
+        verifyOtp,
         login,
         logout,
       }}

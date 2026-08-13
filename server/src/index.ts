@@ -9,7 +9,7 @@ import { env } from './config/env';
 import { connectDB } from './config/database';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
-import adminRoutes from './routes/admin';
+import adminRoutes, { setAdminBot } from './routes/admin';
 import { setupSocketSignaling } from './socket/signaling';
 import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
@@ -114,6 +114,7 @@ if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
 async function bootstrap(): Promise<void> {
   try {
     await connectDB();
+    setAdminBot(bot);
     setupSocketSignaling(io, bot ?? undefined);
     startStoragePurgeCron();
 
