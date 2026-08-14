@@ -12,16 +12,19 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
     try {
       await ctx.answerCallbackQuery();
+      const maxDurText = planConfig.maxDuration >= 999 ? 'Unlimited' : `${planConfig.maxDuration}m`;
+      const dailyLimText = planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/day`;
       await ctx.replyWithInvoice(
         `IELTS P2P ${tier} Plan Subscription`,
-        `Upgrade to ${tier} Plan (${planConfig.maxDuration}m call limit, ${planConfig.dailyLimit} calls/day, ${planConfig.retentionDays}d recording storage).`,
+        `Upgrade to ${tier} Plan (${maxDurText} call limit, ${dailyLimText}, ${planConfig.retentionDays}d recording storage).`,
         `plan_purchase:${tier}:${ctx.from.id}:${Date.now()}`,
         'XTR', // Currency for Telegram Stars
-        [{ label: `${tier} Plan Subscription`, amount: planConfig.starsPrice }]
+        [{ label: `${tier} Plan Subscription`, amount: planConfig.starsPrice }],
+        { provider_token: '' } // provider_token must be empty string for Telegram Stars
       );
     } catch (err) {
       console.error('[Payments] Failed to send Stars invoice:', err);
-      await ctx.reply(`Could not initiate Stars invoice: ${(err as Error).message}`);
+      await ctx.reply('⚠️ Unable to open payment invoice right now. Please try again later.');
     }
   });
 

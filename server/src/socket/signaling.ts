@@ -152,6 +152,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     }
   });
 
+  const userLastActionTime = new Map<string, number>();
+
   io.on('connection', (socket: Socket) => {
     const userId = socket.data.userId as string | undefined;
     if (userId) addUserSocket(userId, socket.id);
@@ -164,6 +166,14 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         socket.emit('error', { message: 'Unauthenticated socket session.' });
         return;
       }
+
+      const now = Date.now();
+      const lastAction = userLastActionTime.get(currentUserId) || 0;
+      if (now - lastAction < 800) {
+        socket.emit('error', { message: 'Please slow down. Matchmaking is in progress.' });
+        return;
+      }
+      userLastActionTime.set(currentUserId, now);
 
       try {
         await runSerialized(userJoinTails, currentUserId, async () => {
@@ -186,7 +196,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             },
           });
           if (activeCall) {
-            socket.emit('error', { message: 'You are already in an active call.' });
+            socket.emit('error', { message: 'Another session is currently in an active call from this account. Please try again later.' });
             return;
           }
 

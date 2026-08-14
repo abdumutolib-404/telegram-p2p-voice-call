@@ -459,4 +459,16 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       await ctx.answerCallbackQuery({ text: 'An error occurred.' });
     }
   });
+
+  // Callback: submit_appeal
+  bot.callbackQuery('submit_appeal', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `⚖️ *Submit Appeal or Message Moderation:*\n\n` +
+        `Please send your appeal message using the \`/appeal\` command.\n\n` +
+        `*Example:*\n\`/appeal I would like to request an unban because my connection dropped.\`\n\n` +
+        `Your message will go directly to our admin team's review queue.`,
+      { parse_mode: 'Markdown' }
+    );
+  });
 }

@@ -26,10 +26,13 @@ const USER_LOCK_TTL_MS = 5000;
 
 const MATCH_QUEUE_CLAIM_SCRIPT = `-- MATCH_QUEUE_CLAIM
 local candidate = redis.call('SPOP', KEYS[1])
-while candidate do
+local scanned = 0
+local max_scans = 50
+while candidate and scanned < max_scans do
+  scanned = scanned + 1
   if candidate ~= ARGV[1] then
     local pointer = redis.call('GET', KEYS[2] .. candidate)
-    if pointer == KEYS[1] then
+    if pointer then
       redis.call('DEL', KEYS[2] .. candidate)
       redis.call('DEL', KEYS[2] .. ARGV[1])
       return candidate
@@ -91,38 +94,93 @@ export class MatchmakingService {
     return `${MATCH_QUEUE_PREFIX}${this.getBandKey(band)}:${weakSkill}:${strongSkill}`;
   }
 
+  public getBandPoolKey(band: number): string {
+    return `${MATCH_QUEUE_PREFIX}band:${this.getBandKey(band)}`;
+  }
+
+  public getGlobalPoolKey(): string {
+    return `${MATCH_QUEUE_PREFIX}global`;
+  }
+
   public async joinQueue(userId: string, band: number, skills: UserSkills): Promise<MatchResult> {
     this.validateUserId(userId);
     return this.withUserLock(userId, async () => {
       const { weakSkill, strongSkill } = determineWeakAndStrongSkills(skills);
       const ownBucketKey = this.getBucketKey(band, weakSkill, strongSkill);
-      const complementaryBucketKey = this.getBucketKey(band, strongSkill, weakSkill);
+      const bandPoolKey = this.getBandPoolKey(band);
+      const globalPoolKey = this.getGlobalPoolKey();
+
+      // Progressive Search Priority Rings:
+      // 1. Exact complementary skill match at same band (e.g. 7.0:P:FC)
+      // 2. Same skill match at same band (e.g. 7.0:FC:P)
+      // 3. Same band general pool
+      // 4. Adjacent ±0.5 band general pools
+      // 5. Adjacent ±1.0 band general pools
+      // 6. Adjacent ±1.5 band general pools
+      // 7. Global fast pool
+      const candidateBuckets: string[] = [
+        this.getBucketKey(band, strongSkill, weakSkill),
+        ownBucketKey,
+        bandPoolKey,
+      ];
+
+      const deltas = [0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0];
+      for (const delta of deltas) {
+        const targetBand = band + delta;
+        if (targetBand >= 4.0 && targetBand <= 9.0) {
+          candidateBuckets.push(this.getBandPoolKey(targetBand));
+        }
+      }
+      candidateBuckets.push(globalPoolKey);
 
       try {
         await this.cancelQueueUnlocked(userId);
 
-        const claimedPartner = await this.redis.eval(MATCH_QUEUE_CLAIM_SCRIPT, 2, complementaryBucketKey, USER_QUEUE_PREFIX, userId);
+        // Scan candidate buckets in order of score proximity
+        for (const bucketKey of candidateBuckets) {
+          const claimedPartner = await this.redis.eval(
+            MATCH_QUEUE_CLAIM_SCRIPT,
+            2,
+            bucketKey,
+            USER_QUEUE_PREFIX,
+            userId
+          );
 
-        if (typeof claimedPartner === 'string' && claimedPartner !== userId) {
-          return {
-            matched: true,
-            partnerId: claimedPartner,
-            roomName: `room_${crypto.randomUUID()}`,
-            partnerBucketKey: complementaryBucketKey,
-          };
+          if (typeof claimedPartner === 'string' && claimedPartner !== userId) {
+            // Clean up partner from auxiliary pools
+            await Promise.allSettled([
+              this.redis.srem(bandPoolKey, claimedPartner),
+              this.redis.srem(globalPoolKey, claimedPartner),
+            ]);
+
+            return {
+              matched: true,
+              partnerId: claimedPartner,
+              roomName: `room_${crypto.randomUUID()}`,
+              partnerBucketKey: bucketKey,
+            };
+          }
         }
 
+        // No candidate found: Register user in specific, band, and global queues
         try {
-          await this.redis.sadd(ownBucketKey, userId);
-          await this.redis.expire(ownBucketKey, QUEUE_TTL_SECONDS * 2);
-          await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS);
+          await Promise.all([
+            this.redis.sadd(ownBucketKey, userId),
+            this.redis.sadd(bandPoolKey, userId),
+            this.redis.sadd(globalPoolKey, userId),
+          ]);
+          await Promise.all([
+            this.redis.expire(ownBucketKey, QUEUE_TTL_SECONDS * 2),
+            this.redis.expire(bandPoolKey, QUEUE_TTL_SECONDS * 2),
+            this.redis.expire(globalPoolKey, QUEUE_TTL_SECONDS * 2),
+            this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS),
+          ]);
         } catch (error: unknown) {
-          await this.redis.srem(ownBucketKey, userId).catch((cleanupError: unknown) => {
-            console.error('[Matchmaking] queue_cleanup_failed', {
-              userId,
-              error: cleanupError instanceof Error ? cleanupError.message : 'unknown_error',
-            });
-          });
+          await Promise.allSettled([
+            this.redis.srem(ownBucketKey, userId),
+            this.redis.srem(bandPoolKey, userId),
+            this.redis.srem(globalPoolKey, userId),
+          ]);
           throw error;
         }
 
@@ -143,9 +201,16 @@ export class MatchmakingService {
 
     return this.withUserLock(userId, async () => {
       try {
-        await this.redis.sadd(bucketKey, userId);
-        await this.redis.expire(bucketKey, QUEUE_TTL_SECONDS * 2);
-        await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS);
+        const globalPoolKey = this.getGlobalPoolKey();
+        await Promise.all([
+          this.redis.sadd(bucketKey, userId),
+          this.redis.sadd(globalPoolKey, userId),
+        ]);
+        await Promise.all([
+          this.redis.expire(bucketKey, QUEUE_TTL_SECONDS * 2),
+          this.redis.expire(globalPoolKey, QUEUE_TTL_SECONDS * 2),
+          this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS),
+        ]);
       } catch (error: unknown) {
         console.error('[Matchmaking] restore_failed', {
           userId,
@@ -174,6 +239,7 @@ export class MatchmakingService {
   private async cancelQueueUnlocked(userId: string): Promise<boolean> {
     const pointerKey = `${USER_QUEUE_PREFIX}${userId}`;
     const result = await this.redis.eval(CANCEL_QUEUE_SCRIPT, 1, pointerKey, userId);
+    await this.redis.srem(this.getGlobalPoolKey(), userId).catch(() => undefined);
     return result === 1;
   }
 
