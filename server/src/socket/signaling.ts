@@ -399,6 +399,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               partnerBand: partner.band,
               roomName,
               token: tokenUser,
+              livekitToken: tokenUser,
+              callDurationLimit: callDurationLimitSeconds,
               maxDurationSeconds: callDurationLimitSeconds,
             });
 
@@ -408,6 +410,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               partnerBand: user.band,
               roomName,
               token: tokenPartner,
+              livekitToken: tokenPartner,
+              callDurationLimit: callDurationLimitSeconds,
               maxDurationSeconds: callDurationLimitSeconds,
             });
           } catch (error: unknown) {

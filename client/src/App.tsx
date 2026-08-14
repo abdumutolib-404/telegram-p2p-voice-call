@@ -42,14 +42,23 @@ export const App: React.FC = () => {
         return;
       }
 
-      setMatchData(data);
+      const livekitToken = data.livekitToken || data.token || '';
+      const callDurationLimit = data.callDurationLimit ?? data.maxDurationSeconds ?? 900;
+
+      const normalizedData: MatchFoundPayload = {
+        ...data,
+        livekitToken,
+        callDurationLimit,
+      };
+
+      setMatchData(normalizedData);
       setAppState('connecting');
 
       const livekitUrl =
         data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://p2p-clcf9vzd.livekit.cloud';
 
       try {
-        await connectLiveKit(livekitUrl, data.livekitToken);
+        await connectLiveKit(livekitUrl, livekitToken);
 
         const currentState = appStateRef.current as AppState;
         if (currentState === 'ended' || currentState === 'idle') {
@@ -345,7 +354,7 @@ export const App: React.FC = () => {
         userId={userData.userId}
         partnerAlias={matchData.partnerAlias}
         partnerBand={matchData.partnerBand}
-        callDurationLimit={matchData.callDurationLimit}
+        callDurationLimit={matchData.callDurationLimit ?? 900}
         isMicMuted={isMicMuted}
         analyserNode={analyserNode}
         onToggleMic={toggleMic}

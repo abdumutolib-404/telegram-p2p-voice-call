@@ -19,11 +19,13 @@ export interface UserMatchData {
 
 export interface MatchFoundPayload {
   roomName: string;
-  livekitToken: string;
+  livekitToken?: string;
+  token?: string;
   livekitUrl?: string;
   partnerAlias: string;
   partnerBand: number;
-  callDurationLimit: number;
+  callDurationLimit?: number;
+  maxDurationSeconds?: number;
 }
 
 export interface RecordStatusPayload {

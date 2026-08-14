@@ -324,6 +324,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
         from: { id: 99001122 },
         message: {
           successful_payment: {
+            currency: 'XTR',
             telegram_payment_charge_id: 'stars_tx_charge_unique_001',
             total_amount: 150,
             invoice_payload: `plan_purchase:PRO:99001122:${Date.now()}`,
@@ -369,6 +370,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
         from: { id: 99001122 },
         message: {
           successful_payment: {
+            currency: 'XTR',
             telegram_payment_charge_id: 'stars_tx_charge_unique_001', // SAME payment charge ID
             total_amount: 150,
             invoice_payload: `plan_purchase:PRO:99001122:${Date.now()}`,
@@ -382,16 +384,10 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       // Send duplicate payment notification
       await registeredHandler!(duplicateCtx);
 
-      // Reply message still notifies user safely
-      expect(replyMessage).toContain('Payment Successful');
-
-      // FIXED: In production PostgreSQL, telegramPaymentId has @unique index which throws
-      // unique constraint violation, handled by try-catch in payments.ts (idempotency guard).
-      // The correct assertion is that exactly 1 transaction exists (no duplicates).
+      // Verify that exactly 1 transaction exists in the database
       const txs = await prisma.starsTransaction.findMany();
       const duplicateMatches = txs.filter((t) => t.telegramPaymentId === 'stars_tx_charge_unique_001');
-      // In mock mode without unique constraints, we may get >= 1, but correct behavior is exactly 1.
-      expect(duplicateMatches.length).toBeGreaterThanOrEqual(1);
+      expect(duplicateMatches.length).toBe(1);
     });
   });
 });

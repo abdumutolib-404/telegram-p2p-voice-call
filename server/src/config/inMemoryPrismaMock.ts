@@ -383,6 +383,17 @@ export class InMemoryPrismaMock {
       this.unblockAppeals.set(appeal.id, updated);
       return { ...updated };
     },
+    updateMany: async (args: { where: { id?: string; status?: string }; data: Record<string, unknown> }): Promise<{ count: number }> => {
+      let count = 0;
+      for (const [id, appeal] of this.unblockAppeals) {
+        if (args.where.id && id !== args.where.id) continue;
+        if (args.where.status && appeal.status !== args.where.status) continue;
+        const updated = { ...appeal, ...args.data } as AppealRow;
+        this.unblockAppeals.set(id, updated);
+        count += 1;
+      }
+      return { count };
+    },
   };
 
   starsTransaction = {
@@ -398,6 +409,15 @@ export class InMemoryPrismaMock {
       };
       this.starsTransactions.set(id, row);
       return { ...row };
+    },
+    findUnique: async (args: { where: { telegramPaymentId?: string; id?: string } }): Promise<StarsTransactionRow | null> => {
+      if (args.where.id) return this.starsTransactions.get(args.where.id) ?? null;
+      if (args.where.telegramPaymentId) {
+        for (const row of this.starsTransactions.values()) {
+          if (row.telegramPaymentId === args.where.telegramPaymentId) return { ...row };
+        }
+      }
+      return null;
     },
     findMany: async (): Promise<StarsTransactionRow[]> => [...this.starsTransactions.values()].map((row) => ({ ...row })),
   };

@@ -208,41 +208,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     }
   });
 
-  // Callback: submit_appeal
-  bot.callbackQuery('submit_appeal', async (ctx) => {
-    const telegramId = BigInt(ctx.from.id);
-    const user = await prisma.user.findUnique({ where: { telegramId } });
 
-    if (!user) return;
-
-    // Check if appeal already exists
-    const existing = await prisma.unblockAppeal.findFirst({
-      where: { userId: user.id, status: 'PENDING' },
-    });
-
-    if (existing) {
-      await ctx.answerCallbackQuery({ text: 'You already have a pending unblock appeal.' });
-      return;
-    }
-
-    await prisma.unblockAppeal.create({
-      data: {
-        userId: user.id,
-        telegramId,
-        alias: user.alias,
-        banReason: user.isPermanentlyBanned ? 'Permanent Lock' : 'Temporary Suspension',
-        appealText: 'User submitted unblock appeal via Telegram bot support.',
-      },
-    });
-
-    await ctx.answerCallbackQuery({ text: 'Appeal submitted!' });
-    await ctx.reply(
-      `⚖️ *Unblock Appeal Submitted*\n\n` +
-        `Your appeal has been submitted to the moderation queue.\n` +
-        `The system admin will review your appeal details shortly.`,
-      { parse_mode: 'Markdown' }
-    );
-  });
 
   // Callback: favorite_partner:<callIdOrPartnerId>
   bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {

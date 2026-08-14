@@ -1,7 +1,35 @@
 import { Bot, InlineKeyboard } from 'grammy';
+import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { getPlansConfig, getRetentionDaysForPlan } from '../../services/plan';
+import { getRedis } from '../../config/redis';
+
+async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+  const lockKey = `appeal_lock:${userId}`;
+  const token = crypto.randomUUID();
+  const deadline = Date.now() + 5000;
+
+  try {
+    const redis = getRedis();
+    while (Date.now() < deadline) {
+      const acquired = await redis.set(lockKey, token, 'PX', 5000, 'NX');
+      if (acquired === 'OK') {
+        try {
+          return await operation();
+        } finally {
+          const script = `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`;
+          await redis.eval(script, 1, lockKey, token).catch(() => undefined);
+        }
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  } catch {
+    // Redis unavailable: fallback to direct execution
+  }
+
+  return await operation();
+}
 
 export function setupMenuHandlers(bot: Bot<MyContext>) {
   // 👤 Profile
@@ -28,7 +56,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `  - GRA (Grammar): ${user.subGRA.toFixed(1)}\n` +
         `  - P (Pronunciation): ${user.subP.toFixed(1)}\n` +
         `• *Subscription Plan*: *${user.plan}*\n` +
-        `• *Daily Limit*: ${user.dailyLimit} calls/day\n` +
+        `• *Daily Limit*: ${user.dailyLimit >= 999 ? 'Unlimited' : user.dailyLimit} calls/day\n` +
         `• *DND Status*: ${user.dnd ? '🔕 Do Not Disturb ON' : '🔔 Ready for Calls'}`,
       { parse_mode: 'Markdown', reply_markup: inlineKb }
     );
@@ -156,9 +184,6 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
   // 💬 Support
   bot.hears('💬 Support', async (ctx) => {
-    const telegramId = BigInt(ctx.from?.id || 0);
-    const user = await prisma.user.findUnique({ where: { telegramId } });
-
     const inlineKb = new InlineKeyboard().text('⚖️ Submit Appeal / Message Admin', 'submit_appeal');
 
     await ctx.reply(
@@ -191,15 +216,34 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
     }
 
     try {
-      const pendingAppeal = await prisma.unblockAppeal.findFirst({
-        where: {
-          userId: user.id,
-          status: 'PENDING',
-        },
+      const outcome = await withUserAppealLock(user.id, async () => {
+        const pendingAppeal = await prisma.unblockAppeal.findFirst({
+          where: {
+            userId: user.id,
+            status: 'PENDING',
+          },
+        });
+
+        if (pendingAppeal) {
+          return { status: 'already_pending' as const, appeal: pendingAppeal };
+        }
+
+        const created = await prisma.unblockAppeal.create({
+          data: {
+            userId: user.id,
+            telegramId,
+            alias: user.alias,
+            banReason: user.isBanned || user.isPermanentlyBanned ? 'User restriction' : 'Support inquiry',
+            appealText,
+            status: 'PENDING',
+          },
+        });
+
+        return { status: 'created' as const, appeal: created };
       });
 
-      if (pendingAppeal) {
-        const dateStr = pendingAppeal.createdAt.toISOString().split('T')[0];
+      if (outcome.status === 'already_pending') {
+        const dateStr = outcome.appeal.createdAt.toISOString().split('T')[0];
         await ctx.reply(
           `⏳ *Appeal Already Under Review*\n\n` +
             `You already have a pending appeal submitted on *${dateStr}*.\n\n` +
@@ -208,17 +252,6 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         );
         return;
       }
-
-      await prisma.unblockAppeal.create({
-        data: {
-          userId: user.id,
-          telegramId,
-          alias: user.alias,
-          banReason: user.isBanned || user.isPermanentlyBanned ? 'User restriction' : 'Support inquiry',
-          appealText,
-          status: 'PENDING',
-        },
-      });
 
       await ctx.reply(
         `✅ *Appeal Submitted Successfully*\n\n` +

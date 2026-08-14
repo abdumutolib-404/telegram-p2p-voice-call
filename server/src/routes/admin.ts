@@ -229,7 +229,11 @@ router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
     challenge.consumed = true;
     await deleteOtpChallengeFromRedis(challengeId);
 
-    const adminTgId = env.ADMIN_TELEGRAM_IDS[0] || '12345678';
+    const adminTgId = env.ADMIN_TELEGRAM_IDS[0];
+    if (!adminTgId) {
+      res.status(500).json({ error: 'Server misconfiguration: No admin ID configured in ADMIN_TELEGRAM_IDS.' });
+      return;
+    }
     const expiresAtDate = new Date(Date.now() + 60 * 60 * 1000); // EXACTLY 1 HOUR SESSION
     const jwtToken = jwt.sign(
       { role: 'admin', telegramId: adminTgId },
@@ -306,7 +310,11 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
     challenge.consumed = true;
     await deleteOtpChallengeFromRedis(challengeId);
 
-    const adminTgId = env.ADMIN_TELEGRAM_IDS[0] || '12345678';
+    const adminTgId = env.ADMIN_TELEGRAM_IDS[0];
+    if (!adminTgId) {
+      res.status(500).json({ error: 'Server misconfiguration: No admin ID configured in ADMIN_TELEGRAM_IDS.' });
+      return;
+    }
     const expiresAtDate = new Date(Date.now() + 60 * 60 * 1000); // EXACTLY 1 HOUR SESSION
     const jwtToken = jwt.sign(
       { role: 'admin', telegramId: adminTgId },
@@ -323,7 +331,7 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
   if (token) {
     let telegramIdNum = await verifyAndConsumeAdminToken(token);
     if (telegramIdNum === null && env.NODE_ENV === 'test' && token === 'test_admin_token') {
-      telegramIdNum = Number(env.ADMIN_TELEGRAM_IDS[0] ?? '12345678');
+      telegramIdNum = Number(env.ADMIN_TELEGRAM_IDS[0]);
     }
     const telegramIdStr = telegramIdNum !== null ? String(telegramIdNum) : '';
     const isWhitelisted = env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr);
@@ -441,31 +449,37 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
 
   try {
     const appeal = await prisma.unblockAppeal.findUnique({ where: { id } });
-
     if (!appeal) {
       return res.status(404).json({ error: 'Appeal not found.' });
     }
 
-    if (appeal.status !== 'PENDING') {
-      return res.status(400).json({ error: `Appeal cannot be approved because it is already in state '${appeal.status}'.` });
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.unblockAppeal.updateMany({
+          where: { id, status: 'PENDING' },
+          data: { status: 'APPROVED', reviewedAt: new Date() },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error('ALREADY_PROCESSED');
+        }
+
+        await tx.user.update({
+          where: { id: appeal.userId },
+          data: {
+            isBanned: false,
+            isPermanentlyBanned: false,
+            bannedUntil: null,
+            warningCount: 0,
+          },
+        });
+      });
+    } catch (txErr: any) {
+      if (txErr.message === 'ALREADY_PROCESSED') {
+        return res.status(400).json({ error: `Appeal cannot be approved because it is already in state '${appeal.status}'.` });
+      }
+      throw txErr;
     }
-
-    // Update appeal status
-    await prisma.unblockAppeal.update({
-      where: { id },
-      data: { status: 'APPROVED', reviewedAt: new Date() },
-    });
-
-    // Unban user and reset warnings
-    await prisma.user.update({
-      where: { id: appeal.userId },
-      data: {
-        isBanned: false,
-        isPermanentlyBanned: false,
-        bannedUntil: null,
-        warningCount: 0,
-      },
-    });
 
     if (adminBotInstance) {
       await adminBotInstance.api.sendMessage(
@@ -487,19 +501,27 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
 
   try {
     const appeal = await prisma.unblockAppeal.findUnique({ where: { id } });
-
     if (!appeal) {
       return res.status(404).json({ error: 'Appeal not found.' });
     }
 
-    if (appeal.status !== 'PENDING') {
-      return res.status(400).json({ error: `Appeal cannot be rejected because it is already in state '${appeal.status}'.` });
-    }
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.unblockAppeal.updateMany({
+          where: { id, status: 'PENDING' },
+          data: { status: 'REJECTED', reviewedAt: new Date() },
+        });
 
-    await prisma.unblockAppeal.update({
-      where: { id },
-      data: { status: 'REJECTED', reviewedAt: new Date() },
-    });
+        if (updated.count !== 1) {
+          throw new Error('ALREADY_PROCESSED');
+        }
+      });
+    } catch (txErr: any) {
+      if (txErr.message === 'ALREADY_PROCESSED') {
+        return res.status(400).json({ error: `Appeal cannot be rejected because it is already in state '${appeal.status}'.` });
+      }
+      throw txErr;
+    }
 
     if (adminBotInstance) {
       await adminBotInstance.api.sendMessage(
