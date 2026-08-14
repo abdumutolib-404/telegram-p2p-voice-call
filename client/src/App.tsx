@@ -132,8 +132,8 @@ export const App: React.FC = () => {
 
     // Verify initData with server to get DB user profile (UUID)
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || '';
-      logger.info('AUTH', `AUTH_REQUEST_STARTED: Calling /api/auth/verify`);
+      const serverUrl = (import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
+      logger.info('AUTH', `AUTH_REQUEST_STARTED: Calling /api/auth/verify on ${serverUrl || 'same-origin'}`);
 
       const res = await fetch(`${serverUrl}/api/auth/verify`, {
         method: 'POST',

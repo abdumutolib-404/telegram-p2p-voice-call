@@ -10,6 +10,7 @@ export interface EnvConfig {
   REDIS_URL: string;
   BOT_TOKEN: string;
   MINI_APP_URL: string;
+  ALLOWED_ORIGINS: string;
   ADMIN_TELEGRAM_IDS: readonly string[];
   MASTER_PASSWORD: string;
   JWT_SECRET: string;
@@ -28,7 +29,8 @@ function required(name: string): string {
 
 function parseTelegramIds(raw: string | undefined): readonly string[] {
   if (!raw?.trim()) return [];
-  const ids = raw.split(',').map((value) => value.trim()).filter((value) => /^\d+$/.test(value));
+  const cleaned = raw.replace(/[\[\]"'\s]/g, '');
+  const ids = cleaned.split(',').map((value) => value.trim()).filter((value) => /^\d+$/.test(value));
   if (ids.length === 0) return [];
   return ids;
 }
@@ -77,6 +79,7 @@ export const env: EnvConfig = {
   REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
   BOT_TOKEN: production ? required('BOT_TOKEN') : (process.env.BOT_TOKEN ?? 'mock_bot_token'),
   MINI_APP_URL: process.env.MINI_APP_URL ?? 'http://localhost:3001/client',
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ?? '',
   ADMIN_TELEGRAM_IDS: adminTelegramIds,
   MASTER_PASSWORD: masterPassword,
   JWT_SECRET: jwtSecret,

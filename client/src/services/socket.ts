@@ -37,7 +37,8 @@ class SocketService {
       this.socket = null;
     }
 
-    const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+    const rawUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+    const serverUrl = rawUrl.replace(/\/+$/, '');
 
     this.socket = io(serverUrl, {
       autoConnect: true,

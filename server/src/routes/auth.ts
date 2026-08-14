@@ -72,4 +72,12 @@ router.post('/verify', authLimiter, async (req, res) => {
   }
 });
 
+router.get('/bot-info', (_req, res) => {
+  res.json({
+    botUsername: 'badhbdhasbbot',
+    appUrl: env.MINI_APP_URL,
+    status: 'ok',
+  });
+});
+
 export default router;

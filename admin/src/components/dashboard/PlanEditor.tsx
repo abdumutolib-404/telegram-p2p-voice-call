@@ -54,16 +54,16 @@ export function PlanEditor() {
     // Validation
     for (const tierName of ['FREE', 'PLUS', 'PRO'] as const) {
       const tier = plans[tierName];
-      if (tier.maxDuration <= 0) {
+      if (!tier || tier.maxDuration <= 0) {
         setError(`${tierName} tier duration limit must be greater than 0 minutes.`);
         return;
       }
       if (tier.dailyLimit <= 0) {
-        setError(`${tierName} tier daily limit must be at least 1 call.`);
+        setError(`${tierName} tier daily limit must be at least 1 call (or 999 for unlimited).`);
         return;
       }
-      if (![1, 7, 30].includes(tier.retentionDays)) {
-        setError(`${tierName} tier retention must be 1, 7, or 30 days.`);
+      if (tier.retentionDays <= 0) {
+        setError(`${tierName} tier retention must be at least 1 day.`);
         return;
       }
       if (tierName !== 'FREE' && (tier.starsPrice === undefined || tier.starsPrice < 0)) {
@@ -74,11 +74,14 @@ export function PlanEditor() {
 
     setIsSaving(true);
     try {
-      const updated = await adminFetch<PlansResponse>('/api/admin/plans', {
+      const response = await adminFetch<PlansResponse | { success: boolean; plans: PlansResponse }>('/api/admin/plans', {
         method: 'PUT',
         body: JSON.stringify(plans),
       });
-      setPlans(updated);
+      const resolvedPlans = (response && 'plans' in response && response.plans) ? response.plans : (response as PlansResponse);
+      if (resolvedPlans && resolvedPlans.FREE) {
+        setPlans(resolvedPlans);
+      }
       setSuccessMessage('Plan limits and Telegram Stars pricing updated successfully!');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {

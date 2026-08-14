@@ -393,7 +393,7 @@ router.get('/plans', adminAuthMiddleware, async (req, res) => {
 router.put('/plans', adminAuthMiddleware, async (req, res) => {
   try {
     const updated = updatePlansConfig(req.body);
-    res.json({ success: true, plans: updated });
+    res.json({ success: true, ...updated, plans: updated });
   } catch (err) {
     res.status(400).json({ error: 'Failed to update plan configurations.' });
   }
@@ -466,6 +466,14 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
       },
     });
 
+    if (adminBotInstance) {
+      await adminBotInstance.api.sendMessage(
+        appeal.telegramId.toString(),
+        '🎉 *Appeal Approved*\n\nYour unban appeal has been approved by the moderation team. Your account has been restored to active status. Welcome back to IELTS Speaking P2P!',
+        { parse_mode: 'Markdown' }
+      ).catch((e: unknown) => console.warn('[Admin] Failed to send appeal approval notice:', e));
+    }
+
     res.json({ success: true, message: 'Unblock appeal approved. User unbanned.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to approve appeal.' });
@@ -491,6 +499,14 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
       where: { id },
       data: { status: 'REJECTED', reviewedAt: new Date() },
     });
+
+    if (adminBotInstance) {
+      await adminBotInstance.api.sendMessage(
+        appeal.telegramId.toString(),
+        '❌ *Appeal Decision*\n\nYour unban appeal has been reviewed and rejected by the moderation team. Your suspension remains active.',
+        { parse_mode: 'Markdown' }
+      ).catch((e: unknown) => console.warn('[Admin] Failed to send appeal rejection notice:', e));
+    }
 
     res.json({ success: true, message: 'Unblock appeal rejected.' });
   } catch (err) {
@@ -579,7 +595,7 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
 // POST /api/admin/users/:id/ban (Protected)
 router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { permanent } = req.body;
+  const { permanent, reason } = req.body;
 
   try {
     const user = await prisma.user.update({
@@ -590,6 +606,14 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
         bannedUntil: permanent ? null : new Date(Date.now() + 6 * 60 * 60 * 1000),
       },
     });
+
+    if (adminBotInstance) {
+      const banText = permanent ?? true
+        ? `⛔ *Account Permanently Banned*\n\nYour account has been permanently suspended by administration.\n*Reason:* ${reason || 'Violation of community guidelines.'}\n\nYou may submit an appeal using the bot menu.`
+        : `🚫 *Account Temporarily Suspended*\n\nYour account has been blocked for 6 hours.\n*Reason:* ${reason || 'Community policy violation.'}`;
+      await adminBotInstance.api.sendMessage(user.telegramId.toString(), banText, { parse_mode: 'Markdown' })
+        .catch((e: unknown) => console.warn('[Admin] Failed to send ban notice:', e));
+    }
 
     res.json({ success: true, user: { ...user, telegramId: user.telegramId.toString() } });
   } catch (err) {
@@ -613,9 +637,12 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
     }
 
     let updateData: Prisma.UserUpdateInput = {};
+    let notificationText: string | null = null;
+
     switch (action) {
       case 'warn':
         updateData = { warningCount: { increment: 1 } };
+        notificationText = `⚠️ *Official Community Warning*\n\nYou have received a warning from moderation.\n*Reason:* ${reason || 'Inappropriate conduct or policy violation in voice calls.'}\n\nAccumulating 3 warnings will result in a temporary ban.`;
         break;
       case 'block':
         updateData = {
@@ -623,6 +650,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
           isPermanentlyBanned: false,
           bannedUntil: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6 hours
         };
+        notificationText = `🚫 *Account Temporarily Suspended (6 Hours)*\n\nYour account has been suspended for 6 hours.\n*Reason:* ${reason || 'Repeated warnings or call policy violation.'}\n\nYou can submit an appeal or wait for your suspension to expire.`;
         break;
       case 'ban':
         updateData = {
@@ -630,6 +658,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
           isPermanentlyBanned: true,
           bannedUntil: null,
         };
+        notificationText = `⛔ *Account Permanently Banned*\n\nYour account has been permanently suspended by administration.\n*Reason:* ${reason || 'Severe violation of platform terms.'}\n\nYou may submit an unban appeal from the Telegram bot.`;
         break;
       case 'unblock':
         updateData = {
@@ -638,6 +667,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
           bannedUntil: null,
           warningCount: 0,
         };
+        notificationText = `✅ *Account Restored*\n\nYour account restriction has been lifted by the administration. You can now use IELTS Speaking P2P again! Please ensure you adhere to our community guidelines.`;
         break;
     }
 
@@ -645,6 +675,11 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       where: { id },
       data: updateData,
     });
+
+    if (adminBotInstance && notificationText) {
+      await adminBotInstance.api.sendMessage(updated.telegramId.toString(), notificationText, { parse_mode: 'Markdown' })
+        .catch((e: unknown) => console.warn('[Admin] Failed to send moderation notice:', e));
+    }
 
     const now = new Date();
     let status = 'active';

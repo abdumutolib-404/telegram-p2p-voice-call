@@ -234,12 +234,23 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 data: { dailyCallsUsed: 0, lastCallDate: today },
               });
 
+              const isUserUnlimited = user.dailyLimit >= 999;
+              const isPartnerUnlimited = partner.dailyLimit >= 999;
+
               const userQuota = await tx.user.updateMany({
-                where: { id: user.id, lastCallDate: today, dailyCallsUsed: { lt: user.dailyLimit } },
+                where: {
+                  id: user.id,
+                  lastCallDate: today,
+                  ...(isUserUnlimited ? {} : { dailyCallsUsed: { lt: user.dailyLimit } }),
+                },
                 data: { dailyCallsUsed: { increment: 1 } },
               });
               const partnerQuota = await tx.user.updateMany({
-                where: { id: partner.id, lastCallDate: today, dailyCallsUsed: { lt: partner.dailyLimit } },
+                where: {
+                  id: partner.id,
+                  lastCallDate: today,
+                  ...(isPartnerUnlimited ? {} : { dailyCallsUsed: { lt: partner.dailyLimit } }),
+                },
                 data: { dailyCallsUsed: { increment: 1 } },
               });
 

@@ -1,15 +1,15 @@
 const TOKEN_KEY = 'admin_jwt';
 
 export function getAdminToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY);
 }
 
 export function setAdminToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearAdminToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
 }
 
 export class ApiError extends Error {
@@ -47,12 +47,6 @@ export async function adminFetch<T>(
 
   const response = await fetch(url, config);
 
-  if (response.status === 401 || response.status === 403) {
-    clearAdminToken();
-    window.dispatchEvent(new Event('admin:unauthorized'));
-    throw new ApiError('Unauthorized or token expired', response.status);
-  }
-
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
     try {
@@ -65,6 +59,14 @@ export async function adminFetch<T>(
     } catch {
       // Ignore JSON parse failure on error body
     }
+
+    if (response.status === 401 || response.status === 403) {
+      if (!cleanEndpoint.includes('/auth/password') && !cleanEndpoint.includes('/auth/otp') && !cleanEndpoint.includes('/auth/login')) {
+        clearAdminToken();
+        window.dispatchEvent(new Event('admin:unauthorized'));
+      }
+    }
+
     throw new ApiError(errorMessage, response.status);
   }
 

@@ -30,7 +30,12 @@ const extractOrigin = (urlStr: string | undefined): string | null => {
   }
 };
 
+const rawAllowedOrigins = env.ALLOWED_ORIGINS
+  ? env.ALLOWED_ORIGINS.split(',').map((s) => extractOrigin(s.trim()))
+  : [];
+
 const configuredOrigins = [
+  ...rawAllowedOrigins,
   extractOrigin(env.MINI_APP_URL),
   extractOrigin(env.ADMIN_PANEL_URL),
   'https://web.telegram.org',
@@ -41,9 +46,12 @@ const configuredOrigins = [
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true; // Same-origin, mobile apps, or server-to-server calls
   if (configuredOrigins.includes(origin)) return true;
+  // Support custom subdomains on railway, netlify, or vercel if matched
+  if (/^https?:\/\/(.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
+    return true;
+  }
   if (env.NODE_ENV !== 'production') {
-    // Local development and staging preview origins
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
       return true;
     }
   }
@@ -62,6 +70,23 @@ app.use(cors({
 app.options('*', cors());
 app.use(cookieParser());
 app.use(express.json({ limit: '256kb' }));
+
+// Comprehensive Production Request & Response Logging Middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const method = req.method;
+  const path = req.originalUrl || req.url;
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const status = res.statusCode;
+    const statusTag = status >= 500 ? '🔥 ERROR' : status >= 400 ? '⚠️ WARN' : '✅ OK';
+    console.log(`[HTTP ${statusTag}] ${method} ${path} -> ${status} (${duration}ms) [IP: ${ip}]`);
+  });
+
+  next();
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/calls', callRoutes);
