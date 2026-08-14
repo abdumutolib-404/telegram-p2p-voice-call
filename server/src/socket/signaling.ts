@@ -2,7 +2,8 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement } from '../services/plan';
+import { calculateEffectiveCallDuration, calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement } from '../services/plan';
+import { checkRateLimit } from '../services/rateLimitMatrix';
 import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
@@ -186,7 +187,50 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
   io.on('connection', (socket: Socket) => {
     const userId = socket.data.userId as string | undefined;
-    if (userId) addUserSocket(userId, socket.id);
+    if (userId) {
+      addUserSocket(userId, socket.id);
+
+      // Auto-reconnect active calls immediately on socket connect
+      void (async () => {
+        try {
+          const activeCall = await prisma.callSession.findFirst({
+            where: {
+              status: 'ACTIVE',
+              OR: [{ userAId: userId }, { userBId: userId }],
+            },
+            include: { userA: true, userB: true },
+          });
+
+          if (activeCall) {
+            const isUserA = activeCall.userAId === userId;
+            const selfUser = isUserA ? activeCall.userA : activeCall.userB;
+            const partnerUser = isUserA ? activeCall.userB : activeCall.userA;
+            const callDurationLimitMinutes = calculateEffectiveCallDuration(selfUser, partnerUser);
+            const callDurationLimitSeconds = callDurationLimitMinutes * 60;
+            const elapsedSeconds = Math.floor((Date.now() - activeCall.createdAt.getTime()) / 1000);
+            const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
+
+            if (elapsedSeconds < callDurationLimitSeconds) {
+              const tokenTtlSeconds = Math.min(3600, Math.max(60, remainingSeconds + 300));
+              const token = await generateLiveKitToken(activeCall.roomName, selfUser.id, selfUser.alias, tokenTtlSeconds);
+              socket.join(activeCall.roomName);
+              socket.emit('match_found', {
+                roomName: activeCall.roomName,
+                partnerId: partnerUser.id,
+                partnerAlias: partnerUser.alias,
+                partnerBand: partnerUser.band,
+                token,
+                livekitToken: token,
+                callDurationLimit: remainingSeconds,
+                maxDurationSeconds: callDurationLimitSeconds,
+              });
+            }
+          }
+        } catch (reconnectErr) {
+          console.warn('[Socket] Auto-reconnect check failed:', reconnectErr);
+        }
+      })();
+    }
 
     console.log('[Socket] connected', { socketId: socket.id, userId });
 
@@ -194,6 +238,16 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       const currentUserId = socket.data.userId as string | undefined;
       if (!currentUserId) {
         socket.emit('error', { message: 'Unauthenticated socket session.' });
+        return;
+      }
+
+      const rlResult = await checkRateLimit('MATCH_JOIN', currentUserId);
+      if (!rlResult.allowed) {
+        socket.emit('error', {
+          code: 'RATE_LIMITED',
+          message: rlResult.error?.message || 'Too many requests. Please wait a moment.',
+          retryAfterSeconds: rlResult.retryAfterSeconds,
+        });
         return;
       }
 
@@ -307,7 +361,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
-          const callDurationLimitMinutes = calculateMixedPlanDuration(user.plan, partner.plan);
+          const callDurationLimitMinutes = calculateEffectiveCallDuration(user, partner);
           const callDurationLimitSeconds = callDurationLimitMinutes * 60;
           const tokenTtlSeconds = Math.min(3600, Math.max(60, callDurationLimitSeconds + 300));
           const roomName = matchResult.roomName;
@@ -467,6 +521,17 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     socket.on('cancel_queue', async () => {
       const currentUserId = socket.data.userId as string | undefined;
       if (!currentUserId) return;
+
+      const rlResult = await checkRateLimit('MATCH_CANCEL', currentUserId);
+      if (!rlResult.allowed) {
+        socket.emit('error', {
+          code: 'RATE_LIMITED',
+          message: rlResult.error?.message || 'Too many requests. Please wait a moment.',
+          retryAfterSeconds: rlResult.retryAfterSeconds,
+        });
+        return;
+      }
+
       try {
         if ((userSockets.get(currentUserId)?.size ?? 0) <= 1) {
           await matchmakingService.cancelQueue(currentUserId);

@@ -1,7 +1,7 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
-import { getPlansConfig, formatPriceDisplay, createManualPaymentRequest, getEffectiveEntitlement } from '../../services/plan';
+import { getPlansConfig, formatPriceDisplay, createManualPaymentRequest, getEffectiveEntitlement, isDowngrade } from '../../services/plan';
 import { checkRateLimit } from '../../services/rateLimitMatrix';
 import { env } from '../../config/env';
 
@@ -134,6 +134,14 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       plan: tier,
       uzsAmount: config.uzsPrice,
     });
+
+    if (!res.success || !res.request) {
+      await ctx.answerCallbackQuery({
+        text: res.error?.message || 'Unable to create payment request.',
+        show_alert: true,
+      });
+      return;
+    }
 
     const request = res.request;
     const formattedAmount = config.uzsPrice.toLocaleString('en-US');
@@ -308,15 +316,18 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           return { status: 'suspended' as const, user };
         }
 
-        const finalTier = user.plan === 'PRO' && tier === 'PLUS' ? 'PRO' : tier;
-        const finalConfig = plans[finalTier];
+        const targetTier = isDowngrade(user.plan, tier) ? user.plan : tier;
+        const targetConfig = plans[targetTier as keyof typeof plans] || plans.PLUS;
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
         const updatedUser = await tx.user.update({
           where: { id: user.id },
           data: {
-            plan: finalTier,
-            maxDuration: finalConfig.maxDuration,
-            dailyLimit: finalConfig.dailyLimit,
+            plan: targetTier,
+            subscriptionStatus: 'ACTIVE',
+            subscriptionExpiresAt: expiresAt,
+            maxDuration: targetConfig.maxDuration,
+            dailyLimit: targetConfig.dailyLimit,
             dailyCallsUsed: 0,
           },
         });

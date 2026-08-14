@@ -42,6 +42,8 @@ interface UserRow {
   subP: number;
   band: number;
   plan: string;
+  subscriptionStatus: string;
+  subscriptionExpiresAt: Date | null;
   customPlanName?: string | null;
   maxDuration: number;
   dailyLimit: number;
@@ -212,6 +214,8 @@ export class InMemoryPrismaMock {
         subP: numberValue(args.data.subP, 6),
         band: numberValue(args.data.band, 6),
         plan: stringValue(args.data.plan, 'FREE'),
+        subscriptionStatus: stringValue(args.data.subscriptionStatus, 'NONE'),
+        subscriptionExpiresAt: args.data.subscriptionExpiresAt ? dateValue(args.data.subscriptionExpiresAt, now) : null,
         customPlanName: args.data.customPlanName ? String(args.data.customPlanName) : null,
         maxDuration: numberValue(args.data.maxDuration, 15),
         dailyLimit: numberValue(args.data.dailyLimit, 3),

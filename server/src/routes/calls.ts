@@ -5,7 +5,7 @@ import { prisma } from '../config/database';
 import { env } from '../config/env';
 import { initDataLockdownMiddleware, type AuthenticatedTelegramRequest } from '../middleware/initDataLockdown';
 import { generateLiveKitToken } from '../config/livekit';
-import { getEffectiveEntitlement } from '../services/plan';
+import { getEffectiveEntitlement, calculateEffectiveCallDuration } from '../services/plan';
 import { createCanonicalError } from '../types/canonical';
 
 const router = Router();
@@ -99,9 +99,7 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
     const self = isUserA ? session.userA : session.userB;
     const partner = isUserA ? session.userB : session.userA;
 
-    const selfEnt = getEffectiveEntitlement(self);
-    const partnerEnt = getEffectiveEntitlement(partner);
-    const callDurationLimitMinutes = Math.max(selfEnt.maxDurationMinutes, partnerEnt.maxDurationMinutes);
+    const callDurationLimitMinutes = calculateEffectiveCallDuration(self, partner);
     const callDurationLimitSeconds = callDurationLimitMinutes * 60;
     const elapsedSeconds = Math.floor((Date.now() - session.createdAt.getTime()) / 1000);
     const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);

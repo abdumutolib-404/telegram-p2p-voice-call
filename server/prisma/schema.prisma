@@ -17,7 +17,9 @@ model User {
   subGRA              Float                  @default(6.0)
   subP                Float                  @default(6.0)
   band                Float                  @default(6.0)
-  plan                String                 @default("FREE") // "FREE", "PLUS", "PRO"
+  plan                String                 @default("FREE") // "FREE", "PLUS", "PRO", "BOSS"
+  subscriptionStatus  String                 @default("NONE") // "NONE", "ACTIVE", "PENDING_UPGRADE", "EXPIRED", "CANCELLED", "REFUNDED"
+  subscriptionExpiresAt DateTime?
   customPlanName      String?
   maxDuration         Int                    @default(15) // max call duration in minutes
   dailyLimit          Int                    @default(3)

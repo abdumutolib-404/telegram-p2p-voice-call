@@ -17,6 +17,22 @@ export interface SystemPlansConfig {
   FREE: PlanTierConfig;
   PLUS: PlanTierConfig;
   PRO: PlanTierConfig;
+  BOSS: PlanTierConfig;
+}
+
+export const PLAN_WEIGHTS: Record<string, number> = {
+  FREE: 0,
+  PLUS: 1,
+  PRO: 2,
+  BOSS: 3,
+};
+
+export function isDowngrade(currentPlan: string, targetPlan: string): boolean {
+  const currentKey = (currentPlan || 'FREE').toUpperCase();
+  const targetKey = (targetPlan || 'FREE').toUpperCase();
+  const currentWeight = PLAN_WEIGHTS[currentKey] ?? 0;
+  const targetWeight = PLAN_WEIGHTS[targetKey] ?? 0;
+  return targetWeight < currentWeight;
 }
 
 export interface EffectiveEntitlement {
@@ -62,6 +78,16 @@ let plansConfig: SystemPlansConfig = {
     uzsPrice: 75000,
     active: true,
   },
+  BOSS: {
+    name: 'Executive Boss',
+    description: '60-min calls, unlimited VIP practice, 60-day retention',
+    maxDuration: 60,
+    dailyLimit: 999,
+    retentionDays: 60,
+    starsPrice: 1000,
+    uzsPrice: 150000,
+    active: true,
+  },
 };
 
 export function getPlansConfig(): SystemPlansConfig {
@@ -70,15 +96,16 @@ export function getPlansConfig(): SystemPlansConfig {
 
 export function updatePlansConfig(newConfig: Partial<SystemPlansConfig>): SystemPlansConfig {
   plansConfig = {
-    FREE: { ...plansConfig.FREE, ...newConfig.FREE },
-    PLUS: { ...plansConfig.PLUS, ...newConfig.PLUS },
-    PRO: { ...plansConfig.PRO, ...newConfig.PRO },
+    FREE: { ...plansConfig.FREE, ...(newConfig.FREE || {}) },
+    PLUS: { ...plansConfig.PLUS, ...(newConfig.PLUS || {}) },
+    PRO: { ...plansConfig.PRO, ...(newConfig.PRO || {}) },
+    BOSS: { ...plansConfig.BOSS, ...(newConfig.BOSS || {}) },
   };
   return plansConfig;
 }
 
-export function formatPriceDisplay(tier: 'PLUS' | 'PRO'): string {
-  const config = plansConfig[tier];
+export function formatPriceDisplay(tier: 'PLUS' | 'PRO' | 'BOSS'): string {
+  const config = plansConfig[tier] || plansConfig.PLUS;
   const formattedUzs = config.uzsPrice.toLocaleString('en-US');
   return `⭐ ${config.starsPrice} Stars / 💳 ${formattedUzs} UZS`;
 }
@@ -141,7 +168,7 @@ export function getEffectiveEntitlement(user: {
     retentionSource = 'ADMIN_OVERRIDE';
   }
 
-  const isUnlimited = dailyLimit >= 999 || planKey === 'PRO' || isAdmin;
+  const isUnlimited = dailyLimit >= 999 || planKey === 'PRO' || planKey === 'BOSS' || isAdmin;
   const isCustomPlan = Boolean(user.customPlanName);
   const source: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' | 'CUSTOM_PLAN' = isCustomPlan
     ? 'CUSTOM_PLAN'
@@ -163,7 +190,21 @@ export function getEffectiveEntitlement(user: {
 }
 
 /**
- * Calculates mixed-plan call duration limit in minutes: max(limit_A, limit_B)
+ * Calculates authoritative call duration limit in minutes between two participants:
+ * If either participant has an explicit ADMIN_OVERRIDE (e.g. test limits or custom 5-min cap),
+ * the restrictive minimum is enforced. Otherwise, the generous mixed plan maximum is granted.
+ */
+export function calculateEffectiveCallDuration(userA: any, userB: any): number {
+  const entA = getEffectiveEntitlement(userA);
+  const entB = getEffectiveEntitlement(userB);
+  if (entA.source === 'ADMIN_OVERRIDE' || entB.source === 'ADMIN_OVERRIDE') {
+    return Math.min(entA.maxDurationMinutes, entB.maxDurationMinutes);
+  }
+  return Math.max(entA.maxDurationMinutes, entB.maxDurationMinutes);
+}
+
+/**
+ * Backward compatibility helper for plan strings: returns max(limitA, limitB)
  */
 export function calculateMixedPlanDuration(planA: string, planB: string): number {
   const limitA = getMaxDurationForPlan(planA);
@@ -182,6 +223,20 @@ export async function createManualPaymentRequest(params: {
   uzsAmount: number;
   paymentProof?: string;
 }) {
+  const user = await prisma.user.findUnique({ where: { id: params.userId } });
+  if (user) {
+    const isExpired = user.subscriptionExpiresAt ? user.subscriptionExpiresAt < new Date() : false;
+    if (user.subscriptionStatus === 'ACTIVE' && !isExpired && user.plan !== 'FREE') {
+      return {
+        success: false,
+        error: createCanonicalError(
+          'ACTIVE_SUBSCRIPTION_EXISTS',
+          `You already have an active ${user.plan} subscription. You cannot request a new one until it expires.`
+        ),
+      };
+    }
+  }
+
   const existingPending = await prisma.manualPaymentRequest.findFirst({
     where: {
       userId: params.userId,
@@ -231,6 +286,16 @@ export async function approveManualPaymentRequest(params: {
     : 'PLUS';
   const config = plansConfig[tier] || plansConfig.PLUS;
 
+  // Downgrade protection: Prevent an active PRO/BOSS user from being downgraded to PLUS
+  if (req.user && isDowngrade(req.user.plan, tier)) {
+    const isExpired = req.user.subscriptionExpiresAt ? req.user.subscriptionExpiresAt < new Date() : false;
+    if (!isExpired && req.user.subscriptionStatus === 'ACTIVE') {
+      throw new Error(`Cannot downgrade user with active ${req.user.plan} subscription to ${tier}.`);
+    }
+  }
+
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30-day subscription term
+
   const [updatedReq, updatedUser] = await prisma.$transaction([
     prisma.manualPaymentRequest.update({
       where: { id: req.id },
@@ -245,6 +310,8 @@ export async function approveManualPaymentRequest(params: {
       where: { id: req.userId },
       data: {
         plan: tier,
+        subscriptionStatus: 'ACTIVE',
+        subscriptionExpiresAt: expiresAt,
         maxDuration: config.maxDuration,
         dailyLimit: config.dailyLimit,
         dailyCallsUsed: 0,
@@ -256,7 +323,7 @@ export async function approveManualPaymentRequest(params: {
         targetId: req.userId,
         adminId: params.adminId,
         beforeState: JSON.stringify({ plan: req.user?.plan || 'FREE' }),
-        afterState: JSON.stringify({ plan: tier }),
+        afterState: JSON.stringify({ plan: tier, subscriptionStatus: 'ACTIVE' }),
         reason: params.note || 'Manual payment approved',
       },
     }),
@@ -330,6 +397,7 @@ export async function revokePlanOnRefund(params: {
       where: { id: tx.userId },
       data: {
         plan: 'FREE',
+        subscriptionStatus: 'REFUNDED',
         maxDuration: plansConfig.FREE.maxDuration,
         dailyLimit: plansConfig.FREE.dailyLimit,
       },
@@ -340,7 +408,7 @@ export async function revokePlanOnRefund(params: {
         targetId: tx.userId,
         adminId: params.adminId,
         beforeState: JSON.stringify({ plan: tx.user?.plan || 'PRO' }),
-        afterState: JSON.stringify({ plan: 'FREE' }),
+        afterState: JSON.stringify({ plan: 'FREE', subscriptionStatus: 'REFUNDED' }),
         reason: params.reason || 'Stars payment refunded',
       },
     }),

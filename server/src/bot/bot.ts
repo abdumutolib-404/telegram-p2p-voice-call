@@ -8,7 +8,7 @@ import { setupCallbackHandlers } from './handlers/callbacks';
 import { setupPostCallCallbackHandlers } from './handlers/postCall';
 import { prisma } from '../config/database';
 
-const userActionTimestamps = new Map<number, number[]>();
+import { checkRateLimit } from '../services/rateLimitMatrix';
 
 export function createBot(token: string): Bot<MyContext> {
   const bot = new Bot<MyContext>(token);
@@ -20,21 +20,29 @@ export function createBot(token: string): Bot<MyContext> {
     })
   );
 
-  // 1. Rate Limiting Middleware (Anti-Spam on Bot Commands & Buttons)
+  // 1. Rate Limiting Middleware (Anti-Spam on Bot Commands & Buttons with 5-minute penalty lockout)
   bot.use(async (ctx, next) => {
     const fromId = ctx.from?.id;
     if (!fromId) return next();
 
-    const now = Date.now();
-    const timestamps = (userActionTimestamps.get(fromId) || []).filter((t) => now - t < 2000);
-    if (timestamps.length >= 4) {
+    const action = ctx.callbackQuery ? 'BOT_BUTTON' : 'BOT_COMMAND';
+    const rl = await checkRateLimit(action, String(fromId));
+
+    if (!rl.allowed) {
+      const waitTime = rl.retryAfterSeconds || 300;
       if (ctx.callbackQuery) {
-        await ctx.answerCallbackQuery({ text: '⚠️ Please slow down! Too many requests.', show_alert: true }).catch(() => undefined);
+        await ctx.answerCallbackQuery({
+          text: `⚠️ Rate limit exceeded. Please wait ${waitTime}s before sending more commands.`,
+          show_alert: true,
+        }).catch(() => undefined);
+      } else {
+        await ctx.reply(
+          `⚠️ *Rate Limit Exceeded*\n\nPlease slow down. You can send new commands in *${waitTime} seconds*.`,
+          { parse_mode: 'Markdown' }
+        ).catch(() => undefined);
       }
       return;
     }
-    timestamps.push(now);
-    userActionTimestamps.set(fromId, timestamps);
 
     return next();
   });
@@ -110,6 +118,32 @@ export function createBot(token: string): Bot<MyContext> {
   setupPaymentHandlers(bot);
   setupCallbackHandlers(bot);
   setupPostCallCallbackHandlers(bot);
+
+  // Command: /privacy
+  bot.command('privacy', async (ctx) => {
+    await ctx.reply(
+      `🔒 *Privacy Policy Summary*\n\n` +
+        `• *Audio Streams*: Real-time voice is routed through encrypted WebRTC SFU servers and never recorded without consent.\n` +
+        `• *Recordings*: Stored securely with strict plan-based expiration (1–60 days), accessible only to call participants.\n` +
+        `• *Payments*: Telegram Stars payments are processed directly by Telegram. Card receipts are reviewed by admin.\n` +
+        `• *Data Deletion*: You can request account deletion anytime via @IELTS_P2P_Admin.\n\n` +
+        `_For full policy, see the platform documentation._`,
+      { parse_mode: 'Markdown' }
+    );
+  });
+
+  // Command: /guidelines
+  bot.command('guidelines', async (ctx) => {
+    await ctx.reply(
+      `📖 *Community Guidelines*\n\n` +
+        `1. *Respect*: Harassment, abuse, or discrimination is strictly prohibited.\n` +
+        `2. *Practice Focus*: Dedicate speaking sessions to English conversation and IELTS topics.\n` +
+        `3. *Fair Ratings*: Submit honest, constructive feedback for speaking partners.\n` +
+        `4. *Enforcement*: Violations lead to 24h timeouts, 7d suspensions, or permanent unappealable bans.\n\n` +
+        `_Happy practicing!_`,
+      { parse_mode: 'Markdown' }
+    );
+  });
 
   return bot;
 }

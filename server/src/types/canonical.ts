@@ -43,6 +43,7 @@ export type CanonicalErrorCode =
   | 'PAYMENT_INVALID'
   | 'PAYMENT_FAILED'
   | 'PAYMENT_ALREADY_PROCESSED'
+  | 'ACTIVE_SUBSCRIPTION_EXISTS'
   | 'RECORDING_UNAVAILABLE'
   | 'RECORDING_START_FAILED'
   | 'RECORDING_STOP_FAILED'
@@ -115,6 +116,10 @@ const DEFAULT_ERROR_MESSAGES: Record<CanonicalErrorCode, { message: string; retr
   },
   PAYMENT_ALREADY_PROCESSED: {
     message: 'This payment transaction has already been processed.',
+    retryable: false,
+  },
+  ACTIVE_SUBSCRIPTION_EXISTS: {
+    message: 'You already have an active subscription.',
     retryable: false,
   },
   RECORDING_UNAVAILABLE: {

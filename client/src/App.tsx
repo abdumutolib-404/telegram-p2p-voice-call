@@ -240,7 +240,7 @@ export const App: React.FC = () => {
 
   // Socket Connection & Event Listeners
   useEffect(() => {
-    if (!initData || !userData.userId || appState === 'lockdown' || appState === 'ready' || appState === 'idle') {
+    if (!initData || !userData.userId || appState === 'lockdown') {
       hasJoinedQueueRef.current = false;
       return;
     }
