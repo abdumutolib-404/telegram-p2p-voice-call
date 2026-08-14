@@ -47,10 +47,8 @@ export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Respons
 
     const telegramIdStr = String(decoded.telegramId);
     if (env.ADMIN_TELEGRAM_IDS.length > 0 && !env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr)) {
-      if (env.NODE_ENV !== 'test' || telegramIdStr !== '12345678') {
-        res.status(403).json({ error: 'Forbidden: Telegram ID is not in admin whitelist.' });
-        return;
-      }
+      res.status(403).json({ error: 'Forbidden: Telegram ID is not in admin whitelist.' });
+      return;
     }
 
     req.adminUser = { telegramId: telegramIdStr, role: 'admin' };

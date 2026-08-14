@@ -96,7 +96,7 @@ class InMemoryRedisMock {
         }
         const entry = this.kv.get(`${pointerPrefix}${candidate}`);
         const pointer = entry && (entry.expiresAt === undefined || Date.now() < entry.expiresAt) ? entry.value : null;
-        if (pointer !== bucketKey) {
+        if (!pointer) {
           set.delete(candidate);
           continue;
         }

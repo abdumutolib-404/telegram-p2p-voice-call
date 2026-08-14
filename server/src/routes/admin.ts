@@ -501,13 +501,15 @@ router.get('/appeals', adminAuthMiddleware, async (req, res) => {
       status: a.status,
       createdAt: a.createdAt,
       reviewedAt: a.reviewedAt,
-      subscores: {
-        fc: a.user.subFC,
-        lr: a.user.subLR,
-        gra: a.user.subGRA,
-        p: a.user.subP,
-        band: a.user.band,
-      },
+      subscores: a.user
+        ? {
+            fc: a.user.subFC,
+            lr: a.user.subLR,
+            gra: a.user.subGRA,
+            p: a.user.subP,
+            band: a.user.band,
+          }
+        : null,
     }));
 
     res.json(formatted);

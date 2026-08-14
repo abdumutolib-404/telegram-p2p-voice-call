@@ -210,10 +210,22 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               status: 'ACTIVE',
               OR: [{ userAId: user.id }, { userBId: user.id }],
             },
+            include: { userA: true, userB: true },
           });
           if (activeCall) {
-            socket.emit('error', { message: 'Another session is currently in an active call from this account. Please try again later.' });
-            return;
+            const maxDurationMinutes = calculateMixedPlanDuration(activeCall.userA.plan, activeCall.userB.plan);
+            const maxDurationMs = maxDurationMinutes * 60 * 1000 + 60 * 1000;
+            const elapsedMs = Date.now() - activeCall.createdAt.getTime();
+            if (elapsedMs > maxDurationMs) {
+              await prisma.callSession.updateMany({
+                where: { id: activeCall.id, status: 'ACTIVE' },
+                data: { status: 'COMPLETED', endedAt: new Date(), duration: maxDurationMinutes * 60 },
+              });
+              clearSessionTimer(activeCall.roomName);
+            } else {
+              socket.emit('error', { message: 'Another session is currently in an active call from this account. Please try again later.' });
+              return;
+            }
           }
 
           // Check daily call quota before queue entry

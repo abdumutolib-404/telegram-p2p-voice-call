@@ -42,6 +42,11 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
         const filePath = resolveSafeRecordingPath(session.recordingUrl);
         if (!filePath) {
           console.warn(`[Storage Purge] Path traversal or invalid recordingUrl for session ${session.id}: ${session.recordingUrl}`);
+          await prisma.callSession.update({
+            where: { id: session.id },
+            data: { recordingUrl: null },
+          });
+          purgedCount++;
           continue;
         }
 

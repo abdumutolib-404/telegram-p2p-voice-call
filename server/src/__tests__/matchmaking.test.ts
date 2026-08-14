@@ -72,4 +72,67 @@ describe('MatchmakingService - O(1) Redis Bucket Queue', () => {
     const cancelAgain = await matchmakingService.cancelQueue(userA.userId);
     expect(cancelAgain).toBe(false);
   });
+
+  it('matches two users with default equal subscores (6.0 / 6.0 / 6.0 / 6.0)', async () => {
+    const defaultUser1 = {
+      userId: 'default_user_1',
+      band: 6.0,
+      skills: { subFC: 6.0, subLR: 6.0, subGRA: 6.0, subP: 6.0 },
+    };
+
+    const defaultUser2 = {
+      userId: 'default_user_2',
+      band: 6.0,
+      skills: { subFC: 6.0, subLR: 6.0, subGRA: 6.0, subP: 6.0 },
+    };
+
+    const res1 = await matchmakingService.joinQueue(defaultUser1.userId, defaultUser1.band, defaultUser1.skills);
+    expect(res1.matched).toBe(false);
+
+    const res2 = await matchmakingService.joinQueue(defaultUser2.userId, defaultUser2.band, defaultUser2.skills);
+    expect(res2.matched).toBe(true);
+    expect(res2.partnerId).toBe('default_user_1');
+  });
+
+  it('prioritizes PRO and PLUS subscribers in matchmaking candidate pools', async () => {
+    const proUser = {
+      userId: 'pro_user_99',
+      band: 7.0,
+      skills: { subFC: 7.0, subLR: 7.0, subGRA: 7.0, subP: 7.0 },
+    };
+
+    const joinPro = await matchmakingService.joinQueue(proUser.userId, proUser.band, proUser.skills, { plan: 'PRO' });
+    expect(joinPro.matched).toBe(false);
+
+    const matchingUser = {
+      userId: 'matching_user_100',
+      band: 7.0,
+      skills: { subFC: 7.0, subLR: 7.0, subGRA: 7.0, subP: 7.0 },
+    };
+
+    const joinMatch = await matchmakingService.joinQueue(matchingUser.userId, matchingUser.band, matchingUser.skills);
+    expect(joinMatch.matched).toBe(true);
+    expect(joinMatch.partnerId).toBe('pro_user_99');
+  });
+
+  it('matches partner across adjacent band brackets via progressive expansion', async () => {
+    const band6User = {
+      userId: 'band_6_0_user',
+      band: 6.0,
+      skills: { subFC: 6.0, subLR: 6.0, subGRA: 6.0, subP: 6.0 },
+    };
+
+    const band65User = {
+      userId: 'band_6_5_user',
+      band: 6.5,
+      skills: { subFC: 6.5, subLR: 6.5, subGRA: 6.5, subP: 6.5 },
+    };
+
+    const join6 = await matchmakingService.joinQueue(band6User.userId, band6User.band, band6User.skills);
+    expect(join6.matched).toBe(false);
+
+    const join65 = await matchmakingService.joinQueue(band65User.userId, band65User.band, band65User.skills);
+    expect(join65.matched).toBe(true);
+    expect(join65.partnerId).toBe('band_6_0_user');
+  });
 });

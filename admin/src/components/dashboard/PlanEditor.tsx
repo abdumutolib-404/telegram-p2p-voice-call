@@ -8,7 +8,7 @@ export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse>({
     FREE: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0 },
     PLUS: { maxDuration: 30, dailyLimit: 10, retentionDays: 7, starsPrice: 150 },
-    PRO: { maxDuration: 60, dailyLimit: 99, retentionDays: 30, starsPrice: 350 },
+    PRO: { maxDuration: 60, dailyLimit: 999, retentionDays: 30, starsPrice: 500 },
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);

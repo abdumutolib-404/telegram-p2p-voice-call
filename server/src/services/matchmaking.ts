@@ -134,9 +134,6 @@ export class MatchmakingService {
       // 3. Same skill match at same band (e.g. 7.0:FC:P)
       // 4. Same band general pool
       // 5. Adjacent ±0.5 band general pools
-      // 6. Adjacent ±1.0 band general pools
-      // 7. Adjacent ±1.5, ±2.0 band general pools
-      // 8. Global fast pool
       const candidateBuckets: string[] = [
         this.getPriorityPoolKey('PRO'),
         this.getPriorityPoolKey('PLUS'),
@@ -145,14 +142,13 @@ export class MatchmakingService {
         bandPoolKey,
       ];
 
-      const deltas = [0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0];
+      const deltas = [0.5, -0.5];
       for (const delta of deltas) {
         const targetBand = band + delta;
         if (targetBand >= 4.0 && targetBand <= 9.0) {
           candidateBuckets.push(this.getBandPoolKey(targetBand));
         }
       }
-      candidateBuckets.push(globalPoolKey);
 
       try {
         await this.cancelQueueUnlocked(userId);
@@ -171,7 +167,6 @@ export class MatchmakingService {
             // Clean up partner from auxiliary pools
             await Promise.allSettled([
               this.redis.srem(bandPoolKey, claimedPartner),
-              this.redis.srem(globalPoolKey, claimedPartner),
               this.redis.srem(this.getPriorityPoolKey('PRO'), claimedPartner),
               this.redis.srem(this.getPriorityPoolKey('PLUS'), claimedPartner),
             ]);
@@ -186,7 +181,7 @@ export class MatchmakingService {
         }
 
         // No partner online yet: Register user into priority and standard pools
-        const poolsToRegister: string[] = [ownBucketKey, bandPoolKey, globalPoolKey];
+        const poolsToRegister: string[] = [ownBucketKey, bandPoolKey];
         if (isPriorityUser) {
           poolsToRegister.push(this.getPriorityPoolKey(userPlan));
         }

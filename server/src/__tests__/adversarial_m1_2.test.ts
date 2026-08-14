@@ -130,16 +130,16 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
       expect(await inMemoryRedis.get(`user_queue:${userId}`)).toBe('match_queue:7.0:FC:LR');
     });
 
-    it('1.5 No cross-talk between different band brackets', async () => {
+    it('1.5 No cross-talk between distant band brackets', async () => {
       // User A in Band 6.0 (Weak FC, Strong LR)
       const userA = { id: 'band_60_user', band: 6.0, skills: { subFC: 5.0, subLR: 8.0, subGRA: 6.5, subP: 6.5 } };
-      // User B in Band 6.5 (Weak LR, Strong FC)
-      const userB = { id: 'band_65_user', band: 6.5, skills: { subFC: 8.0, subLR: 5.0, subGRA: 6.5, subP: 6.5 } };
+      // User B in Band 8.5 (Weak LR, Strong FC)
+      const userB = { id: 'band_85_user', band: 8.5, skills: { subFC: 8.0, subLR: 5.0, subGRA: 6.5, subP: 6.5 } };
 
       await matchmakingService.joinQueue(userA.id, userA.band, userA.skills);
       const resB = await matchmakingService.joinQueue(userB.id, userB.band, userB.skills);
 
-      // Should NOT match because bands are 6.0 vs 6.5
+      // Should NOT match because bands are 6.0 vs 8.5 (diff > 1.0)
       expect(resB.matched).toBe(false);
     });
 

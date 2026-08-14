@@ -23,6 +23,8 @@ describe('Forensic Security & Reliability Test Suite', () => {
       const result = await purgeExpiredRecordings();
       expect(result).toBeDefined();
       expect(typeof result.purgedCount).toBe('number');
+      const updated = await prisma.callSession.findUnique({ where: { id: dummySession.id } });
+      expect(updated?.recordingUrl).toBeNull();
     });
 
     it('1.2 Purges abandoned recordings with null recordingExpiresAt older than 24h', async () => {

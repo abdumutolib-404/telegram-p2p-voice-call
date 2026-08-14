@@ -92,14 +92,22 @@ export const App: React.FC = () => {
         return tg.initData;
       }
 
+      const safeDecode = (val: string): string => {
+        try {
+          return decodeURIComponent(val);
+        } catch {
+          return val;
+        }
+      };
+
       const hashMatch = window.location.hash.match(/[#&]tgWebAppData=([^&]+)/);
-      if (hashMatch) return hashMatch[1];
+      if (hashMatch) return safeDecode(hashMatch[1]);
 
       const searchMatch = window.location.search.match(/[?&]tgWebAppData=([^&]+)/);
-      if (searchMatch) return searchMatch[1];
+      if (searchMatch) return safeDecode(searchMatch[1]);
 
       const initDataMatch = window.location.search.match(/[?&]initData=([^&]+)/);
-      if (initDataMatch) return initDataMatch[1];
+      if (initDataMatch) return safeDecode(initDataMatch[1]);
 
       return '';
     };
@@ -237,8 +245,14 @@ export const App: React.FC = () => {
     const socket = socketService.connect(initData);
 
     const onMatch = (data: MatchFoundPayload) => handleMatchFound(data, false);
+    const onSocketError = (err: { message?: string } | string) => {
+      const msg = typeof err === 'string' ? err : err?.message || 'Matchmaking error occurred.';
+      setErrorMessage(msg);
+      setAppState('ended');
+    };
     socket.on('match_found', onMatch);
     socket.on('call_finished', handleCallEnded);
+    socket.on('error', onSocketError);
 
     // Auto-join queue when in radar state & handle reconnection
     const handleRejoin = () => {
@@ -258,6 +272,7 @@ export const App: React.FC = () => {
     return () => {
       socket.off('match_found', onMatch);
       socket.off('call_finished', handleCallEnded);
+      socket.off('error', onSocketError);
       socket.off('connect', handleRejoin);
     };
   }, [initData, appState, userData, handleMatchFound, handleCallEnded]);

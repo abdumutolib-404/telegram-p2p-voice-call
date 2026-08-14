@@ -47,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleUnauthorized = () => {
       clearAdminToken();
       setJwtTokenState(null);
+      setUrlToken(null);
       setIsAuthenticated(false);
     };
 
