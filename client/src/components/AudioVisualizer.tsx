@@ -57,6 +57,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     let phase = 0;
 
     const renderFrame = () => {
+      if (document.hidden) {
+        animFrameIdRef.current = requestAnimationFrame(renderFrame);
+        return;
+      }
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const dpr = window.devicePixelRatio || 1;

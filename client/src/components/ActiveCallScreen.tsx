@@ -67,10 +67,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       setIsTogglingRecord(false);
     };
 
+    const handleSocketError = () => {
+      setIsTogglingRecord(false);
+    };
+
     socket.on('record_status', handleRecordStatus);
+    socket.on('error', handleSocketError);
 
     return () => {
       socket.off('record_status', handleRecordStatus);
+      socket.off('error', handleSocketError);
     };
   }, []);
 
@@ -87,6 +93,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     setIsTogglingRecord(true);
     const nextState = !isRecording;
     socketService.toggleRecord(roomName, nextState);
+    setTimeout(() => setIsTogglingRecord(false), 3000);
   };
 
   return (

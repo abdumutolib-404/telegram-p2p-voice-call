@@ -68,8 +68,8 @@ export const App: React.FC = () => {
 
         setAppState('in_call');
       } catch (err) {
-        console.error('Failed to connect to LiveKit SFU room:', err);
-        setErrorMessage('Failed to establish encrypted audio channel with LiveKit SFU.');
+        console.error('Failed to establish audio connection:', err);
+        setErrorMessage('Unable to establish voice connection. Please try again.');
         setAppState('ended');
       }
     },
@@ -245,8 +245,24 @@ export const App: React.FC = () => {
     const socket = socketService.connect(initData);
 
     const onMatch = (data: MatchFoundPayload) => handleMatchFound(data, false);
-    const onSocketError = (err: { message?: string } | string) => {
+    const onSocketError = (err: { code?: string; message?: string } | string) => {
+      const code = typeof err === 'object' && err !== null ? err.code : undefined;
       const msg = typeof err === 'string' ? err : err?.message || 'Matchmaking error occurred.';
+
+      const nonFatalCodes = [
+        'RECORDING_UNAVAILABLE',
+        'RECORDING_START_FAILED',
+        'RECORDING_STOP_FAILED',
+        'PAYMENT_RATE_LIMITED',
+        'ALREADY_IN_PROGRESS',
+      ];
+
+      // If user is currently in a call and gets a recording/non-fatal error, do NOT end the call
+      if (appStateRef.current === 'in_call' && code && nonFatalCodes.includes(code)) {
+        console.warn('[Call] Non-fatal notification during active call:', msg);
+        return;
+      }
+
       setErrorMessage(msg);
       setAppState('ended');
     };
