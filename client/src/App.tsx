@@ -31,7 +31,10 @@ export const App: React.FC = () => {
     connect: connectLiveKit,
     disconnect: disconnectLiveKit,
     isMicMuted,
+    canPlaybackAudio,
+    micError,
     toggleMic,
+    startAudio,
     analyserNode,
   } = useLiveKit();
 
@@ -387,9 +390,12 @@ export const App: React.FC = () => {
         partnerBand={matchData.partnerBand}
         callDurationLimit={matchData.callDurationLimit ?? 900}
         isMicMuted={isMicMuted}
+        canPlaybackAudio={canPlaybackAudio}
+        micError={micError}
         analyserNode={analyserNode}
         onToggleMic={toggleMic}
         onFinishCall={handleFinishCall}
+        onUnlockAudio={startAudio}
       />
     );
   }

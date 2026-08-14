@@ -23,7 +23,9 @@ try {
 export async function deleteLiveKitRoom(roomName: string): Promise<void> {
   if (!roomName || !roomServiceClient) return;
   try {
-    await roomServiceClient.deleteRoom(roomName);
+    const deletePromise = roomServiceClient.deleteRoom(roomName);
+    const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    await Promise.race([deletePromise, timeoutPromise]);
   } catch {
     // Room may already have ended or been closed
   }

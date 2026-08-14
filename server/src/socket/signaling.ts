@@ -532,7 +532,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             } catch (egressErr) {
               console.warn('[Socket] Recording start failed gracefully:', egressErr instanceof Error ? egressErr.message : egressErr);
               socket.emit('record_status', { record: false });
-              socket.emit('error', {
+              socket.emit('recording_error', {
                 code: 'RECORDING_UNAVAILABLE',
                 message: 'Audio recording is temporarily unavailable. Your voice call can proceed normally.',
               });
@@ -559,7 +559,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           requesterId,
           error: error instanceof Error ? error.message : 'unknown_error',
         });
-        socket.emit('error', { code: 'INTERNAL_ERROR', message: 'Unable to update recording status.' });
+        socket.emit('recording_error', { code: 'RECORDING_UNAVAILABLE', message: 'Unable to update recording status.' });
+        socket.emit('record_status', { record: false });
       }
     });
 

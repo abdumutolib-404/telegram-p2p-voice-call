@@ -425,4 +425,79 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       );
     });
   }
+
+  // In-bot receipt ingest for users with PENDING manual payment requests
+  bot.on(['message:photo', 'message:document'], async (ctx, next) => {
+    try {
+      const telegramId = BigInt(ctx.from.id);
+      const pendingRequest = await prisma.manualPaymentRequest.findFirst({
+        where: { telegramId, status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!pendingRequest) {
+        return next();
+      }
+
+      let fileId = '';
+      let mimeType = 'image/jpeg';
+
+      if (ctx.message?.photo && ctx.message.photo.length > 0) {
+        const highestRes = ctx.message.photo[ctx.message.photo.length - 1];
+        fileId = highestRes.file_id;
+        mimeType = 'image/jpeg';
+      } else if (ctx.message?.document) {
+        fileId = ctx.message.document.file_id;
+        mimeType = ctx.message.document.mime_type || 'application/octet-stream';
+      }
+
+      if (!fileId) {
+        return next();
+      }
+
+      const proofStr = `tg_file:${fileId}:${mimeType}`;
+      await prisma.manualPaymentRequest.update({
+        where: { id: pendingRequest.id },
+        data: { paymentProof: proofStr },
+      });
+
+      await ctx.reply(
+        `✅ *Payment Receipt Received!*\n\n` +
+          `Your receipt has been attached to Request ID \`${pendingRequest.id.slice(0, 8)}\`.\n` +
+          `Our administration team will verify your transaction and activate your *${pendingRequest.plan} Plan* within 15–30 minutes.\n\n` +
+          `Thank you for practicing with us!`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Notify configured admins
+      if (env.ADMIN_TELEGRAM_IDS && env.ADMIN_TELEGRAM_IDS.length > 0) {
+        const adminId = env.ADMIN_TELEGRAM_IDS[0];
+        const alertCaption =
+          `🧾 *NEW MANUAL PAYMENT RECEIPT*\n\n` +
+          `• *User*: ${pendingRequest.alias} (\`ID: ${telegramId}\`)\n` +
+          `• *Plan*: ${pendingRequest.plan}\n` +
+          `• *Amount*: ${pendingRequest.uzsAmount.toLocaleString()} UZS\n` +
+          `• *Request ID*: \`${pendingRequest.id}\``;
+
+        try {
+          if (ctx.message?.photo) {
+            await ctx.api.sendPhoto(adminId, fileId, {
+              caption: alertCaption,
+              parse_mode: 'Markdown',
+            });
+          } else {
+            await ctx.api.sendDocument(adminId, fileId, {
+              caption: alertCaption,
+              parse_mode: 'Markdown',
+            });
+          }
+        } catch (notifyErr) {
+          console.warn('[Payments] Failed to forward receipt to admin chat:', notifyErr);
+        }
+      }
+    } catch (err) {
+      console.error('[Payments] Error handling receipt message:', err);
+      return next();
+    }
+  });
 }

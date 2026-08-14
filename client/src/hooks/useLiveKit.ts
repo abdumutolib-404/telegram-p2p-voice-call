@@ -19,11 +19,14 @@ export interface UseLiveKitReturn {
   isConnecting: boolean;
   error: string | null;
   isMicMuted: boolean;
+  canPlaybackAudio: boolean;
+  micError: string | null;
   analyserNode: AnalyserNode | null;
   connect: (url: string, token: string) => Promise<void>;
   disconnect: () => void;
   toggleMic: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
+  startAudio: () => Promise<void>;
 }
 
 export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
@@ -32,6 +35,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isMicMuted, setIsMicMutedState] = useState<boolean>(false);
+  const [canPlaybackAudio, setCanPlaybackAudio] = useState<boolean>(true);
+  const [micError, setMicError] = useState<string | null>(null);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   const roomRef = useRef<Room | null>(null);
@@ -41,6 +46,33 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+
+  // Helper to ensure exactly ONE persistent HTMLAudioElement exists in DOM
+  const getOrCreateAudioElement = useCallback((): HTMLAudioElement | null => {
+    if (typeof window === 'undefined') return null;
+    if (!audioElementRef.current) {
+      const el = document.createElement('audio');
+      el.autoplay = true;
+      el.setAttribute('playsinline', 'true');
+      el.setAttribute('webkit-playsinline', 'true');
+      el.style.display = 'none';
+      document.body.appendChild(el);
+      audioElementRef.current = el;
+    }
+    return audioElementRef.current;
+  }, []);
+
+  // Initialize persistent HTMLAudioElement on mount
+  useEffect(() => {
+    getOrCreateAudioElement();
+
+    return () => {
+      if (audioElementRef.current) {
+        audioElementRef.current.remove();
+        audioElementRef.current = null;
+      }
+    };
+  }, [getOrCreateAudioElement]);
 
   // Handle mobile visibility change & resume AudioContext on app wake
   useEffect(() => {
@@ -58,24 +90,6 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
-    };
-  }, []);
-
-  // Initialize persistent HTMLAudioElement for remote audio playback
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !audioElementRef.current) {
-      const el = document.createElement('audio');
-      el.autoplay = true;
-      el.style.display = 'none';
-      document.body.appendChild(el);
-      audioElementRef.current = el;
-    }
-
-    return () => {
-      if (audioElementRef.current) {
-        audioElementRef.current.remove();
-        audioElementRef.current = null;
-      }
     };
   }, []);
 
@@ -100,7 +114,12 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     }
 
     if (audioElementRef.current) {
-      audioElementRef.current.srcObject = null;
+      try {
+        audioElementRef.current.pause();
+        audioElementRef.current.srcObject = null;
+      } catch {
+        // Ignore cleanup pause errors
+      }
     }
 
     setAnalyserNode(null);
@@ -126,7 +145,9 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
       const mediaStream = new MediaStream([remoteTrack.mediaStreamTrack]);
 
       if (mediaStreamSourceRef.current) {
-        mediaStreamSourceRef.current.disconnect();
+        try {
+          mediaStreamSourceRef.current.disconnect();
+        } catch {}
       }
 
       const source = audioCtx.createMediaStreamSource(mediaStream);
@@ -135,13 +156,31 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
       analyser.smoothingTimeConstant = 0.8;
 
       source.connect(analyser);
-      // NOTE: Do NOT connect analyser to audioCtx.destination because remoteTrack.attach()
-      // handles direct speaker output to prevent double audio playback / echo.
+      // NOTE: Do NOT connect analyser to audioCtx.destination.
+      // Remote audio output is handled directly via remoteAudioTrack.attach(audioElementRef.current).
 
       mediaStreamSourceRef.current = source;
       setAnalyserNode(analyser);
     } catch (err) {
       console.warn('Failed to setup Web Audio AnalyserNode:', err);
+    }
+  }, []);
+
+  // Explicit user-gesture trigger to unlock autoplay audio on mobile browsers
+  const startAudio = useCallback(async () => {
+    const activeRoom = roomRef.current;
+    if (activeRoom) {
+      try {
+        await activeRoom.startAudio();
+        setCanPlaybackAudio(activeRoom.canPlaybackAudio);
+      } catch (err) {
+        console.warn('Failed to unlock audio playback:', err);
+      }
+    }
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+      } catch {}
     }
   }, []);
 
@@ -164,6 +203,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     setIsConnected(false);
     setIsConnecting(false);
     setIsMicMutedState(false);
+    setCanPlaybackAudio(true);
+    setMicError(null);
   }, [cleanupAudio]);
 
   const connect = useCallback(
@@ -181,6 +222,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
       isConnectingRef.current = true;
       setIsConnecting(true);
       setError(null);
+      setMicError(null);
 
       let livekitRoom: Room | null = null;
 
@@ -205,8 +247,9 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           ) => {
             if (track.kind === Track.Kind.Audio) {
               const remoteAudioTrack = track as RemoteAudioTrack;
-              if (audioElementRef.current) {
-                remoteAudioTrack.attach(audioElementRef.current);
+              const el = getOrCreateAudioElement();
+              if (el) {
+                remoteAudioTrack.attach(el);
               }
               setupAudioAnalyzer(remoteAudioTrack);
             }
@@ -224,12 +267,23 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
             if (track.kind === Track.Kind.Audio) {
               const remoteAudioTrack = track as RemoteAudioTrack;
               if (audioElementRef.current) {
-                remoteAudioTrack.detach(audioElementRef.current);
+                try {
+                  remoteAudioTrack.detach(audioElementRef.current);
+                } catch (err) {
+                  console.warn('Error detaching audio track:', err);
+                }
               }
               setAnalyserNode(null);
             }
           }
         );
+
+        // Mobile autoplay permission change listener
+        livekitRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+          if (livekitRoom) {
+            setCanPlaybackAudio(livekitRoom.canPlaybackAudio);
+          }
+        });
 
         // Room disconnect event
         livekitRoom.on(RoomEvent.Disconnected, () => {
@@ -241,38 +295,42 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           isConnectingRef.current = false;
         });
 
-        // Autoplay policy unlocking for mobile browsers
-        livekitRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
-          if (!livekitRoom?.canPlaybackAudio) {
-            livekitRoom?.startAudio().catch((err) => console.warn('LiveKit startAudio failed:', err));
-          }
-        });
-
         await livekitRoom.connect(url, token);
 
         // Check if disconnect() was called while connect() was in-flight
         if (cancelConnectRef.current) {
           try {
             livekitRoom.disconnect();
-          } catch {
-            // Ignore error on cleanup
-          }
+          } catch {}
           setIsConnecting(false);
           isConnectingRef.current = false;
           return;
         }
 
-        // Enable microphone by default upon joining voice room
-        await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-        setIsMicMutedState(false);
+        // Attempt initial startAudio for mobile autoplay unlock
+        try {
+          await livekitRoom.startAudio();
+        } catch (audioErr) {
+          console.warn('Initial room.startAudio blocked by browser autoplay policy:', audioErr);
+        }
+        setCanPlaybackAudio(livekitRoom.canPlaybackAudio);
+
+        // Enable microphone publication with error isolation
+        try {
+          await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+          setIsMicMutedState(false);
+          setMicError(null);
+        } catch (micErr) {
+          console.warn('Initial microphone publication failed or permission prompt pending:', micErr);
+          setIsMicMutedState(true);
+          setMicError('MICROPHONE_PERMISSION_DENIED');
+        }
 
         // Check again if disconnect() was called while setMicrophoneEnabled was in-flight
         if (cancelConnectRef.current) {
           try {
             livekitRoom.disconnect();
-          } catch {
-            // Ignore error on cleanup
-          }
+          } catch {}
           setIsConnecting(false);
           isConnectingRef.current = false;
           return;
@@ -287,12 +345,10 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         if (livekitRoom && cancelConnectRef.current) {
           try {
             livekitRoom.disconnect();
-          } catch {
-            // Ignore error on cleanup
-          }
+          } catch {}
         }
         if (!cancelConnectRef.current) {
-          const msg = err instanceof Error ? err.message : 'Failed to connect to LiveKit room.';
+          const msg = err instanceof Error ? err.message : 'Failed to connect to voice room.';
           setError(msg);
         }
         setIsConnecting(false);
@@ -300,7 +356,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         isConnectingRef.current = false;
       }
     },
-    [setupAudioAnalyzer, cleanupAudio]
+    [getOrCreateAudioElement, setupAudioAnalyzer, cleanupAudio]
   );
 
   const toggleMic = useCallback(async () => {
@@ -311,8 +367,10 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
       const targetState = !currentEnabled;
       await activeRoom.localParticipant.setMicrophoneEnabled(targetState);
       setIsMicMutedState(!targetState);
+      setMicError(null);
     } catch (err) {
       console.error('Failed to toggle microphone state:', err);
+      setMicError('MICROPHONE_PERMISSION_DENIED');
     }
   }, []);
 
@@ -322,8 +380,10 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     try {
       await activeRoom.localParticipant.setMicrophoneEnabled(!muted);
       setIsMicMutedState(muted);
+      setMicError(null);
     } catch (err) {
       console.error('Failed to set microphone state:', err);
+      setMicError('MICROPHONE_PERMISSION_DENIED');
     }
   }, []);
 
@@ -348,10 +408,13 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     isConnecting,
     error,
     isMicMuted,
+    canPlaybackAudio,
+    micError,
     analyserNode,
     connect,
     disconnect,
     toggleMic,
     setMicMuted,
+    startAudio,
   };
 }

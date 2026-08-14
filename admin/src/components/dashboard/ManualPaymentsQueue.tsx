@@ -162,6 +162,13 @@ export function ManualPaymentsQueue() {
                   <td style={{ padding: '0.875rem 1rem' }}>
                     <div style={{ fontWeight: 600, color: '#f8fafc' }}>{req.alias}</div>
                     <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>TG: {req.telegramId}</div>
+                    {req.paymentProof && (
+                      <div style={{ marginTop: '0.25rem' }}>
+                        <span style={{ padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, backgroundColor: '#0369a1', color: '#e0f2fe' }}>
+                          🧾 Receipt Attached
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '0.875rem 1rem' }}>
                     <span style={{ fontWeight: 600, color: req.planTier === 'PRO' ? '#fbbf24' : '#38bdf8' }}>

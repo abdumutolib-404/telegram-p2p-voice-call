@@ -38,6 +38,12 @@ export interface CallEndedPayload {
 }
 
 export interface SocketErrorPayload {
+  code?: string;
+  message: string;
+}
+
+export interface RecordingErrorPayload {
+  code?: string;
   message: string;
 }
 

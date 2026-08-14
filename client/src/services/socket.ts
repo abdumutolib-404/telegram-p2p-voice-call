@@ -4,6 +4,7 @@ import type {
   UserMatchData,
   MatchFoundPayload,
   RecordStatusPayload,
+  RecordingErrorPayload,
   CallEndedPayload,
   SocketErrorPayload,
 } from '../types';
@@ -18,6 +19,7 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   match_found: (data: MatchFoundPayload) => void;
   record_status: (data: RecordStatusPayload) => void;
+  recording_error: (data: RecordingErrorPayload) => void;
   call_finished: (data: CallEndedPayload) => void;
   error: (data: SocketErrorPayload) => void;
 }
