@@ -42,6 +42,25 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
+  // Handle mobile visibility change & resume AudioContext on app wake
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        audioContextRef.current &&
+        audioContextRef.current.state === 'suspended'
+      ) {
+        audioContextRef.current.resume().catch((err) => console.warn('Failed to resume AudioContext:', err));
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, []);
+
   // Initialize persistent HTMLAudioElement for remote audio playback
   useEffect(() => {
     if (typeof window !== 'undefined' && !audioElementRef.current) {
@@ -220,6 +239,13 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           setIsConnected(false);
           setIsConnecting(false);
           isConnectingRef.current = false;
+        });
+
+        // Autoplay policy unlocking for mobile browsers
+        livekitRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+          if (!livekitRoom?.canPlaybackAudio) {
+            livekitRoom?.startAudio().catch((err) => console.warn('LiveKit startAudio failed:', err));
+          }
         });
 
         await livekitRoom.connect(url, token);

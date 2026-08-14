@@ -18,9 +18,12 @@ type UserData = Record<string, unknown>;
 type CallSessionWhere = {
   id?: string;
   roomName?: string;
-  status?: string;
+  status?: string | { in?: string[] };
   egressId?: string | null;
-  OR?: Array<{ userAId?: string; userBId?: string }>;
+  recordingUrl?: string | null | { not?: null };
+  recordingExpiresAt?: Date | null | { lte?: Date };
+  createdAt?: Date | { lte?: Date };
+  OR?: Array<CallSessionWhere>;
 };
 type CallSessionData = Record<string, unknown>;
 type RatingWhere = { callId?: string; raterId?: string; reported?: boolean };
@@ -193,6 +196,11 @@ export class InMemoryPrismaMock {
     findUnique: async (args: { where: IdSelector }): Promise<UserRow | null> => {
       const user = this.findUser(args.where);
       return user ? { ...user } : null;
+    },
+
+    findFirst: async (args?: { where?: UserWhere; select?: Record<string, boolean> }): Promise<UserRow | null> => {
+      const list = [...this.users.values()].filter((user) => this.matchesUser(user, args?.where));
+      return list.length > 0 ? { ...list[0] } : null;
     },
 
     findMany: async (args?: { where?: UserWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<UserRow[]> => {
@@ -461,9 +469,19 @@ export class InMemoryPrismaMock {
     if (!where) return true;
     if (where.id && session.id !== where.id) return false;
     if (where.roomName && session.roomName !== where.roomName) return false;
-    if (where.status && session.status !== where.status) return false;
+    if (typeof where.status === 'string' && session.status !== where.status) return false;
+    if (typeof where.status === 'object' && where.status.in && !where.status.in.includes(session.status)) return false;
     if (where.egressId !== undefined && session.egressId !== where.egressId) return false;
-    if (where.OR && !where.OR.some((condition) => condition.userAId === session.userAId || condition.userBId === session.userBId)) return false;
+    if (where.recordingUrl === null && session.recordingUrl !== null) return false;
+    if (where.recordingUrl && typeof where.recordingUrl === 'object' && where.recordingUrl.not === null && session.recordingUrl === null) return false;
+    if (where.recordingExpiresAt === null && session.recordingExpiresAt !== null) return false;
+    if (where.recordingExpiresAt && !(where.recordingExpiresAt instanceof Date) && 'lte' in where.recordingExpiresAt && where.recordingExpiresAt.lte) {
+      if (!session.recordingExpiresAt || session.recordingExpiresAt.getTime() > where.recordingExpiresAt.lte.getTime()) return false;
+    }
+    if (where.createdAt && !(where.createdAt instanceof Date) && 'lte' in where.createdAt && where.createdAt.lte) {
+      if (session.createdAt.getTime() > where.createdAt.lte.getTime()) return false;
+    }
+    if (where.OR && !where.OR.some((condition) => this.matchesCallSession(session, condition))) return false;
     return true;
   }
 

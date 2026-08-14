@@ -31,6 +31,7 @@ export interface RecordStatusPayload {
 }
 
 export interface CallEndedPayload {
+  duration?: number;
   reason?: string;
 }
 

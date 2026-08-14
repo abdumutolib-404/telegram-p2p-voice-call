@@ -155,6 +155,18 @@ class InMemoryRedisMock {
     throw new Error('Unsupported in-memory Redis script');
   }
 
+  async expire(key: string, seconds: number): Promise<number> {
+    const entry = this.kv.get(key);
+    if (entry) {
+      entry.expiresAt = Date.now() + seconds * 1000;
+      return 1;
+    }
+    if (this.sets.has(key)) {
+      return 1;
+    }
+    return 0;
+  }
+
   async flushall(): Promise<'OK'> {
     this.sets.clear();
     this.kv.clear();
@@ -175,6 +187,7 @@ export interface RedisClientInterface {
     duration?: number,
     condition?: 'NX',
   ): Promise<string | null>;
+  expire(key: string, seconds: number): Promise<number>;
   del(...keys: string[]): Promise<number>;
   eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<string | number | null>;
   flushall?(): Promise<'OK'>;

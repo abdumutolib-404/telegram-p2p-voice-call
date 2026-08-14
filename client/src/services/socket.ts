@@ -28,8 +28,13 @@ class SocketService {
   private socket: AppSocket | null = null;
 
   public connect(initData: string): AppSocket {
-    if (this.socket) {
+    if (this.socket && this.socket.connected) {
       return this.socket;
+    }
+
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
     }
 
     const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;

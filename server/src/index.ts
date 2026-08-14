@@ -7,7 +7,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { Bot } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
 import { env } from './config/env';
-import { connectDB } from './config/database';
+import { prisma, connectDB, disconnectDB } from './config/database';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
 import adminRoutes, { setAdminBot } from './routes/admin';
@@ -67,8 +67,17 @@ app.use('/api/auth', authRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/admin', adminRoutes);
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  try {
+    await prisma.user.findFirst({ select: { id: true } }).catch(() => null);
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+  } catch (err: unknown) {
+    res.status(503).json({
+      status: 'error',
+      db: 'disconnected',
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+  }
 });
 
 app.use('/client', express.static(path.join(__dirname, '../public/client')));
@@ -146,5 +155,25 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   console.error('[Express Error]', err.message);
   if (!res.headersSent) res.status(500).json({ error: 'Internal server error.' });
 });
+
+const gracefulShutdown = async (signal: string) => {
+  console.log(`[Server] Received ${signal}. Initiating graceful shutdown...`);
+  try {
+    if (bot) await bot.stop().catch(() => undefined);
+    io.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await disconnectDB().catch(() => undefined);
+    console.log('[Server] Graceful shutdown complete.');
+    process.exit(0);
+  } catch (err) {
+    console.error('[Server] Shutdown error:', err);
+    process.exit(1);
+  }
+};
+
+if (env.NODE_ENV !== 'test') {
+  process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
+}
 
 export { app, server, io, bot };

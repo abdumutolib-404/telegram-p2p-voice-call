@@ -36,8 +36,8 @@ export const App: React.FC = () => {
   } = useLiveKit();
 
   const handleMatchFound = useCallback(
-    async (data: MatchFoundPayload) => {
-      if (appStateRef.current === 'ended' || appStateRef.current === 'idle') {
+    async (data: MatchFoundPayload, isReconnection = false) => {
+      if (!isReconnection && (appStateRef.current === 'ended' || appStateRef.current === 'idle')) {
         console.warn(`Ignoring late match_found event because app state is ${appStateRef.current}`);
         return;
       }
@@ -185,7 +185,7 @@ export const App: React.FC = () => {
                 partnerAlias: activeData.partnerAlias,
                 partnerBand: activeData.partnerBand,
                 callDurationLimit: activeData.callDurationLimit,
-              });
+              }, true);
               return;
             }
           }
@@ -227,22 +227,29 @@ export const App: React.FC = () => {
 
     const socket = socketService.connect(initData);
 
-    socket.on('match_found', handleMatchFound);
+    const onMatch = (data: MatchFoundPayload) => handleMatchFound(data, false);
+    socket.on('match_found', onMatch);
     socket.on('call_finished', handleCallEnded);
 
-    // Auto-join queue when in radar state
+    // Auto-join queue when in radar state & handle reconnection
+    const handleRejoin = () => {
+      socketService.joinQueue(userData);
+      hasJoinedQueueRef.current = true;
+    };
+
     if (appState === 'radar') {
-      if (!hasJoinedQueueRef.current) {
-        socketService.joinQueue(userData);
-        hasJoinedQueueRef.current = true;
+      if (!hasJoinedQueueRef.current || !socket.connected) {
+        handleRejoin();
       }
+      socket.on('connect', handleRejoin);
     } else {
       hasJoinedQueueRef.current = false;
     }
 
     return () => {
-      socket.off('match_found', handleMatchFound);
+      socket.off('match_found', onMatch);
       socket.off('call_finished', handleCallEnded);
+      socket.off('connect', handleRejoin);
     };
   }, [initData, appState, userData, handleMatchFound, handleCallEnded]);
 

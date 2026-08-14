@@ -1,21 +1,36 @@
 import cron from 'node-cron';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
+import path from 'node:path';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
 
+const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
+
+function resolveSafeRecordingPath(recordingUrl: string): string | null {
+  const normalized = recordingUrl.replace(/^recordings[\\/]/, '');
+  const resolved = path.resolve(recordingsRoot, normalized);
+  const relative = path.relative(recordingsRoot, resolved);
+  if (relative === '' || path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
+    return null;
+  }
+  return resolved;
+}
+
 export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; freedSpaceBytes: number }> {
   const now = new Date();
+  const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
   let purgedCount = 0;
   let freedSpaceBytes = 0;
 
-  // Find all call sessions with expired recordings
+  // Find all call sessions with expired recordings or abandoned sessions older than 24h
   const expiredSessions = await prisma.callSession.findMany({
     where: {
       recordingUrl: { not: null },
-      recordingExpiresAt: {
-        lte: now,
-      },
+      OR: [
+        { recordingExpiresAt: { lte: now } },
+        { recordingExpiresAt: null, createdAt: { lte: cutoffDate } },
+      ],
     },
   });
 
@@ -24,28 +39,26 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
       let fileDeleted = false;
 
       try {
-        const normalized = session.recordingUrl.replace(/^recordings[\\/]/, '');
-        const filePath = path.isAbsolute(session.recordingUrl)
-          ? session.recordingUrl
-          : path.resolve(env.RECORDINGS_DIR, normalized);
+        const filePath = resolveSafeRecordingPath(session.recordingUrl);
+        if (!filePath) {
+          console.warn(`[Storage Purge] Path traversal or invalid recordingUrl for session ${session.id}: ${session.recordingUrl}`);
+          continue;
+        }
 
-        if (fs.existsSync(filePath)) {
-          const stats = fs.statSync(filePath);
-          fs.unlinkSync(filePath);
+        if (fsSync.existsSync(filePath)) {
+          const stats = await fs.stat(filePath);
+          await fs.unlink(filePath);
           freedSpaceBytes += stats.size;
           fileDeleted = true;
         } else {
-          // File doesn't exist on disk (already cleaned or never written)
+          // File does not exist on disk (already cleaned up or never written)
           fileDeleted = true;
         }
       } catch (err) {
         console.warn(`[Storage Purge] Could not delete file for session ${session.id}:`, err);
-        // Do NOT clear the DB reference if the file couldn't be deleted —
-        // this prevents "orphaned files" that leak disk space forever
         continue;
       }
 
-      // Only clear the DB reference if the file was successfully removed
       if (fileDeleted) {
         await prisma.callSession.update({
           where: { id: session.id },

@@ -105,10 +105,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [urlToken]);
 
-  const logout = useCallback(() => {
-    clearAdminToken();
-    setJwtTokenState(null);
-    setIsAuthenticated(false);
+  const logout = useCallback(async () => {
+    try {
+      await adminFetch('/api/admin/auth/logout', { method: 'POST' }).catch(() => undefined);
+    } finally {
+      clearAdminToken();
+      setJwtTokenState(null);
+      setIsAuthenticated(false);
+    }
   }, []);
 
   return (

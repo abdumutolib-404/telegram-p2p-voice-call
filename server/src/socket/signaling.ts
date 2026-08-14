@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
 import { calculateMixedPlanDuration, getRetentionDaysForPlan } from '../services/plan';
-import { generateLiveKitToken, startAudioEgress, stopAudioEgress, type EgressResult } from '../config/livekit';
+import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
 import { sendPostCallReviewCard } from '../bot/handlers/postCall';
@@ -105,7 +105,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     if (!sockets) return undefined;
     for (const socketId of sockets) {
       const socket = io.sockets.sockets.get(socketId);
-      if (socket) return socket as Socket;
+      if (socket && socket.connected) return socket as Socket;
     }
     return undefined;
   };
@@ -303,6 +303,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                       data: { egressId: egressId ?? null, recordingUrl: recordingUrl ?? null, recordingExpiresAt },
                     });
 
+                    await deleteLiveKitRoom(roomName);
+
                     io.to(roomName).emit('call_finished', { duration: durationSeconds, reason: 'duration_limit_exceeded' });
 
                     if (bot) {
@@ -362,14 +364,23 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               }
             }
 
-            const bucketUser = getUserBucket(user);
-            const bucketPartner = getUserBucket(partner);
-            await Promise.allSettled([
-              matchmakingService.restoreQueue(user.id, bucketUser),
-              matchmakingService.restoreQueue(partner.id, bucketPartner),
-            ]);
+            const isQuotaError = error instanceof Error && error.message === 'Daily call limit reached';
+            if (!isQuotaError) {
+              const userSock = getConnectedSocket(user.id);
+              const partnerSock = getConnectedSocket(partner.id);
+              const restorePromises: Promise<unknown>[] = [];
+              if (userSock?.connected) {
+                const bucketUser = getUserBucket(user);
+                restorePromises.push(matchmakingService.restoreQueue(user.id, bucketUser));
+              }
+              if (partnerSock?.connected) {
+                const bucketPartner = getUserBucket(partner);
+                restorePromises.push(matchmakingService.restoreQueue(partner.id, bucketPartner));
+              }
+              await Promise.allSettled(restorePromises);
+            }
             socket.emit('error', {
-              message: error instanceof Error && error.message === 'Daily call limit reached'
+              message: isQuotaError
                 ? 'Daily call limit reached.'
                 : 'Unable to establish the call. You have been returned to the queue.',
             });
@@ -538,6 +549,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             data: { egressId: egressId ?? null, recordingUrl: recordingUrl ?? null, recordingExpiresAt },
           });
 
+          await deleteLiveKitRoom(payload.roomName);
+
           io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
 
           if (bot) {
@@ -579,24 +592,23 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           for (const session of activeSessions) {
             const otherUserId = session.userAId === disconnectedUserId ? session.userBId : session.userAId;
-            // Only complete if the other user has also fully disconnected
-            if ((userSockets.get(otherUserId)?.size ?? 0) > 0) continue;
+            const otherUserConnected = (userSockets.get(otherUserId)?.size ?? 0) > 0;
 
             try {
               await runSerialized(roomOperationTails, session.roomName, async () => {
-                const currentSession = await prisma.callSession.findUnique({ where: { id: session.id } });
+                const currentSession = await prisma.callSession.findUnique({
+                  where: { id: session.id },
+                  include: { userA: true, userB: true },
+                });
                 if (!currentSession || currentSession.status !== 'ACTIVE') return;
 
                 const endedAt = new Date();
                 const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - currentSession.createdAt.getTime()) / 1000));
 
-                await prisma.callSession.update({
-                  where: { id: session.id },
-                  data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
-                });
-
                 const egress = activeEgresses.get(session.roomName);
                 const egressId = egress?.egressId ?? currentSession.egressId;
+                const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
+
                 if (egressId) {
                   await stopAudioEgress(egressId).catch((stopErr: unknown) => {
                     console.error('[Socket] disconnect_egress_stop_failed', {
@@ -605,6 +617,37 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     });
                   });
                   activeEgresses.delete(session.roomName);
+                }
+
+                const recordingExpiresAt = recordingUrl
+                  ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(currentSession.userA.plan), getRetentionDaysForPlan(currentSession.userB.plan)) * 24 * 60 * 60 * 1000)
+                  : null;
+
+                await prisma.callSession.update({
+                  where: { id: session.id },
+                  data: {
+                    status: 'COMPLETED',
+                    endedAt,
+                    duration: durationSeconds,
+                    egressId: egressId ?? null,
+                    recordingUrl: recordingUrl ?? null,
+                    recordingExpiresAt,
+                  },
+                });
+
+                clearSessionTimer(session.roomName);
+                await deleteLiveKitRoom(session.roomName);
+
+                io.to(session.roomName).emit('call_finished', {
+                  duration: durationSeconds,
+                  reason: 'partner_disconnected',
+                });
+
+                if (bot) {
+                  await Promise.allSettled([
+                    sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, recordingUrl),
+                    sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, recordingUrl),
+                  ]);
                 }
               });
             } catch (error: unknown) {

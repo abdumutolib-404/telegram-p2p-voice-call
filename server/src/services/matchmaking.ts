@@ -114,6 +114,7 @@ export class MatchmakingService {
 
         try {
           await this.redis.sadd(ownBucketKey, userId);
+          await this.redis.expire(ownBucketKey, QUEUE_TTL_SECONDS * 2);
           await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS);
         } catch (error: unknown) {
           await this.redis.srem(ownBucketKey, userId).catch((cleanupError: unknown) => {
@@ -143,6 +144,7 @@ export class MatchmakingService {
     return this.withUserLock(userId, async () => {
       try {
         await this.redis.sadd(bucketKey, userId);
+        await this.redis.expire(bucketKey, QUEUE_TTL_SECONDS * 2);
         await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS);
       } catch (error: unknown) {
         console.error('[Matchmaking] restore_failed', {

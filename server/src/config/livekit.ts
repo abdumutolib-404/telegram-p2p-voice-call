@@ -1,4 +1,4 @@
-import { AccessToken, EgressClient, EncodedFileOutput, EncodedFileType } from 'livekit-server-sdk';
+import { AccessToken, EgressClient, RoomServiceClient, EncodedFileOutput, EncodedFileType } from 'livekit-server-sdk';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -10,12 +10,23 @@ export interface EgressResult {
 }
 
 let egressClient: EgressClient | null = null;
+let roomServiceClient: RoomServiceClient | null = null;
 try {
   egressClient = new EgressClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
+  roomServiceClient = new RoomServiceClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
 } catch (error: unknown) {
   console.error('[LiveKit] client_init_failed', {
     error: error instanceof Error ? error.message : 'unknown_error',
   });
+}
+
+export async function deleteLiveKitRoom(roomName: string): Promise<void> {
+  if (!roomName || !roomServiceClient) return;
+  try {
+    await roomServiceClient.deleteRoom(roomName);
+  } catch (error: unknown) {
+    // Room may already have ended or been closed
+  }
 }
 
 export async function generateLiveKitToken(
