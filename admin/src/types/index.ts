@@ -14,6 +14,8 @@ export interface AdminStats {
   totalUsers: number;
   mau: number;
   dau: number;
+  totalCalls?: number;
+  totalMinutesSpoken?: number;
   activeCalls: number;
   starsRevenue: StarsRevenue;
 }

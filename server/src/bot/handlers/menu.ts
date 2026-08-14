@@ -191,6 +191,24 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
     }
 
     try {
+      const pendingAppeal = await prisma.unblockAppeal.findFirst({
+        where: {
+          userId: user.id,
+          status: 'PENDING',
+        },
+      });
+
+      if (pendingAppeal) {
+        const dateStr = pendingAppeal.createdAt.toISOString().split('T')[0];
+        await ctx.reply(
+          `⏳ *Appeal Already Under Review*\n\n` +
+            `You already have a pending appeal submitted on *${dateStr}*.\n\n` +
+            `Our moderation team reviews every appeal in the queue. You will be notified automatically once a decision is made.`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
       await prisma.unblockAppeal.create({
         data: {
           userId: user.id,

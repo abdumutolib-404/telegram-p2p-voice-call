@@ -10,6 +10,8 @@ export interface AdminAnalyticsData {
   totalUsers: number;
   mau: number;
   dau: number;
+  totalCalls: number;
+  totalMinutesSpoken: number;
   activeCalls: number;
   starsRevenue: {
     totalStars: number;
@@ -37,9 +39,20 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     },
   });
 
+  const totalCalls = await prisma.callSession.count({
+    where: { status: 'COMPLETED' },
+  });
+
   const activeCalls = await prisma.callSession.count({
     where: { status: 'ACTIVE' },
   });
+
+  const completedSessions = await prisma.callSession.findMany({
+    where: { status: 'COMPLETED' },
+    select: { duration: true },
+  });
+  const totalDurationSeconds = completedSessions.reduce((acc, s) => acc + (s.duration || 0), 0);
+  const totalMinutesSpoken = Math.round(totalDurationSeconds / 60);
 
   const transactions = await prisma.starsTransaction.findMany();
   const totalStars = transactions.reduce((acc, t) => acc + t.starsAmount, 0);
@@ -64,6 +77,8 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     totalUsers,
     mau,
     dau,
+    totalCalls,
+    totalMinutesSpoken,
     activeCalls,
     starsRevenue: {
       totalStars,

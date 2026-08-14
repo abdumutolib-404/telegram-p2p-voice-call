@@ -10,6 +10,11 @@ export interface UserSkills {
 
 export type SkillCode = 'FC' | 'LR' | 'GRA' | 'P';
 
+export interface MatchOptions {
+  readonly plan?: string;
+  readonly warningCount?: number;
+}
+
 export interface MatchResult {
   readonly matched: boolean;
   readonly partnerId?: string;
@@ -98,11 +103,20 @@ export class MatchmakingService {
     return `${MATCH_QUEUE_PREFIX}band:${this.getBandKey(band)}`;
   }
 
+  public getPriorityPoolKey(tier: string): string {
+    return `${MATCH_QUEUE_PREFIX}priority:${tier.toUpperCase()}`;
+  }
+
   public getGlobalPoolKey(): string {
     return `${MATCH_QUEUE_PREFIX}global`;
   }
 
-  public async joinQueue(userId: string, band: number, skills: UserSkills): Promise<MatchResult> {
+  public async joinQueue(
+    userId: string,
+    band: number,
+    skills: UserSkills,
+    options?: MatchOptions
+  ): Promise<MatchResult> {
     this.validateUserId(userId);
     return this.withUserLock(userId, async () => {
       const { weakSkill, strongSkill } = determineWeakAndStrongSkills(skills);
@@ -110,15 +124,22 @@ export class MatchmakingService {
       const bandPoolKey = this.getBandPoolKey(band);
       const globalPoolKey = this.getGlobalPoolKey();
 
+      const userPlan = (options?.plan || 'FREE').toUpperCase();
+      const warningCount = options?.warningCount ?? 0;
+      const isPriorityUser = userPlan === 'PRO' || userPlan === 'PLUS';
+
       // Progressive Search Priority Rings:
-      // 1. Exact complementary skill match at same band (e.g. 7.0:P:FC)
-      // 2. Same skill match at same band (e.g. 7.0:FC:P)
-      // 3. Same band general pool
-      // 4. Adjacent ±0.5 band general pools
-      // 5. Adjacent ±1.0 band general pools
-      // 6. Adjacent ±1.5 band general pools
-      // 7. Global fast pool
+      // 1. Pro / Plus priority candidate pools
+      // 2. Exact complementary skill match at same band (e.g. 7.0:P:FC)
+      // 3. Same skill match at same band (e.g. 7.0:FC:P)
+      // 4. Same band general pool
+      // 5. Adjacent ±0.5 band general pools
+      // 6. Adjacent ±1.0 band general pools
+      // 7. Adjacent ±1.5, ±2.0 band general pools
+      // 8. Global fast pool
       const candidateBuckets: string[] = [
+        this.getPriorityPoolKey('PRO'),
+        this.getPriorityPoolKey('PLUS'),
         this.getBucketKey(band, strongSkill, weakSkill),
         ownBucketKey,
         bandPoolKey,
@@ -136,7 +157,7 @@ export class MatchmakingService {
       try {
         await this.cancelQueueUnlocked(userId);
 
-        // Scan candidate buckets in order of score proximity
+        // Scan candidate buckets in priority order
         for (const bucketKey of candidateBuckets) {
           const claimedPartner = await this.redis.eval(
             MATCH_QUEUE_CLAIM_SCRIPT,
@@ -151,6 +172,8 @@ export class MatchmakingService {
             await Promise.allSettled([
               this.redis.srem(bandPoolKey, claimedPartner),
               this.redis.srem(globalPoolKey, claimedPartner),
+              this.redis.srem(this.getPriorityPoolKey('PRO'), claimedPartner),
+              this.redis.srem(this.getPriorityPoolKey('PLUS'), claimedPartner),
             ]);
 
             return {
@@ -162,25 +185,18 @@ export class MatchmakingService {
           }
         }
 
-        // No candidate found: Register user in specific, band, and global queues
+        // No partner online yet: Register user into priority and standard pools
+        const poolsToRegister: string[] = [ownBucketKey, bandPoolKey, globalPoolKey];
+        if (isPriorityUser) {
+          poolsToRegister.push(this.getPriorityPoolKey(userPlan));
+        }
+
         try {
-          await Promise.all([
-            this.redis.sadd(ownBucketKey, userId),
-            this.redis.sadd(bandPoolKey, userId),
-            this.redis.sadd(globalPoolKey, userId),
-          ]);
-          await Promise.all([
-            this.redis.expire(ownBucketKey, QUEUE_TTL_SECONDS * 2),
-            this.redis.expire(bandPoolKey, QUEUE_TTL_SECONDS * 2),
-            this.redis.expire(globalPoolKey, QUEUE_TTL_SECONDS * 2),
-            this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS),
-          ]);
+          await Promise.all(poolsToRegister.map((k) => this.redis.sadd(k, userId)));
+          await Promise.all(poolsToRegister.map((k) => this.redis.expire(k, QUEUE_TTL_SECONDS * 2)));
+          await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS);
         } catch (error: unknown) {
-          await Promise.allSettled([
-            this.redis.srem(ownBucketKey, userId),
-            this.redis.srem(bandPoolKey, userId),
-            this.redis.srem(globalPoolKey, userId),
-          ]);
+          await Promise.allSettled(poolsToRegister.map((k) => this.redis.srem(k, userId)));
           throw error;
         }
 
@@ -239,7 +255,11 @@ export class MatchmakingService {
   private async cancelQueueUnlocked(userId: string): Promise<boolean> {
     const pointerKey = `${USER_QUEUE_PREFIX}${userId}`;
     const result = await this.redis.eval(CANCEL_QUEUE_SCRIPT, 1, pointerKey, userId);
-    await this.redis.srem(this.getGlobalPoolKey(), userId).catch(() => undefined);
+    await Promise.allSettled([
+      this.redis.srem(this.getGlobalPoolKey(), userId),
+      this.redis.srem(this.getPriorityPoolKey('PRO'), userId),
+      this.redis.srem(this.getPriorityPoolKey('PLUS'), userId),
+    ]);
     return result === 1;
   }
 

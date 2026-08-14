@@ -164,7 +164,7 @@ export function AnalyticsOverview() {
           </div>
         </div>
 
-        {/* Card 3: Active Calls */}
+        {/* Card 3: Calls Statistics */}
         <div style={{
           backgroundColor: '#1e293b',
           border: '1px solid #334155',
@@ -175,18 +175,22 @@ export function AnalyticsOverview() {
           justifyContent: 'space-between'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Active Voice Calls</span>
+            <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Total Calls Completed</span>
             <div style={{ padding: '0.5rem', borderRadius: '8px', backgroundColor: '#8b5cf620', color: '#a78bfa' }}>
               <PhoneCall size={20} />
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+          <div>
             <div style={{ fontSize: '1.875rem', fontWeight: 700, color: '#f8fafc' }}>
-              {defaultStats.activeCalls}
+              {(defaultStats.totalCalls ?? 0).toLocaleString()} <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 400 }}>calls</span>
             </div>
-            <span style={{ fontSize: '0.875rem', color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <Activity size={14} /> Live
-            </span>
+            <div style={{ fontSize: '0.875rem', color: '#a78bfa', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>{defaultStats.totalMinutesSpoken ?? 0} mins spoken</span>
+              <span>•</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#34d399' }}>
+                <Activity size={13} /> {defaultStats.activeCalls} active live
+              </span>
+            </div>
           </div>
         </div>
 

@@ -26,7 +26,7 @@ let plansConfig: SystemPlansConfig = {
   },
   PRO: {
     maxDuration: 60,
-    dailyLimit: 9999,
+    dailyLimit: 999,
     retentionDays: 30,
     starsPrice: 500,
   },
@@ -45,20 +45,26 @@ export function updatePlansConfig(newConfig: Partial<SystemPlansConfig>): System
   return plansConfig;
 }
 
+export function getDailyLimitForPlan(plan: string): number {
+  const tier = (plan?.toUpperCase() as keyof SystemPlansConfig) in plansConfig ? plan.toUpperCase() as keyof SystemPlansConfig : 'FREE';
+  return plansConfig[tier]?.dailyLimit ?? 3;
+}
+
+export function getMaxDurationForPlan(plan: string): number {
+  const tier = (plan?.toUpperCase() as keyof SystemPlansConfig) in plansConfig ? plan.toUpperCase() as keyof SystemPlansConfig : 'FREE';
+  return plansConfig[tier]?.maxDuration ?? 15;
+}
+
+export function getRetentionDaysForPlan(plan: string): number {
+  const tier = (plan?.toUpperCase() as keyof SystemPlansConfig) in plansConfig ? plan.toUpperCase() as keyof SystemPlansConfig : 'FREE';
+  return plansConfig[tier]?.retentionDays ?? 1;
+}
+
 /**
  * Calculates mixed-plan call duration limit in minutes: max(limit_A, limit_B)
  */
 export function calculateMixedPlanDuration(planA: string, planB: string): number {
-  const tierA = (planA.toUpperCase() as keyof SystemPlansConfig) in plansConfig ? planA.toUpperCase() as keyof SystemPlansConfig : 'FREE';
-  const tierB = (planB.toUpperCase() as keyof SystemPlansConfig) in plansConfig ? planB.toUpperCase() as keyof SystemPlansConfig : 'FREE';
-  
-  const limitA = plansConfig[tierA].maxDuration;
-  const limitB = plansConfig[tierB].maxDuration;
-  
+  const limitA = getMaxDurationForPlan(planA);
+  const limitB = getMaxDurationForPlan(planB);
   return Math.max(limitA, limitB);
-}
-
-export function getRetentionDaysForPlan(plan: string): number {
-  const tier = (plan.toUpperCase() as keyof SystemPlansConfig) in plansConfig ? plan.toUpperCase() as keyof SystemPlansConfig : 'FREE';
-  return plansConfig[tier].retentionDays;
 }

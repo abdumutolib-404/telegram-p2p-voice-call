@@ -49,6 +49,11 @@ router.post('/verify', authLimiter, async (req, res) => {
       },
     });
 
+    const isSuspended =
+      dbUser.isBanned ||
+      dbUser.isPermanentlyBanned ||
+      Boolean(dbUser.bannedUntil && new Date(dbUser.bannedUntil) > new Date());
+
     res.json({
       success: true,
       user: {
@@ -61,7 +66,7 @@ router.post('/verify', authLimiter, async (req, res) => {
         subGRA: dbUser.subGRA,
         subP: dbUser.subP,
         plan: dbUser.plan,
-        isBanned: dbUser.isBanned || dbUser.isPermanentlyBanned,
+        isBanned: isSuspended,
       },
     });
   } catch (error: unknown) {

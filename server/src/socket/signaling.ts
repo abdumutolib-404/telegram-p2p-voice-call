@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { calculateMixedPlanDuration, getRetentionDaysForPlan } from '../services/plan';
+import { calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan } from '../services/plan';
 import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
@@ -61,6 +61,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
   const roomOperationTails = new Map<string, Promise<void>>();
   const userJoinTails = new Map<string, Promise<void>>();
   const serverSessionTimers = new Map<string, NodeJS.Timeout>();
+  const userLastActionTime = new Map<string, number>();
+  const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
 
   const clearSessionTimer = (roomName: string) => {
     const existing = serverSessionTimers.get(roomName);
@@ -91,6 +93,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     const sockets = userSockets.get(userId) ?? new Set<string>();
     sockets.add(socketId);
     userSockets.set(userId, sockets);
+
+    // Cancel any active disconnect grace timer if user reconnected
+    const graceTimer = disconnectGraceTimers.get(userId);
+    if (graceTimer) {
+      clearTimeout(graceTimer);
+      disconnectGraceTimers.delete(userId);
+    }
   };
 
   const removeUserSocket = (userId: string, socketId: string): void => {
@@ -152,8 +161,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     }
   });
 
-  const userLastActionTime = new Map<string, number>();
-
   io.on('connection', (socket: Socket) => {
     const userId = socket.data.userId as string | undefined;
     if (userId) addUserSocket(userId, socket.id);
@@ -189,6 +196,15 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
+          const isSuspended =
+            user.isBanned ||
+            user.isPermanentlyBanned ||
+            Boolean(user.bannedUntil && new Date(user.bannedUntil) > new Date());
+          if (isSuspended) {
+            socket.emit('error', { message: 'Your account is suspended from matchmaking. Please contact support via the Telegram Bot.' });
+            return;
+          }
+
           const activeCall = await prisma.callSession.findFirst({
             where: {
               status: 'ACTIVE',
@@ -200,12 +216,31 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
-          const matchResult = await matchmakingService.joinQueue(user.id, user.band, {
-            subFC: user.subFC,
-            subLR: user.subLR,
-            subGRA: user.subGRA,
-            subP: user.subP,
-          });
+          // Check daily call quota before queue entry
+          const today = new Date().toISOString().slice(0, 10);
+          const dailyCallsToday = user.lastCallDate === today ? user.dailyCallsUsed : 0;
+          const effectiveDailyLimit = getDailyLimitForPlan(user.plan);
+          if (effectiveDailyLimit < 999 && dailyCallsToday >= effectiveDailyLimit) {
+            socket.emit('error', {
+              message: `You have reached your daily limit of ${effectiveDailyLimit} calls. Please upgrade to PLUS or PRO to continue practicing!`,
+            });
+            return;
+          }
+
+          const matchResult = await matchmakingService.joinQueue(
+            user.id,
+            user.band,
+            {
+              subFC: user.subFC,
+              subLR: user.subLR,
+              subGRA: user.subGRA,
+              subP: user.subP,
+            },
+            {
+              plan: user.plan,
+              warningCount: user.warningCount,
+            }
+          );
 
           if (!matchResult.matched || !matchResult.partnerId || !matchResult.roomName || !matchResult.partnerBucketKey) {
             socket.emit('queue_joined', { status: 'searching' });
@@ -244,14 +279,17 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 data: { dailyCallsUsed: 0, lastCallDate: today },
               });
 
-              const isUserUnlimited = user.dailyLimit >= 999;
-              const isPartnerUnlimited = partner.dailyLimit >= 999;
+              const effectiveDailyLimitUser = getDailyLimitForPlan(user.plan);
+              const effectiveDailyLimitPartner = getDailyLimitForPlan(partner.plan);
+
+              const isUserUnlimited = effectiveDailyLimitUser >= 999;
+              const isPartnerUnlimited = effectiveDailyLimitPartner >= 999;
 
               const userQuota = await tx.user.updateMany({
                 where: {
                   id: user.id,
                   lastCallDate: today,
-                  ...(isUserUnlimited ? {} : { dailyCallsUsed: { lt: user.dailyLimit } }),
+                  ...(isUserUnlimited ? {} : { dailyCallsUsed: { lt: effectiveDailyLimitUser } }),
                 },
                 data: { dailyCallsUsed: { increment: 1 } },
               });
@@ -259,7 +297,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 where: {
                   id: partner.id,
                   lastCallDate: today,
-                  ...(isPartnerUnlimited ? {} : { dailyCallsUsed: { lt: partner.dailyLimit } }),
+                  ...(isPartnerUnlimited ? {} : { dailyCallsUsed: { lt: effectiveDailyLimitPartner } }),
                 },
                 data: { dailyCallsUsed: { increment: 1 } },
               });
@@ -311,7 +349,15 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     const egressId = egress?.egressId ?? currentSession.egressId;
                     const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
                     if (egressId) {
-                      await stopAudioEgress(egressId).catch(() => undefined);
+                      try {
+                        await stopAudioEgress(egressId);
+                      } catch (error: unknown) {
+                        console.error('[Socket] timeout_egress_stop_failed', {
+                          roomName,
+                          egressId,
+                          error: error instanceof Error ? error.message : 'unknown_error',
+                        });
+                      }
                     }
                     activeEgresses.delete(roomName);
 
@@ -324,9 +370,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                       data: { egressId: egressId ?? null, recordingUrl: recordingUrl ?? null, recordingExpiresAt },
                     });
 
+                    clearSessionTimer(roomName);
                     await deleteLiveKitRoom(roomName);
 
-                    io.to(roomName).emit('call_finished', { duration: durationSeconds, reason: 'duration_limit_exceeded' });
+                    io.to(roomName).emit('call_finished', {
+                      duration: durationSeconds,
+                      reason: 'call_duration_limit_reached',
+                    });
 
                     if (bot) {
                       await Promise.allSettled([
@@ -335,8 +385,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                       ]);
                     }
                   });
-                } catch (err) {
-                  console.error('[Socket] duration_timeout_enforcement_failed', { roomName, error: err });
+                } catch (timeoutErr) {
+                  console.error('[Signaling] Server duration timeout execution failed:', timeoutErr);
                 }
               })();
             }, callDurationLimitSeconds * 1000);
@@ -344,76 +394,55 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             serverSessionTimers.set(roomName, timer);
 
             userSocket.emit('match_found', {
-              roomName,
-              livekitToken: tokenUser,
+              partnerId: partner.id,
               partnerAlias: partner.alias,
               partnerBand: partner.band,
-              callDurationLimit: callDurationLimitSeconds, // in seconds
-            });
-            partnerSocket.emit('match_found', {
               roomName,
-              livekitToken: tokenPartner,
+              token: tokenUser,
+              maxDurationSeconds: callDurationLimitSeconds,
+            });
+
+            partnerSocket.emit('match_found', {
+              partnerId: user.id,
               partnerAlias: user.alias,
               partnerBand: user.band,
-              callDurationLimit: callDurationLimitSeconds, // in seconds
+              roomName,
+              token: tokenPartner,
+              maxDurationSeconds: callDurationLimitSeconds,
             });
           } catch (error: unknown) {
-            if (transactionSucceeded) {
-              try {
-                await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-                  const cancelled = await tx.callSession.updateMany({
-                    where: { roomName, status: 'ACTIVE' },
-                    data: { status: 'CANCELLED', endedAt: new Date() },
-                  });
-                  if (cancelled.count !== 1) return;
-
-                  const today = new Date().toISOString().slice(0, 10);
-                  await tx.user.updateMany({
-                    where: { id: user.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
-                    data: { dailyCallsUsed: { decrement: 1 } },
-                  });
-                  await tx.user.updateMany({
-                    where: { id: partner.id, lastCallDate: today, dailyCallsUsed: { gt: 0 } },
-                    data: { dailyCallsUsed: { decrement: 1 } },
-                  });
-                });
-              } catch (rollbackError: unknown) {
-                console.error('[Socket] match_rollback_failed', {
-                  roomName,
-                  error: rollbackError instanceof Error ? rollbackError.message : 'unknown_error',
-                });
-              }
-            }
-
-            const isQuotaError = error instanceof Error && error.message === 'Daily call limit reached';
-            if (!isQuotaError) {
-              const userSock = getConnectedSocket(user.id);
-              const partnerSock = getConnectedSocket(partner.id);
-              const restorePromises: Promise<unknown>[] = [];
-              if (userSock?.connected) {
-                const bucketUser = getUserBucket(user);
-                restorePromises.push(matchmakingService.restoreQueue(user.id, bucketUser));
-              }
-              if (partnerSock?.connected) {
-                const bucketPartner = getUserBucket(partner);
-                restorePromises.push(matchmakingService.restoreQueue(partner.id, bucketPartner));
-              }
-              await Promise.allSettled(restorePromises);
-            }
-            socket.emit('error', {
-              message: isQuotaError
-                ? 'Daily call limit reached.'
-                : 'Unable to establish the call. You have been returned to the queue.',
+            console.error('[Socket] match_dispatch_failed', {
+              userId: user.id,
+              partnerId: partner.id,
+              roomName,
+              transactionSucceeded,
+              error: error instanceof Error ? error.message : 'unknown_error',
             });
+
+            if (transactionSucceeded) {
+              await prisma.callSession.updateMany({
+                where: { roomName, status: 'ACTIVE' },
+                data: { status: 'CANCELLED' },
+              });
+            }
+
+            const ownBucket = getUserBucket(user);
+            await matchmakingService.restoreQueue(user.id, ownBucket).catch((restoreError: unknown) => {
+              console.error('[Socket] own_restore_failed', {
+                userId: user.id,
+                error: restoreError instanceof Error ? restoreError.message : 'unknown_error',
+              });
+            });
+
+            socket.emit('queue_joined', { status: 'searching' });
           }
         });
       } catch (error: unknown) {
         console.error('[Socket] join_queue_failed', {
-          socketId: socket.id,
           userId: currentUserId,
           error: error instanceof Error ? error.message : 'unknown_error',
         });
-        socket.emit('error', { message: 'Unable to join matchmaking right now.' });
+        socket.emit('error', { message: 'Failed to join matchmaking queue.' });
       }
     });
 
@@ -603,7 +632,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           await matchmakingService.cancelQueue(disconnectedUserId);
 
-          // Find ALL active sessions involving this user, not just ones with egresses
+          // Find active sessions involving this user
           const activeSessions = await prisma.callSession.findMany({
             where: {
               status: 'ACTIVE',
@@ -611,121 +640,15 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             },
           });
 
-          for (const session of activeSessions) {
-            const otherUserId = session.userAId === disconnectedUserId ? session.userBId : session.userAId;
-            const otherUserConnected = (userSockets.get(otherUserId)?.size ?? 0) > 0;
+          if (activeSessions.length === 0) return;
 
-            try {
-              await runSerialized(roomOperationTails, session.roomName, async () => {
-                const currentSession = await prisma.callSession.findUnique({
-                  where: { id: session.id },
-                  include: { userA: true, userB: true },
-                });
-                if (!currentSession || currentSession.status !== 'ACTIVE') return;
+          // 15-second grace period for mobile app blur / network reconnect
+          const graceTimer = setTimeout(async () => {
+            disconnectGraceTimers.delete(disconnectedUserId);
+            const isReconnected = (userSockets.get(disconnectedUserId)?.size ?? 0) > 0;
+            if (isReconnected) return;
 
-                const endedAt = new Date();
-                const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - currentSession.createdAt.getTime()) / 1000));
-
-                const egress = activeEgresses.get(session.roomName);
-                const egressId = egress?.egressId ?? currentSession.egressId;
-                const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
-
-                if (egressId) {
-                  await stopAudioEgress(egressId).catch((stopErr: unknown) => {
-                    console.error('[Socket] disconnect_egress_stop_failed', {
-                      roomName: session.roomName,
-                      error: stopErr instanceof Error ? stopErr.message : 'unknown_error',
-                    });
-                  });
-                  activeEgresses.delete(session.roomName);
-                }
-
-                const recordingExpiresAt = recordingUrl
-                  ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(currentSession.userA.plan), getRetentionDaysForPlan(currentSession.userB.plan)) * 24 * 60 * 60 * 1000)
-                  : null;
-
-                await prisma.callSession.update({
-                  where: { id: session.id },
-                  data: {
-                    status: 'COMPLETED',
-                    endedAt,
-                    duration: durationSeconds,
-                    egressId: egressId ?? null,
-                    recordingUrl: recordingUrl ?? null,
-                    recordingExpiresAt,
-                  },
-                });
-
-                clearSessionTimer(session.roomName);
-                await deleteLiveKitRoom(session.roomName);
-
-                io.to(session.roomName).emit('call_finished', {
-                  duration: durationSeconds,
-                  reason: 'partner_disconnected',
-                });
-
-                if (bot) {
-                  await Promise.allSettled([
-                    sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, recordingUrl),
-                    sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, recordingUrl),
-                  ]);
-                }
-              });
-            } catch (error: unknown) {
-              console.error('[Socket] disconnect_session_cleanup_failed', {
-                sessionId: session.id,
-                roomName: session.roomName,
-                reason,
-                error: error instanceof Error ? error.message : 'unknown_error',
-              });
-            }
-          }
-        } catch (error: unknown) {
-          console.error('[Socket] disconnect_cleanup_failed', {
-            socketId: socket.id,
-            userId: disconnectedUserId,
-            reason,
-            error: error instanceof Error ? error.message : 'unknown_error',
-          });
-        }
-      })().catch((error: unknown) => {
-        console.error('[Socket] disconnect_unhandled', {
-          socketId: socket.id,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
-      });
-    });
-  });
-
-  // Startup Reconciliation for Active Calls (Restores timers across server restarts)
-  void (async () => {
-    try {
-      const activeSessions = await prisma.callSession.findMany({
-        where: { status: 'ACTIVE' },
-        include: { userA: true, userB: true },
-      });
-
-      const now = Date.now();
-      for (const session of activeSessions) {
-        const limitMinutes = calculateMixedPlanDuration(session.userA.plan, session.userB.plan);
-        const limitSeconds = limitMinutes * 60;
-        const elapsedSeconds = Math.floor((now - session.createdAt.getTime()) / 1000);
-        const remainingSeconds = limitSeconds - elapsedSeconds;
-
-        if (remainingSeconds <= 0) {
-          const endedAt = new Date(session.createdAt.getTime() + limitSeconds * 1000);
-          await prisma.callSession.updateMany({
-            where: { id: session.id, status: 'ACTIVE' },
-            data: { status: 'COMPLETED', endedAt, duration: limitSeconds },
-          });
-          if (session.egressId) {
-            await stopAudioEgress(session.egressId).catch(() => undefined);
-          }
-          io.to(session.roomName).emit('call_finished', { duration: limitSeconds, reason: 'duration_limit_exceeded' });
-        } else {
-          clearSessionTimer(session.roomName);
-          const timer = setTimeout(() => {
-            void (async () => {
+            for (const session of activeSessions) {
               try {
                 await runSerialized(roomOperationTails, session.roomName, async () => {
                   const currentSession = await prisma.callSession.findUnique({
@@ -736,26 +659,119 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
                   const endedAt = new Date();
                   const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - currentSession.createdAt.getTime()) / 1000));
-                  await prisma.callSession.updateMany({
-                    where: { id: currentSession.id, status: 'ACTIVE' },
-                    data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
-                  });
 
-                  if (currentSession.egressId) {
-                    await stopAudioEgress(currentSession.egressId).catch(() => undefined);
+                  const egress = activeEgresses.get(session.roomName);
+                  const egressId = egress?.egressId ?? currentSession.egressId;
+                  const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
+
+                  if (egressId) {
+                    await stopAudioEgress(egressId).catch((stopErr: unknown) => {
+                      console.error('[Socket] disconnect_egress_stop_failed', {
+                        roomName: session.roomName,
+                        error: stopErr instanceof Error ? stopErr.message : 'unknown_error',
+                      });
+                    });
+                    activeEgresses.delete(session.roomName);
                   }
 
-                  io.to(currentSession.roomName).emit('call_finished', { duration: durationSeconds, reason: 'duration_limit_exceeded' });
+                  const recordingExpiresAt = recordingUrl
+                    ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(currentSession.userA.plan), getRetentionDaysForPlan(currentSession.userB.plan)) * 24 * 60 * 60 * 1000)
+                    : null;
+
+                  await prisma.callSession.update({
+                    where: { id: session.id },
+                    data: {
+                      status: 'COMPLETED',
+                      endedAt,
+                      duration: durationSeconds,
+                      egressId: egressId ?? null,
+                      recordingUrl: recordingUrl ?? null,
+                      recordingExpiresAt,
+                    },
+                  });
+
+                  clearSessionTimer(session.roomName);
+                  await deleteLiveKitRoom(session.roomName);
+
+                  io.to(session.roomName).emit('call_finished', {
+                    duration: durationSeconds,
+                    reason: 'partner_disconnected',
+                  });
 
                   if (bot) {
                     await Promise.allSettled([
-                      sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, currentSession.recordingUrl || undefined),
-                      sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, currentSession.recordingUrl || undefined),
+                      sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, recordingUrl),
+                      sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, recordingUrl),
                     ]);
                   }
                 });
-              } catch (err) {
-                console.error('[Socket] reconciled_timer_failed', { roomName: session.roomName, error: err });
+              } catch (error: unknown) {
+                console.error('[Socket] disconnect_session_cleanup_failed', {
+                  roomName: session.roomName,
+                  error: error instanceof Error ? error.message : 'unknown_error',
+                });
+              }
+            }
+          }, 15000);
+
+          disconnectGraceTimers.set(disconnectedUserId, graceTimer);
+        } catch (error: unknown) {
+          console.error('[Socket] disconnect_handler_failed', {
+            userId: disconnectedUserId,
+            reason,
+            error: error instanceof Error ? error.message : 'unknown_error',
+          });
+        }
+      })();
+    });
+  });
+
+  void (async () => {
+    try {
+      const activeSessions = await prisma.callSession.findMany({
+        where: { status: 'ACTIVE' },
+        include: { userA: true, userB: true },
+      });
+
+      const now = Date.now();
+      for (const session of activeSessions) {
+        const callDurationLimitMinutes = calculateMixedPlanDuration(session.userA.plan, session.userB.plan);
+        const callDurationLimitSeconds = callDurationLimitMinutes * 60;
+        const elapsedSeconds = Math.floor((now - session.createdAt.getTime()) / 1000);
+        const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
+
+        if (elapsedSeconds >= callDurationLimitSeconds) {
+          const endedAt = new Date();
+          await prisma.callSession.update({
+            where: { id: session.id },
+            data: { status: 'COMPLETED', endedAt, duration: elapsedSeconds },
+          });
+          await deleteLiveKitRoom(session.roomName);
+        } else {
+          clearSessionTimer(session.roomName);
+          const timer = setTimeout(() => {
+            void (async () => {
+              try {
+                await runSerialized(roomOperationTails, session.roomName, async () => {
+                  const current = await prisma.callSession.findUnique({
+                    where: { id: session.id },
+                    include: { userA: true, userB: true },
+                  });
+                  if (!current || current.status !== 'ACTIVE') return;
+
+                  const endedAt = new Date();
+                  const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - current.createdAt.getTime()) / 1000));
+                  await prisma.callSession.update({
+                    where: { id: session.id },
+                    data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
+                  });
+
+                  clearSessionTimer(session.roomName);
+                  await deleteLiveKitRoom(session.roomName);
+                  io.to(session.roomName).emit('call_finished', { duration: durationSeconds, reason: 'call_duration_limit_reached' });
+                });
+              } catch (timeoutErr) {
+                console.error('[Signaling] Reconciled call timeout execution failed:', timeoutErr);
               }
             })();
           }, remainingSeconds * 1000);
@@ -764,8 +780,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         }
       }
       console.log(`[Signaling] Reconciled ${activeSessions.length} active call sessions on startup.`);
-    } catch (err) {
-      console.error('[Signaling] startup_reconciliation_failed', { error: err });
+    } catch (reconcileErr) {
+      console.error('[Signaling] Failed to reconcile active sessions on startup:', reconcileErr);
     }
   })();
 }

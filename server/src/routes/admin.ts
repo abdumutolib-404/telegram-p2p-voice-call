@@ -403,6 +403,7 @@ router.put('/plans', adminAuthMiddleware, async (req, res) => {
 router.get('/appeals', adminAuthMiddleware, async (req, res) => {
   try {
     const appeals = await prisma.unblockAppeal.findMany({
+      where: { status: 'PENDING' },
       orderBy: { createdAt: 'desc' },
       include: {
         user: true,
