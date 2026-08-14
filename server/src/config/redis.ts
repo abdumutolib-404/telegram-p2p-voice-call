@@ -141,7 +141,7 @@ class InMemoryRedisMock {
       return null;
     }
 
-    if (script.includes('LOCK_RELEASE')) {
+    if (script.includes('LOCK_RELEASE') || script.includes('ARGV[1] then return redis.call(\'DEL\', KEYS[1])')) {
       const key = keys[0];
       const expected = args[0];
       const entry = this.kv.get(key);
@@ -150,6 +150,47 @@ class InMemoryRedisMock {
         return 1;
       }
       return 0;
+    }
+
+    if (script.includes('VERIFY_OTP') || script.includes('otpHash') || script.includes('maxAttempts')) {
+      const key = keys[0];
+      const providedOtpHash = args[0];
+      const now = Number(args[1]) || Date.now();
+      const entry = this.kv.get(key);
+      if (!entry) {
+        return JSON.stringify({ status: 'NOT_FOUND' });
+      }
+      if (entry.expiresAt !== undefined && now >= entry.expiresAt) {
+        this.kv.delete(key);
+        return JSON.stringify({ status: 'EXPIRED' });
+      }
+      const challenge = JSON.parse(entry.value);
+      if (challenge.expiresAt !== undefined && now >= challenge.expiresAt) {
+        this.kv.delete(key);
+        return JSON.stringify({ status: 'EXPIRED' });
+      }
+      if (challenge.consumed) {
+        return JSON.stringify({ status: 'CONSUMED' });
+      }
+      if (challenge.attempts >= challenge.maxAttempts) {
+        this.kv.delete(key);
+        return JSON.stringify({ status: 'MAX_ATTEMPTS' });
+      }
+      challenge.attempts += 1;
+      if (challenge.otpHash === providedOtpHash) {
+        this.kv.delete(key);
+        return JSON.stringify({ status: 'SUCCESS', attempts: challenge.attempts });
+      }
+      if (challenge.attempts >= challenge.maxAttempts) {
+        this.kv.delete(key);
+        return JSON.stringify({ status: 'MAX_ATTEMPTS_REACHED', attempts: challenge.attempts, remaining: 0 });
+      }
+      entry.value = JSON.stringify(challenge);
+      return JSON.stringify({
+        status: 'INVALID_OTP',
+        attempts: challenge.attempts,
+        remaining: challenge.maxAttempts - challenge.attempts,
+      });
     }
 
     throw new Error('Unsupported in-memory Redis script');

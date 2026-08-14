@@ -18,8 +18,12 @@ if (process.env.NODE_ENV !== 'test') {
 
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
   get(_target, prop: keyof PrismaClient) {
-    if (useRealPrisma && realPrismaClient) return realPrismaClient[prop];
-    return (inMemoryPrisma as unknown as Record<string | symbol, unknown>)[prop];
+    const target = useRealPrisma && realPrismaClient ? realPrismaClient : inMemoryPrisma;
+    const value = (target as unknown as Record<string | symbol, unknown>)[prop];
+    if (typeof value === 'function') {
+      return (value as Function).bind(target);
+    }
+    return value;
   },
 });
 

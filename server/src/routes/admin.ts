@@ -48,6 +48,138 @@ function cryptoSafeEqualString(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftHash, rightHash);
 }
 
+const VERIFY_OTP_LUA_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  return cjson.encode({ status = 'NOT_FOUND' })
+end
+
+local challenge = cjson.decode(raw)
+
+if challenge.consumed then
+  return cjson.encode({ status = 'CONSUMED' })
+end
+
+if tonumber(ARGV[2]) > tonumber(challenge.expiresAt) then
+  redis.call('DEL', KEYS[1])
+  return cjson.encode({ status = 'EXPIRED' })
+end
+
+if tonumber(challenge.attempts) >= tonumber(challenge.maxAttempts) then
+  redis.call('DEL', KEYS[1])
+  return cjson.encode({ status = 'MAX_ATTEMPTS' })
+end
+
+challenge.attempts = tonumber(challenge.attempts) + 1
+
+if challenge.otpHash == ARGV[1] then
+  redis.call('DEL', KEYS[1])
+  return cjson.encode({ status = 'SUCCESS', attempts = challenge.attempts })
+else
+  if challenge.attempts >= tonumber(challenge.maxAttempts) then
+    redis.call('DEL', KEYS[1])
+    return cjson.encode({ status = 'MAX_ATTEMPTS_REACHED', attempts = challenge.attempts, remaining = 0 })
+  else
+    local ttl = redis.call('TTL', KEYS[1])
+    if ttl > 0 then
+      redis.call('SET', KEYS[1], cjson.encode(challenge), 'EX', ttl)
+    else
+      redis.call('DEL', KEYS[1])
+    end
+    return cjson.encode({
+      status = 'INVALID_OTP',
+      attempts = challenge.attempts,
+      remaining = tonumber(challenge.maxAttempts) - challenge.attempts
+    })
+  end
+end
+`;
+
+async function verifyOtpChallengeAtomic(
+  challengeId: string,
+  providedOtp: string
+): Promise<{ success: boolean; error?: string; remainingAttempts?: number }> {
+  const providedHash = crypto.createHash('sha256').update(providedOtp.trim()).digest('hex');
+  const now = Date.now();
+
+  try {
+    const redis = getRedis();
+    const resultRaw = await redis.eval(
+      VERIFY_OTP_LUA_SCRIPT,
+      1,
+      `otp:challenge:${challengeId}`,
+      providedHash,
+      String(now)
+    );
+
+    if (typeof resultRaw === 'string') {
+      const result = JSON.parse(resultRaw) as {
+        status: string;
+        attempts?: number;
+        remaining?: number;
+      };
+
+      if (result.status === 'SUCCESS') {
+        adminOtpChallengesFallback.delete(challengeId);
+        return { success: true };
+      }
+      if (result.status === 'EXPIRED') {
+        adminOtpChallengesFallback.delete(challengeId);
+        return { success: false, error: 'OTP has expired. Please request a new verification code.' };
+      }
+      if (result.status === 'MAX_ATTEMPTS' || result.status === 'MAX_ATTEMPTS_REACHED') {
+        adminOtpChallengesFallback.delete(challengeId);
+        return { success: false, error: 'Maximum OTP verification attempts exceeded.' };
+      }
+      if (result.status === 'INVALID_OTP') {
+        return {
+          success: false,
+          error: `Invalid verification code. ${result.remaining} attempts remaining.`,
+          remainingAttempts: result.remaining,
+        };
+      }
+      return { success: false, error: 'Invalid or consumed login challenge.' };
+    }
+  } catch (err) {
+    if (env.NODE_ENV === 'production') {
+      throw err;
+    }
+  }
+
+  // Memory fallback for test harness
+  const challenge = adminOtpChallengesFallback.get(challengeId);
+  if (!challenge || challenge.consumed) {
+    return { success: false, error: 'Invalid or consumed login challenge.' };
+  }
+  if (now > challenge.expiresAt) {
+    adminOtpChallengesFallback.delete(challengeId);
+    return { success: false, error: 'OTP has expired. Please request a new verification code.' };
+  }
+  if (challenge.attempts >= challenge.maxAttempts) {
+    adminOtpChallengesFallback.delete(challengeId);
+    return { success: false, error: 'Maximum OTP verification attempts exceeded.' };
+  }
+
+  challenge.attempts += 1;
+  const isValid = crypto.timingSafeEqual(
+    Buffer.from(providedHash, 'hex'),
+    Buffer.from(challenge.otpHash, 'hex')
+  );
+
+  if (!isValid) {
+    if (challenge.attempts >= challenge.maxAttempts) {
+      adminOtpChallengesFallback.delete(challengeId);
+      return { success: false, error: 'Maximum OTP verification attempts exceeded.' };
+    }
+    const remaining = challenge.maxAttempts - challenge.attempts;
+    return { success: false, error: `Invalid verification code. ${remaining} attempts remaining.`, remainingAttempts: remaining };
+  }
+
+  challenge.consumed = true;
+  adminOtpChallengesFallback.delete(challengeId);
+  return { success: true };
+}
+
 async function saveOtpChallengeToRedis(challengeId: string, challenge: AdminOtpChallenge): Promise<void> {
   adminOtpChallengesFallback.set(challengeId, challenge);
   try {
@@ -193,41 +325,11 @@ router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
       return;
     }
 
-    const challenge = await getOtpChallengeFromRedis(challengeId);
-    if (!challenge || challenge.consumed) {
-      res.status(401).json({ error: 'Invalid or consumed login challenge.' });
+    const verification = await verifyOtpChallengeAtomic(challengeId, otp);
+    if (!verification.success) {
+      res.status(401).json({ error: verification.error || 'Invalid verification code.' });
       return;
     }
-
-    if (Date.now() > challenge.expiresAt) {
-      await deleteOtpChallengeFromRedis(challengeId);
-      res.status(401).json({ error: 'OTP has expired. Please request a new verification code.' });
-      return;
-    }
-
-    if (challenge.attempts >= challenge.maxAttempts) {
-      await deleteOtpChallengeFromRedis(challengeId);
-      res.status(401).json({ error: 'Maximum OTP verification attempts exceeded.' });
-      return;
-    }
-
-    challenge.attempts += 1;
-
-    const providedHash = crypto.createHash('sha256').update(otp).digest('hex');
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(providedHash, 'hex'),
-      Buffer.from(challenge.otpHash, 'hex')
-    );
-
-    if (!isValid) {
-      await saveOtpChallengeToRedis(challengeId, challenge);
-      const remainingAttempts = challenge.maxAttempts - challenge.attempts;
-      res.status(401).json({ error: `Invalid verification code. ${remainingAttempts} attempts remaining.` });
-      return;
-    }
-
-    challenge.consumed = true;
-    await deleteOtpChallengeFromRedis(challengeId);
 
     const adminTgId = env.ADMIN_TELEGRAM_IDS[0];
     if (!adminTgId) {
@@ -273,42 +375,13 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
   const otp = typeof req.body?.otp === 'string' ? req.body.otp : '';
   const token = typeof req.body?.token === 'string' ? req.body.token : '';
 
-  // If challengeId and OTP are provided, process OTP step
+  // If challengeId and OTP are provided, process OTP step atomically
   if (challengeId && otp) {
-    const challenge = await getOtpChallengeFromRedis(challengeId);
-    if (!challenge || challenge.consumed) {
-      res.status(401).json({ error: 'Invalid or consumed login challenge.' });
+    const verification = await verifyOtpChallengeAtomic(challengeId, otp);
+    if (!verification.success) {
+      res.status(401).json({ error: verification.error || 'Invalid verification code.' });
       return;
     }
-
-    if (Date.now() > challenge.expiresAt) {
-      await deleteOtpChallengeFromRedis(challengeId);
-      res.status(401).json({ error: 'OTP has expired.' });
-      return;
-    }
-
-    if (challenge.attempts >= challenge.maxAttempts) {
-      await deleteOtpChallengeFromRedis(challengeId);
-      res.status(401).json({ error: 'Maximum OTP verification attempts exceeded.' });
-      return;
-    }
-
-    challenge.attempts += 1;
-
-    const providedHash = crypto.createHash('sha256').update(otp.trim()).digest('hex');
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(providedHash, 'hex'),
-      Buffer.from(challenge.otpHash, 'hex')
-    );
-
-    if (!isValid) {
-      await saveOtpChallengeToRedis(challengeId, challenge);
-      res.status(401).json({ error: 'Invalid verification code.' });
-      return;
-    }
-
-    challenge.consumed = true;
-    await deleteOtpChallengeFromRedis(challengeId);
 
     const adminTgId = env.ADMIN_TELEGRAM_IDS[0];
     if (!adminTgId) {

@@ -24,7 +24,7 @@ export async function deleteLiveKitRoom(roomName: string): Promise<void> {
   if (!roomName || !roomServiceClient) return;
   try {
     await roomServiceClient.deleteRoom(roomName);
-  } catch (error: unknown) {
+  } catch {
     // Room may already have ended or been closed
   }
 }
@@ -60,15 +60,14 @@ export async function generateLiveKitToken(
 
 export async function startAudioEgress(roomName: string): Promise<EgressResult> {
   if (!roomName || roomName.length > 128) throw new TypeError('Invalid roomName');
+  if (!egressClient) {
+    throw new Error('LiveKit Egress client is uninitialized or unavailable');
+  }
 
   const safeRoomName = roomName.replace(/[^a-zA-Z0-9_-]/g, '_');
   const fileName = `${safeRoomName}_${Date.now()}_${cryptoRandomSuffix()}.mp3`;
   const filepath = path.join(env.RECORDINGS_DIR, fileName);
   const relativeUrl = `recordings/${fileName}`;
-
-  if (!egressClient) {
-    return { egressId: `local_${crypto.randomUUID()}`, relativeUrl };
-  }
 
   try {
     await fs.mkdir(env.RECORDINGS_DIR, { recursive: true });
@@ -76,17 +75,18 @@ export async function startAudioEgress(roomName: string): Promise<EgressResult> 
     const info = await egressClient.startRoomCompositeEgress(roomName, output, { audioOnly: true });
     return { egressId: info.egressId, relativeUrl };
   } catch (error: unknown) {
-    console.warn('[LiveKit] egress_cloud_start_bypassed (cloud storage not configured in LiveKit project):', error instanceof Error ? error.message : error);
-    return { egressId: `fallback_${crypto.randomUUID()}`, relativeUrl };
+    console.error('[LiveKit] Real audio egress start failed:', error instanceof Error ? error.message : error);
+    throw error;
   }
 }
 
 export async function stopAudioEgress(egressId: string): Promise<void> {
-  if (!egressId || egressId.startsWith('fallback_') || egressId.startsWith('local_') || !egressClient) return;
+  if (!egressId || !egressClient) return;
   try {
     await egressClient.stopEgress(egressId);
   } catch (error: unknown) {
-    console.warn('[LiveKit] egress_stop_bypassed:', error instanceof Error ? error.message : error);
+    console.warn('[LiveKit] egress_stop_failed:', error instanceof Error ? error.message : error);
+    throw error;
   }
 }
 

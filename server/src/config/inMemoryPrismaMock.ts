@@ -146,10 +146,17 @@ export class InMemoryPrismaMock {
   private readonly starsTransactions = new Map<string, StarsTransactionRow>();
   private readonly favoritePartners = new Map<string, FavoriteRow>();
 
+  private txQueue: Promise<unknown> = Promise.resolve();
+
   async $connect(): Promise<void> {}
   async $disconnect(): Promise<void> {}
   async $transaction<T>(operation: (tx: InMemoryPrismaMock) => Promise<T>): Promise<T> {
-    return operation(this);
+    const run = async () => {
+      return await operation(this);
+    };
+    const next = this.txQueue.then(run, run);
+    this.txQueue = next;
+    return (await next) as T;
   }
 
   user = {
@@ -375,6 +382,14 @@ export class InMemoryPrismaMock {
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       return list.map((appeal) => ({ ...appeal, ...(args?.include?.user ? { user: this.users.get(appeal.userId) } : {}) }));
     },
+    findFirst: async (args?: { where?: { userId?: string; status?: string } }): Promise<AppealRow | null> => {
+      for (const appeal of this.unblockAppeals.values()) {
+        if (args?.where?.userId && appeal.userId !== args.where.userId) continue;
+        if (args?.where?.status && appeal.status !== args.where.status) continue;
+        return { ...appeal };
+      }
+      return null;
+    },
     findUnique: async (args: { where: AppealWhere }): Promise<AppealRow | null> => this.unblockAppeals.get(args.where.id ?? '') ?? null,
     update: async (args: { where: AppealWhere; data: Record<string, unknown> }): Promise<AppealRow> => {
       const appeal = this.unblockAppeals.get(args.where.id ?? '');
@@ -399,10 +414,16 @@ export class InMemoryPrismaMock {
   starsTransaction = {
     create: async (args: { data: Record<string, unknown> }): Promise<StarsTransactionRow> => {
       const id = stringValue(args.data.id, crypto.randomUUID());
+      const telegramPaymentId = stringValue(args.data.telegramPaymentId);
+      for (const existing of this.starsTransactions.values()) {
+        if (existing.telegramPaymentId === telegramPaymentId) {
+          throw new Error('Unique constraint failed on the fields: (`telegramPaymentId`)');
+        }
+      }
       const row: StarsTransactionRow = {
         id,
         userId: stringValue(args.data.userId),
-        telegramPaymentId: stringValue(args.data.telegramPaymentId),
+        telegramPaymentId,
         starsAmount: numberValue(args.data.starsAmount, 0),
         planTier: stringValue(args.data.planTier),
         createdAt: new Date(),

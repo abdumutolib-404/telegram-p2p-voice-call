@@ -7,6 +7,7 @@ import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { getAdminChallenge, clearAdminChallenges } from '../routes/admin';
+import { getRedis } from '../config/redis';
 
 describe('Final Authentication Architecture Test Suite', () => {
   const botToken = env.BOT_TOKEN;
@@ -203,7 +204,7 @@ describe('Final Authentication Architecture Test Suite', () => {
         .send({ challengeId, otp: testOtp });
 
       expect(res.status).toBe(401);
-      expect(res.body.error).toContain('Maximum OTP verification attempts exceeded.');
+      expect(res.body.error).toMatch(/Maximum OTP verification attempts exceeded|Invalid or consumed login challenge/);
     });
 
     it('2.7 Rejects expired OTP challenge (401 Unauthorized)', async () => {
@@ -219,6 +220,7 @@ describe('Final Authentication Architecture Test Suite', () => {
       const challenge = getAdminChallenge(challengeId);
       if (challenge) {
         challenge.expiresAt = Date.now() - 1000;
+        await getRedis().set(`otp:challenge:${challengeId}`, JSON.stringify(challenge), 'EX', 300);
       }
 
       const res = await request(app)

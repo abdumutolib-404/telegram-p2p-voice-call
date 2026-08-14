@@ -53,9 +53,7 @@ export function createBot(token: string): Bot<MyContext> {
       text.startsWith('/appeal') ||
       text === '💬 Support' ||
       callbackData === 'submit_appeal' ||
-      callbackData.startsWith('appeal_') ||
-      text.startsWith('/admin') ||
-      callbackData.startsWith('buy_plan');
+      callbackData.startsWith('appeal_');
 
     if (isExemptAction) {
       return next();

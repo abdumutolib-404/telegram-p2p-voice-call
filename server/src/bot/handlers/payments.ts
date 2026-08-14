@@ -113,42 +113,86 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
   // successful_payment Webhook
   bot.on('message:successful_payment', async (ctx) => {
-    const payment = ctx.message.successful_payment;
-    const payload = payment.invoice_payload;
-    const parts = payload.split(':');
-    const tier = (parts[1] || 'PLUS') as 'PLUS' | 'PRO';
-    const telegramId = BigInt(ctx.from.id);
+    const payment = ctx.message?.successful_payment;
+    if (!payment) return;
 
-    if (payment.currency !== 'XTR' || (tier !== 'PLUS' && tier !== 'PRO')) {
-      console.error('[Payments] Invalid payment currency or tier received:', payment);
+    const payload = payment.invoice_payload;
+    if (!payload || !payload.startsWith('plan_purchase:')) {
+      console.error('[Payments] Invalid or missing invoice payload structure:', payload);
+      return;
+    }
+
+    if (payment.currency !== 'XTR') {
+      console.error('[Payments] Non-XTR payment received in successful_payment:', payment.currency);
+      return;
+    }
+
+    const parts = payload.split(':');
+    const tier = parts[1] as 'PLUS' | 'PRO';
+    const invoiceBuyerId = parts[2];
+    const telegramId = BigInt(ctx.from?.id || 0);
+
+    if (tier !== 'PLUS' && tier !== 'PRO') {
+      console.error('[Payments] Unsupported subscription tier in payload:', tier);
+      return;
+    }
+
+    if (String(ctx.from?.id) !== invoiceBuyerId) {
+      console.error('[Payments] Buyer ID mismatch in successful_payment:', { actual: ctx.from?.id, invoiceBuyerId });
       return;
     }
 
     const plans = getPlansConfig();
     const config = plans[tier];
 
+    if (payment.total_amount !== config.starsPrice) {
+      console.error('[Payments] Payment amount mismatch:', { received: payment.total_amount, expected: config.starsPrice });
+      return;
+    }
+
     try {
-      // Atomic transaction: verify duplicate charge ID and update user plan in a single transaction
+      // Atomic transaction: verify duplicate charge ID, validate user eligibility & plan transition, and update state atomically
       const result = await prisma.$transaction(async (tx) => {
         const existingTx = await tx.starsTransaction.findUnique({
           where: { telegramPaymentId: payment.telegram_payment_charge_id },
         });
 
         if (existingTx) {
-          return { alreadyProcessed: true, user: null };
+          return { status: 'duplicate' as const, user: null };
         }
 
         const user = await tx.user.findUnique({ where: { telegramId } });
         if (!user) {
-          return { alreadyProcessed: false, user: null };
+          return { status: 'user_not_found' as const, user: null };
         }
+
+        const isSuspended =
+          user.isBanned ||
+          user.isPermanentlyBanned ||
+          Boolean(user.bannedUntil && new Date(user.bannedUntil) > new Date());
+
+        if (isSuspended) {
+          await tx.starsTransaction.create({
+            data: {
+              userId: user.id,
+              telegramPaymentId: payment.telegram_payment_charge_id,
+              starsAmount: payment.total_amount,
+              planTier: tier,
+            },
+          });
+          return { status: 'suspended' as const, user };
+        }
+
+        // Prevent accidental downgrade if already PRO and purchasing PLUS
+        const finalTier = user.plan === 'PRO' && tier === 'PLUS' ? 'PRO' : tier;
+        const finalConfig = plans[finalTier];
 
         const updatedUser = await tx.user.update({
           where: { id: user.id },
           data: {
-            plan: tier,
-            maxDuration: config.maxDuration,
-            dailyLimit: config.dailyLimit,
+            plan: finalTier,
+            maxDuration: finalConfig.maxDuration,
+            dailyLimit: finalConfig.dailyLimit,
           },
         });
 
@@ -161,18 +205,27 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           },
         });
 
-        return { alreadyProcessed: false, user: updatedUser };
+        return { status: 'success' as const, user: updatedUser };
       });
 
-      if (result.alreadyProcessed) {
+      if (result.status === 'duplicate') {
         console.log('[Payments] Duplicate payment webhook safely acknowledged', { chargeId: payment.telegram_payment_charge_id });
         return;
       }
 
-      if (result.user) {
+      if (result.status === 'suspended') {
+        await ctx.reply(
+          `⚠️ Payment received, but your account is currently suspended.\n` +
+            `Please submit an /appeal to our moderation team with Payment ID: \`${payment.telegram_payment_charge_id}\``,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      if (result.status === 'success' && result.user) {
         await ctx.reply(
           `🎉 *Payment Successful!*\n\n` +
-            `Your subscription has been upgraded to *${tier} Plan*.\n` +
+            `Your subscription has been upgraded to *${result.user.plan} Plan*.\n` +
             `• Max Call Duration: ${config.maxDuration >= 999 ? 'Unlimited' : `${config.maxDuration} minutes`}\n` +
             `• Daily Limit: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/day`}\n` +
             `• Recording Storage: ${config.retentionDays} days\n\n` +

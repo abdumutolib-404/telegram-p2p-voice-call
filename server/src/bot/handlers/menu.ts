@@ -217,29 +217,37 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
     try {
       const outcome = await withUserAppealLock(user.id, async () => {
-        const pendingAppeal = await prisma.unblockAppeal.findFirst({
-          where: {
-            userId: user.id,
-            status: 'PENDING',
-          },
+        return await prisma.$transaction(async (tx) => {
+          // Touch user row to acquire exclusive transaction lock
+          await tx.user.update({
+            where: { id: user.id },
+            data: { updatedAt: new Date() },
+          });
+
+          const pendingAppeal = await tx.unblockAppeal.findFirst({
+            where: {
+              userId: user.id,
+              status: 'PENDING',
+            },
+          });
+
+          if (pendingAppeal) {
+            return { status: 'already_pending' as const, appeal: pendingAppeal };
+          }
+
+          const created = await tx.unblockAppeal.create({
+            data: {
+              userId: user.id,
+              telegramId,
+              alias: user.alias,
+              banReason: user.isBanned || user.isPermanentlyBanned ? 'User restriction' : 'Support inquiry',
+              appealText,
+              status: 'PENDING',
+            },
+          });
+
+          return { status: 'created' as const, appeal: created };
         });
-
-        if (pendingAppeal) {
-          return { status: 'already_pending' as const, appeal: pendingAppeal };
-        }
-
-        const created = await prisma.unblockAppeal.create({
-          data: {
-            userId: user.id,
-            telegramId,
-            alias: user.alias,
-            banReason: user.isBanned || user.isPermanentlyBanned ? 'User restriction' : 'Support inquiry',
-            appealText,
-            status: 'PENDING',
-          },
-        });
-
-        return { status: 'created' as const, appeal: created };
       });
 
       if (outcome.status === 'already_pending') {
