@@ -69,4 +69,34 @@ describe('Admin REST API & Stealth 2FA Exchange', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
+
+  it('fetches users list and manually updates a user plan & daily limits', async () => {
+    const usersRes = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', `Bearer ${jwtToken}`);
+
+    expect(usersRes.status).toBe(200);
+    expect(Array.isArray(usersRes.body)).toBe(true);
+
+    if (usersRes.body.length > 0) {
+      const targetUser = usersRes.body[0];
+      expect(targetUser.id).toBeDefined();
+
+      const patchRes = await request(app)
+        .patch(`/api/admin/users/${targetUser.id}/plan`)
+        .set('Authorization', `Bearer ${jwtToken}`)
+        .send({
+          plan: 'PRO',
+          dailyLimit: 999,
+          maxDuration: 60,
+          resetDailyCalls: true,
+        });
+
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.planTier).toBe('pro');
+      expect(patchRes.body.dailyLimit).toBe(999);
+      expect(patchRes.body.maxDuration).toBe(60);
+      expect(patchRes.body.dailyCallsUsed).toBe(0);
+    }
+  });
 });

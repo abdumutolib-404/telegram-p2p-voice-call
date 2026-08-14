@@ -7,7 +7,7 @@ import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
 import { env } from '../config/env';
 import { adminAuthMiddleware } from '../middleware/adminAuth';
 import { getAdminAnalytics } from '../services/analytics';
-import { getPlansConfig, updatePlansConfig } from '../services/plan';
+import { getPlansConfig, updatePlansConfig, getDailyLimitForPlan, getMaxDurationForPlan } from '../services/plan';
 import { prisma } from '../config/database';
 import { createRateLimiter } from '../middleware/rateLimit';
 import { getRedis } from '../config/redis';
@@ -678,6 +678,9 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
           gra: u.subGRA,
           p: u.subP,
         },
+        dailyLimit: u.dailyLimit,
+        dailyCallsUsed: u.dailyCallsUsed,
+        maxDuration: u.maxDuration,
         warningCount: u.warningCount,
         createdAt: u.createdAt.toISOString(),
       };
@@ -687,6 +690,93 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[Admin] Failed to fetch users:', err);
     res.status(500).json({ error: 'Failed to fetch users.' });
+  }
+});
+
+// PATCH /api/admin/users/:id/plan (Protected - Manual Plan & Limit Updates)
+router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { plan, dailyLimit, maxDuration, resetDailyCalls } = req.body;
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const updateData: Prisma.UserUpdateInput = {};
+
+    if (plan && ['FREE', 'PLUS', 'PRO'].includes(String(plan).toUpperCase())) {
+      const normalizedPlan = String(plan).toUpperCase();
+      updateData.plan = normalizedPlan;
+      if (dailyLimit === undefined) {
+        updateData.dailyLimit = getDailyLimitForPlan(normalizedPlan);
+      }
+      if (maxDuration === undefined) {
+        updateData.maxDuration = getMaxDurationForPlan(normalizedPlan);
+      }
+    }
+
+    if (dailyLimit !== undefined && typeof dailyLimit === 'number' && dailyLimit >= 0) {
+      updateData.dailyLimit = Math.floor(dailyLimit);
+    }
+
+    if (maxDuration !== undefined && typeof maxDuration === 'number' && maxDuration > 0) {
+      updateData.maxDuration = Math.floor(maxDuration);
+    }
+
+    if (resetDailyCalls) {
+      updateData.dailyCallsUsed = 0;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: updateData,
+    });
+
+    if (adminBotInstance && (plan || resetDailyCalls || dailyLimit !== undefined)) {
+      const planName = updated.plan;
+      const limitText = updated.dailyLimit >= 999 ? 'Unlimited' : `${updated.dailyLimit} calls/day`;
+      const durText = `${updated.maxDuration} minutes`;
+      const msg =
+        `⭐ *Account Plan Updated by Administrator*\n\n` +
+        `Your IELTS Speaking P2P limits have been updated:\n` +
+        `• *Plan Tier*: *${planName}*\n` +
+        `• *Daily Call Limit*: ${limitText}\n` +
+        `• *Max Call Duration*: ${durText}\n` +
+        (resetDailyCalls ? `• *Calls Used Today*: Reset to 0\n` : '') +
+        `\nEnjoy practicing!`;
+      await adminBotInstance.api.sendMessage(updated.telegramId.toString(), msg, { parse_mode: 'Markdown' })
+        .catch((e: unknown) => console.warn('[Admin] Failed to send plan update notice:', e));
+    }
+
+    const now = new Date();
+    let status = 'active';
+    if (updated.isPermanentlyBanned) status = 'banned';
+    else if (updated.isBanned && updated.bannedUntil && updated.bannedUntil > now) status = 'blocked';
+    else if (updated.warningCount > 0 && !updated.isBanned) status = 'warned';
+
+    res.json({
+      id: updated.id,
+      telegramId: updated.telegramId.toString(),
+      alias: updated.alias,
+      planTier: updated.plan.toLowerCase(),
+      status,
+      subscores: {
+        fc: updated.subFC,
+        lr: updated.subLR,
+        gra: updated.subGRA,
+        p: updated.subP,
+      },
+      dailyLimit: updated.dailyLimit,
+      dailyCallsUsed: updated.dailyCallsUsed,
+      maxDuration: updated.maxDuration,
+      warningCount: updated.warningCount,
+      createdAt: updated.createdAt.toISOString(),
+    });
+  } catch (err) {
+    console.error('[Admin] Failed to update user plan:', err);
+    res.status(500).json({ error: 'Failed to update user plan.' });
   }
 });
 

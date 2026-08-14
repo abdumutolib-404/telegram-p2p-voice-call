@@ -65,6 +65,9 @@ export interface UserItem {
   status: 'active' | 'warned' | 'blocked' | 'banned';
   subscores?: Subscores;
   warningCount?: number;
+  dailyLimit?: number;
+  dailyCallsUsed?: number;
+  maxDuration?: number;
   createdAt: string;
 }
 

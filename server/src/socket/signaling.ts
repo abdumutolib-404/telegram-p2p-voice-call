@@ -229,10 +229,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           // Check daily call quota before queue entry
+          const isAdminUser = env.ADMIN_TELEGRAM_IDS.includes(user.telegramId.toString());
           const today = new Date().toISOString().slice(0, 10);
           const dailyCallsToday = user.lastCallDate === today ? user.dailyCallsUsed : 0;
-          const effectiveDailyLimit = getDailyLimitForPlan(user.plan);
-          if (effectiveDailyLimit < 999 && dailyCallsToday >= effectiveDailyLimit) {
+          const effectiveDailyLimit = user.dailyLimit >= 999 || user.plan === 'PRO'
+            ? 999
+            : (user.dailyLimit && user.dailyLimit !== 3 ? user.dailyLimit : getDailyLimitForPlan(user.plan));
+          if (!isAdminUser && effectiveDailyLimit < 999 && dailyCallsToday >= effectiveDailyLimit) {
             socket.emit('error', {
               message: `You have reached your daily limit of ${effectiveDailyLimit} calls. Please upgrade to PLUS or PRO to continue practicing!`,
             });
