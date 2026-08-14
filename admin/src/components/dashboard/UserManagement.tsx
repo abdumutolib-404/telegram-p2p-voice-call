@@ -19,6 +19,8 @@ export function UserManagement() {
   const [planTier, setPlanTier] = useState<'free' | 'plus' | 'pro'>('free');
   const [dailyLimitInput, setDailyLimitInput] = useState<number>(3);
   const [maxDurationInput, setMaxDurationInput] = useState<number>(15);
+  const [retentionOverrideInput, setRetentionOverrideInput] = useState<number | ''>('');
+  const [customPlanNameInput, setCustomPlanNameInput] = useState<string>('');
   const [resetDailyCallsCheckbox, setResetDailyCallsCheckbox] = useState<boolean>(false);
   const [isSubmittingPlan, setIsSubmittingPlan] = useState<boolean>(false);
 
@@ -69,6 +71,8 @@ export function UserManagement() {
     setPlanTier(tier);
     setDailyLimitInput(user.dailyLimit ?? (tier === 'pro' ? 999 : tier === 'plus' ? 10 : 3));
     setMaxDurationInput(user.maxDuration ?? (tier === 'pro' ? 60 : tier === 'plus' ? 30 : 15));
+    setRetentionOverrideInput(user.retentionOverride ? user.retentionOverride : '');
+    setCustomPlanNameInput(user.customPlanName || '');
     setResetDailyCallsCheckbox(false);
   };
 
@@ -130,6 +134,8 @@ export function UserManagement() {
           plan: planTier.toUpperCase(),
           dailyLimit: Number(dailyLimitInput),
           maxDuration: Number(maxDurationInput),
+          retentionOverride: retentionOverrideInput !== '' ? Number(retentionOverrideInput) : null,
+          customPlanName: customPlanNameInput.trim() || null,
           resetDailyCalls: resetDailyCallsCheckbox,
         }),
       });
@@ -309,7 +315,18 @@ export function UserManagement() {
                 <tr key={user.id} style={{ borderBottom: '1px solid #334155' }}>
                   <td style={{ padding: '0.875rem 1rem', fontWeight: 600 }}>{user.alias}</td>
                   <td style={{ padding: '0.875rem 1rem', color: '#94a3b8' }}>{user.telegramId}</td>
-                  <td style={{ padding: '0.875rem 1rem' }}>{getTierBadge(user.planTier)}</td>
+                  <td style={{ padding: '0.875rem 1rem' }}>
+                    {user.customPlanName ? (
+                      <div>
+                        <span style={{ color: '#c084fc', fontWeight: 600 }}>💎 {user.customPlanName}</span>
+                      </div>
+                    ) : (
+                      getTierBadge(user.planTier)
+                    )}
+                    <div style={{ fontSize: '0.72rem', color: user.retentionOverride ? '#38bdf8' : '#64748b', marginTop: '0.15rem' }}>
+                      {user.retentionOverride ? `Retention: ${user.retentionOverride}d (Custom)` : `Retention: ${user.planTier === 'pro' ? 30 : user.planTier === 'plus' ? 7 : 1}d`}
+                    </div>
+                  </td>
                   <td style={{ padding: '0.875rem 1rem' }}>
                     <span style={{
                       color: user.dailyLimit && user.dailyLimit >= 999 ? '#34d399' : (user.dailyCallsUsed ?? 0) >= (user.dailyLimit ?? 3) ? '#f87171' : '#38bdf8',
@@ -578,6 +595,84 @@ export function UserManagement() {
                   borderRadius: '6px',
                   color: '#f8fafc',
                   fontSize: '0.9rem',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Custom Plan Label */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
+                Custom Plan Label (Optional)
+              </label>
+              <input
+                type="text"
+                value={customPlanNameInput}
+                onChange={(e) => setCustomPlanNameInput(e.target.value)}
+                placeholder="e.g. VIP Member, Scholarship, Partner"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#f8fafc',
+                  fontSize: '0.9rem',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Custom Recording Retention Override */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
+                Recording Retention Override (Days)
+              </label>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                {[
+                  { label: 'Plan Default', val: '' },
+                  { label: '1 day', val: 1 },
+                  { label: '7 days', val: 7 },
+                  { label: '14 days', val: 14 },
+                  { label: '30 days', val: 30 },
+                  { label: '90 days', val: 90 },
+                ].map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => setRetentionOverrideInput(opt.val as any)}
+                    style={{
+                      padding: '0.3rem 0.6rem',
+                      borderRadius: '6px',
+                      border: retentionOverrideInput === opt.val ? '2px solid #0284c7' : '1px solid #334155',
+                      backgroundColor: retentionOverrideInput === opt.val ? '#0284c725' : '#0f172a',
+                      color: retentionOverrideInput === opt.val ? '#38bdf8' : '#94a3b8',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                placeholder="Custom retention days (e.g. 60)"
+                value={retentionOverrideInput}
+                onChange={(e) => setRetentionOverrideInput(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#f8fafc',
+                  fontSize: '0.85rem',
                   outline: 'none'
                 }}
               />

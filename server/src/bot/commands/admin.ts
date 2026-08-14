@@ -234,9 +234,57 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
         `• *Plan*: *${user.plan}*\n` +
         `• *Calls Used Today*: ${usedToday} / ${lim}\n` +
         `• *Max Duration*: ${user.maxDuration} minutes\n` +
+        `• *Recording Retention*: ${user.retentionOverride ? `${user.retentionOverride} days (Admin Override)` : 'Plan Default'}\n` +
         `• *Overall Band*: ${user.band.toFixed(1)} (FC:${user.subFC} LR:${user.subLR} GRA:${user.subGRA} P:${user.subP})\n` +
         `• *Warnings*: ${user.warningCount}\n` +
-        `• *Status*: ${user.isPermanentlyBanned ? '⛔ Banned' : user.isBanned ? '🚫 Blocked' : '✅ Active'}`,
+        `• *Status*: ${user.isPermanentlyBanned ? '⛔ Permanently Banned' : user.isBanned ? '🚫 Temporarily Suspended' : '✅ Active'}`,
+      { parse_mode: 'Markdown' }
+    );
+  });
+
+  bot.command('setretention', async (ctx) => {
+    const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
+    if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
+      await ctx.reply('Unknown command.');
+      return;
+    }
+
+    const text = ctx.message?.text || '';
+    const parts = text.split(/\s+/).slice(1);
+    if (parts.length < 2) {
+      await ctx.reply(
+        `⚙️ *Admin Retention Override*\n\n` +
+          `*Usage:* \`/setretention <telegramId or alias> <days>\`\n\n` +
+          `*Examples:*\n` +
+          `• \`/setretention ${adminId} 30\`\n` +
+          `• \`/setretention Partner-4921 7\``,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const [targetId, daysRaw] = parts;
+    const days = parseInt(daysRaw, 10);
+    if (isNaN(days) || days <= 0 || days > 365) {
+      await ctx.reply('❌ Invalid retention days (must be between 1 and 365).');
+      return;
+    }
+
+    const user = await findUserByIdOrAlias(targetId);
+    if (!user) {
+      await ctx.reply(`❌ User not found for identifier: \`${targetId}\``, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { retentionOverride: days },
+    });
+
+    await ctx.reply(
+      `✅ *Recording Retention Override Applied*\n\n` +
+        `• *User*: \`${updated.alias}\` (ID: \`${updated.telegramId.toString()}\`)\n` +
+        `• *Recording Retention*: ${updated.retentionOverride} days (Admin Override)`,
       { parse_mode: 'Markdown' }
     );
   });

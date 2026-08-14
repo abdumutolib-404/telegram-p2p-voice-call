@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
-import { getPlansConfig, getRetentionDaysForPlan } from '../../services/plan';
+import { getEffectiveEntitlement } from '../../services/plan';
 import { getRedis } from '../../config/redis';
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -42,6 +42,13 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
+    const entitlement = getEffectiveEntitlement(user);
+    const today = new Date().toISOString().slice(0, 10);
+    const callsUsedToday = user.lastCallDate === today ? user.dailyCallsUsed : 0;
+    const callsRemainingText = entitlement.isUnlimited
+      ? 'Unlimited (∞)'
+      : `${Math.max(0, entitlement.dailyLimit - callsUsedToday)} / ${entitlement.dailyLimit} remaining`;
+
     const inlineKb = new InlineKeyboard()
       .text('✏️ Re-evaluate Sub-scores', 're_evaluate_subscores')
       .row()
@@ -55,8 +62,11 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `  - LR (Lexical Resource): ${user.subLR.toFixed(1)}\n` +
         `  - GRA (Grammar): ${user.subGRA.toFixed(1)}\n` +
         `  - P (Pronunciation): ${user.subP.toFixed(1)}\n` +
-        `• *Subscription Plan*: *${user.plan}*\n` +
-        `• *Daily Limit*: ${user.dailyLimit >= 999 ? 'Unlimited' : user.dailyLimit} calls/day\n` +
+        `• *Subscription Plan*: *${entitlement.planDisplayName}*\n\n` +
+        `📊 *Today's Entitlements & Usage:*\n` +
+        `• *Calls Remaining Today*: ${callsRemainingText} (Used: ${callsUsedToday})\n` +
+        `• *Max Call Duration*: ${entitlement.maxDurationMinutes} minutes\n` +
+        `• *Recording Retention*: ${entitlement.retentionDays} day(s) (${entitlement.retentionSource === 'ADMIN_OVERRIDE' ? 'Admin Override' : 'Plan Default'})\n` +
         `• *DND Status*: ${user.dnd ? '🔕 Do Not Disturb ON' : '🔔 Ready for Calls'}`,
       { parse_mode: 'Markdown', reply_markup: inlineKb }
     );
@@ -72,7 +82,8 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
-    const retentionDays = getRetentionDaysForPlan(user.plan);
+    const entitlement = getEffectiveEntitlement(user);
+    const retentionDays = entitlement.retentionDays;
     const recordings = await prisma.callSession.findMany({
       where: {
         OR: [{ userAId: user.id }, { userBId: user.id }],
@@ -87,7 +98,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `📁 *Session Audio Recordings*\n\n` +
           `You have no active audio recordings.\n` +
           `_Recordings are saved automatically when recording is toggled ON during a practice call._\n\n` +
-          `⭐ *Retention policy for ${user.plan} plan*: ${retentionDays} day(s).`,
+          `⭐ *Retention policy for your account*: ${retentionDays} day(s).`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -98,85 +109,79 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
     recordings.forEach((rec, idx) => {
       const dateStr = rec.createdAt.toISOString().split('T')[0];
-      const durationMin = Math.floor(rec.duration / 60);
-      messageText += `${idx + 1}. 🎙️ Call on *${dateStr}* (${durationMin} mins)\n`;
-      inlineKb.text(`🎧 Play #${idx + 1}`, `play_rec:${rec.id}`).row();
+      const durationMin = Math.round((rec.duration || 0) / 60);
+      messageText += `${idx + 1}. 📅 *${dateStr}* (${durationMin} min)\n`;
+      inlineKb.text(`🎧 Play #${idx + 1}`, `play_recording_${rec.id}`).row();
     });
 
     await ctx.reply(messageText, { parse_mode: 'Markdown', reply_markup: inlineKb });
   });
 
-  // ⭐ Plans
-  bot.hears('⭐ Plans', async (ctx) => {
+  // ⭐ Subscription / Upgrade Plans
+  bot.hears(/⭐ (?:Upgrade|Subscription|Plans)/i, async (ctx) => {
     const telegramId = BigInt(ctx.from?.id || 0);
     const user = await prisma.user.findUnique({ where: { telegramId } });
-    const plans = getPlansConfig();
-
     const currentPlan = user?.plan || 'FREE';
-
-    const freeDur = plans.FREE.maxDuration >= 999 ? 'Unlimited' : `${plans.FREE.maxDuration} minutes`;
-    const freeLim = plans.FREE.dailyLimit >= 999 ? 'Unlimited' : `${plans.FREE.dailyLimit} calls`;
-
-    const plusDur = plans.PLUS.maxDuration >= 999 ? 'Unlimited' : `${plans.PLUS.maxDuration} minutes`;
-    const plusLim = plans.PLUS.dailyLimit >= 999 ? 'Unlimited' : `${plans.PLUS.dailyLimit} calls`;
-
-    const proDur = plans.PRO.maxDuration >= 999 ? 'Unlimited' : `${plans.PRO.maxDuration} minutes`;
-    const proLim = plans.PRO.dailyLimit >= 999 ? 'Unlimited' : `${plans.PRO.dailyLimit} calls`;
+    const entitlement = user ? getEffectiveEntitlement(user) : getEffectiveEntitlement({ plan: 'FREE' });
 
     const inlineKb = new InlineKeyboard()
-      .text(`⭐ Upgrade Plus (${plans.PLUS.starsPrice} Stars)`, 'buy_plan:PLUS')
+      .text('⚡ Upgrade to PLUS (150 Stars)', 'buy_plan_PLUS')
       .row()
-      .text(`⭐ Upgrade Pro (${plans.PRO.starsPrice} Stars)`, 'buy_plan:PRO');
+      .text('🚀 Upgrade to PRO (500 Stars)', 'buy_plan_PRO');
 
     await ctx.reply(
-      `⭐ *Subscription Plans & Limits*\n\n` +
-        `Current Plan: *${currentPlan}*\n\n` +
+      `⭐ *Subscription Plans & Entitlements*\n\n` +
+        `Current Plan: *${entitlement.planDisplayName}*\n\n` +
         `🆓 *FREE Plan*\n` +
-        `• Max Call Duration: ${freeDur}\n` +
-        `• Daily Call Limit: ${freeLim}\n` +
-        `• Recording Storage: ${plans.FREE.retentionDays} day(s)\n\n` +
-        `⚡ *PLUS Plan* (${plans.PLUS.starsPrice} Telegram Stars)\n` +
-        `• Max Call Duration: ${plusDur}\n` +
-        `• Daily Call Limit: ${plusLim}\n` +
-        `• Recording Storage: ${plans.PLUS.retentionDays} days\n\n` +
-        `🚀 *PRO Plan* (${plans.PRO.starsPrice} Telegram Stars)\n` +
-        `• Max Call Duration: ${proDur}\n` +
-        `• Daily Call Limit: ${proLim}\n` +
-        `• Recording Storage: ${plans.PRO.retentionDays} days\n\n` +
+        `• Max Call Duration: 15 minutes\n` +
+        `• Daily Call Limit: 3 calls\n` +
+        `• Recording Storage: 1 day\n\n` +
+        `⚡ *PLUS Plan* (150 Telegram Stars)\n` +
+        `• Max Call Duration: 30 minutes\n` +
+        `• Daily Call Limit: 10 calls\n` +
+        `• Recording Storage: 7 days\n\n` +
+        `🚀 *PRO Plan* (500 Telegram Stars)\n` +
+        `• Max Call Duration: 60 minutes\n` +
+        `• Daily Call Limit: Unlimited (∞)\n` +
+        `• Recording Storage: 30 days\n\n` +
         `Select a plan to upgrade via Telegram Stars:`,
       { parse_mode: 'Markdown', reply_markup: inlineKb }
     );
   });
 
-  // 📞 Direct Call
-  bot.hears('📞 Direct Call', async (ctx) => {
+  // 👥 Favorites
+  bot.hears('👥 Favorites', async (ctx) => {
     const telegramId = BigInt(ctx.from?.id || 0);
-    const user = await prisma.user.findUnique({
-      where: { telegramId },
-      include: { favorites: { include: { partner: true } } },
-    });
+    const user = await prisma.user.findUnique({ where: { telegramId } });
 
     if (!user) {
-      await ctx.reply('Please type /start to register.');
+      await ctx.reply('Please register with /start first.');
       return;
     }
 
-    if (user.favorites.length === 0) {
+    const favorites = await prisma.favoritePartner.findMany({
+      where: { userId: user.id },
+      include: { partner: true },
+    });
+
+    if (favorites.length === 0) {
       await ctx.reply(
-        `📞 *Direct Call - Favorite Partners*\n\n` +
+        `👥 *Favorite Practice Partners*\n\n` +
           `You have no favorite partners saved yet.\n` +
-          `After practicing with a partner, save them as a favorite to initiate direct calls anytime!`,
+          `_After any call, you can add your partner to favorites to practice again!_`,
         { parse_mode: 'Markdown' }
       );
       return;
     }
 
+    let text = `👥 *Your Favorite Practice Partners:*\n\n`;
     const inlineKb = new InlineKeyboard();
-    let text = `📞 *Your Favorite Partners*:\n\n`;
 
-    user.favorites.forEach((fav, idx) => {
-      text += `${idx + 1}. *${fav.partner.alias}* (Band: ${fav.partner.band.toFixed(1)})\n`;
-      inlineKb.text(`📞 Call ${fav.partner.alias}`, `direct_call:${fav.partner.id}`).row();
+    favorites.forEach((fav, idx) => {
+      const p = fav.partner;
+      const statusIcon = p.dnd ? '🔕 (DND)' : '🔔 (Available)';
+      text += `${idx + 1}. *${p.alias}* — Band ${p.band.toFixed(1)} ${statusIcon}\n`;
+      inlineKb.text(`📞 Call ${p.alias}`, `call_favorite_${p.id}`).text(`❌ Remove`, `remove_favorite_${p.id}`).row();
     });
 
     await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: inlineKb });
@@ -184,16 +189,25 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
   // 💬 Support
   bot.hears('💬 Support', async (ctx) => {
-    const inlineKb = new InlineKeyboard().text('⚖️ Submit Appeal / Message Admin', 'submit_appeal');
+    const telegramId = BigInt(ctx.from?.id || 0);
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    const isPermBanned = user?.isPermanentlyBanned === true;
+
+    const inlineKb = new InlineKeyboard();
+    if (isPermBanned) {
+      inlineKb.text('⚖️ Submit Unban Appeal', 'submit_appeal');
+    }
 
     await ctx.reply(
       `💬 *IELTS Speaking P2P Support*\n\n` +
         `Need help or have questions about partner matching, LiveKit calls, or subscriptions?\n\n` +
         `• *FAQ*: Matchmaking pairs weak/strong sub-scores for mutual practice.\n` +
         `• *Audio*: Headphones are recommended for optimal call clarity.\n` +
-        `• *Moderation*: Misconduct triggers automatic warning, temp ban, or permanent lock.\n\n` +
-        `To send a message or unban appeal to the admin team, tap below or type:\n\`/appeal <your reason or question>\``,
-      { parse_mode: 'Markdown', reply_markup: inlineKb }
+        `• *Moderation*: Community rules enforce fair practice and mutual respect.\n\n` +
+        (isPermBanned
+          ? `Your account is permanently restricted. You may submit an appeal using the button below or type:\n\`/appeal <your reason>\``
+          : `For general support or bug reports, please contact our community administrators.`),
+      { parse_mode: 'Markdown', reply_markup: isPermBanned ? inlineKb : undefined }
     );
   });
 
@@ -206,10 +220,32 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
+    // ISSUE 1: Appeals are strictly locked to PERMANENTLY BANNED users
+    if (!user.isPermanentlyBanned) {
+      if (user.isBanned && !user.isPermanentlyBanned) {
+        await ctx.reply(
+          `⏳ *Temporary Suspension Active*\n\n` +
+            `Your account is currently under a 6-hour temporary suspension.\n\n` +
+            `• Temporary suspensions expire automatically and cannot be appealed.\n` +
+            `• Once the suspension period elapses, your practice privileges will be restored automatically.`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      await ctx.reply(
+        `ℹ️ *Appeals Unavailable*\n\n` +
+          `Appeals are available only to permanently banned accounts.\n` +
+          `Your account is currently in good standing.`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
     const appealText = ctx.match?.trim();
     if (!appealText) {
       await ctx.reply(
-        '✍️ *How to Submit an Appeal / Support Message:*\n\nType `/appeal followed by your reason`.\nExample:\n`/appeal I would like to request an unban because my network dropped.`',
+        '✍️ *How to Submit an Unban Appeal:*\n\nType `/appeal followed by your explanation`.\nExample:\n`/appeal I would like to request an unban because my network dropped during practice.`',
         { parse_mode: 'Markdown' }
       );
       return;
@@ -240,7 +276,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
               userId: user.id,
               telegramId,
               alias: user.alias,
-              banReason: user.isBanned || user.isPermanentlyBanned ? 'User restriction' : 'Support inquiry',
+              banReason: 'Permanent account lock',
               appealText,
               status: 'PENDING',
             },
@@ -263,7 +299,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
       await ctx.reply(
         `✅ *Appeal Submitted Successfully*\n\n` +
-          `Your message has been delivered to the moderation team's Appeals Queue.\n` +
+          `Your appeal has been delivered to the moderation team's Appeals Queue.\n` +
           `You will receive an automated notification here once reviewed.`,
         { parse_mode: 'Markdown' }
       );

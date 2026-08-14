@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan } from '../services/plan';
+import { calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement } from '../services/plan';
 import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
@@ -109,6 +109,29 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     if (sockets.size === 0) userSockets.delete(userId);
   };
 
+  const recordCompletedCallCredits = async (userAId: string, userBId: string, durationSeconds: number): Promise<void> => {
+    if (durationSeconds < 5) return;
+    const today = new Date().toISOString().slice(0, 10);
+    await Promise.allSettled([
+      prisma.user.updateMany({
+        where: { id: userAId, lastCallDate: today },
+        data: { dailyCallsUsed: { increment: 1 } },
+      }),
+      prisma.user.updateMany({
+        where: { id: userAId, OR: [{ lastCallDate: null }, { lastCallDate: { not: today } }] },
+        data: { lastCallDate: today, dailyCallsUsed: 1 },
+      }),
+      prisma.user.updateMany({
+        where: { id: userBId, lastCallDate: today },
+        data: { dailyCallsUsed: { increment: 1 } },
+      }),
+      prisma.user.updateMany({
+        where: { id: userBId, OR: [{ lastCallDate: null }, { lastCallDate: { not: today } }] },
+        data: { lastCallDate: today, dailyCallsUsed: 1 },
+      }),
+    ]);
+  };
+
   const getConnectedSocket = (userId: string): Socket | undefined => {
     const sockets = userSockets.get(userId);
     if (!sockets) return undefined;
@@ -177,7 +200,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       const now = Date.now();
       const lastAction = userLastActionTime.get(currentUserId) || 0;
       if (now - lastAction < 800) {
-        socket.emit('error', { message: 'Please slow down. Matchmaking is in progress.' });
+        socket.emit('queue_joined', { status: 'searching' });
         return;
       }
       userLastActionTime.set(currentUserId, now);
@@ -186,13 +209,16 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         await runSerialized(userJoinTails, currentUserId, async () => {
           const banStatus = await moderationService.isUserBanned(currentUserId);
           if (banStatus.banned) {
-            socket.emit('error', { message: banStatus.reason || 'User is banned.' });
+            socket.emit('error', {
+              code: 'MATCHMAKING_SUSPENDED',
+              message: banStatus.reason || 'Your account is suspended from matchmaking.',
+            });
             return;
           }
 
           const user = await prisma.user.findUnique({ where: { id: currentUserId } });
           if (!user) {
-            socket.emit('error', { message: 'User profile not found.' });
+            socket.emit('error', { code: 'USER_NOT_FOUND', message: 'User profile not found.' });
             return;
           }
 
@@ -201,7 +227,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             user.isPermanentlyBanned ||
             Boolean(user.bannedUntil && new Date(user.bannedUntil) > new Date());
           if (isSuspended) {
-            socket.emit('error', { message: 'Your account is suspended from matchmaking. Please contact support via the Telegram Bot.' });
+            socket.emit('error', {
+              code: 'MATCHMAKING_SUSPENDED',
+              message: 'Your account is suspended from matchmaking. Please contact support via the Telegram Bot.',
+            });
             return;
           }
 
@@ -223,21 +252,22 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               });
               clearSessionTimer(activeCall.roomName);
             } else {
-              socket.emit('error', { message: 'Another session is currently in an active call from this account. Please try again later.' });
+              socket.emit('error', {
+                code: 'CALL_ALREADY_ACTIVE',
+                message: 'Another session is currently in an active call from this account. Please try again later.',
+              });
               return;
             }
           }
 
-          // Check daily call quota before queue entry
-          const isAdminUser = env.ADMIN_TELEGRAM_IDS.includes(user.telegramId.toString());
+          // Check daily call quota before queue entry using Effective Entitlements
+          const entitlement = getEffectiveEntitlement(user);
           const today = new Date().toISOString().slice(0, 10);
           const dailyCallsToday = user.lastCallDate === today ? user.dailyCallsUsed : 0;
-          const effectiveDailyLimit = user.dailyLimit >= 999 || user.plan === 'PRO'
-            ? 999
-            : (user.dailyLimit && user.dailyLimit !== 3 ? user.dailyLimit : getDailyLimitForPlan(user.plan));
-          if (!isAdminUser && effectiveDailyLimit < 999 && dailyCallsToday >= effectiveDailyLimit) {
+          if (!entitlement.isAdmin && !entitlement.isUnlimited && dailyCallsToday >= entitlement.dailyLimit) {
             socket.emit('error', {
-              message: `You have reached your daily limit of ${effectiveDailyLimit} calls. Please upgrade to PLUS or PRO to continue practicing!`,
+              code: 'MATCHMAKING_QUOTA_EXCEEDED',
+              message: `You have reached your daily limit of ${entitlement.dailyLimit} calls. Please upgrade to PLUS or PRO to continue practicing!`,
             });
             return;
           }
@@ -285,42 +315,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           let transactionSucceeded = false;
           try {
             await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-              const today = new Date().toISOString().slice(0, 10);
-              await tx.user.updateMany({
-                where: {
-                  id: { in: [user.id, partner.id] },
-                  OR: [{ lastCallDate: null }, { lastCallDate: { not: today } }],
-                },
-                data: { dailyCallsUsed: 0, lastCallDate: today },
-              });
-
-              const effectiveDailyLimitUser = getDailyLimitForPlan(user.plan);
-              const effectiveDailyLimitPartner = getDailyLimitForPlan(partner.plan);
-
-              const isUserUnlimited = effectiveDailyLimitUser >= 999;
-              const isPartnerUnlimited = effectiveDailyLimitPartner >= 999;
-
-              const userQuota = await tx.user.updateMany({
-                where: {
-                  id: user.id,
-                  lastCallDate: today,
-                  ...(isUserUnlimited ? {} : { dailyCallsUsed: { lt: effectiveDailyLimitUser } }),
-                },
-                data: { dailyCallsUsed: { increment: 1 } },
-              });
-              const partnerQuota = await tx.user.updateMany({
-                where: {
-                  id: partner.id,
-                  lastCallDate: today,
-                  ...(isPartnerUnlimited ? {} : { dailyCallsUsed: { lt: effectiveDailyLimitPartner } }),
-                },
-                data: { dailyCallsUsed: { increment: 1 } },
-              });
-
-              if (userQuota.count !== 1 || partnerQuota.count !== 1) {
-                throw new Error('Daily call limit reached');
-              }
-
+              // Ensure call session is created cleanly with status ACTIVE
               await tx.callSession.create({
                 data: { roomName, userAId: user.id, userBId: partner.id, status: 'ACTIVE' },
               });
@@ -360,6 +355,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     });
                     if (claimed.count !== 1) return;
 
+                    await recordCompletedCallCredits(currentSession.userAId, currentSession.userBId, durationSeconds);
+
                     const egress = activeEgresses.get(roomName);
                     const egressId = egress?.egressId ?? currentSession.egressId;
                     const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
@@ -376,8 +373,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     }
                     activeEgresses.delete(roomName);
 
+                    const retentionA = getEffectiveEntitlement(currentSession.userA).retentionDays;
+                    const retentionB = getEffectiveEntitlement(currentSession.userB).retentionDays;
                     const recordingExpiresAt = recordingUrl
-                      ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(currentSession.userA.plan), getRetentionDaysForPlan(currentSession.userB.plan)) * 24 * 60 * 60 * 1000)
+                      ? new Date(Date.now() + Math.max(retentionA, retentionB) * 24 * 60 * 60 * 1000)
                       : null;
 
                     await prisma.callSession.update({
@@ -593,6 +592,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
+          await recordCompletedCallCredits(session.userAId, session.userBId, durationSeconds);
+
           const egress = activeEgresses.get(payload.roomName);
           const egressId = egress?.egressId ?? session.egressId;
           const recordingUrl = egress?.relativeUrl || session.recordingUrl || undefined;
@@ -609,8 +610,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
           activeEgresses.delete(payload.roomName);
 
+          const retentionA = getEffectiveEntitlement(session.userA).retentionDays;
+          const retentionB = getEffectiveEntitlement(session.userB).retentionDays;
           const recordingExpiresAt = recordingUrl
-            ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(session.userA.plan), getRetentionDaysForPlan(session.userB.plan)) * 24 * 60 * 60 * 1000)
+            ? new Date(Date.now() + Math.max(retentionA, retentionB) * 24 * 60 * 60 * 1000)
             : null;
 
           await prisma.callSession.update({

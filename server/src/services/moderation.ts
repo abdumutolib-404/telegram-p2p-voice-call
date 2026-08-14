@@ -60,8 +60,8 @@ export class ModerationService {
 
       const newWarningCount = targetUser.warningCount + 1;
 
-      if (newWarningCount === 1) {
-        // 1st report -> Warning
+      if (newWarningCount < 3) {
+        // 1st or 2nd report -> Warning
         await tx.user.update({
           where: { id: targetUserId },
           data: { warningCount: newWarningCount },
@@ -71,10 +71,10 @@ export class ModerationService {
           penaltyLevel: 'WARNING' as const,
           warningCount: newWarningCount,
           isPermanentlyBanned: false,
-          message: 'Warning issued to user for 1st offense.',
+          message: `Warning issued to user (${newWarningCount}/3 warnings).`,
         };
-      } else if (newWarningCount === 2) {
-        // 2nd report -> 6-hour temporary ban
+      } else if (newWarningCount < 5) {
+        // 3rd or 4th report -> 6-hour temporary ban
         const bannedUntil = new Date(Date.now() + 6 * 60 * 60 * 1000);
         await tx.user.update({
           where: { id: targetUserId },
@@ -90,10 +90,10 @@ export class ModerationService {
           warningCount: newWarningCount,
           bannedUntil,
           isPermanentlyBanned: false,
-          message: 'User temporary banned for 6 hours (2nd offense).',
+          message: `User temporarily banned for 6 hours (${newWarningCount} warnings threshold reached).`,
         };
       } else {
-        // 3rd report or higher -> Permanent Lock
+        // 5th report or higher -> Permanent Lock
         await tx.user.update({
           where: { id: targetUserId },
           data: {
@@ -108,9 +108,68 @@ export class ModerationService {
           penaltyLevel: 'PERM_BAN' as const,
           warningCount: newWarningCount,
           isPermanentlyBanned: true,
-          message: 'User permanently locked (3rd offense).',
+          message: `User permanently locked (${newWarningCount} warnings limit reached).`,
         };
       }
+    });
+  }
+
+  /**
+   * Centralized warning escalation logic for admin moderation & user reports:
+   * Warnings 1-2: Warned (warningCount 1..2)
+   * Warnings 3-4: Temporarily Suspended for 6 hours (isBanned: true, bannedUntil: +6h)
+   * Warnings 5+: Permanently Banned (isPermanentlyBanned: true, isBanned: true, bannedUntil: null)
+   */
+  async escalateUserWarning(userId: string, reason?: string): Promise<{
+    user: any;
+    penaltyLevel: 'WARNING' | 'TEMP_BAN' | 'PERM_BAN';
+    warningCount: number;
+    notificationText: string;
+  }> {
+    return await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) throw new Error('User not found');
+
+      const newWarningCount = user.warningCount + 1;
+      let penaltyLevel: 'WARNING' | 'TEMP_BAN' | 'PERM_BAN' = 'WARNING';
+      let updateData: any = { warningCount: newWarningCount };
+      let notificationText = '';
+
+      if (newWarningCount < 3) {
+        penaltyLevel = 'WARNING';
+        notificationText = `⚠️ *Official Community Warning (${newWarningCount}/3)*\n\nYou have received a warning from moderation.\n*Reason:* ${reason || 'Inappropriate conduct or policy violation in voice calls.'}\n\nAccumulating 3 warnings will result in an automatic 6-hour temporary ban.`;
+      } else if (newWarningCount < 5) {
+        penaltyLevel = 'TEMP_BAN';
+        const bannedUntil = new Date(Date.now() + 6 * 60 * 60 * 1000);
+        updateData = {
+          warningCount: newWarningCount,
+          isBanned: true,
+          isPermanentlyBanned: false,
+          bannedUntil,
+        };
+        notificationText = `🚫 *Account Temporarily Suspended (6 Hours)*\n\nYou have accumulated ${newWarningCount} warnings.\n*Reason:* ${reason || 'Repeated warnings or call policy violation.'}\n\nYour account is suspended for 6 hours. Temporary suspensions expire automatically.`;
+      } else {
+        penaltyLevel = 'PERM_BAN';
+        updateData = {
+          warningCount: newWarningCount,
+          isBanned: true,
+          isPermanentlyBanned: true,
+          bannedUntil: null,
+        };
+        notificationText = `⛔ *Account Permanently Banned*\n\nYou have accumulated ${newWarningCount} warnings.\n*Reason:* ${reason || 'Severe or persistent policy violations.'}\n\nYour account has been permanently suspended. You may submit an appeal using the bot command /appeal.`;
+      }
+
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: updateData,
+      });
+
+      return {
+        user: updated,
+        penaltyLevel,
+        warningCount: newWarningCount,
+        notificationText,
+      };
     });
   }
 

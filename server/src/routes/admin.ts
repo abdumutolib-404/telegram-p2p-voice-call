@@ -7,7 +7,8 @@ import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
 import { env } from '../config/env';
 import { adminAuthMiddleware } from '../middleware/adminAuth';
 import { getAdminAnalytics } from '../services/analytics';
-import { getPlansConfig, updatePlansConfig, getDailyLimitForPlan, getMaxDurationForPlan } from '../services/plan';
+import { getPlansConfig, updatePlansConfig, getDailyLimitForPlan, getMaxDurationForPlan, getRetentionDaysForPlan } from '../services/plan';
+import { moderationService } from '../services/moderation';
 import { prisma } from '../config/database';
 import { createRateLimiter } from '../middleware/rateLimit';
 import { getRedis } from '../config/redis';
@@ -671,6 +672,7 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
         telegramId: u.telegramId.toString(),
         alias: u.alias,
         planTier: u.plan.toLowerCase(),
+        customPlanName: u.customPlanName || null,
         status,
         subscores: {
           fc: u.subFC,
@@ -681,6 +683,7 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
         dailyLimit: u.dailyLimit,
         dailyCallsUsed: u.dailyCallsUsed,
         maxDuration: u.maxDuration,
+        retentionOverride: u.retentionOverride || null,
         warningCount: u.warningCount,
         createdAt: u.createdAt.toISOString(),
       };
@@ -696,7 +699,7 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
 // PATCH /api/admin/users/:id/plan (Protected - Manual Plan & Limit Updates)
 router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { plan, dailyLimit, maxDuration, resetDailyCalls } = req.body;
+  const { plan, dailyLimit, maxDuration, retentionOverride, customPlanName, resetDailyCalls } = req.body;
 
   try {
     const user = await prisma.user.findUnique({ where: { id } });
@@ -718,14 +721,22 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
     }
 
     if (dailyLimit !== undefined && typeof dailyLimit === 'number' && dailyLimit >= 0) {
-      updateData.dailyLimit = Math.floor(dailyLimit);
+      updateData.dailyLimit = dailyLimit;
     }
 
     if (maxDuration !== undefined && typeof maxDuration === 'number' && maxDuration > 0) {
-      updateData.maxDuration = Math.floor(maxDuration);
+      updateData.maxDuration = maxDuration;
     }
 
-    if (resetDailyCalls) {
+    if (retentionOverride !== undefined) {
+      updateData.retentionOverride = typeof retentionOverride === 'number' && retentionOverride > 0 ? retentionOverride : null;
+    }
+
+    if (customPlanName !== undefined) {
+      updateData.customPlanName = typeof customPlanName === 'string' && customPlanName.trim().length > 0 ? customPlanName.trim() : null;
+    }
+
+    if (resetDailyCalls === true) {
       updateData.dailyCallsUsed = 0;
     }
 
@@ -734,16 +745,18 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       data: updateData,
     });
 
-    if (adminBotInstance && (plan || resetDailyCalls || dailyLimit !== undefined)) {
-      const planName = updated.plan;
+    if (adminBotInstance && (plan || resetDailyCalls || dailyLimit !== undefined || retentionOverride !== undefined)) {
+      const planName = updated.customPlanName || updated.plan;
       const limitText = updated.dailyLimit >= 999 ? 'Unlimited' : `${updated.dailyLimit} calls/day`;
       const durText = `${updated.maxDuration} minutes`;
+      const retentionText = updated.retentionOverride ? `${updated.retentionOverride} days (Custom)` : `${getRetentionDaysForPlan(updated.plan)} days`;
       const msg =
         `⭐ *Account Plan Updated by Administrator*\n\n` +
         `Your IELTS Speaking P2P limits have been updated:\n` +
         `• *Plan Tier*: *${planName}*\n` +
         `• *Daily Call Limit*: ${limitText}\n` +
         `• *Max Call Duration*: ${durText}\n` +
+        `• *Recording Retention*: ${retentionText}\n` +
         (resetDailyCalls ? `• *Calls Used Today*: Reset to 0\n` : '') +
         `\nEnjoy practicing!`;
       await adminBotInstance.api.sendMessage(updated.telegramId.toString(), msg, { parse_mode: 'Markdown' })
@@ -761,6 +774,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       telegramId: updated.telegramId.toString(),
       alias: updated.alias,
       planTier: updated.plan.toLowerCase(),
+      customPlanName: updated.customPlanName || null,
       status,
       subscores: {
         fc: updated.subFC,
@@ -771,6 +785,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       dailyLimit: updated.dailyLimit,
       dailyCallsUsed: updated.dailyCallsUsed,
       maxDuration: updated.maxDuration,
+      retentionOverride: updated.retentionOverride || null,
       warningCount: updated.warningCount,
       createdAt: updated.createdAt.toISOString(),
     });
@@ -828,17 +843,26 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
     let notificationText: string | null = null;
 
     switch (action) {
-      case 'warn':
-        updateData = { warningCount: { increment: 1 } };
-        notificationText = `⚠️ *Official Community Warning*\n\nYou have received a warning from moderation.\n*Reason:* ${reason || 'Inappropriate conduct or policy violation in voice calls.'}\n\nAccumulating 3 warnings will result in a temporary ban.`;
-        break;
+      case 'warn': {
+        const escalation = await moderationService.escalateUserWarning(id, reason);
+        if (adminBotInstance) {
+          await adminBotInstance.api.sendMessage(escalation.user.telegramId.toString(), escalation.notificationText, { parse_mode: 'Markdown' })
+            .catch((e: unknown) => console.warn('[Admin] Failed to send warn notice:', e));
+        }
+        return res.json({
+          success: true,
+          user: { ...escalation.user, telegramId: escalation.user.telegramId.toString() },
+          penaltyLevel: escalation.penaltyLevel,
+          warningCount: escalation.warningCount,
+        });
+      }
       case 'block':
         updateData = {
           isBanned: true,
           isPermanentlyBanned: false,
           bannedUntil: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6 hours
         };
-        notificationText = `🚫 *Account Temporarily Suspended (6 Hours)*\n\nYour account has been suspended for 6 hours.\n*Reason:* ${reason || 'Repeated warnings or call policy violation.'}\n\nYou can submit an appeal or wait for your suspension to expire.`;
+        notificationText = `🚫 *Account Temporarily Suspended (6 Hours)*\n\nYour account has been suspended for 6 hours.\n*Reason:* ${reason || 'Repeated warnings or call policy violation.'}\n\nYour suspension will expire automatically in 6 hours.`;
         break;
       case 'ban':
         updateData = {
@@ -846,7 +870,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
           isPermanentlyBanned: true,
           bannedUntil: null,
         };
-        notificationText = `⛔ *Account Permanently Banned*\n\nYour account has been permanently suspended by administration.\n*Reason:* ${reason || 'Severe violation of platform terms.'}\n\nYou may submit an unban appeal from the Telegram bot.`;
+        notificationText = `⛔ *Account Permanently Banned*\n\nYour account has been permanently suspended by administration.\n*Reason:* ${reason || 'Severe violation of platform terms.'}\n\nYou may submit an unban appeal from the Telegram bot with /appeal.`;
         break;
       case 'unblock':
         updateData = {

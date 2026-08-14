@@ -283,23 +283,37 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
       expect(banCheck.banned).toBe(false);
     });
 
-    it('3.2 Step 2: 2nd report triggers 6-hour Temporary Ban', async () => {
+    it('3.2 Step 2: 2nd report issues 2nd Warning (not banned yet)', async () => {
       const call = await prisma.callSession.create({
         data: { roomName: `room_mod_test_step_2`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
       });
       const res2 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '2nd report reason');
 
-      expect(res2.penaltyLevel).toBe('TEMP_BAN');
+      expect(res2.penaltyLevel).toBe('WARNING');
       expect(res2.warningCount).toBe(2);
-      expect(res2.bannedUntil).toBeDefined();
       expect(res2.isPermanentlyBanned).toBe(false);
+
+      const banCheck = await moderationService.isUserBanned(targetUser.id);
+      expect(banCheck.banned).toBe(false);
+    });
+
+    it('3.3 Step 3: 3rd report triggers 6-hour Temporary Ban', async () => {
+      const call = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_3`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+      });
+      const res3 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '3rd report reason');
+
+      expect(res3.penaltyLevel).toBe('TEMP_BAN');
+      expect(res3.warningCount).toBe(3);
+      expect(res3.bannedUntil).toBeDefined();
+      expect(res3.isPermanentlyBanned).toBe(false);
 
       const banCheck = await moderationService.isUserBanned(targetUser.id);
       expect(banCheck.banned).toBe(true);
       expect(banCheck.reason).toContain('Temporarily suspended');
     });
 
-    it('3.3 Step 3: Auto-unban after temporary ban expiry', async () => {
+    it('3.4 Step 4: Auto-unban after temporary ban expiry', async () => {
       // Simulate ban expiry by manually setting bannedUntil 1 hour in the past
       await prisma.user.update({
         where: { id: targetUser.id },
@@ -318,30 +332,35 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
       expect(dbUser?.bannedUntil).toBeNull();
     });
 
-    it('3.4 Step 4: 3rd report triggers Permanent Lock', async () => {
-      const call = await prisma.callSession.create({
-        data: { roomName: `room_mod_test_step_3`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+    it('3.5 Step 5: 5th report triggers Permanent Lock', async () => {
+      const call4 = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_4`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
       });
-      const res3 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '3rd report reason');
+      await moderationService.processReport(targetUser.id, reporterUser.id, call4.id, '4th report reason');
 
-      expect(res3.penaltyLevel).toBe('PERM_BAN');
-      expect(res3.warningCount).toBe(3);
-      expect(res3.isPermanentlyBanned).toBe(true);
+      const call5 = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_5`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+      });
+      const res5 = await moderationService.processReport(targetUser.id, reporterUser.id, call5.id, '5th report reason');
+
+      expect(res5.penaltyLevel).toBe('PERM_BAN');
+      expect(res5.warningCount).toBe(5);
+      expect(res5.isPermanentlyBanned).toBe(true);
 
       const banCheck = await moderationService.isUserBanned(targetUser.id);
       expect(banCheck.banned).toBe(true);
       expect(banCheck.reason).toContain('Permanently banned');
     });
 
-    it('3.5 Step 5: Permanent Lock persists on 4th+ report and cannot auto-expire', async () => {
-      const call = await prisma.callSession.create({
-        data: { roomName: `room_mod_test_step_4`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
+    it('3.6 Step 6: Permanent Lock persists on additional reports and cannot auto-expire', async () => {
+      const call6 = await prisma.callSession.create({
+        data: { roomName: `room_mod_test_step_6`, userAId: targetUser.id, userBId: reporterUser.id, status: 'COMPLETED' },
       });
-      const res4 = await moderationService.processReport(targetUser.id, reporterUser.id, call.id, '4th report reason');
+      const res6 = await moderationService.processReport(targetUser.id, reporterUser.id, call6.id, '6th report reason');
 
-      expect(res4.penaltyLevel).toBe('PERM_BAN');
-      expect(res4.warningCount).toBe(4);
-      expect(res4.isPermanentlyBanned).toBe(true);
+      expect(res6.penaltyLevel).toBe('PERM_BAN');
+      expect(res6.warningCount).toBe(6);
+      expect(res6.isPermanentlyBanned).toBe(true);
 
       // Even if bannedUntil is set to the past, permanent ban overrules
       await prisma.user.update({

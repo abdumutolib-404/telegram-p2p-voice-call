@@ -18,9 +18,11 @@ model User {
   subP                Float              @default(6.0)
   band                Float              @default(6.0)
   plan                String             @default("FREE") // "FREE", "PLUS", "PRO"
+  customPlanName      String?
   maxDuration         Int                @default(15) // max call duration in minutes
   dailyLimit          Int                @default(3)
   dailyCallsUsed      Int                @default(0)
+  retentionOverride   Int?               // custom recording retention in days
   lastCallDate        String?            // YYYY-MM-DD
   warningCount        Int                @default(0)
   isBanned            Boolean            @default(false)

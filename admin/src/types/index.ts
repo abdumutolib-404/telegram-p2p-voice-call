@@ -10,6 +10,17 @@ export interface StarsRevenue {
   monthlyHistory: MonthlyRevenue[];
 }
 
+export interface CallQualityBreakdown {
+  score: number | null;
+  sampleSize: number;
+  statusMessage: 'Optimal' | 'Good' | 'Degraded' | 'Insufficient sample size';
+  completionRate: number;
+  audioReliability: number;
+  recordingReliability: number;
+  cancellationRate: number;
+  averageDurationSeconds: number;
+}
+
 export interface AdminStats {
   totalUsers: number;
   mau: number;
@@ -18,6 +29,7 @@ export interface AdminStats {
   totalMinutesSpoken?: number;
   activeCalls: number;
   starsRevenue: StarsRevenue;
+  callQuality?: CallQualityBreakdown;
 }
 
 export interface PlanTierConfig {
@@ -62,12 +74,14 @@ export interface UserItem {
   weakSkill?: string;
   strongSkill?: string;
   planTier: 'free' | 'plus' | 'pro';
+  customPlanName?: string | null;
   status: 'active' | 'warned' | 'blocked' | 'banned';
   subscores?: Subscores;
   warningCount?: number;
   dailyLimit?: number;
   dailyCallsUsed?: number;
   maxDuration?: number;
+  retentionOverride?: number | null;
   createdAt: string;
 }
 

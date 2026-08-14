@@ -18,6 +18,8 @@ type UserData = Record<string, unknown>;
 type CallSessionWhere = {
   id?: string;
   roomName?: string;
+  userAId?: string;
+  userBId?: string;
   status?: string | { in?: string[] };
   egressId?: string | null;
   recordingUrl?: string | null | { not?: null };
@@ -40,9 +42,11 @@ interface UserRow {
   subP: number;
   band: number;
   plan: string;
+  customPlanName?: string | null;
   maxDuration: number;
   dailyLimit: number;
   dailyCallsUsed: number;
+  retentionOverride?: number | null;
   lastCallDate: string | null;
   warningCount: number;
   isBanned: boolean;
@@ -173,9 +177,11 @@ export class InMemoryPrismaMock {
         subP: numberValue(args.data.subP, 6),
         band: numberValue(args.data.band, 6),
         plan: stringValue(args.data.plan, 'FREE'),
+        customPlanName: args.data.customPlanName ? String(args.data.customPlanName) : null,
         maxDuration: numberValue(args.data.maxDuration, 15),
         dailyLimit: numberValue(args.data.dailyLimit, 3),
         dailyCallsUsed: numberValue(args.data.dailyCallsUsed, 0),
+        retentionOverride: args.data.retentionOverride ? Number(args.data.retentionOverride) : null,
         lastCallDate: args.data.lastCallDate == null ? null : stringValue(args.data.lastCallDate),
         warningCount: numberValue(args.data.warningCount, 0),
         isBanned: booleanValue(args.data.isBanned, false),
@@ -277,13 +283,24 @@ export class InMemoryPrismaMock {
       return { ...row };
     },
 
-    findUnique: async (args: { where: { id?: string; roomName?: string } }): Promise<CallSessionRow | null> => {
+    findUnique: async (args: { where: { id?: string; roomName?: string }; include?: { userA?: boolean; userB?: boolean } }): Promise<(CallSessionRow & { userA?: UserRow; userB?: UserRow }) | null> => {
       const row = args.where.id ? this.callSessions.get(args.where.id) : [...this.callSessions.values()].find((session) => session.roomName === args.where.roomName);
-      return row ? { ...row } : null;
+      if (!row) return null;
+      return {
+        ...row,
+        ...(args?.include?.userA ? { userA: this.users.get(row.userAId) } : {}),
+        ...(args?.include?.userB ? { userB: this.users.get(row.userBId) } : {}),
+      };
     },
 
-    findFirst: async (args: { where?: CallSessionWhere }): Promise<CallSessionRow | null> => {
-      return [...this.callSessions.values()].find((session) => this.matchesCallSession(session, args.where)) ?? null;
+    findFirst: async (args: { where?: CallSessionWhere; include?: { userA?: boolean; userB?: boolean } }): Promise<(CallSessionRow & { userA?: UserRow; userB?: UserRow }) | null> => {
+      const row = [...this.callSessions.values()].find((session) => this.matchesCallSession(session, args.where)) ?? null;
+      if (!row) return null;
+      return {
+        ...row,
+        ...(args?.include?.userA ? { userA: this.users.get(row.userAId) } : {}),
+        ...(args?.include?.userB ? { userB: this.users.get(row.userBId) } : {}),
+      };
     },
 
     findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<CallSessionRow[]> => {
@@ -409,6 +426,33 @@ export class InMemoryPrismaMock {
       }
       return { count };
     },
+    count: async (args?: { where?: { userId?: string; status?: string } }): Promise<number> => {
+      let c = 0;
+      for (const appeal of this.unblockAppeals.values()) {
+        if (args?.where?.userId && appeal.userId !== args.where.userId) continue;
+        if (args?.where?.status && appeal.status !== args.where.status) continue;
+        c += 1;
+      }
+      return c;
+    },
+    deleteMany: async (args?: { where?: { userId?: string | { in: string[] }; id?: string } }): Promise<{ count: number }> => {
+      if (!args?.where) {
+        const count = this.unblockAppeals.size;
+        this.unblockAppeals.clear();
+        return { count };
+      }
+      let count = 0;
+      for (const [id, appeal] of this.unblockAppeals) {
+        if (args.where.id && id !== args.where.id) continue;
+        if (args.where.userId) {
+          if (typeof args.where.userId === 'string' && appeal.userId !== args.where.userId) continue;
+          if (typeof args.where.userId === 'object' && 'in' in args.where.userId && !args.where.userId.in.includes(appeal.userId)) continue;
+        }
+        this.unblockAppeals.delete(id);
+        count += 1;
+      }
+      return { count };
+    },
   };
 
   starsTransaction = {
@@ -510,6 +554,8 @@ export class InMemoryPrismaMock {
     if (!where) return true;
     if (where.id && session.id !== where.id) return false;
     if (where.roomName && session.roomName !== where.roomName) return false;
+    if (where.userAId && session.userAId !== where.userAId) return false;
+    if (where.userBId && session.userBId !== where.userBId) return false;
     if (typeof where.status === 'string' && session.status !== where.status) return false;
     if (typeof where.status === 'object' && where.status.in && !where.status.in.includes(session.status)) return false;
     if (where.egressId !== undefined && session.egressId !== where.egressId) return false;
@@ -531,7 +577,7 @@ export class InMemoryPrismaMock {
     for (const [key, value] of Object.entries(data)) {
       if (key === 'dailyCallsUsed') updated.dailyCallsUsed = applyIncrement(user.dailyCallsUsed, value);
       else if (key === 'telegramId') updated.telegramId = BigInt(String(value));
-      else if (key in updated) (updated as unknown as Record<string, unknown>)[key] = value;
+      else (updated as unknown as Record<string, unknown>)[key] = value;
     }
     updated.updatedAt = new Date();
     return updated;
@@ -540,7 +586,7 @@ export class InMemoryPrismaMock {
   private mergeCallSession(session: CallSessionRow, data: CallSessionData): CallSessionRow {
     const updated = { ...session };
     for (const [key, value] of Object.entries(data)) {
-      if (key in updated) (updated as unknown as Record<string, unknown>)[key] = value;
+      (updated as unknown as Record<string, unknown>)[key] = value;
     }
     return updated;
   }

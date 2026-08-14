@@ -223,6 +223,85 @@ export function AnalyticsOverview() {
         </div>
       </div>
 
+      {/* Call Quality & Telemetry Section */}
+      <div style={{
+        backgroundColor: '#1e293b',
+        border: '1px solid #334155',
+        borderRadius: '12px',
+        padding: '1.5rem'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0, color: '#f8fafc' }}>
+              Overall Call Quality Rating & Telemetry
+            </h3>
+            <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
+              Measurable reliability score derived from session completion, audio stability, and recording success
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {defaultStats.callQuality?.score !== null && defaultStats.callQuality?.score !== undefined ? (
+              <span style={{
+                padding: '0.35rem 0.75rem',
+                backgroundColor: defaultStats.callQuality.score >= 90 ? '#064e3b' : defaultStats.callQuality.score >= 75 ? '#78350f' : '#451a1a',
+                color: defaultStats.callQuality.score >= 90 ? '#6ee7b7' : defaultStats.callQuality.score >= 75 ? '#fcd34d' : '#fca5a5',
+                borderRadius: '9999px',
+                fontSize: '0.85rem',
+                fontWeight: 700
+              }}>
+                ⭐ {defaultStats.callQuality.score}/100 — {defaultStats.callQuality.statusMessage}
+              </span>
+            ) : (
+              <span style={{
+                padding: '0.35rem 0.75rem',
+                backgroundColor: '#334155',
+                color: '#94a3b8',
+                borderRadius: '9999px',
+                fontSize: '0.85rem',
+                fontWeight: 600
+              }}>
+                ℹ️ Insufficient Sample Size ({defaultStats.callQuality?.sampleSize ?? 0} sessions)
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+          <div style={{ padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Completion Rate</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#38bdf8', marginTop: '0.25rem' }}>
+              {defaultStats.callQuality?.completionRate ?? 100}%
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Successful normal conclusions</span>
+          </div>
+
+          <div style={{ padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Audio Stability</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#34d399', marginTop: '0.25rem' }}>
+              {defaultStats.callQuality?.audioReliability ?? 100}%
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Low premature drops & disconnects</span>
+          </div>
+
+          <div style={{ padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Recording Egress Success</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#a78bfa', marginTop: '0.25rem' }}>
+              {defaultStats.callQuality?.recordingReliability ?? 100}%
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Audio files persisted & synced</span>
+          </div>
+
+          <div style={{ padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Cancellation Rate</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f87171', marginTop: '0.25rem' }}>
+              {defaultStats.callQuality?.cancellationRate ?? 0}%
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Aborted calls during setup</span>
+          </div>
+        </div>
+      </div>
+
       {/* Revenue History Section */}
       <div style={{
         backgroundColor: '#1e293b',

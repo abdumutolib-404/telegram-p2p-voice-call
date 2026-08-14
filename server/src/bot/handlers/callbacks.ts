@@ -3,7 +3,7 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { calculateOverallBand, generateUniqueAlias, getMainMenuKeyboard } from '../commands/start';
-import { getRetentionDaysForPlan } from '../../services/plan';
+import { getRetentionDaysForPlan, getEffectiveEntitlement } from '../../services/plan';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
@@ -338,7 +338,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      const allowedRetentionDays = getRetentionDaysForPlan(user.plan);
+      const allowedRetentionDays = getEffectiveEntitlement(user).retentionDays;
       const sessionAgeMs = Date.now() - session.createdAt.getTime();
       if (sessionAgeMs > allowedRetentionDays * 24 * 60 * 60 * 1000) {
         await ctx.answerCallbackQuery({ text: 'Recording retention expired for your plan level.' });
@@ -369,7 +369,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
   });
 
   // Callback: direct_call:<partnerId>
-  bot.callbackQuery(/^direct_call:(.+)$/, async (ctx) => {
+  bot.callbackQuery(/^(?:direct_call|call_favorite):(.+)$/, async (ctx) => {
     const partnerId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
 
@@ -394,6 +394,18 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       if (partner.dnd) {
         await ctx.answerCallbackQuery({ text: `${partner.alias} has Do Not Disturb enabled.` });
+        return;
+      }
+
+      // Ensure caller is not currently in an active call
+      const activeCall = await prisma.callSession.findFirst({
+        where: {
+          status: 'ACTIVE',
+          OR: [{ userAId: user.id }, { userBId: user.id }],
+        },
+      });
+      if (activeCall) {
+        await ctx.answerCallbackQuery({ text: 'You are already in an active call session.' });
         return;
       }
 
@@ -428,12 +440,19 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: submit_appeal
   bot.callbackQuery('submit_appeal', async (ctx) => {
+    const telegramId = BigInt(ctx.from.id);
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user || !user.isPermanentlyBanned) {
+      await ctx.answerCallbackQuery({ text: 'Appeals are available only to permanently banned accounts.' });
+      return;
+    }
+
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      `⚖️ *Submit Appeal or Message Moderation:*\n\n` +
+      `⚖️ *Submit Unban Appeal:*\n\n` +
         `Please send your appeal message using the \`/appeal\` command.\n\n` +
         `*Example:*\n\`/appeal I would like to request an unban because my connection dropped.\`\n\n` +
-        `Your message will go directly to our admin team's review queue.`,
+        `Your message will go directly to our moderation team's review queue.`,
       { parse_mode: 'Markdown' }
     );
   });

@@ -6,6 +6,17 @@ export interface MonthlyRevenue {
   usd: number;
 }
 
+export interface CallQualityBreakdown {
+  score: number | null; // null if insufficient sample size
+  sampleSize: number;
+  statusMessage: 'Optimal' | 'Good' | 'Degraded' | 'Insufficient sample size';
+  completionRate: number; // 0-100%
+  audioReliability: number; // 0-100%
+  recordingReliability: number; // 0-100%
+  cancellationRate: number; // 0-100%
+  averageDurationSeconds: number;
+}
+
 export interface AdminAnalyticsData {
   totalUsers: number;
   mau: number;
@@ -18,6 +29,7 @@ export interface AdminAnalyticsData {
     totalUsd: number;
     monthlyHistory: MonthlyRevenue[];
   };
+  callQuality: CallQualityBreakdown;
 }
 
 export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
@@ -39,20 +51,60 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     },
   });
 
-  const totalCalls = await prisma.callSession.count({
-    where: { status: 'COMPLETED' },
+  const allSessions = await prisma.callSession.findMany({
+    select: { status: true, duration: true, recordingUrl: true, egressId: true },
   });
 
-  const activeCalls = await prisma.callSession.count({
-    where: { status: 'ACTIVE' },
-  });
+  const totalCalls = allSessions.filter((s) => s.status === 'COMPLETED').length;
+  const activeCalls = allSessions.filter((s) => s.status === 'ACTIVE').length;
+  const cancelledCalls = allSessions.filter((s) => s.status === 'CANCELLED').length;
 
-  const completedSessions = await prisma.callSession.findMany({
-    where: { status: 'COMPLETED' },
-    select: { duration: true },
-  });
+  const completedSessions = allSessions.filter((s) => s.status === 'COMPLETED');
   const totalDurationSeconds = completedSessions.reduce((acc, s) => acc + (s.duration || 0), 0);
   const totalMinutesSpoken = Math.round(totalDurationSeconds / 60);
+
+  // Calculate Call Quality Score from measurable telemetry
+  const sampleSize = allSessions.length;
+  let callQuality: CallQualityBreakdown;
+
+  if (sampleSize < 5) {
+    callQuality = {
+      score: null,
+      sampleSize,
+      statusMessage: 'Insufficient sample size',
+      completionRate: sampleSize > 0 ? Math.round((totalCalls / sampleSize) * 100) : 100,
+      audioReliability: 100,
+      recordingReliability: 100,
+      cancellationRate: sampleSize > 0 ? Math.round((cancelledCalls / sampleSize) * 100) : 0,
+      averageDurationSeconds: totalCalls > 0 ? Math.round(totalDurationSeconds / totalCalls) : 0,
+    };
+  } else {
+    const finishedOrCancelled = Math.max(1, totalCalls + cancelledCalls);
+    const completionRate = Math.round((totalCalls / finishedOrCancelled) * 100);
+    const cancellationRate = Math.round((cancelledCalls / finishedOrCancelled) * 100);
+
+    const recordingAttempts = completedSessions.filter((s) => Boolean(s.egressId || s.recordingUrl)).length;
+    const recordingsSucceeded = completedSessions.filter((s) => Boolean(s.recordingUrl)).length;
+    const recordingReliability = recordingAttempts > 0 ? Math.round((recordingsSucceeded / recordingAttempts) * 100) : 100;
+
+    const audioReliability = Math.max(0, Math.min(100, Math.round(100 - cancellationRate * 1.2)));
+    const averageDurationSeconds = totalCalls > 0 ? Math.round(totalDurationSeconds / totalCalls) : 0;
+
+    const weightedScore = Math.round(completionRate * 0.45 + audioReliability * 0.35 + recordingReliability * 0.2);
+    const score = Math.max(0, Math.min(100, weightedScore));
+    const statusMessage: 'Optimal' | 'Good' | 'Degraded' = score >= 90 ? 'Optimal' : score >= 75 ? 'Good' : 'Degraded';
+
+    callQuality = {
+      score,
+      sampleSize,
+      statusMessage,
+      completionRate,
+      audioReliability,
+      recordingReliability,
+      cancellationRate,
+      averageDurationSeconds,
+    };
+  }
 
   const transactions = await prisma.starsTransaction.findMany();
   const totalStars = transactions.reduce((acc, t) => acc + t.starsAmount, 0);
@@ -85,5 +137,6 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
       totalUsd: parseFloat((totalStars * 0.013).toFixed(2)),
       monthlyHistory,
     },
+    callQuality,
   };
 }
