@@ -7,7 +7,16 @@ import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
 import { env } from '../config/env';
 import { adminAuthMiddleware } from '../middleware/adminAuth';
 import { getAdminAnalytics } from '../services/analytics';
-import { getPlansConfig, updatePlansConfig, getDailyLimitForPlan, getMaxDurationForPlan, getRetentionDaysForPlan } from '../services/plan';
+import {
+  getPlansConfig,
+  updatePlansConfig,
+  getDailyLimitForPlan,
+  getMaxDurationForPlan,
+  getRetentionDaysForPlan,
+  approveManualPaymentRequest,
+  rejectManualPaymentRequest,
+  revokePlanOnRefund,
+} from '../services/plan';
 import { moderationService } from '../services/moderation';
 import { prisma } from '../config/database';
 import { createRateLimiter } from '../middleware/rateLimit';
@@ -478,6 +487,178 @@ router.put('/plans', adminAuthMiddleware, async (req, res) => {
     res.json({ success: true, ...updated, plans: updated });
   } catch (err) {
     res.status(400).json({ error: 'Failed to update plan configurations.' });
+  }
+});
+
+// GET /api/admin/payments/manual (Protected)
+router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
+  try {
+    const statusFilter = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const requests = await prisma.manualPaymentRequest.findMany({
+      where: statusFilter ? { status: statusFilter } : undefined,
+      orderBy: { createdAt: 'desc' },
+      include: { user: true },
+    });
+
+    const formatted = requests.map((r: any) => ({
+      id: r.id,
+      userId: r.userId,
+      alias: r.alias,
+      telegramId: r.telegramId.toString(),
+      planTier: r.plan,
+      amountUzs: r.uzsAmount,
+      status: r.status,
+      paymentProof: r.paymentProof,
+      adminNote: r.adminNote,
+      reviewedBy: r.reviewedBy,
+      reviewedAt: r.reviewedAt ? new Date(r.reviewedAt).toISOString() : null,
+      createdAt: new Date(r.createdAt).toISOString(),
+      user: r.user
+        ? {
+            band: r.user.band,
+            currentPlan: r.user.plan,
+            isBanned: r.user.isBanned || r.user.isPermanentlyBanned,
+          }
+        : undefined,
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error('[Admin] Failed to fetch manual payments:', err);
+    res.status(500).json({ error: 'Failed to retrieve manual payment requests.' });
+  }
+});
+
+// POST /api/admin/payments/manual/:id/approve (Protected)
+router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body;
+  const adminId = (req as any).adminUser?.id || 'admin';
+
+  try {
+    const result = await approveManualPaymentRequest({
+      requestId: id,
+      adminId,
+      note,
+    });
+
+    if (adminBotInstance && result.user) {
+      const plans = getPlansConfig();
+      const tier = (result.user.plan.toUpperCase() as keyof typeof plans) in plans
+        ? (result.user.plan.toUpperCase() as keyof typeof plans)
+        : 'PLUS';
+      const config = plans[tier] || plans.PLUS;
+
+      await adminBotInstance.api.sendMessage(
+        result.user.telegramId.toString(),
+        `🎉 *Payment Verified & Approved!*\n\n` +
+          `Your *${result.user.plan} Plan* has been activated.\n` +
+          `• Max Call Duration: ${config.maxDuration} minutes\n` +
+          `• Daily Limit: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/day`}\n` +
+          `• Recording Storage: ${config.retentionDays} days\n\n` +
+          `Happy practicing!`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => undefined);
+    }
+
+    res.json({ success: true, message: 'Payment approved and plan activated.', request: result.request });
+  } catch (err: any) {
+    console.error('[Admin] Failed to approve manual payment:', err);
+    res.status(400).json({ error: err.message || 'Failed to approve payment.' });
+  }
+});
+
+// POST /api/admin/payments/manual/:id/reject (Protected)
+router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body;
+  const adminId = (req as any).adminUser?.id || 'admin';
+
+  try {
+    const result = await rejectManualPaymentRequest({
+      requestId: id,
+      adminId,
+      note,
+    });
+
+    res.json({ success: true, message: 'Payment request rejected.', request: result.request });
+  } catch (err: any) {
+    console.error('[Admin] Failed to reject manual payment:', err);
+    res.status(400).json({ error: err.message || 'Failed to reject payment.' });
+  }
+});
+
+// GET /api/admin/payments/stars (Protected)
+router.get('/payments/stars', adminAuthMiddleware, async (_req, res) => {
+  try {
+    const transactions = await prisma.starsTransaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { user: true },
+    });
+
+    const formatted = transactions.map((t: any) => ({
+      id: t.id,
+      userId: t.userId,
+      alias: t.user?.alias || 'Unknown',
+      telegramId: t.user?.telegramId ? t.user.telegramId.toString() : '',
+      telegramPaymentId: t.telegramPaymentId,
+      starsAmount: t.starsAmount,
+      planTier: t.planTier,
+      status: t.status,
+      refundReason: t.refundReason,
+      refundedAt: t.refundedAt ? new Date(t.refundedAt).toISOString() : null,
+      createdAt: new Date(t.createdAt).toISOString(),
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error('[Admin] Failed to fetch stars transactions:', err);
+    res.status(500).json({ error: 'Failed to retrieve stars transactions.' });
+  }
+});
+
+// POST /api/admin/payments/stars/:id/refund (Protected)
+router.post('/payments/stars/:id/refund', adminAuthMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+  const adminId = (req as any).adminUser?.id || 'admin';
+
+  try {
+    const result = await revokePlanOnRefund({
+      transactionId: id,
+      adminId,
+      reason,
+    });
+
+    if (adminBotInstance && result.user) {
+      await adminBotInstance.api.sendMessage(
+        result.user.telegramId.toString(),
+        `ℹ️ *Telegram Stars Payment Refunded*\n\n` +
+          `• Amount: *${result.transaction.starsAmount} Stars*\n` +
+          `• Reason: ${reason || 'Administrator refund'}\n\n` +
+          `Your subscription has been reverted to the *FREE Plan*.`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => undefined);
+    }
+
+    res.json({ success: true, message: 'Stars payment refunded and plan revoked.', transaction: result.transaction });
+  } catch (err: any) {
+    console.error('[Admin] Failed to refund stars transaction:', err);
+    res.status(400).json({ error: err.message || 'Failed to refund transaction.' });
+  }
+});
+
+// GET /api/admin/audit-logs (Protected)
+router.get('/audit-logs', adminAuthMiddleware, async (_req, res) => {
+  try {
+    const logs = await prisma.auditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json(logs);
+  } catch (err) {
+    console.error('[Admin] Failed to fetch audit logs:', err);
+    res.status(500).json({ error: 'Failed to retrieve audit logs.' });
   }
 });
 

@@ -510,29 +510,41 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               return;
             }
 
-            const egress = await startAudioEgress(payload.roomName);
-            const updated = await prisma.callSession.updateMany({
-              where: { id: session.id, status: 'ACTIVE', egressId: null },
-              data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl },
-            });
-            if (updated.count !== 1) {
-              await stopAudioEgress(egress.egressId).catch((error: unknown) => {
-                console.error('[Socket] rollback_egress_stop_failed', {
-                  roomName: payload.roomName,
-                  error: error instanceof Error ? error.message : 'unknown_error',
+            try {
+              const egress = await startAudioEgress(payload.roomName);
+              const updated = await prisma.callSession.updateMany({
+                where: { id: session.id, status: 'ACTIVE', egressId: null },
+                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl },
+              });
+              if (updated.count !== 1) {
+                await stopAudioEgress(egress.egressId).catch((error: unknown) => {
+                  console.error('[Socket] rollback_egress_stop_failed', {
+                    roomName: payload.roomName,
+                    error: error instanceof Error ? error.message : 'unknown_error',
+                  });
                 });
+                return;
+              }
+
+              activeEgresses.set(payload.roomName, egress);
+              io.to(payload.roomName).emit('record_status', { record: true });
+              return;
+            } catch (egressErr) {
+              console.warn('[Socket] Recording start failed gracefully:', egressErr instanceof Error ? egressErr.message : egressErr);
+              socket.emit('record_status', { record: false });
+              socket.emit('error', {
+                code: 'RECORDING_UNAVAILABLE',
+                message: 'Audio recording is temporarily unavailable. Your voice call can proceed normally.',
               });
               return;
             }
-
-            activeEgresses.set(payload.roomName, egress);
-            io.to(payload.roomName).emit('record_status', { record: true });
-            return;
           }
 
           const egressId = session.egressId ?? activeEgresses.get(payload.roomName)?.egressId;
           if (egressId) {
-            await stopAudioEgress(egressId);
+            try {
+              await stopAudioEgress(egressId);
+            } catch {}
             await prisma.callSession.updateMany({
               where: { id: session.id, status: 'ACTIVE', egressId },
               data: { egressId: null },
@@ -547,7 +559,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           requesterId,
           error: error instanceof Error ? error.message : 'unknown_error',
         });
-        socket.emit('error', { message: 'Failed to toggle recording.' });
+        socket.emit('error', { code: 'INTERNAL_ERROR', message: 'Unable to update recording status.' });
       }
     });
 

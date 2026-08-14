@@ -33,10 +33,13 @@ export interface AdminStats {
 }
 
 export interface PlanTierConfig {
+  name?: string;
+  description?: string;
   maxDuration: number;
   dailyLimit: number;
   retentionDays: number;
   starsPrice?: number;
+  uzsPrice?: number;
 }
 
 export interface PlansResponse {
@@ -85,6 +88,61 @@ export interface UserItem {
   createdAt: string;
 }
 
+export type ModerationAction =
+  | 'warn'
+  | 'block'
+  | 'ban'
+  | 'unban'
+  | 'unblock'
+  | 'reset-calls'
+  | 'reset-score'
+  | 'upgrade-plan';
+
+export interface ManualPaymentRequestItem {
+  id: string;
+  userId: string;
+  alias: string;
+  telegramId: string;
+  planTier: string;
+  amountUzs: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  paymentProof?: string | null;
+  adminNote?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  user?: {
+    band: number;
+    currentPlan: string;
+    isBanned: boolean;
+  };
+}
+
+export interface StarsTransactionItem {
+  id: string;
+  userId: string;
+  alias: string;
+  telegramId: string;
+  telegramPaymentId: string;
+  starsAmount: number;
+  planTier: string;
+  status: 'PAID' | 'REFUND_PENDING' | 'REFUNDED';
+  refundReason?: string | null;
+  refundedAt?: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogItem {
+  id: string;
+  action: string;
+  targetId?: string | null;
+  adminId: string;
+  beforeState?: string | null;
+  afterState?: string | null;
+  reason?: string | null;
+  createdAt: string;
+}
+
 export interface AuthResponse {
   jwtToken: string;
   expiresAt: string;
@@ -99,9 +157,17 @@ export interface PasswordResponse {
 }
 
 export interface OtpResponse {
-  success: boolean;
+  success?: boolean;
   jwtToken: string;
   expiresAt: string;
 }
 
-export type ModerationAction = 'warn' | 'block' | 'ban' | 'unblock';
+export interface AnalyticsData {
+  dau: number;
+  mau: number;
+  activeCalls: number;
+  totalUsers: number;
+  totalCalls: number;
+  starsRevenue: StarsRevenue;
+  totalMinutesSpoken?: number;
+}

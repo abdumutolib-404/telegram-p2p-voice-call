@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import type { FormEvent } from 'react';
 import type { PlansResponse, PlanTierConfig } from '../../types/index.ts';
 import { adminFetch } from '../../api/client.ts';
-import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, Star, Shield } from 'lucide-react';
+import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, Star, Shield, CreditCard } from 'lucide-react';
 
 export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse>({
-    FREE: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0 },
-    PLUS: { maxDuration: 30, dailyLimit: 10, retentionDays: 7, starsPrice: 150 },
-    PRO: { maxDuration: 60, dailyLimit: 999, retentionDays: 30, starsPrice: 500 },
+    FREE: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0, uzsPrice: 0 },
+    PLUS: { maxDuration: 30, dailyLimit: 10, retentionDays: 7, starsPrice: 150, uzsPrice: 25000 },
+    PRO: { maxDuration: 60, dailyLimit: 999, retentionDays: 30, starsPrice: 500, uzsPrice: 75000 },
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -66,9 +66,15 @@ export function PlanEditor() {
         setError(`${tierName} tier retention must be at least 1 day.`);
         return;
       }
-      if (tierName !== 'FREE' && (tier.starsPrice === undefined || tier.starsPrice < 0)) {
-        setError(`${tierName} tier price must be a valid positive Telegram Stars amount.`);
-        return;
+      if (tierName !== 'FREE') {
+        if (tier.starsPrice === undefined || tier.starsPrice < 0) {
+          setError(`${tierName} tier price must be a valid positive Telegram Stars amount.`);
+          return;
+        }
+        if (tier.uzsPrice !== undefined && tier.uzsPrice < 0) {
+          setError(`${tierName} tier UZS card price must be non-negative.`);
+          return;
+        }
       }
     }
 
@@ -82,7 +88,7 @@ export function PlanEditor() {
       if (resolvedPlans && resolvedPlans.FREE) {
         setPlans(resolvedPlans);
       }
-      setSuccessMessage('Plan limits and Telegram Stars pricing updated successfully!');
+      setSuccessMessage('Dual pricing (Stars & UZS) and plan limits updated successfully!');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -98,36 +104,42 @@ export function PlanEditor() {
   if (isLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px', color: '#94a3b8' }}>
-        <Settings size={24} style={{ animation: 'spin 1s linear infinite', marginRight: '0.5rem' }} />
+        <Settings size={24} className="animate-spin" style={{ marginRight: '0.5rem' }} />
         Loading plan configurations...
       </div>
     );
   }
 
-  const renderTierCard = (tierKey: keyof PlansResponse, title: string, subtitle: string, icon: React.ReactNode, isFree = false) => {
+  const renderTierCard = (
+    tierKey: keyof PlansResponse,
+    title: string,
+    subtitle: string,
+    icon: React.ReactNode,
+    isFree = false
+  ) => {
     const config = plans[tierKey];
 
     return (
-      <div style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #334155',
-        borderRadius: '12px',
-        padding: '1.5rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1.25rem'
-      }}>
+      <div
+        style={{
+          backgroundColor: '#1e293b',
+          border: '1px solid #334155',
+          borderRadius: '12px',
+          padding: '1.5rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.25rem'
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingBottom: '1rem', borderBottom: '1px solid #334155' }}>
           {icon}
           <div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>
-              {title}
-            </h3>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>{title}</h3>
             <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{subtitle}</span>
           </div>
         </div>
 
-        {/* Call Duration Limit */}
+        {/* Max Duration */}
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
             <Clock size={16} color="#38bdf8" /> Call Duration Limit (Minutes)
@@ -152,15 +164,15 @@ export function PlanEditor() {
           />
         </div>
 
-        {/* Daily Call Limit */}
+        {/* Daily Limit */}
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Calendar size={16} color="#34d399" /> Daily Call Limit (Calls / Day)
+            <Calendar size={16} color="#34d399" /> Daily Limit (Calls / Day)
           </label>
           <input
             type="number"
             min="1"
-            max="1000"
+            max="9999"
             value={config.dailyLimit}
             onChange={(e) => handleTierChange(tierKey, 'dailyLimit', parseInt(e.target.value) || 0)}
             style={{
@@ -177,7 +189,7 @@ export function PlanEditor() {
           />
         </div>
 
-        {/* Audio Retention Days */}
+        {/* Audio Retention */}
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
             <Shield size={16} color="#a78bfa" /> Audio Recording Retention
@@ -194,7 +206,8 @@ export function PlanEditor() {
               borderRadius: '8px',
               color: '#f8fafc',
               fontSize: '0.9rem',
-              outline: 'none'
+              outline: 'none',
+              cursor: 'pointer'
             }}
           >
             <option value={1}>1 Day (Free Purge)</option>
@@ -206,7 +219,7 @@ export function PlanEditor() {
         {/* Stars Price */}
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Star size={16} color="#fbbf24" /> Price (Telegram Stars)
+            <Star size={16} color="#fbbf24" /> Price (Telegram Stars - XTR)
           </label>
           <input
             type="number"
@@ -214,6 +227,33 @@ export function PlanEditor() {
             disabled={isFree}
             value={isFree ? 0 : (config.starsPrice ?? 0)}
             onChange={(e) => handleTierChange(tierKey, 'starsPrice', parseInt(e.target.value) || 0)}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '0.625rem 0.875rem',
+              backgroundColor: isFree ? '#1e293b' : '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: '8px',
+              color: isFree ? '#64748b' : '#f8fafc',
+              fontSize: '0.9rem',
+              outline: 'none',
+              cursor: isFree ? 'not-allowed' : 'text'
+            }}
+          />
+        </div>
+
+        {/* UZS Price */}
+        <div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
+            <CreditCard size={16} color="#10b981" /> Price (UZS Card / Bank Transfer)
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="1000"
+            disabled={isFree}
+            value={isFree ? 0 : (config.uzsPrice ?? 0)}
+            onChange={(e) => handleTierChange(tierKey, 'uzsPrice', parseInt(e.target.value) || 0)}
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -237,10 +277,10 @@ export function PlanEditor() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>
-            Dynamic Plan & Pricing Editor
+            Dual-Pricing & Plan Editor
           </h2>
           <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
-            Configure tier call durations, daily call limits, audio retention, and Telegram Stars pricing
+            Configure tier call durations, daily call limits, audio retention, and dual Stars (XTR) / UZS pricing
           </p>
         </div>
 

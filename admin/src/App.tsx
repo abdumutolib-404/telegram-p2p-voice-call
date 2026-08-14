@@ -3,11 +3,12 @@ import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { LoginModal } from './components/auth/LoginModal.tsx';
 import { AnalyticsOverview } from './components/dashboard/AnalyticsOverview.tsx';
 import { PlanEditor } from './components/dashboard/PlanEditor.tsx';
+import { ManualPaymentsQueue } from './components/dashboard/ManualPaymentsQueue.tsx';
 import { AppealsQueue } from './components/dashboard/AppealsQueue.tsx';
 import { UserManagement } from './components/dashboard/UserManagement.tsx';
-import { BarChart3, Settings, ShieldAlert, Users, LogOut, ShieldCheck } from 'lucide-react';
+import { BarChart3, Settings, ShieldAlert, Users, LogOut, ShieldCheck, CreditCard } from 'lucide-react';
 
-type NavigationTab = 'analytics' | 'plans' | 'appeals' | 'users';
+type NavigationTab = 'analytics' | 'plans' | 'payments' | 'appeals' | 'users';
 
 function MainDashboard() {
   const { isAuthenticated, isLoading, logout } = useAuth();
@@ -52,7 +53,9 @@ function MainDashboard() {
         alignItems: 'center',
         position: 'sticky',
         top: 0,
-        zIndex: 100
+        zIndex: 100,
+        flexWrap: 'wrap',
+        gap: '1rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{
@@ -77,7 +80,7 @@ function MainDashboard() {
         </div>
 
         {/* Navigation Tabs */}
-        <nav style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#0f172a', padding: '0.25rem', borderRadius: '10px', border: '1px solid #334155' }}>
+        <nav style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#0f172a', padding: '0.25rem', borderRadius: '10px', border: '1px solid #334155', flexWrap: 'wrap' }}>
           <button
             onClick={() => setActiveTab('analytics')}
             style={{
@@ -116,6 +119,26 @@ function MainDashboard() {
             }}
           >
             <Settings size={16} /> Plan Editor
+          </button>
+
+          <button
+            onClick={() => setActiveTab('payments')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.5rem 1rem',
+              border: 'none',
+              borderRadius: '8px',
+              backgroundColor: activeTab === 'payments' ? '#0284c7' : 'transparent',
+              color: activeTab === 'payments' ? '#ffffff' : '#94a3b8',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            <CreditCard size={16} /> Manual Payments
           </button>
 
           <button
@@ -184,6 +207,7 @@ function MainDashboard() {
       <main style={{ flex: 1, padding: '2rem', maxWidth: '1280px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         {activeTab === 'analytics' && <AnalyticsOverview />}
         {activeTab === 'plans' && <PlanEditor />}
+        {activeTab === 'payments' && <ManualPaymentsQueue />}
         {activeTab === 'appeals' && <AppealsQueue />}
         {activeTab === 'users' && <UserManagement />}
       </main>

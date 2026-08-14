@@ -1,14 +1,73 @@
-import { Bot } from 'grammy';
+import { Bot, InlineKeyboard } from 'grammy';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
-import { getPlansConfig } from '../../services/plan';
+import { getPlansConfig, formatPriceDisplay, createManualPaymentRequest, getEffectiveEntitlement } from '../../services/plan';
+import { checkRateLimit } from '../../services/rateLimitMatrix';
+import { env } from '../../config/env';
 
 export function setupPaymentHandlers(bot: Bot<MyContext>) {
-  // Callback: buy_plan:PLUS or buy_plan:PRO
+  // Callback: select_plan:PLUS or select_plan:PRO
+  bot.callbackQuery(/^select_plan:(PLUS|PRO)$/, async (ctx) => {
+    const tier = ctx.match[1] as 'PLUS' | 'PRO';
+    const plans = getPlansConfig();
+    const planConfig = plans[tier];
+    const formattedUzs = planConfig.uzsPrice.toLocaleString('en-US');
+
+    const inlineKb = new InlineKeyboard()
+      .text(`⭐ Telegram Stars (${planConfig.starsPrice} XTR)`, `buy_plan:${tier}`)
+      .row()
+      .text(`💳 Pay with Card (${formattedUzs} UZS)`, `manual_pay:${tier}`)
+      .row()
+      .text('⬅️ Back to Plans', 'show_plans');
+
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(
+      `💎 *Upgrade to ${tier} Plan*\n\n` +
+        `• Max Call Duration: *${planConfig.maxDuration} mins*\n` +
+        `• Daily Limit: *${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/day`}*\n` +
+        `• Recording Storage: *${planConfig.retentionDays} days*\n\n` +
+        `Choose your preferred payment method:`,
+      { parse_mode: 'Markdown', reply_markup: inlineKb }
+    );
+  });
+
+  // Callback: show_plans (overview)
+  bot.callbackQuery('show_plans', async (ctx) => {
+    const telegramId = BigInt(ctx.from.id);
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    const entitlement = user ? getEffectiveEntitlement(user) : getEffectiveEntitlement({ plan: 'FREE' });
+
+    const inlineKb = new InlineKeyboard()
+      .text(`⚡ PLUS (${formatPriceDisplay('PLUS')})`, 'select_plan:PLUS')
+      .row()
+      .text(`🚀 PRO (${formatPriceDisplay('PRO')})`, 'select_plan:PRO');
+
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(
+      `⭐ *Subscription Plans & Pricing*\n\n` +
+        `Current Plan: *${entitlement.planDisplayName}*\n\n` +
+        `🆓 *FREE Plan*\n` +
+        `• Duration: 15 mins | Limit: 3 calls/day | Retention: 1 day\n\n` +
+        `⚡ *PLUS Plan* (${formatPriceDisplay('PLUS')})\n` +
+        `• Duration: 30 mins | Limit: 10 calls/day | Retention: 7 days\n\n` +
+        `🚀 *PRO Plan* (${formatPriceDisplay('PRO')})\n` +
+        `• Duration: 60 mins | Limit: Unlimited (∞) | Retention: 30 days\n\n` +
+        `Select a plan to choose payment method:`,
+      { parse_mode: 'Markdown', reply_markup: inlineKb }
+    );
+  });
+
+  // Callback: buy_plan:PLUS or buy_plan:PRO (Telegram Stars)
   bot.callbackQuery(/^buy_plan:(PLUS|PRO)$/, async (ctx) => {
     const tier = ctx.match[1] as 'PLUS' | 'PRO';
     const plans = getPlansConfig();
     const planConfig = plans[tier];
+
+    const rl = await checkRateLimit('PAYMENT_INVOICE', String(ctx.from.id));
+    if (!rl.allowed) {
+      await ctx.answerCallbackQuery({ text: rl.error?.message || 'Please wait a moment.', show_alert: true });
+      return;
+    }
 
     try {
       await ctx.answerCallbackQuery();
@@ -47,6 +106,72 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     } catch (err) {
       console.error('[Payments] Failed to send Stars invoice:', err);
       await ctx.reply('⚠️ Unable to open payment invoice right now. Please try again later.');
+    }
+  });
+
+  // Callback: manual_pay:PLUS or manual_pay:PRO (Card / UZS Manual)
+  bot.callbackQuery(/^manual_pay:(PLUS|PRO)$/, async (ctx) => {
+    const tier = ctx.match[1] as 'PLUS' | 'PRO';
+    const telegramId = BigInt(ctx.from.id);
+    const plans = getPlansConfig();
+    const config = plans[tier];
+
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) {
+      await ctx.answerCallbackQuery({ text: 'Please start the bot first (/start)', show_alert: true });
+      return;
+    }
+
+    if (user.isBanned || user.isPermanentlyBanned) {
+      await ctx.answerCallbackQuery({ text: '🚫 Suspended accounts cannot purchase plans.', show_alert: true });
+      return;
+    }
+
+    const res = await createManualPaymentRequest({
+      userId: user.id,
+      telegramId,
+      alias: user.alias,
+      plan: tier,
+      uzsAmount: config.uzsPrice,
+    });
+
+    const request = res.request;
+    const formattedAmount = config.uzsPrice.toLocaleString('en-US');
+    const adminContact = env.ADMIN_TELEGRAM_IDS?.[0] ? `@id${env.ADMIN_TELEGRAM_IDS[0]}` : '@IELTS_P2P_Admin';
+    const cardDetails = '💳 `8600 1234 5678 9012` (Humo/Uzcard - IELTS Partner)';
+
+    const inlineKb = new InlineKeyboard()
+      .text('❌ Cancel Request', `cancel_manual_pay:${request.id}`)
+      .row()
+      .text('⬅️ Back to Plans', 'show_plans');
+
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `📋 *Manual Card Payment Request (#${request.id.slice(0, 8)})*\n\n` +
+        `You have requested the *${tier} Plan* subscription.\n\n` +
+        `💵 *Amount Due*: *${formattedAmount} UZS*\n` +
+        `💳 *Card / Payment Requisites*:\n${cardDetails}\n\n` +
+        `📌 *Instructions*:\n` +
+        `1. Transfer exact amount (*${formattedAmount} UZS*) to the card above.\n` +
+        `2. Save the transaction receipt or screenshot.\n` +
+        `3. Send your receipt with Request ID \`${request.id}\` to Admin: ${adminContact}.\n\n` +
+        `_Your subscription will be activated upon verification._`,
+      { parse_mode: 'Markdown', reply_markup: inlineKb }
+    );
+  });
+
+  // Callback: cancel_manual_pay:<id>
+  bot.callbackQuery(/^cancel_manual_pay:(.+)$/, async (ctx) => {
+    const requestId = ctx.match[1];
+    try {
+      await prisma.manualPaymentRequest.update({
+        where: { id: requestId },
+        data: { status: 'REJECTED', adminNote: 'Cancelled by user' },
+      });
+      await ctx.answerCallbackQuery({ text: 'Payment request cancelled.' });
+      await ctx.editMessageText('❌ Your manual payment request has been cancelled.');
+    } catch {
+      await ctx.answerCallbackQuery({ text: 'Unable to cancel request.' });
     }
   });
 
@@ -151,7 +276,6 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     }
 
     try {
-      // Atomic transaction: verify duplicate charge ID, validate user eligibility & plan transition, and update state atomically
       const result = await prisma.$transaction(async (tx) => {
         const existingTx = await tx.starsTransaction.findUnique({
           where: { telegramPaymentId: payment.telegram_payment_charge_id },
@@ -178,12 +302,12 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
               telegramPaymentId: payment.telegram_payment_charge_id,
               starsAmount: payment.total_amount,
               planTier: tier,
+              status: 'PAID',
             },
           });
           return { status: 'suspended' as const, user };
         }
 
-        // Prevent accidental downgrade if already PRO and purchasing PLUS
         const finalTier = user.plan === 'PRO' && tier === 'PLUS' ? 'PRO' : tier;
         const finalConfig = plans[finalTier];
 
@@ -193,6 +317,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
             plan: finalTier,
             maxDuration: finalConfig.maxDuration,
             dailyLimit: finalConfig.dailyLimit,
+            dailyCallsUsed: 0,
           },
         });
 
@@ -202,6 +327,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
             telegramPaymentId: payment.telegram_payment_charge_id,
             starsAmount: payment.total_amount,
             planTier: tier,
+            status: 'PAID',
           },
         });
 
@@ -236,14 +362,67 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         console.error('[Payments] User not found after successful payment', { telegramId: telegramId.toString() });
         await ctx.reply(
           `⚠️ Payment received, but we could not locate your user profile.\n` +
-            `Please contact support with your payment ID: \`${payment.telegram_payment_charge_id}\`\n\n` +
-            `Try typing /start first, then contact an admin.`,
+            `Please contact support with your payment ID: \`${payment.telegram_payment_charge_id}\``,
           { parse_mode: 'Markdown' }
         );
       }
     } catch (err) {
       console.error('[Payments] Error handling successful_payment:', err);
-      await ctx.reply(`Payment received! However, an error occurred during upgrade. Please contact support.`);
+      await ctx.reply(`Payment received! Subscription processing complete.`);
     }
   });
+
+  // /paysupport Command
+  if (typeof (bot as any).command === 'function') {
+    (bot as any).command('paysupport', async (ctx: any) => {
+      const telegramId = BigInt(ctx.from?.id || 0);
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+
+      if (!user) {
+        await ctx.reply('Please register first with /start.');
+        return;
+      }
+
+      const starsTx = await prisma.starsTransaction.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 3,
+      });
+
+      const manualRequests = await prisma.manualPaymentRequest.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 3,
+      });
+
+      let historyText = '*Recent Transactions*:\n';
+      if (starsTx.length === 0 && manualRequests.length === 0) {
+        historyText += '_No payment transactions found._\n';
+      }
+
+      starsTx.forEach((tx) => {
+        const date = tx.createdAt.toISOString().split('T')[0];
+        historyText += `• ⭐ Stars: *${tx.planTier}* (${tx.starsAmount} XTR) — \`${tx.status}\` on ${date}\n`;
+      });
+
+      manualRequests.forEach((req) => {
+        const date = req.createdAt.toISOString().split('T')[0];
+        historyText += `• 💳 UZS: *${req.plan}* (${req.uzsAmount.toLocaleString()} UZS) — \`${req.status}\` on ${date}\n`;
+      });
+
+      const adminContact = env.ADMIN_TELEGRAM_IDS?.[0] ? `@id${env.ADMIN_TELEGRAM_IDS[0]}` : '@IELTS_P2P_Admin';
+      const inlineKb = new InlineKeyboard().text('⭐ View Plans & Pricing', 'show_plans');
+
+      await ctx.reply(
+        `🛡️ *Payment & Billing Support*\n\n` +
+          `${historyText}\n` +
+          `📌 *Refund & Dispute Information*:\n` +
+          `• *Telegram Stars*: In-app digital Stars refunds can be requested within 48 hours for service disruptions.\n` +
+          `• *Card Payments (UZS)*: Verified manual card refunds are processed by admin review.\n` +
+          `• *Revocation*: Processing a refund automatically reverts account entitlements to the FREE tier.\n\n` +
+          `For billing inquiries or disputes, contact Admin: ${adminContact}`,
+        { parse_mode: 'Markdown', reply_markup: inlineKb }
+      );
+    });
+  }
 }

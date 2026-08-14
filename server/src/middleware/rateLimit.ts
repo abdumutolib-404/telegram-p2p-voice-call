@@ -1,13 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-
-interface RateLimitStore {
-  [ip: string]: { count: number; resetTime: number };
-}
+import { checkRateLimit, type RateLimitAction } from '../services/rateLimitMatrix';
+import { createCanonicalError } from '../types/canonical';
 
 export function createRateLimiter(maxRequests: number, windowMs: number) {
-  const store: RateLimitStore = {};
+  const store: Record<string, { count: number; resetTime: number }> = {};
 
-  // Periodic cleanup of expired entries to prevent memory leak
   const cleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const ip of Object.keys(store)) {
@@ -15,8 +12,7 @@ export function createRateLimiter(maxRequests: number, windowMs: number) {
         delete store[ip];
       }
     }
-  }, 60_000); // Clean every 60 seconds
-  // Prevent interval from keeping the process alive
+  }, 60_000);
   if (cleanupInterval.unref) cleanupInterval.unref();
 
   return (req: Request, res: Response, next: NextFunction) => {
@@ -37,11 +33,24 @@ export function createRateLimiter(maxRequests: number, windowMs: number) {
     store[ip].count += 1;
 
     if (store[ip].count > maxRequests) {
-      return res.status(429).json({
-        error: 'Too many requests. Please slow down and try again later.',
-      });
+      const err = createCanonicalError('RATE_LIMITED', 'Too many requests. Please slow down and try again later.');
+      return res.status(429).json(err);
     }
 
+    next();
+  };
+}
+
+export function createActionRateLimiter(
+  action: RateLimitAction,
+  getIdentifier?: (req: Request) => string
+) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const id = getIdentifier ? getIdentifier(req) : (req.ip || req.socket.remoteAddress || 'unknown');
+    const result = await checkRateLimit(action, id);
+    if (!result.allowed) {
+      return res.status(429).json(result.error);
+    }
     next();
   };
 }

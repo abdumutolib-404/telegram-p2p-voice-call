@@ -275,6 +275,25 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
+      // Invariant check: is callee or caller already in an active call?
+      const existingCall = await prisma.callSession.findFirst({
+        where: {
+          status: 'ACTIVE',
+          OR: [
+            { userAId: callee.id },
+            { userBId: callee.id },
+            { userAId: caller.id },
+            { userBId: caller.id },
+          ],
+        },
+      });
+
+      if (existingCall) {
+        await ctx.answerCallbackQuery({ text: 'One of the participants is already in an active call.' });
+        await ctx.editMessageText('❌ Call connection failed: Partner or you are already in an active call.');
+        return;
+      }
+
       await ctx.answerCallbackQuery({ text: 'Accepting call...' });
 
       const roomName = `direct_${Date.now()}_${caller.id.slice(0, 4)}_${callee.id.slice(0, 4)}`;
@@ -292,7 +311,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       const callUrl = `${env.MINI_APP_URL.replace(/\/$/, '')}?active_call=${session.id}`;
       const inlineKb = new InlineKeyboard().webApp('📞 Open Voice Call', callUrl);
 
-      await ctx.reply(
+      await ctx.editMessageText(
         `✅ *Direct Call Accepted!*\n\n` +
           `Session with *${caller.alias}* is ready.\n` +
           `Tap the button below to join:`,
@@ -312,6 +331,54 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     } catch (err) {
       console.error('[Callback] accept_direct error:', err);
       await ctx.answerCallbackQuery({ text: 'An error occurred accepting call.' });
+    }
+  });
+
+  // Callback: decline_direct:<callerId>
+  bot.callbackQuery(/^decline_direct:(.+)$/, async (ctx) => {
+    const callerId = ctx.match[1];
+    const calleeTelegramId = BigInt(ctx.from.id);
+
+    try {
+      const callee = await prisma.user.findUnique({ where: { telegramId: calleeTelegramId } });
+      const caller = await prisma.user.findUnique({ where: { id: callerId } });
+
+      await ctx.answerCallbackQuery({ text: 'Call invitation declined.' });
+      await ctx.editMessageText('❌ You declined the call invitation.');
+
+      if (caller && callee) {
+        try {
+          await ctx.api.sendMessage(
+            caller.telegramId.toString(),
+            `❌ *${callee.alias}* is currently unable to accept your direct call.`,
+            { parse_mode: 'Markdown' }
+          );
+        } catch {}
+      }
+    } catch (err) {
+      console.error('[Callback] decline_direct error:', err);
+    }
+  });
+
+  // Callback: cancel_direct:<partnerId>
+  bot.callbackQuery(/^cancel_direct:(.+)$/, async (ctx) => {
+    const partnerId = ctx.match[1];
+    try {
+      const partner = await prisma.user.findUnique({ where: { id: partnerId } });
+      await ctx.answerCallbackQuery({ text: 'Call invitation cancelled.' });
+      await ctx.editMessageText('✖️ Call request cancelled.');
+
+      if (partner) {
+        try {
+          await ctx.api.sendMessage(
+            partner.telegramId.toString(),
+            '✖️ *The incoming call invitation was cancelled.*',
+            { parse_mode: 'Markdown' }
+          );
+        } catch {}
+      }
+    } catch (err) {
+      console.error('[Callback] cancel_direct error:', err);
     }
   });
 
@@ -368,7 +435,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     }
   });
 
-  // Callback: direct_call:<partnerId>
+  // Callback: direct_call:<partnerId> or call_favorite:<partnerId>
   bot.callbackQuery(/^(?:direct_call|call_favorite):(.+)$/, async (ctx) => {
     const partnerId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
@@ -409,24 +476,27 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
+      const callerKb = new InlineKeyboard().text('✖️ Cancel Invitation', `cancel_direct:${partner.id}`);
+
       await ctx.answerCallbackQuery({ text: `Ringing ${partner.alias}...` });
       await ctx.reply(
         `📞 *Direct Call Request Sent*\n\n` +
           `Calling *${partner.alias}* (Band ${partner.band.toFixed(1)})...\n` +
           `_They will receive a notification to join the call._`,
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'Markdown', reply_markup: callerKb }
       );
 
       // Send push notification to partner via bot
       try {
         const inlineKb = new InlineKeyboard()
-          .text('✅ Accept & Join Call', `accept_direct:${user.id}`);
+          .text('✅ Accept & Join Call', `accept_direct:${user.id}`)
+          .text('❌ Decline', `decline_direct:${user.id}`);
 
         await ctx.api.sendMessage(
           partner.telegramId.toString(),
           `📞 *Incoming Direct Call!*\n\n` +
-            `*${user.alias}* (Band ${user.band.toFixed(1)}) is calling you.\n` +
-            `Tap the button below to accept.`,
+            `*${user.alias}* (Band ${user.band.toFixed(1)}) is calling you to practice.\n` +
+            `Tap below to accept or decline:`,
           { parse_mode: 'Markdown', reply_markup: inlineKb }
         );
       } catch (sendErr) {

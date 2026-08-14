@@ -208,6 +208,17 @@ class InMemoryRedisMock {
     return 0;
   }
 
+  async incr(key: string): Promise<number> {
+    const current = this.kv.get(key);
+    let val = 0;
+    if (current && (current.expiresAt === undefined || Date.now() < current.expiresAt)) {
+      val = parseInt(current.value, 10) || 0;
+    }
+    val += 1;
+    this.kv.set(key, { value: val.toString(), expiresAt: current?.expiresAt });
+    return val;
+  }
+
   async flushall(): Promise<'OK'> {
     this.sets.clear();
     this.kv.clear();
@@ -228,6 +239,7 @@ export interface RedisClientInterface {
     duration?: number,
     condition?: 'NX',
   ): Promise<string | null>;
+  incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
   del(...keys: string[]): Promise<number>;
   eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<string | number | null>;

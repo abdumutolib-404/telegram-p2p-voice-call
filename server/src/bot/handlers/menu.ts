@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
-import { getEffectiveEntitlement } from '../../services/plan';
+import { getEffectiveEntitlement, formatPriceDisplay } from '../../services/plan';
 import { getRedis } from '../../config/redis';
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -121,30 +121,23 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
   bot.hears(/⭐ (?:Upgrade|Subscription|Plans)/i, async (ctx) => {
     const telegramId = BigInt(ctx.from?.id || 0);
     const user = await prisma.user.findUnique({ where: { telegramId } });
-    const currentPlan = user?.plan || 'FREE';
     const entitlement = user ? getEffectiveEntitlement(user) : getEffectiveEntitlement({ plan: 'FREE' });
 
     const inlineKb = new InlineKeyboard()
-      .text('⚡ Upgrade to PLUS (150 Stars)', 'buy_plan_PLUS')
+      .text(`⚡ PLUS (${formatPriceDisplay('PLUS')})`, 'select_plan:PLUS')
       .row()
-      .text('🚀 Upgrade to PRO (500 Stars)', 'buy_plan_PRO');
+      .text(`🚀 PRO (${formatPriceDisplay('PRO')})`, 'select_plan:PRO');
 
     await ctx.reply(
-      `⭐ *Subscription Plans & Entitlements*\n\n` +
+      `⭐ *Subscription Plans & Pricing*\n\n` +
         `Current Plan: *${entitlement.planDisplayName}*\n\n` +
         `🆓 *FREE Plan*\n` +
-        `• Max Call Duration: 15 minutes\n` +
-        `• Daily Call Limit: 3 calls\n` +
-        `• Recording Storage: 1 day\n\n` +
-        `⚡ *PLUS Plan* (150 Telegram Stars)\n` +
-        `• Max Call Duration: 30 minutes\n` +
-        `• Daily Call Limit: 10 calls\n` +
-        `• Recording Storage: 7 days\n\n` +
-        `🚀 *PRO Plan* (500 Telegram Stars)\n` +
-        `• Max Call Duration: 60 minutes\n` +
-        `• Daily Call Limit: Unlimited (∞)\n` +
-        `• Recording Storage: 30 days\n\n` +
-        `Select a plan to upgrade via Telegram Stars:`,
+        `• Duration: 15 mins | Limit: 3 calls/day | Retention: 1 day\n\n` +
+        `⚡ *PLUS Plan* (${formatPriceDisplay('PLUS')})\n` +
+        `• Duration: 30 mins | Limit: 10 calls/day | Retention: 7 days\n\n` +
+        `🚀 *PRO Plan* (${formatPriceDisplay('PRO')})\n` +
+        `• Duration: 60 mins | Limit: Unlimited (∞) | Retention: 30 days\n\n` +
+        `Select a plan to choose your payment method (Telegram Stars or Card):`,
       { parse_mode: 'Markdown', reply_markup: inlineKb }
     );
   });

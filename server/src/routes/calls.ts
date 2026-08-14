@@ -5,7 +5,8 @@ import { prisma } from '../config/database';
 import { env } from '../config/env';
 import { initDataLockdownMiddleware, type AuthenticatedTelegramRequest } from '../middleware/initDataLockdown';
 import { generateLiveKitToken } from '../config/livekit';
-import { calculateMixedPlanDuration, getRetentionDaysForPlan } from '../services/plan';
+import { getEffectiveEntitlement } from '../services/plan';
+import { createCanonicalError } from '../types/canonical';
 
 const router = Router();
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
@@ -23,7 +24,7 @@ router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: Auth
     const sessionId = req.params.sessionId;
     const tgUser = req.telegramUser;
     if (!sessionId || !tgUser) {
-      res.status(401).json({ error: 'Unauthorized.' });
+      res.status(401).json(createCanonicalError('UNAUTHORIZED', 'Authentication required to access recordings.'));
       return;
     }
 
@@ -33,27 +34,27 @@ router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: Auth
     });
 
     if (!session?.recordingUrl || (session.recordingExpiresAt !== null && session.recordingExpiresAt <= new Date())) {
-      res.status(404).json({ error: 'Recording not found or expired.' });
+      res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE', 'Recording not found or expired.'));
       return;
     }
 
     const requesterIdStr = tgUser.id.toString();
     if (session.userA.telegramId.toString() !== requesterIdStr && session.userB.telegramId.toString() !== requesterIdStr) {
-      res.status(403).json({ error: 'Forbidden.' });
+      res.status(403).json(createCanonicalError('CALL_UNAUTHORIZED', 'Access denied to this recording.'));
       return;
     }
 
     const requesterUser = session.userA.telegramId.toString() === requesterIdStr ? session.userA : session.userB;
-    const allowedRetentionDays = getRetentionDaysForPlan(requesterUser.plan);
+    const allowedRetentionDays = getEffectiveEntitlement(requesterUser).retentionDays;
     const sessionAgeMs = Date.now() - session.createdAt.getTime();
     if (sessionAgeMs > allowedRetentionDays * 24 * 60 * 60 * 1000) {
-      res.status(403).json({ error: 'Recording retention expired for your plan level.' });
+      res.status(403).json(createCanonicalError('RECORDING_UNAVAILABLE', 'Recording retention expired for your plan level.'));
       return;
     }
 
     const filePath = resolveRecordingPath(session.recordingUrl);
     if (!filePath || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Recording file missing from server disk.' });
+      res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE', 'Audio recording is no longer available.'));
       return;
     }
 
@@ -66,7 +67,9 @@ router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: Auth
       sessionId: req.params.sessionId,
       error: error instanceof Error ? error.message : 'unknown_error',
     });
-    if (!res.headersSent) res.status(500).json({ error: 'Internal server error.' });
+    if (!res.headersSent) {
+      res.status(500).json(createCanonicalError('INTERNAL_ERROR', 'Unable to retrieve recording at this time.'));
+    }
   }
 });
 
@@ -74,7 +77,7 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
   try {
     const tgUser = req.telegramUser;
     if (!tgUser) {
-      res.status(401).json({ error: 'Unauthorized.' });
+      res.status(401).json(createCanonicalError('UNAUTHORIZED', 'Authentication required.'));
       return;
     }
 
@@ -96,7 +99,9 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
     const self = isUserA ? session.userA : session.userB;
     const partner = isUserA ? session.userB : session.userA;
 
-    const callDurationLimitMinutes = calculateMixedPlanDuration(self.plan, partner.plan);
+    const selfEnt = getEffectiveEntitlement(self);
+    const partnerEnt = getEffectiveEntitlement(partner);
+    const callDurationLimitMinutes = Math.max(selfEnt.maxDurationMinutes, partnerEnt.maxDurationMinutes);
     const callDurationLimitSeconds = callDurationLimitMinutes * 60;
     const elapsedSeconds = Math.floor((Date.now() - session.createdAt.getTime()) / 1000);
     const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
@@ -110,13 +115,13 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
       livekitToken,
       partnerAlias: partner.alias,
       partnerBand: partner.band,
-      callDurationLimit: remainingSeconds, // remaining duration in seconds
+      callDurationLimit: remainingSeconds,
     });
   } catch (error: unknown) {
     console.error('[Calls] active_session_lookup_failed', {
       error: error instanceof Error ? error.message : 'unknown_error',
     });
-    res.status(500).json({ error: 'Failed to check active call session.' });
+    res.status(500).json(createCanonicalError('INTERNAL_ERROR', 'Failed to check active call session.'));
   }
 });
 

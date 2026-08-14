@@ -28,7 +28,7 @@ type CallSessionWhere = {
   OR?: Array<CallSessionWhere>;
 };
 type CallSessionData = Record<string, unknown>;
-type RatingWhere = { callId?: string; raterId?: string; reported?: boolean };
+type RatingWhere = { callId?: string; raterId?: string; ratedId?: string; reported?: boolean };
 type AppealWhere = { id?: string };
 type FavoriteWhere = { userId?: string; partnerId?: string };
 
@@ -101,6 +101,35 @@ interface StarsTransactionRow {
   telegramPaymentId: string;
   starsAmount: number;
   planTier: string;
+  status: string;
+  refundReason: string | null;
+  refundedAt: Date | null;
+  createdAt: Date;
+}
+
+interface ManualPaymentRequestRow {
+  id: string;
+  userId: string;
+  telegramId: bigint;
+  alias: string;
+  plan: string;
+  uzsAmount: number;
+  paymentProof: string | null;
+  status: string;
+  adminNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+}
+
+interface AuditLogRow {
+  id: string;
+  action: string;
+  targetId: string | null;
+  adminId: string;
+  beforeState: string | null;
+  afterState: string | null;
+  reason: string | null;
   createdAt: Date;
 }
 
@@ -148,13 +177,19 @@ export class InMemoryPrismaMock {
   private readonly callRatings = new Map<string, CallRatingRow>();
   private readonly unblockAppeals = new Map<string, AppealRow>();
   private readonly starsTransactions = new Map<string, StarsTransactionRow>();
+  private readonly manualPaymentRequests = new Map<string, ManualPaymentRequestRow>();
+  private readonly auditLogs = new Map<string, AuditLogRow>();
   private readonly favoritePartners = new Map<string, FavoriteRow>();
 
   private txQueue: Promise<unknown> = Promise.resolve();
 
   async $connect(): Promise<void> {}
   async $disconnect(): Promise<void> {}
-  async $transaction<T>(operation: (tx: InMemoryPrismaMock) => Promise<T>): Promise<T> {
+
+  async $transaction<T>(operation: ((tx: InMemoryPrismaMock) => Promise<T>) | Array<Promise<unknown>>): Promise<T> {
+    if (Array.isArray(operation)) {
+      return (await Promise.all(operation)) as unknown as T;
+    }
     const run = async () => {
       return await operation(this);
     };
@@ -268,12 +303,12 @@ export class InMemoryPrismaMock {
       const now = new Date();
       const row: CallSessionRow = {
         id,
-        roomName: stringValue(args.data.roomName),
+        roomName: stringValue(args.data.roomName, `room_${id}`),
         userAId: stringValue(args.data.userAId),
         userBId: stringValue(args.data.userBId),
         status: stringValue(args.data.status, 'ACTIVE'),
-        egressId: args.data.egressId == null ? null : stringValue(args.data.egressId),
-        recordingUrl: args.data.recordingUrl == null ? null : stringValue(args.data.recordingUrl),
+        egressId: args.data.egressId ? stringValue(args.data.egressId) : null,
+        recordingUrl: args.data.recordingUrl ? stringValue(args.data.recordingUrl) : null,
         recordingExpiresAt: args.data.recordingExpiresAt ? dateValue(args.data.recordingExpiresAt, now) : null,
         duration: numberValue(args.data.duration, 0),
         createdAt: dateValue(args.data.createdAt, now),
@@ -283,36 +318,52 @@ export class InMemoryPrismaMock {
       return { ...row };
     },
 
-    findUnique: async (args: { where: { id?: string; roomName?: string }; include?: { userA?: boolean; userB?: boolean } }): Promise<(CallSessionRow & { userA?: UserRow; userB?: UserRow }) | null> => {
-      const row = args.where.id ? this.callSessions.get(args.where.id) : [...this.callSessions.values()].find((session) => session.roomName === args.where.roomName);
-      if (!row) return null;
+    findUnique: async (args: { where: { id?: string; roomName?: string }; include?: { userA?: boolean; userB?: boolean; ratings?: boolean } }): Promise<any> => {
+      let session: CallSessionRow | undefined;
+      if (args.where.id) session = this.callSessions.get(args.where.id);
+      if (!session && args.where.roomName) {
+        session = [...this.callSessions.values()].find((row) => row.roomName === args.where.roomName);
+      }
+      if (!session) return null;
       return {
-        ...row,
-        ...(args?.include?.userA ? { userA: this.users.get(row.userAId) } : {}),
-        ...(args?.include?.userB ? { userB: this.users.get(row.userBId) } : {}),
+        ...session,
+        ...(args.include?.userA ? { userA: this.users.get(session.userAId) } : {}),
+        ...(args.include?.userB ? { userB: this.users.get(session.userBId) } : {}),
+        ...(args.include?.ratings ? { ratings: [...this.callRatings.values()].filter((r) => r.callId === session!.id) } : {}),
       };
     },
 
-    findFirst: async (args: { where?: CallSessionWhere; include?: { userA?: boolean; userB?: boolean } }): Promise<(CallSessionRow & { userA?: UserRow; userB?: UserRow }) | null> => {
-      const row = [...this.callSessions.values()].find((session) => this.matchesCallSession(session, args.where)) ?? null;
-      if (!row) return null;
+    findFirst: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { userA?: boolean; userB?: boolean } }): Promise<any> => {
+      const list = [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where));
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (list.length === 0) return null;
+      const session = list[0];
       return {
-        ...row,
-        ...(args?.include?.userA ? { userA: this.users.get(row.userAId) } : {}),
-        ...(args?.include?.userB ? { userB: this.users.get(row.userBId) } : {}),
+        ...session,
+        ...(args?.include?.userA ? { userA: this.users.get(session.userAId) } : {}),
+        ...(args?.include?.userB ? { userB: this.users.get(session.userBId) } : {}),
       };
     },
 
-    findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<CallSessionRow[]> => {
+    findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number; include?: { userA?: boolean; userB?: boolean; ratings?: boolean } }): Promise<any[]> => {
       let list = [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where));
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       if (args?.take !== undefined) list = list.slice(0, args.take);
-      return list.map((session) => ({ ...session }));
+      return list.map((session) => ({
+        ...session,
+        ...(args?.include?.userA ? { userA: this.users.get(session.userAId) } : {}),
+        ...(args?.include?.userB ? { userB: this.users.get(session.userBId) } : {}),
+        ...(args?.include?.ratings ? { ratings: [...this.callRatings.values()].filter((r) => r.callId === session.id) } : {}),
+      }));
     },
 
-    update: async (args: { where: { id: string }; data: CallSessionData }): Promise<CallSessionRow> => {
-      const session = this.callSessions.get(args.where.id);
-      if (!session) throw new Error(`CallSession not found: ${args.where.id}`);
+    update: async (args: { where: { id?: string; roomName?: string }; data: CallSessionData }): Promise<CallSessionRow> => {
+      let session: CallSessionRow | undefined;
+      if (args.where.id) session = this.callSessions.get(args.where.id);
+      if (!session && args.where.roomName) {
+        session = [...this.callSessions.values()].find((row) => row.roomName === args.where.roomName);
+      }
+      if (!session) throw new Error(`CallSession not found for update: ${safeJson(args.where)}`);
       const updated = this.mergeCallSession(session, args.data);
       this.callSessions.set(session.id, updated);
       return { ...updated };
@@ -322,7 +373,8 @@ export class InMemoryPrismaMock {
       let count = 0;
       for (const [id, session] of this.callSessions) {
         if (!this.matchesCallSession(session, args.where)) continue;
-        this.callSessions.set(id, this.mergeCallSession(session, args.data));
+        const updated = this.mergeCallSession(session, args.data);
+        this.callSessions.set(id, updated);
         count += 1;
       }
       return { count };
@@ -330,37 +382,61 @@ export class InMemoryPrismaMock {
 
     count: async (args?: { where?: CallSessionWhere }): Promise<number> => [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where)).length,
 
-    deleteMany: async (args?: { where?: { id?: string } }): Promise<{ count: number }> => {
+    deleteMany: async (args?: { where?: CallSessionWhere }): Promise<{ count: number }> => {
       if (!args?.where) {
         const count = this.callSessions.size;
         this.callSessions.clear();
         return { count };
       }
-      return { count: this.callSessions.delete(args.where.id ?? '') ? 1 : 0 };
+      let count = 0;
+      for (const [id, session] of this.callSessions) {
+        if (this.matchesCallSession(session, args.where)) {
+          this.callSessions.delete(id);
+          count += 1;
+        }
+      }
+      return { count };
     },
   };
 
   callRating = {
-    create: async (args: { data: CallRatingRow }): Promise<CallRatingRow> => {
-      const row = { ...args.data, id: args.data.id || crypto.randomUUID(), createdAt: args.data.createdAt ?? new Date() };
-      this.callRatings.set(row.id, row);
+    create: async (args: { data: Record<string, unknown> }): Promise<CallRatingRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const row: CallRatingRow = {
+        id,
+        callId: stringValue(args.data.callId),
+        raterId: stringValue(args.data.raterId),
+        ratedId: stringValue(args.data.ratedId),
+        stars: numberValue(args.data.stars, 5),
+        feedback: args.data.feedback ? stringValue(args.data.feedback) : null,
+        reported: booleanValue(args.data.reported, false),
+        createdAt: new Date(),
+      };
+      this.callRatings.set(id, row);
       return { ...row };
     },
-
-    findFirst: async (args: { where: RatingWhere }): Promise<CallRatingRow | null> => {
-      return [...this.callRatings.values()].find((rating) =>
-        (args.where.callId === undefined || rating.callId === args.where.callId) &&
-        (args.where.raterId === undefined || rating.raterId === args.where.raterId) &&
-        (args.where.reported === undefined || rating.reported === args.where.reported),
-      ) ?? null;
+    findFirst: async (args?: { where?: RatingWhere }): Promise<CallRatingRow | null> => {
+      for (const rating of this.callRatings.values()) {
+        if (args?.where?.callId && rating.callId !== args.where.callId) continue;
+        if (args?.where?.raterId && rating.raterId !== args.where.raterId) continue;
+        if (args?.where?.ratedId && rating.ratedId !== args.where.ratedId) continue;
+        if (args?.where?.reported !== undefined && rating.reported !== args.where.reported) continue;
+        return { ...rating };
+      }
+      return null;
     },
-
     findMany: async (args?: { where?: RatingWhere }): Promise<CallRatingRow[]> => {
-      return [...this.callRatings.values()].filter((rating) =>
-        !args?.where?.callId || rating.callId === args.where.callId,
-      ).map((rating) => ({ ...rating }));
+      return [...this.callRatings.values()].filter((rating) => {
+        if (args?.where?.callId && rating.callId !== args.where.callId) return false;
+        if (args?.where?.raterId && rating.raterId !== args.where.raterId) return false;
+        if (args?.where?.ratedId && rating.ratedId !== args.where.ratedId) return false;
+        if (args?.where?.reported !== undefined && rating.reported !== args.where.reported) return false;
+        return true;
+      }).map((row) => ({ ...row }));
     },
-
+    count: async (args?: { where?: RatingWhere }): Promise<number> => {
+      return (await this.callRating.findMany(args)).length;
+    },
     deleteMany: async (args?: { where?: RatingWhere }): Promise<{ count: number }> => {
       if (!args?.where) {
         const count = this.callRatings.size;
@@ -370,6 +446,9 @@ export class InMemoryPrismaMock {
       let count = 0;
       for (const [id, rating] of this.callRatings) {
         if (args.where.callId && rating.callId !== args.where.callId) continue;
+        if (args.where.raterId && rating.raterId !== args.where.raterId) continue;
+        if (args.where.ratedId && rating.ratedId !== args.where.ratedId) continue;
+        if (args.where.reported !== undefined && rating.reported !== args.where.reported) continue;
         this.callRatings.delete(id);
         count += 1;
       }
@@ -383,7 +462,7 @@ export class InMemoryPrismaMock {
       const row: AppealRow = {
         id,
         userId: stringValue(args.data.userId),
-        telegramId: BigInt(String(args.data.telegramId)),
+        telegramId: args.data.telegramId === undefined ? 0n : BigInt(String(args.data.telegramId)),
         alias: stringValue(args.data.alias),
         banReason: stringValue(args.data.banReason),
         appealText: stringValue(args.data.appealText),
@@ -394,8 +473,9 @@ export class InMemoryPrismaMock {
       this.unblockAppeals.set(id, row);
       return { ...row };
     },
-    findMany: async (args?: { orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<Array<AppealRow & { user?: UserRow }>> => {
+    findMany: async (args?: { where?: { status?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<Array<AppealRow & { user?: UserRow }>> => {
       let list = [...this.unblockAppeals.values()];
+      if (args?.where?.status) list = list.filter((appeal) => appeal.status === args.where!.status);
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       return list.map((appeal) => ({ ...appeal, ...(args?.include?.user ? { user: this.users.get(appeal.userId) } : {}) }));
     },
@@ -470,21 +550,138 @@ export class InMemoryPrismaMock {
         telegramPaymentId,
         starsAmount: numberValue(args.data.starsAmount, 0),
         planTier: stringValue(args.data.planTier),
+        status: stringValue(args.data.status, 'PAID'),
+        refundReason: args.data.refundReason ? stringValue(args.data.refundReason) : null,
+        refundedAt: args.data.refundedAt ? dateValue(args.data.refundedAt, new Date()) : null,
         createdAt: new Date(),
       };
       this.starsTransactions.set(id, row);
       return { ...row };
     },
-    findUnique: async (args: { where: { telegramPaymentId?: string; id?: string } }): Promise<StarsTransactionRow | null> => {
-      if (args.where.id) return this.starsTransactions.get(args.where.id) ?? null;
-      if (args.where.telegramPaymentId) {
+    findUnique: async (args: { where: { telegramPaymentId?: string; id?: string }; include?: { user?: boolean } }): Promise<any> => {
+      let found: StarsTransactionRow | undefined;
+      if (args.where.id) found = this.starsTransactions.get(args.where.id);
+      if (!found && args.where.telegramPaymentId) {
         for (const row of this.starsTransactions.values()) {
-          if (row.telegramPaymentId === args.where.telegramPaymentId) return { ...row };
+          if (row.telegramPaymentId === args.where.telegramPaymentId) {
+            found = row;
+            break;
+          }
         }
+      }
+      if (!found) return null;
+      return {
+        ...found,
+        ...(args.include?.user ? { user: this.users.get(found.userId) } : {}),
+      };
+    },
+    findMany: async (args?: { where?: { userId?: string; status?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<any[]> => {
+      let list = [...this.starsTransactions.values()];
+      if (args?.where?.userId) list = list.filter((tx) => tx.userId === args.where!.userId);
+      if (args?.where?.status) list = list.filter((tx) => tx.status === args.where!.status);
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return list.map((row) => ({
+        ...row,
+        ...(args?.include?.user ? { user: this.users.get(row.userId) } : {}),
+      }));
+    },
+    update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<StarsTransactionRow> => {
+      const existing = this.starsTransactions.get(args.where.id);
+      if (!existing) throw new Error(`StarsTransaction not found: ${args.where.id}`);
+      const updated = { ...existing, ...args.data } as StarsTransactionRow;
+      this.starsTransactions.set(existing.id, updated);
+      return { ...updated };
+    },
+  };
+
+  manualPaymentRequest = {
+    create: async (args: { data: Record<string, unknown> }): Promise<ManualPaymentRequestRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const now = new Date();
+      const row: ManualPaymentRequestRow = {
+        id,
+        userId: stringValue(args.data.userId),
+        telegramId: args.data.telegramId === undefined ? 0n : BigInt(String(args.data.telegramId)),
+        alias: stringValue(args.data.alias),
+        plan: stringValue(args.data.plan, 'PLUS'),
+        uzsAmount: numberValue(args.data.uzsAmount, 0),
+        paymentProof: args.data.paymentProof ? stringValue(args.data.paymentProof) : null,
+        status: stringValue(args.data.status, 'PENDING'),
+        adminNote: args.data.adminNote ? stringValue(args.data.adminNote) : null,
+        reviewedBy: args.data.reviewedBy ? stringValue(args.data.reviewedBy) : null,
+        reviewedAt: args.data.reviewedAt ? dateValue(args.data.reviewedAt, now) : null,
+        createdAt: now,
+      };
+      this.manualPaymentRequests.set(id, row);
+      return { ...row };
+    },
+    findUnique: async (args: { where: { id: string }; include?: { user?: boolean } }): Promise<any> => {
+      const row = this.manualPaymentRequests.get(args.where.id);
+      if (!row) return null;
+      return {
+        ...row,
+        ...(args.include?.user ? { user: this.users.get(row.userId) } : {}),
+      };
+    },
+    findFirst: async (args?: { where?: { userId?: string; status?: string } }): Promise<ManualPaymentRequestRow | null> => {
+      for (const row of this.manualPaymentRequests.values()) {
+        if (args?.where?.userId && row.userId !== args.where.userId) continue;
+        if (args?.where?.status && row.status !== args.where.status) continue;
+        return { ...row };
       }
       return null;
     },
-    findMany: async (): Promise<StarsTransactionRow[]> => [...this.starsTransactions.values()].map((row) => ({ ...row })),
+    findMany: async (args?: { where?: { userId?: string; status?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<any[]> => {
+      let list = [...this.manualPaymentRequests.values()];
+      if (args?.where?.userId) list = list.filter((r) => r.userId === args.where!.userId);
+      if (args?.where?.status) list = list.filter((r) => r.status === args.where!.status);
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return list.map((r) => ({
+        ...r,
+        ...(args?.include?.user ? { user: this.users.get(r.userId) } : {}),
+      }));
+    },
+    update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<ManualPaymentRequestRow> => {
+      const item = this.manualPaymentRequests.get(args.where.id);
+      if (!item) throw new Error(`ManualPaymentRequest not found: ${args.where.id}`);
+      const updated = { ...item, ...args.data } as ManualPaymentRequestRow;
+      this.manualPaymentRequests.set(item.id, updated);
+      return { ...updated };
+    },
+    count: async (args?: { where?: { userId?: string; status?: string } }): Promise<number> => {
+      let c = 0;
+      for (const r of this.manualPaymentRequests.values()) {
+        if (args?.where?.userId && r.userId !== args.where.userId) continue;
+        if (args?.where?.status && r.status !== args.where.status) continue;
+        c += 1;
+      }
+      return c;
+    },
+  };
+
+  auditLog = {
+    create: async (args: { data: Record<string, unknown> }): Promise<AuditLogRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const row: AuditLogRow = {
+        id,
+        action: stringValue(args.data.action),
+        targetId: args.data.targetId ? stringValue(args.data.targetId) : null,
+        adminId: stringValue(args.data.adminId),
+        beforeState: args.data.beforeState ? stringValue(args.data.beforeState) : null,
+        afterState: args.data.afterState ? stringValue(args.data.afterState) : null,
+        reason: args.data.reason ? stringValue(args.data.reason) : null,
+        createdAt: new Date(),
+      };
+      this.auditLogs.set(id, row);
+      return { ...row };
+    },
+    findMany: async (args?: { orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<AuditLogRow[]> => {
+      let list = [...this.auditLogs.values()];
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (args?.take !== undefined) list = list.slice(0, args.take);
+      return list.map((l) => ({ ...l }));
+    },
+    count: async (): Promise<number> => this.auditLogs.size,
   };
 
   favoritePartner = {
@@ -498,6 +695,30 @@ export class InMemoryPrismaMock {
       };
       this.favoritePartners.set(id, row);
       return { ...row };
+    },
+    upsert: async (args: { where: { userId_partnerId: { userId: string; partnerId: string } }; update: Record<string, unknown>; create: Record<string, unknown> }): Promise<FavoriteRow> => {
+      for (const row of this.favoritePartners.values()) {
+        if (row.userId === args.where.userId_partnerId.userId && row.partnerId === args.where.userId_partnerId.partnerId) {
+          return { ...row };
+        }
+      }
+      return this.favoritePartner.create({ data: args.create });
+    },
+    findFirst: async (args: { where: FavoriteWhere }): Promise<FavoriteRow | null> => {
+      for (const row of this.favoritePartners.values()) {
+        if (args.where.userId && row.userId !== args.where.userId) continue;
+        if (args.where.partnerId && row.partnerId !== args.where.partnerId) continue;
+        return { ...row };
+      }
+      return null;
+    },
+    findUnique: async (args: { where: { userId_partnerId: { userId: string; partnerId: string } } }): Promise<FavoriteRow | null> => {
+      for (const row of this.favoritePartners.values()) {
+        if (row.userId === args.where.userId_partnerId.userId && row.partnerId === args.where.userId_partnerId.partnerId) {
+          return { ...row };
+        }
+      }
+      return null;
     },
     findMany: async (args?: { where?: FavoriteWhere; include?: { partner?: boolean } }): Promise<Array<FavoriteRow & { partner?: UserRow }>> => {
       return [...this.favoritePartners.values()].filter((row) => !args?.where?.userId || row.userId === args.where.userId).map((row) => ({

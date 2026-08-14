@@ -184,7 +184,7 @@ export class ModerationService {
       return { banned: true, reason: 'Permanently banned due to multiple moderation reports.' };
     }
 
-    if (user.isBanned && user.bannedUntil) {
+    if (user.bannedUntil) {
       if (new Date() < user.bannedUntil) {
         return {
           banned: true,

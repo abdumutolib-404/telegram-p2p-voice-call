@@ -9,38 +9,39 @@ generator client {
 }
 
 model User {
-  id                  String             @id @default(uuid())
-  telegramId          BigInt             @unique
-  alias               String             @unique
-  subFC               Float              @default(6.0)
-  subLR               Float              @default(6.0)
-  subGRA              Float              @default(6.0)
-  subP                Float              @default(6.0)
-  band                Float              @default(6.0)
-  plan                String             @default("FREE") // "FREE", "PLUS", "PRO"
+  id                  String                 @id @default(uuid())
+  telegramId          BigInt                 @unique
+  alias               String                 @unique
+  subFC               Float                  @default(6.0)
+  subLR               Float                  @default(6.0)
+  subGRA              Float                  @default(6.0)
+  subP                Float                  @default(6.0)
+  band                Float                  @default(6.0)
+  plan                String                 @default("FREE") // "FREE", "PLUS", "PRO"
   customPlanName      String?
-  maxDuration         Int                @default(15) // max call duration in minutes
-  dailyLimit          Int                @default(3)
-  dailyCallsUsed      Int                @default(0)
-  retentionOverride   Int?               // custom recording retention in days
-  lastCallDate        String?            // YYYY-MM-DD
-  warningCount        Int                @default(0)
-  isBanned            Boolean            @default(false)
+  maxDuration         Int                    @default(15) // max call duration in minutes
+  dailyLimit          Int                    @default(3)
+  dailyCallsUsed      Int                    @default(0)
+  retentionOverride   Int?                   // custom recording retention in days
+  lastCallDate        String?                // YYYY-MM-DD
+  warningCount        Int                    @default(0)
+  isBanned            Boolean                @default(false)
   bannedUntil         DateTime?
-  isPermanentlyBanned Boolean            @default(false)
-  dnd                 Boolean            @default(false)
-  onboarded           Boolean            @default(false)
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  isPermanentlyBanned Boolean                @default(false)
+  dnd                 Boolean                @default(false)
+  onboarded           Boolean                @default(false)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
-  callsAsA            CallSession[]      @relation("UserACalls")
-  callsAsB            CallSession[]      @relation("UserBCalls")
-  ratingsGiven        CallRating[]       @relation("RatingsGiven")
-  ratingsReceived     CallRating[]       @relation("RatingsReceived")
+  callsAsA            CallSession[]          @relation("UserACalls")
+  callsAsB            CallSession[]          @relation("UserBCalls")
+  ratingsGiven        CallRating[]           @relation("RatingsGiven")
+  ratingsReceived     CallRating[]           @relation("RatingsReceived")
   appeals             UnblockAppeal[]
   starsTransactions   StarsTransaction[]
-  favorites           FavoritePartner[]  @relation("UserFavorites")
-  favoritedBy         FavoritePartner[]  @relation("PartnerFavorites")
+  manualPayments      ManualPaymentRequest[]
+  favorites           FavoritePartner[]      @relation("UserFavorites")
+  favoritedBy         FavoritePartner[]      @relation("PartnerFavorites")
 }
 
 model CallSession {
@@ -91,14 +92,45 @@ model UnblockAppeal {
 }
 
 model StarsTransaction {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   userId            String
-  telegramPaymentId String   @unique
+  telegramPaymentId String    @unique
   starsAmount       Int
-  planTier          String   // "PLUS", "PRO"
-  createdAt         DateTime @default(now())
+  planTier          String    // "PLUS", "PRO"
+  status            String    @default("PAID") // "PAID", "REFUND_PENDING", "REFUNDED"
+  refundReason      String?
+  refundedAt        DateTime?
+  createdAt         DateTime  @default(now())
 
-  user              User     @relation(fields: [userId], references: [id])
+  user              User      @relation(fields: [userId], references: [id])
+}
+
+model ManualPaymentRequest {
+  id           String    @id @default(uuid())
+  userId       String
+  telegramId   BigInt
+  alias        String
+  plan         String    // "PLUS", "PRO"
+  uzsAmount    Int
+  paymentProof String?
+  status       String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  adminNote    String?
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  user         User      @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  action      String   // "MANUAL_PAYMENT_APPROVAL", "MANUAL_PAYMENT_REJECTION", "STARS_REFUND_REVOKE", "PLAN_UPDATE", "USER_MODERATION", "SET_RETENTION"
+  targetId    String?
+  adminId     String
+  beforeState String?
+  afterState  String?
+  reason      String?
+  createdAt   DateTime @default(now())
 }
 
 model FavoritePartner {
