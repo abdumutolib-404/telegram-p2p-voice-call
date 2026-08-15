@@ -16,6 +16,11 @@ import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
 import type { MyContext } from './bot/types';
 
+// Global BigInt JSON serialization guard
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
+  return this.toString();
+};
+
 const app = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);

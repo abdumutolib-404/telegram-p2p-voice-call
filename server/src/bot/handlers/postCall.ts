@@ -2,7 +2,6 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { moderationService } from '../../services/moderation';
-
 import { notificationQueue } from '../notifications';
 
 export async function sendPostCallReviewCard(
@@ -38,11 +37,11 @@ export async function sendPostCallReviewCard(
     await notificationQueue.enqueue(
       bot,
       userTelegramId,
-      `📞 *Practice Session Complete!*\n\n` +
-        `• *Partner*: ${partnerAlias}\n` +
-        `• *Duration*: ${durationStr}\n\n` +
-        `*How was your call audio quality?*`,
-      { parse_mode: 'Markdown', reply_markup: inlineKb }
+      `📞 <b>Practice Session Complete!</b>\n\n` +
+        `• <b>Partner</b>: ${partnerAlias}\n` +
+        `• <b>Duration</b>: ${durationStr}\n\n` +
+        `<b>How was your call audio quality?</b>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   } catch (err) {
     console.warn(`[PostCall Review] Failed to enqueue review card to ${userTelegramId}:`, err);
@@ -97,10 +96,10 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
 
     await ctx.answerCallbackQuery({ text: `Saved ${stars}-star rating!` });
     await ctx.editMessageText(
-      `📞 *Practice Session Complete!*\n\n` +
-        `⭐ *Audio Quality Rating*: ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}\n` +
+      `📞 <b>Practice Session Complete!</b>\n\n` +
+        `⭐ <b>Audio Quality Rating</b>: ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}\n` +
         `Thank you for your feedback!`,
-      { parse_mode: 'Markdown' }
+      { parse_mode: 'HTML' }
     );
   });
 
@@ -142,10 +141,10 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
 
     await ctx.answerCallbackQuery({ text: 'Report submitted to moderation.' });
     await ctx.editMessageText(
-      `⚠️ *Report Submitted*\n\n` +
+      `⚠️ <b>Report Submitted</b>\n\n` +
         `Your report has been logged. Status: ${modResult.penaltyLevel}.\n` +
         `Thank you for keeping our IELTS community safe.`,
-      { parse_mode: 'Markdown' }
+      { parse_mode: 'HTML' }
     );
   });
 }

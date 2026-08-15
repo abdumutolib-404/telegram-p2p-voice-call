@@ -189,6 +189,74 @@ export function getEffectiveEntitlement(user: {
   };
 }
 
+export interface PaidUserProfile {
+  plan: string;
+  planDisplayName: string;
+  expiration: string | null;
+  callsRemainingToday: string;
+  maxCallDuration: number;
+  recordingRetention: number;
+  isActivePaid: boolean;
+  rank: number;
+}
+
+export function getPaidUserProfile(user: {
+  plan?: string | null;
+  subscriptionStatus?: string | null;
+  subscriptionExpiresAt?: Date | string | null;
+  dailyLimit?: number | null;
+  dailyCallsUsed?: number | null;
+  maxDuration?: number | null;
+  retentionOverride?: number | null;
+  customPlanName?: string | null;
+  telegramId?: bigint | string | number | null;
+}): PaidUserProfile {
+  const entitlement = getEffectiveEntitlement(user);
+  const now = new Date();
+  const expiresAt = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) : null;
+  const isUnexpired = Boolean(expiresAt && expiresAt > now);
+  const isActivePaid = (user.plan !== 'FREE' && (user.subscriptionStatus === 'ACTIVE' || isUnexpired)) || false;
+
+  let expirationFormatted: string | null = null;
+  if (expiresAt) {
+    const year = expiresAt.getUTCFullYear();
+    const month = String(expiresAt.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(expiresAt.getUTCDate()).padStart(2, '0');
+    const hours = String(expiresAt.getUTCHours()).padStart(2, '0');
+    const minutes = String(expiresAt.getUTCMinutes()).padStart(2, '0');
+    expirationFormatted = `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+  }
+
+  const callsUsed = user.dailyCallsUsed || 0;
+  const callsRemaining = entitlement.isUnlimited
+    ? 'Unlimited'
+    : `${Math.max(0, entitlement.dailyLimit - callsUsed)} / ${entitlement.dailyLimit}`;
+
+  return {
+    plan: entitlement.plan,
+    planDisplayName: entitlement.planDisplayName,
+    expiration: expirationFormatted,
+    callsRemainingToday: callsRemaining,
+    maxCallDuration: entitlement.maxDurationMinutes,
+    recordingRetention: entitlement.retentionDays,
+    isActivePaid,
+    rank: PLAN_WEIGHTS[entitlement.plan] ?? 0,
+  };
+}
+
+let orderSequence = 20;
+
+export async function generateOrderNumber(prefix: string = 'A'): Promise<string> {
+  try {
+    const totalManual = await prisma.manualPaymentRequest.count();
+    const totalStars = await prisma.starsTransaction.count();
+    orderSequence = Math.max(orderSequence + 1, totalManual + totalStars + 21);
+  } catch {
+    orderSequence += 1;
+  }
+  return `${prefix}${orderSequence}`;
+}
+
 /**
  * Calculates authoritative call duration limit in minutes between two participants:
  * If either participant has an explicit ADMIN_OVERRIDE (e.g. test limits or custom 5-min cap),
@@ -225,13 +293,13 @@ export async function createManualPaymentRequest(params: {
 }) {
   const user = await prisma.user.findUnique({ where: { id: params.userId } });
   if (user) {
-    const isExpired = user.subscriptionExpiresAt ? user.subscriptionExpiresAt < new Date() : false;
+    const isExpired = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) < new Date() : false;
     if (user.subscriptionStatus === 'ACTIVE' && !isExpired && user.plan !== 'FREE') {
       return {
         success: false,
         error: createCanonicalError(
           'ACTIVE_SUBSCRIPTION_EXISTS',
-          `You already have an active ${user.plan} subscription. You cannot request a new one until it expires.`
+          `You have an active paid plan — ${user.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`
         ),
       };
     }
@@ -247,13 +315,16 @@ export async function createManualPaymentRequest(params: {
   if (existingPending) {
     return {
       success: false,
-      error: createCanonicalError('PAYMENT_ALREADY_PENDING', 'You already have a manual payment request pending review.'),
+      error: createCanonicalError('PAYMENT_ALREADY_PENDING', 'You already have a pending subscription request. Please wait for admin approval.'),
       request: existingPending,
     };
   }
 
+  const orderNumber = await generateOrderNumber('A');
+
   const req = await prisma.manualPaymentRequest.create({
     data: {
+      orderNumber,
       userId: params.userId,
       telegramId: BigInt(String(params.telegramId)),
       alias: params.alias,

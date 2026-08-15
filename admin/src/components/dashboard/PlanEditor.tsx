@@ -118,6 +118,7 @@ export function PlanEditor() {
     isFree = false
   ) => {
     const config = plans[tierKey];
+    if (!config) return null;
 
     return (
       <div

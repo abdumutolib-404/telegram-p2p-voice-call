@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AdminStats } from '../../types/index.ts';
 import { adminFetch } from '../../api/client.ts';
-import { Users, TrendingUp, PhoneCall, Star, RefreshCw, DollarSign, Activity } from 'lucide-react';
+import { Users, TrendingUp, PhoneCall, Star, RefreshCw, DollarSign, Activity, CreditCard } from 'lucide-react';
 
 export function AnalyticsOverview() {
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -51,7 +51,7 @@ export function AnalyticsOverview() {
             border: 'none',
             borderRadius: '6px',
             cursor: 'pointer',
-            fontWeight: 500
+            fontWeight: 500,
           }}
         >
           Retry
@@ -68,14 +68,31 @@ export function AnalyticsOverview() {
     starsRevenue: {
       totalStars: 0,
       totalUsd: 0,
-      monthlyHistory: []
-    }
+      monthlyHistory: [],
+    },
+    manualUzsRevenue: {
+      approvedUzs: 0,
+      transactionCount: 0,
+      pendingUzs: 0,
+      pendingCount: 0,
+      rejectedUzs: 0,
+      rejectedCount: 0,
+    },
   };
 
   const monthlyHistory = defaultStats.starsRevenue?.monthlyHistory || [];
   const maxMonthlyStars = monthlyHistory.length > 0
-    ? Math.max(...monthlyHistory.map(m => m.stars), 1)
+    ? Math.max(...monthlyHistory.map((m) => m.stars), 1)
     : 1;
+
+  const manualUzs = defaultStats.manualUzsRevenue || {
+    approvedUzs: 0,
+    transactionCount: 0,
+    pendingUzs: 0,
+    pendingCount: 0,
+    rejectedUzs: 0,
+    rejectedCount: 0,
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -83,10 +100,10 @@ export function AnalyticsOverview() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>
-            Analytics Overview
+            Analytics & Revenue Dashboard
           </h2>
           <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
-            Real-time platform activity and Telegram Stars revenue metrics
+            Real-time platform activity, Telegram Stars (XTR), and Manual UZS financial breakdown
           </p>
         </div>
         <button
@@ -103,7 +120,7 @@ export function AnalyticsOverview() {
             color: '#cbd5e1',
             cursor: 'pointer',
             fontSize: '0.875rem',
-            fontWeight: 500
+            fontWeight: 500,
           }}
         >
           <RefreshCw size={16} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
@@ -114,8 +131,8 @@ export function AnalyticsOverview() {
       {/* KPI Cards Grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '1.25rem'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: '1.25rem',
       }}>
         {/* Card 1: Total Users */}
         <div style={{
@@ -125,7 +142,7 @@ export function AnalyticsOverview() {
           padding: '1.25rem',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Total Users</span>
@@ -146,7 +163,7 @@ export function AnalyticsOverview() {
           padding: '1.25rem',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>MAU / DAU</span>
@@ -172,29 +189,29 @@ export function AnalyticsOverview() {
           padding: '1.25rem',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Total Calls Completed</span>
+            <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Calls Activity</span>
             <div style={{ padding: '0.5rem', borderRadius: '8px', backgroundColor: '#8b5cf620', color: '#a78bfa' }}>
               <PhoneCall size={20} />
             </div>
           </div>
           <div>
             <div style={{ fontSize: '1.875rem', fontWeight: 700, color: '#f8fafc' }}>
-              {(defaultStats.totalCalls ?? 0).toLocaleString()} <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 400 }}>calls</span>
+              {(defaultStats.totalCalls ?? 0).toLocaleString()} <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 400 }}>completed</span>
             </div>
             <div style={{ fontSize: '0.875rem', color: '#a78bfa', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span>{defaultStats.totalMinutesSpoken ?? 0} mins spoken</span>
               <span>•</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#34d399' }}>
-                <Activity size={13} /> {defaultStats.activeCalls} active live
+                <Activity size={13} /> {defaultStats.activeCalls} live
               </span>
             </div>
           </div>
         </div>
 
-        {/* Card 4: Total Revenue */}
+        {/* Card 4: Telegram Stars Revenue */}
         <div style={{
           backgroundColor: '#1e293b',
           border: '1px solid #334155',
@@ -202,10 +219,10 @@ export function AnalyticsOverview() {
           padding: '1.25rem',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Telegram Stars Revenue</span>
+            <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Stars Revenue (XTR)</span>
             <div style={{ padding: '0.5rem', borderRadius: '8px', backgroundColor: '#f59e0b20', color: '#fbbf24' }}>
               <Star size={20} />
             </div>
@@ -215,9 +232,40 @@ export function AnalyticsOverview() {
               <Star size={22} fill="#fbbf24" />
               {defaultStats.starsRevenue.totalStars.toLocaleString()}
             </div>
-            <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.25rem', display: 'flex', alignItems: 'center' }}>
-              <DollarSign size={14} />
-              Approx. ${defaultStats.starsRevenue.totalUsd.toLocaleString()} USD
+            <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ display: 'flex', alignItems: 'center' }}>
+                <DollarSign size={13} />${defaultStats.starsRevenue.totalUsd.toLocaleString()} USD
+              </span>
+              <span>•</span>
+              <span>{defaultStats.starsRevenue.transactionCount ?? 0} orders</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 5: Manual UZS Revenue */}
+        <div style={{
+          backgroundColor: '#1e293b',
+          border: '1px solid #334155',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>Manual Card Revenue (UZS)</span>
+            <div style={{ padding: '0.5rem', borderRadius: '8px', backgroundColor: '#05966920', color: '#34d399' }}>
+              <CreditCard size={20} />
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#34d399' }}>
+              {manualUzs.approvedUzs.toLocaleString('en-US')} <span style={{ fontSize: '1rem', fontWeight: 500 }}>UZS</span>
+            </div>
+            <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>{manualUzs.transactionCount} verified</span>
+              <span>•</span>
+              <span style={{ color: '#fcd34d' }}>{manualUzs.pendingUzs.toLocaleString('en-US')} UZS pending</span>
             </div>
           </div>
         </div>
@@ -228,12 +276,12 @@ export function AnalyticsOverview() {
         backgroundColor: '#1e293b',
         border: '1px solid #334155',
         borderRadius: '12px',
-        padding: '1.5rem'
+        padding: '1.5rem',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
             <h3 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0, color: '#f8fafc' }}>
-              Overall Call Quality Rating & Telemetry
+              Call Quality Telemetry & Health
             </h3>
             <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
               Measurable reliability score derived from session completion, audio stability, and recording success
@@ -248,7 +296,7 @@ export function AnalyticsOverview() {
                 color: defaultStats.callQuality.score >= 90 ? '#6ee7b7' : defaultStats.callQuality.score >= 75 ? '#fcd34d' : '#fca5a5',
                 borderRadius: '9999px',
                 fontSize: '0.85rem',
-                fontWeight: 700
+                fontWeight: 700,
               }}>
                 ⭐ {defaultStats.callQuality.score}/100 — {defaultStats.callQuality.statusMessage}
               </span>
@@ -259,7 +307,7 @@ export function AnalyticsOverview() {
                 color: '#94a3b8',
                 borderRadius: '9999px',
                 fontSize: '0.85rem',
-                fontWeight: 600
+                fontWeight: 600,
               }}>
                 ℹ️ Insufficient Sample Size ({defaultStats.callQuality?.sampleSize ?? 0} sessions)
               </span>
@@ -307,7 +355,7 @@ export function AnalyticsOverview() {
         backgroundColor: '#1e293b',
         border: '1px solid #334155',
         borderRadius: '12px',
-        padding: '1.5rem'
+        padding: '1.5rem',
       }}>
         <h3 style={{ fontSize: '1.125rem', fontWeight: 600, margin: '0 0 1.25rem 0', color: '#f8fafc' }}>
           Monthly Telegram Stars Revenue Breakdown
@@ -335,7 +383,7 @@ export function AnalyticsOverview() {
                       backgroundColor: '#f59e0b',
                       height: '100%',
                       borderRadius: '5px',
-                      transition: 'width 0.3s ease'
+                      transition: 'width 0.3s ease',
                     }} />
                   </div>
                 </div>

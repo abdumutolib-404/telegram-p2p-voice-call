@@ -99,6 +99,7 @@ interface AppealRow {
 
 interface StarsTransactionRow {
   id: string;
+  orderNumber?: string | null;
   userId: string;
   telegramPaymentId: string;
   starsAmount: number;
@@ -111,6 +112,7 @@ interface StarsTransactionRow {
 
 interface ManualPaymentRequestRow {
   id: string;
+  orderNumber: string;
   userId: string;
   telegramId: bigint;
   alias: string;
@@ -550,6 +552,7 @@ export class InMemoryPrismaMock {
       }
       const row: StarsTransactionRow = {
         id,
+        orderNumber: args.data.orderNumber ? stringValue(args.data.orderNumber) : null,
         userId: stringValue(args.data.userId),
         telegramPaymentId,
         starsAmount: numberValue(args.data.starsAmount, 0),
@@ -604,6 +607,7 @@ export class InMemoryPrismaMock {
       const now = new Date();
       const row: ManualPaymentRequestRow = {
         id,
+        orderNumber: stringValue(args.data.orderNumber, 'A0'),
         userId: stringValue(args.data.userId),
         telegramId: args.data.telegramId === undefined ? 0n : BigInt(String(args.data.telegramId)),
         alias: stringValue(args.data.alias),

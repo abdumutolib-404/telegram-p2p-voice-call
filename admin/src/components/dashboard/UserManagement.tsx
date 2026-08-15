@@ -16,7 +16,7 @@ export function UserManagement() {
 
   // Plan & Limits Modal State
   const [planModalUser, setPlanModalUser] = useState<UserItem | null>(null);
-  const [planTier, setPlanTier] = useState<'free' | 'plus' | 'pro'>('free');
+  const [planTier, setPlanTier] = useState<'free' | 'plus' | 'pro' | 'boss'>('free');
   const [dailyLimitInput, setDailyLimitInput] = useState<number>(3);
   const [maxDurationInput, setMaxDurationInput] = useState<number>(15);
   const [retentionOverrideInput, setRetentionOverrideInput] = useState<number | ''>('');
@@ -67,10 +67,12 @@ export function UserManagement() {
 
   const openPlanModal = (user: UserItem) => {
     setPlanModalUser(user);
-    const tier = user.planTier || 'free';
+    const rawTier = (user.planTier || 'free').toLowerCase();
+    const tier: 'free' | 'plus' | 'pro' | 'boss' =
+      rawTier === 'boss' ? 'boss' : rawTier === 'pro' ? 'pro' : rawTier === 'plus' ? 'plus' : 'free';
     setPlanTier(tier);
-    setDailyLimitInput(user.dailyLimit ?? (tier === 'pro' ? 999 : tier === 'plus' ? 10 : 3));
-    setMaxDurationInput(user.maxDuration ?? (tier === 'pro' ? 60 : tier === 'plus' ? 30 : 15));
+    setDailyLimitInput(user.dailyLimit ?? (tier === 'boss' || tier === 'pro' ? 999 : tier === 'plus' ? 10 : 3));
+    setMaxDurationInput(user.maxDuration ?? (tier === 'boss' || tier === 'pro' ? 60 : tier === 'plus' ? 30 : 15));
     setRetentionOverrideInput(user.retentionOverride ? user.retentionOverride : '');
     setCustomPlanNameInput(user.customPlanName || '');
     setResetDailyCallsCheckbox(false);
@@ -80,9 +82,9 @@ export function UserManagement() {
     setPlanModalUser(null);
   };
 
-  const handlePlanTierChange = (newTier: 'free' | 'plus' | 'pro') => {
+  const handlePlanTierChange = (newTier: 'free' | 'plus' | 'pro' | 'boss') => {
     setPlanTier(newTier);
-    if (newTier === 'pro') {
+    if (newTier === 'boss' || newTier === 'pro') {
       setDailyLimitInput(999);
       setMaxDurationInput(60);
     } else if (newTier === 'plus') {
@@ -506,8 +508,8 @@ export function UserManagement() {
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.5rem', fontWeight: 600 }}>
                 Subscription Tier
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                {(['free', 'plus', 'pro'] as const).map((tier) => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                {(['free', 'plus', 'pro', 'boss'] as const).map((tier) => (
                   <button
                     key={tier}
                     type="button"
@@ -521,10 +523,10 @@ export function UserManagement() {
                       fontWeight: 600,
                       cursor: 'pointer',
                       textTransform: 'uppercase',
-                      fontSize: '0.85rem'
+                      fontSize: '0.8rem',
                     }}
                   >
-                    {tier === 'pro' ? '⭐ PRO' : tier === 'plus' ? '⚡ PLUS' : '🆓 FREE'}
+                    {tier === 'boss' ? '👑 BOSS' : tier === 'pro' ? '⭐ PRO' : tier === 'plus' ? '⚡ PLUS' : '🆓 FREE'}
                   </button>
                 ))}
               </div>

@@ -3,7 +3,7 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { calculateOverallBand, generateUniqueAlias, getMainMenuKeyboard } from '../commands/start';
-import { getRetentionDaysForPlan, getEffectiveEntitlement } from '../../services/plan';
+import { getEffectiveEntitlement } from '../../services/plan';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
@@ -20,9 +20,9 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
-      `🎯 *Step 2/4: Select your Lexical Resource (LR) score:*\n\n` +
-        `• FC: *${fc.toFixed(1)}*`,
-      { parse_mode: 'Markdown', reply_markup: inlineKb }
+      `🎯 <b>Step 2/4: Select your Lexical Resource (LR) score:</b>\n\n` +
+        `• FC: <b>${fc.toFixed(1)}</b>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
 
@@ -40,10 +40,10 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
-      `🎯 *Step 3/4: Select your Grammatical Range & Accuracy (GRA) score:*\n\n` +
-        `• FC: *${ctx.session.fc?.toFixed(1)}*\n` +
-        `• LR: *${lr.toFixed(1)}*`,
-      { parse_mode: 'Markdown', reply_markup: inlineKb }
+      `🎯 <b>Step 3/4: Select your Grammatical Range & Accuracy (GRA) score:</b>\n\n` +
+        `• FC: <b>${ctx.session.fc?.toFixed(1)}</b>\n` +
+        `• LR: <b>${lr.toFixed(1)}</b>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
 
@@ -61,11 +61,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
-      `🎯 *Step 4/4: Select your Pronunciation (P) score:*\n\n` +
-        `• FC: *${ctx.session.fc?.toFixed(1)}*\n` +
-        `• LR: *${ctx.session.lr?.toFixed(1)}*\n` +
-        `• GRA: *${gra.toFixed(1)}*`,
-      { parse_mode: 'Markdown', reply_markup: inlineKb }
+      `🎯 <b>Step 4/4: Select your Pronunciation (P) score:</b>\n\n` +
+        `• FC: <b>${ctx.session.fc?.toFixed(1)}</b>\n` +
+        `• LR: <b>${ctx.session.lr?.toFixed(1)}</b>\n` +
+        `• GRA: <b>${gra.toFixed(1)}</b>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
 
@@ -87,14 +87,14 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
-      `📊 *Sub-scores Summary*\n\n` +
-        `• Fluency & Coherence (FC): *${fc.toFixed(1)}*\n` +
-        `• Lexical Resource (LR): *${lr.toFixed(1)}*\n` +
-        `• Grammatical Range (GRA): *${gra.toFixed(1)}*\n` +
-        `• Pronunciation (P): *${p.toFixed(1)}*\n\n` +
-        `⭐ *Calculated Overall IELTS Band*: *${overallBand.toFixed(1)}*\n\n` +
-        `Click *Save & Lock Profile* to finalize setup.`,
-      { parse_mode: 'Markdown', reply_markup: inlineKb }
+      `📊 <b>Sub-scores Summary</b>\n\n` +
+        `• Fluency & Coherence (FC): <b>${fc.toFixed(1)}</b>\n` +
+        `• Lexical Resource (LR): <b>${lr.toFixed(1)}</b>\n` +
+        `• Grammatical Range (GRA): <b>${gra.toFixed(1)}</b>\n` +
+        `• Pronunciation (P): <b>${p.toFixed(1)}</b>\n\n` +
+        `⭐ <b>Calculated Overall IELTS Band</b>: <b>${overallBand.toFixed(1)}</b>\n\n` +
+        `Click <b>Save & Lock Profile</b> to finalize setup.`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
 
@@ -131,41 +131,22 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           onboarded: true,
         },
       });
-    } catch (dbErr: unknown) {
-      const prismaError = dbErr as { code?: unknown };
-      // Retry with a new alias if unique constraint violation
-      if (prismaError.code === 'P2002') {
-        const retryAlias = generateUniqueAlias();
-        user = await prisma.user.upsert({
-          where: { telegramId },
-          create: {
-            telegramId,
-            alias: retryAlias,
-            subFC: fc, subLR: lr, subGRA: gra, subP: p,
-            band: overallBand,
-            onboarded: true,
-          },
-          update: {
-            subFC: fc, subLR: lr, subGRA: gra, subP: p,
-            band: overallBand,
-            onboarded: true,
-          },
-        });
-      } else {
-        throw dbErr;
-      }
+    } catch (err) {
+      console.error('[Callback] confirm_subscores error:', err);
+      await ctx.answerCallbackQuery({ text: 'Failed to save profile. Please try again.' });
+      return;
     }
 
     ctx.session.step = 'idle';
-    await ctx.answerCallbackQuery({ text: 'Profile saved!' });
-
     const menuKb = getMainMenuKeyboard();
+
+    await ctx.answerCallbackQuery({ text: 'Profile saved!' });
     await ctx.reply(
-      `🎉 *Profile Onboarding Complete!*\n\n` +
-        `• *Permanent Alias*: \`${user.alias}\` (Locked)\n` +
-        `• *Target IELTS Band*: ${user.band.toFixed(1)}\n\n` +
-        `You can now tap *📞 Find Partner* to match with complementary speaking partners.`,
-      { parse_mode: 'Markdown', reply_markup: menuKb }
+      `🎉 <b>Profile Onboarding Complete!</b>\n\n` +
+        `• <b>Permanent Alias</b>: <code>${user.alias}</code> (Locked)\n` +
+        `• <b>Target IELTS Band</b>: ${user.band.toFixed(1)}\n\n` +
+        `You can now tap <b>📞 Find Partner</b> to match with complementary speaking partners.`,
+      { parse_mode: 'HTML', reply_markup: menuKb }
     );
   });
 
@@ -179,42 +160,15 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     }
 
     await ctx.answerCallbackQuery();
-    await ctx.reply(`🎯 *Step 1/4: Select your Fluency & Coherence (FC) score:*`, {
-      parse_mode: 'Markdown',
-      reply_markup: inlineKb,
-    });
+    await ctx.editMessageText(
+      `🎯 <b>Step 1/4: Select your Fluency & Coherence (FC) score:</b>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
   });
 
   // Callback: toggle_dnd
   bot.callbackQuery('toggle_dnd', async (ctx) => {
     const telegramId = BigInt(ctx.from.id);
-    const user = await prisma.user.findUnique({ where: { telegramId } });
-
-    if (user) {
-      const newDnd = !user.dnd;
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { dnd: newDnd },
-      });
-
-      await ctx.answerCallbackQuery({
-        text: newDnd ? 'DND Activated: You will not receive partner invitations.' : 'DND Deactivated.',
-      });
-
-      await ctx.editMessageText(
-        `👤 *Profile Updated*\n\n` +
-          `DND Status: ${newDnd ? '🔕 Do Not Disturb ON' : '🔔 Ready for Calls'}`
-      );
-    }
-  });
-
-
-
-  // Callback: favorite_partner:<callIdOrPartnerId>
-  bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {
-    const idParam = ctx.match[1];
-    const telegramId = BigInt(ctx.from.id);
-
     try {
       const user = await prisma.user.findUnique({ where: { telegramId } });
       if (!user) {
@@ -222,12 +176,38 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      let partnerId = idParam;
+      const newDnd = !user.dnd;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { dnd: newDnd },
+      });
 
-      // Check if idParam is a CallSession ID
-      const session = await prisma.callSession.findUnique({ where: { id: idParam } });
-      if (session) {
-        partnerId = session.userAId === user.id ? session.userBId : session.userAId;
+      await ctx.answerCallbackQuery({
+        text: newDnd ? '🔕 Do Not Disturb enabled.' : '🔔 Ready for calls!',
+      });
+
+      const inlineKb = new InlineKeyboard()
+        .text('✏️ Re-evaluate Sub-scores', 're_evaluate_subscores')
+        .row()
+        .text(newDnd ? '🔔 Turn DND OFF' : '🔕 Turn DND ON', 'toggle_dnd');
+
+      await ctx.editMessageReplyMarkup({ reply_markup: inlineKb });
+    } catch (err) {
+      console.error('[Callback] toggle_dnd error:', err);
+      await ctx.answerCallbackQuery({ text: 'Failed to toggle DND status.' });
+    }
+  });
+
+  // Callback: favorite_partner:<partnerId>
+  bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {
+    const partnerId = ctx.match[1];
+    const telegramId = BigInt(ctx.from.id);
+
+    try {
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+      if (!user) {
+        await ctx.answerCallbackQuery({ text: 'User not found.' });
+        return;
       }
 
       const partner = await prisma.user.findUnique({ where: { id: partnerId } });
@@ -257,133 +237,250 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     }
   });
 
-  // Callback: accept_direct:<callerId>
-  bot.callbackQuery(/^accept_direct:(.+)$/, async (ctx) => {
-    const callerId = ctx.match[1];
-    const calleeTelegramId = BigInt(ctx.from.id);
+  // Callback: remove_favorite:<partnerId>
+  bot.callbackQuery(/^remove_favorite:(.+)$/, async (ctx) => {
+    const partnerId = ctx.match[1];
+    const telegramId = BigInt(ctx.from.id);
+    try {
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+      if (user) {
+        await prisma.favoritePartner.deleteMany({
+          where: { userId: user.id, partnerId },
+        });
+      }
+      await ctx.answerCallbackQuery({ text: 'Partner removed from favorites.' });
+      await ctx.editMessageText('❌ Partner removed from your favorites list.');
+    } catch {
+      await ctx.answerCallbackQuery({ text: 'Unable to remove favorite.' });
+    }
+  });
+
+  // Callback: direct_call:<partnerId> or call_favorite:<partnerId>
+  bot.callbackQuery(/^(?:direct_call|call_favorite):(.+)$/, async (ctx) => {
+    const partnerId = ctx.match[1];
+    const telegramId = BigInt(ctx.from.id);
 
     try {
-      const callee = await prisma.user.findUnique({ where: { telegramId: calleeTelegramId } });
-      if (!callee) {
-        await ctx.answerCallbackQuery({ text: 'User not found.' });
-        return;
-      }
-
-      const caller = await prisma.user.findUnique({ where: { id: callerId } });
+      const caller = await prisma.user.findUnique({ where: { telegramId } });
       if (!caller) {
-        await ctx.answerCallbackQuery({ text: 'Caller not found.' });
+        await ctx.answerCallbackQuery({ text: 'User not found. Please type /start first.' });
         return;
       }
 
-      // Invariant check: is callee or caller already in an active call?
-      const existingCall = await prisma.callSession.findFirst({
+      if (caller.isBanned || caller.isPermanentlyBanned) {
+        await ctx.answerCallbackQuery({ text: 'Your account is currently suspended.', show_alert: true });
+        return;
+      }
+
+      const partner = await prisma.user.findUnique({ where: { id: partnerId } });
+      if (!partner) {
+        await ctx.answerCallbackQuery({ text: 'Partner not found.', show_alert: true });
+        return;
+      }
+
+      if (partner.isBanned || partner.isPermanentlyBanned) {
+        await ctx.answerCallbackQuery({ text: `${partner.alias} is currently unavailable.`, show_alert: true });
+        return;
+      }
+
+      if (partner.dnd) {
+        await ctx.answerCallbackQuery({ text: `${partner.alias} has Do Not Disturb enabled.`, show_alert: true });
+        return;
+      }
+
+      // Single active call invariant check
+      const activeCall = await prisma.callSession.findFirst({
         where: {
-          status: 'ACTIVE',
+          status: { in: ['ACTIVE', 'PENDING'] },
           OR: [
-            { userAId: callee.id },
-            { userBId: callee.id },
             { userAId: caller.id },
             { userBId: caller.id },
+            { userAId: partner.id },
+            { userBId: partner.id },
           ],
         },
       });
 
-      if (existingCall) {
-        await ctx.answerCallbackQuery({ text: 'One of the participants is already in an active call.' });
-        await ctx.editMessageText('❌ Call connection failed: Partner or you are already in an active call.');
+      if (activeCall) {
+        if (activeCall.userAId === caller.id || activeCall.userBId === caller.id) {
+          await ctx.answerCallbackQuery({ text: 'You already have an ongoing or pending call.', show_alert: true });
+        } else {
+          await ctx.answerCallbackQuery({ text: `${partner.alias} is currently in another call.`, show_alert: true });
+        }
         return;
       }
 
-      await ctx.answerCallbackQuery({ text: 'Accepting call...' });
+      const roomName = `direct_${Date.now()}_${caller.id.slice(0, 4)}_${partner.id.slice(0, 4)}`;
 
-      const roomName = `direct_${Date.now()}_${caller.id.slice(0, 4)}_${callee.id.slice(0, 4)}`;
-
-      // Create session
+      // Create PENDING CallSession
       const session = await prisma.callSession.create({
         data: {
           roomName,
           userAId: caller.id,
-          userBId: callee.id,
-          status: 'ACTIVE',
+          userBId: partner.id,
+          status: 'PENDING',
         },
       });
 
+      const callerKb = new InlineKeyboard().text('✖️ Cancel Call', `cancel_direct:${session.id}`);
+
+      await ctx.answerCallbackQuery({ text: `Calling ${partner.alias}...` });
+      await ctx.reply(
+        `📞 <b>Direct Call Request Sent</b>\n\n` +
+          `Calling <b>${partner.alias}</b> (Band ${partner.band.toFixed(1)})...\n` +
+          `<i>They have received an invitation to join your call.</i>`,
+        { parse_mode: 'HTML', reply_markup: callerKb }
+      );
+
+      // Send incoming call prompt to partner
+      const partnerKb = new InlineKeyboard()
+        .text('✅ Accept & Join', `accept_direct:${session.id}`)
+        .text('❌ Decline', `decline_direct:${session.id}`);
+
+      try {
+        await ctx.api.sendMessage(
+          partner.telegramId.toString(),
+          `📞 <b>Incoming Direct Call!</b>\n\n` +
+            `<b>${caller.alias}</b> (Band ${caller.band.toFixed(1)}) is calling you for an IELTS speaking session.\n\n` +
+            `Tap below to accept or decline:`,
+          { parse_mode: 'HTML', reply_markup: partnerKb }
+        );
+      } catch (sendErr) {
+        console.warn(`[Direct Call] Failed to notify partner ${partner.alias}:`, sendErr);
+      }
+    } catch (err) {
+      console.error('[Callback] direct_call error:', err);
+      await ctx.answerCallbackQuery({ text: 'An error occurred initiating the direct call.' });
+    }
+  });
+
+  // Callback: accept_direct:<sessionId>
+  bot.callbackQuery(/^accept_direct:(.+)$/, async (ctx) => {
+    const sessionId = ctx.match[1];
+    const calleeTelegramId = BigInt(ctx.from.id);
+
+    try {
+      const session = await prisma.callSession.findUnique({
+        where: { id: sessionId },
+        include: { userA: true, userB: true },
+      });
+
+      if (!session || session.status !== 'PENDING') {
+        await ctx.answerCallbackQuery({ text: 'This call invitation is no longer active.', show_alert: true });
+        await ctx.editMessageText('❌ This call invitation has expired or was cancelled.');
+        return;
+      }
+
+      const caller = session.userA;
+      const callee = session.userB;
+
+      if (!callee || callee.telegramId !== calleeTelegramId) {
+        await ctx.answerCallbackQuery({ text: 'Unauthorized invitation action.', show_alert: true });
+        return;
+      }
+
+      // Mark session ACTIVE
+      await prisma.callSession.update({
+        where: { id: session.id },
+        data: { status: 'ACTIVE' },
+      });
+
+      await ctx.answerCallbackQuery({ text: 'Call accepted! Opening audio channel...' });
+
       const callUrl = `${env.MINI_APP_URL.replace(/\/$/, '')}?active_call=${session.id}`;
-      const inlineKb = new InlineKeyboard().webApp('📞 Open Voice Call', callUrl);
+      const joinKb = new InlineKeyboard().webApp('📞 Open Voice Call', callUrl);
 
       await ctx.editMessageText(
-        `✅ *Direct Call Accepted!*\n\n` +
-          `Session with *${caller.alias}* is ready.\n` +
-          `Tap the button below to join:`,
-        { parse_mode: 'Markdown', reply_markup: inlineKb }
+        `✅ <b>Direct Call Connected!</b>\n\n` +
+          `Your speaking session with <b>${caller.alias}</b> is active.\n` +
+          `Tap below to enter the call:`,
+        { parse_mode: 'HTML', reply_markup: joinKb }
       );
 
       try {
         await ctx.api.sendMessage(
           caller.telegramId.toString(),
-          `✅ *${callee.alias} accepted your direct call!*\n\n` +
-            `Tap the button below to join the call:`,
-          { parse_mode: 'Markdown', reply_markup: inlineKb }
+          `✅ <b>${callee.alias} accepted your call!</b>\n\n` +
+            `Tap below to enter the voice call:`,
+          { parse_mode: 'HTML', reply_markup: joinKb }
         );
-      } catch (sendErr) {
-        console.warn('[Direct Call] Failed to notify caller:', sendErr);
+      } catch (notifyErr) {
+        console.warn('[Direct Call] Failed to notify caller of accept:', notifyErr);
       }
     } catch (err) {
       console.error('[Callback] accept_direct error:', err);
-      await ctx.answerCallbackQuery({ text: 'An error occurred accepting call.' });
+      await ctx.answerCallbackQuery({ text: 'Failed to accept call.' });
     }
   });
 
-  // Callback: decline_direct:<callerId>
+  // Callback: decline_direct:<sessionId>
   bot.callbackQuery(/^decline_direct:(.+)$/, async (ctx) => {
-    const callerId = ctx.match[1];
-    const calleeTelegramId = BigInt(ctx.from.id);
-
+    const sessionId = ctx.match[1];
     try {
-      const callee = await prisma.user.findUnique({ where: { telegramId: calleeTelegramId } });
-      const caller = await prisma.user.findUnique({ where: { id: callerId } });
+      const session = await prisma.callSession.findUnique({
+        where: { id: sessionId },
+        include: { userA: true, userB: true },
+      });
+
+      if (session && session.status === 'PENDING') {
+        await prisma.callSession.update({
+          where: { id: session.id },
+          data: { status: 'DECLINED' },
+        });
+
+        if (session.userA && session.userB) {
+          try {
+            await ctx.api.sendMessage(
+              session.userA.telegramId.toString(),
+              `❌ <b>${session.userB.alias}</b> was unable to accept your direct call.`,
+              { parse_mode: 'HTML' }
+            );
+          } catch {}
+        }
+      }
 
       await ctx.answerCallbackQuery({ text: 'Call invitation declined.' });
       await ctx.editMessageText('❌ You declined the call invitation.');
-
-      if (caller && callee) {
-        try {
-          await ctx.api.sendMessage(
-            caller.telegramId.toString(),
-            `❌ *${callee.alias}* is currently unable to accept your direct call.`,
-            { parse_mode: 'Markdown' }
-          );
-        } catch {}
-      }
     } catch (err) {
       console.error('[Callback] decline_direct error:', err);
     }
   });
 
-  // Callback: cancel_direct:<partnerId>
+  // Callback: cancel_direct:<sessionId>
   bot.callbackQuery(/^cancel_direct:(.+)$/, async (ctx) => {
-    const partnerId = ctx.match[1];
+    const sessionId = ctx.match[1];
     try {
-      const partner = await prisma.user.findUnique({ where: { id: partnerId } });
-      await ctx.answerCallbackQuery({ text: 'Call invitation cancelled.' });
-      await ctx.editMessageText('✖️ Call request cancelled.');
+      const session = await prisma.callSession.findUnique({
+        where: { id: sessionId },
+        include: { userA: true, userB: true },
+      });
 
-      if (partner) {
-        try {
-          await ctx.api.sendMessage(
-            partner.telegramId.toString(),
-            '✖️ *The incoming call invitation was cancelled.*',
-            { parse_mode: 'Markdown' }
-          );
-        } catch {}
+      if (session && session.status === 'PENDING') {
+        await prisma.callSession.update({
+          where: { id: session.id },
+          data: { status: 'CANCELLED' },
+        });
+
+        if (session.userB) {
+          try {
+            await ctx.api.sendMessage(
+              session.userB.telegramId.toString(),
+              `✖️ <b>The incoming direct call invitation was cancelled.</b>`,
+              { parse_mode: 'HTML' }
+            );
+          } catch {}
+        }
       }
+
+      await ctx.answerCallbackQuery({ text: 'Call request cancelled.' });
+      await ctx.editMessageText('✖️ Call request cancelled.');
     } catch (err) {
       console.error('[Callback] cancel_direct error:', err);
     }
   });
 
-  // Callback: play_rec:<sessionId>
-  bot.callbackQuery(/^play_rec:(.+)$/, async (ctx) => {
+  // Callback: play_rec:<sessionId> or play_recording_<sessionId>
+  bot.callbackQuery(/^(?:play_rec|play_recording)_(.+)$/, async (ctx) => {
     const sessionId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
 
@@ -426,85 +523,12 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       await ctx.answerCallbackQuery({ text: 'Sending audio recording...' });
       const InputFile = (await import('grammy')).InputFile;
       await ctx.replyWithAudio(new InputFile(filePath), {
-        caption: `🎙️ *Audio Recording* — Session ${sessionId.slice(0, 8)} (${Math.floor(session.duration / 60)} min)`,
-        parse_mode: 'Markdown',
+        caption: `🎙️ <b>Audio Recording</b> — Session ${sessionId.slice(0, 8)} (${Math.floor((session.duration || 0) / 60)} min)`,
+        parse_mode: 'HTML',
       });
     } catch (err) {
       console.error('[Callback] play_rec error:', err);
       await ctx.answerCallbackQuery({ text: 'An error occurred sending audio.' });
-    }
-  });
-
-  // Callback: direct_call:<partnerId> or call_favorite:<partnerId>
-  bot.callbackQuery(/^(?:direct_call|call_favorite):(.+)$/, async (ctx) => {
-    const partnerId = ctx.match[1];
-    const telegramId = BigInt(ctx.from.id);
-
-    try {
-      const user = await prisma.user.findUnique({ where: { telegramId } });
-      if (!user) {
-        await ctx.answerCallbackQuery({ text: 'User not found.' });
-        return;
-      }
-
-      // Check user is not banned
-      if (user.isBanned || user.isPermanentlyBanned) {
-        await ctx.answerCallbackQuery({ text: 'Your account is currently restricted.' });
-        return;
-      }
-
-      const partner = await prisma.user.findUnique({ where: { id: partnerId } });
-      if (!partner) {
-        await ctx.answerCallbackQuery({ text: 'Partner not found.' });
-        return;
-      }
-
-      if (partner.dnd) {
-        await ctx.answerCallbackQuery({ text: `${partner.alias} has Do Not Disturb enabled.` });
-        return;
-      }
-
-      // Ensure caller is not currently in an active call
-      const activeCall = await prisma.callSession.findFirst({
-        where: {
-          status: 'ACTIVE',
-          OR: [{ userAId: user.id }, { userBId: user.id }],
-        },
-      });
-      if (activeCall) {
-        await ctx.answerCallbackQuery({ text: 'You are already in an active call session.' });
-        return;
-      }
-
-      const callerKb = new InlineKeyboard().text('✖️ Cancel Invitation', `cancel_direct:${partner.id}`);
-
-      await ctx.answerCallbackQuery({ text: `Ringing ${partner.alias}...` });
-      await ctx.reply(
-        `📞 *Direct Call Request Sent*\n\n` +
-          `Calling *${partner.alias}* (Band ${partner.band.toFixed(1)})...\n` +
-          `_They will receive a notification to join the call._`,
-        { parse_mode: 'Markdown', reply_markup: callerKb }
-      );
-
-      // Send push notification to partner via bot
-      try {
-        const inlineKb = new InlineKeyboard()
-          .text('✅ Accept & Join Call', `accept_direct:${user.id}`)
-          .text('❌ Decline', `decline_direct:${user.id}`);
-
-        await ctx.api.sendMessage(
-          partner.telegramId.toString(),
-          `📞 *Incoming Direct Call!*\n\n` +
-            `*${user.alias}* (Band ${user.band.toFixed(1)}) is calling you to practice.\n` +
-            `Tap below to accept or decline:`,
-          { parse_mode: 'Markdown', reply_markup: inlineKb }
-        );
-      } catch (sendErr) {
-        console.warn(`[Direct Call] Could not notify partner ${partner.alias}:`, sendErr);
-      }
-    } catch (err) {
-      console.error('[Callback] direct_call error:', err);
-      await ctx.answerCallbackQuery({ text: 'An error occurred.' });
     }
   });
 
@@ -519,11 +543,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      `⚖️ *Submit Unban Appeal:*\n\n` +
-        `Please send your appeal message using the \`/appeal\` command.\n\n` +
-        `*Example:*\n\`/appeal I would like to request an unban because my connection dropped.\`\n\n` +
+      `⚖️ <b>Submit Unban Appeal:</b>\n\n` +
+        `Please send your appeal message using the <code>/appeal</code> command.\n\n` +
+        `<b>Example:</b>\n<code>/appeal I would like to request an unban because my connection dropped.</code>\n\n` +
         `Your message will go directly to our moderation team's review queue.`,
-      { parse_mode: 'Markdown' }
+      { parse_mode: 'HTML' }
     );
   });
 }

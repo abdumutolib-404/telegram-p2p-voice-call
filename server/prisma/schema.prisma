@@ -95,10 +95,11 @@ model UnblockAppeal {
 
 model StarsTransaction {
   id                String    @id @default(uuid())
+  orderNumber       String?
   userId            String
   telegramPaymentId String    @unique
   starsAmount       Int
-  planTier          String    // "PLUS", "PRO"
+  planTier          String    // "PLUS", "PRO", "BOSS"
   status            String    @default("PAID") // "PAID", "REFUND_PENDING", "REFUNDED"
   refundReason      String?
   refundedAt        DateTime?
@@ -109,10 +110,11 @@ model StarsTransaction {
 
 model ManualPaymentRequest {
   id           String    @id @default(uuid())
+  orderNumber  String    @default("A0")
   userId       String
   telegramId   BigInt
   alias        String
-  plan         String    // "PLUS", "PRO"
+  plan         String    // "PLUS", "PRO", "BOSS"
   uzsAmount    Int
   paymentProof String?
   status       String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED"

@@ -493,18 +493,31 @@ router.put('/plans', adminAuthMiddleware, async (req, res) => {
 // GET /api/admin/payments/manual (Protected)
 router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
   try {
-    const statusFilter = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const tab = typeof req.query.tab === 'string' ? req.query.tab : undefined;
+    const statusQuery = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
+
+    let whereClause: any = {};
+    if (tab === 'queue' || statusQuery === 'PENDING') {
+      whereClause.status = 'PENDING';
+    } else if (tab === 'history') {
+      whereClause.status = { in: ['APPROVED', 'REJECTED', 'REFUNDED'] };
+    } else if (statusQuery) {
+      whereClause.status = statusQuery;
+    }
+
     const requests = await prisma.manualPaymentRequest.findMany({
-      where: statusFilter ? { status: statusFilter } : undefined,
+      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
       orderBy: { createdAt: 'desc' },
       include: { user: true },
     });
 
-    const formatted = requests.map((r: any) => ({
+    let formatted = requests.map((r: any) => ({
       id: r.id,
+      orderNumber: r.orderNumber || `A${r.id.slice(0, 4)}`,
       userId: r.userId,
       alias: r.alias,
-      telegramId: r.telegramId.toString(),
+      telegramId: r.telegramId ? r.telegramId.toString() : '',
       planTier: r.plan,
       amountUzs: r.uzsAmount,
       status: r.status,
@@ -521,6 +534,18 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
           }
         : undefined,
     }));
+
+    if (search) {
+      formatted = formatted.filter((item: any) => {
+        return (
+          item.orderNumber.toLowerCase().includes(search) ||
+          item.alias.toLowerCase().includes(search) ||
+          item.telegramId.toLowerCase().includes(search) ||
+          item.planTier.toLowerCase().includes(search) ||
+          (item.adminNote && item.adminNote.toLowerCase().includes(search))
+        );
+      });
+    }
 
     res.json(formatted);
   } catch (err) {
@@ -551,17 +576,24 @@ router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res
 
       await adminBotInstance.api.sendMessage(
         result.user.telegramId.toString(),
-        `🎉 *Payment Verified & Approved!*\n\n` +
-          `Your *${result.user.plan} Plan* has been activated.\n` +
-          `• Max Call Duration: ${config.maxDuration} minutes\n` +
+        `🎉 <b>Payment Verified & Approved!</b>\n\n` +
+          `Your <b>${result.user.plan} Plan</b> has been activated.\n` +
+          `• Max Call Duration: ${config.maxDuration >= 999 ? 'Unlimited' : `${config.maxDuration} minutes`}\n` +
           `• Daily Limit: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/day`}\n` +
           `• Recording Storage: ${config.retentionDays} days\n\n` +
           `Happy practicing!`,
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' }
       ).catch(() => undefined);
     }
 
-    res.json({ success: true, message: 'Payment approved and plan activated.', request: result.request });
+    res.json({
+      success: true,
+      message: 'Payment approved and plan activated.',
+      request: {
+        ...result.request,
+        telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
+      },
+    });
   } catch (err: any) {
     console.error('[Admin] Failed to approve manual payment:', err);
     res.status(400).json({ error: err.message || 'Failed to approve payment.' });
@@ -581,7 +613,14 @@ router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res)
       note,
     });
 
-    res.json({ success: true, message: 'Payment request rejected.', request: result.request });
+    res.json({
+      success: true,
+      message: 'Payment request rejected.',
+      request: {
+        ...result.request,
+        telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
+      },
+    });
   } catch (err: any) {
     console.error('[Admin] Failed to reject manual payment:', err);
     res.status(400).json({ error: err.message || 'Failed to reject payment.' });

@@ -4,6 +4,7 @@ import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { createRateLimiter } from '../middleware/rateLimit';
 import { generateUniqueAlias } from '../bot/commands/start';
+import { getPaidUserProfile } from '../services/plan';
 
 const router = Router();
 const authLimiter = createRateLimiter(20, 60 * 1000);
@@ -67,6 +68,7 @@ router.post('/verify', authLimiter, async (req, res) => {
         subP: dbUser.subP,
         plan: dbUser.plan,
         isBanned: isSuspended,
+        profile: getPaidUserProfile(dbUser),
       },
     });
   } catch (error: unknown) {

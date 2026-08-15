@@ -7,11 +7,23 @@ export interface MonthlyRevenue {
 export interface StarsRevenue {
   totalStars: number;
   totalUsd: number;
+  transactionCount?: number;
+  refundedCount?: number;
+  refundedStars?: number;
   monthlyHistory: MonthlyRevenue[];
 }
 
+export interface ManualUzsRevenue {
+  approvedUzs: number;
+  transactionCount: number;
+  pendingUzs: number;
+  pendingCount: number;
+  rejectedUzs: number;
+  rejectedCount: number;
+}
+
 export interface CallQualityBreakdown {
-  score: number | null;
+  score: number | null; // null if insufficient sample size
   sampleSize: number;
   statusMessage: 'Optimal' | 'Good' | 'Degraded' | 'Insufficient sample size';
   completionRate: number;
@@ -29,6 +41,7 @@ export interface AdminStats {
   totalMinutesSpoken?: number;
   activeCalls: number;
   starsRevenue: StarsRevenue;
+  manualUzsRevenue?: ManualUzsRevenue;
   callQuality?: CallQualityBreakdown;
 }
 
@@ -40,12 +53,14 @@ export interface PlanTierConfig {
   retentionDays: number;
   starsPrice?: number;
   uzsPrice?: number;
+  active?: boolean;
 }
 
 export interface PlansResponse {
   FREE: PlanTierConfig;
   PLUS: PlanTierConfig;
   PRO: PlanTierConfig;
+  BOSS?: PlanTierConfig;
 }
 
 export interface Subscores {
@@ -60,11 +75,11 @@ export interface AppealItem {
   userId: string;
   alias: string;
   telegramId: number | string;
-  subscores: Subscores;
+  subscores?: Subscores;
   banReason: string;
   offenseLogs?: string[];
   appealText: string;
-  status?: 'pending' | 'approved' | 'rejected';
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'pending' | 'approved' | 'rejected';
   createdAt: string;
 }
 
@@ -76,7 +91,7 @@ export interface UserItem {
   targetBand?: number;
   weakSkill?: string;
   strongSkill?: string;
-  planTier: 'free' | 'plus' | 'pro';
+  planTier: 'free' | 'plus' | 'pro' | 'boss' | 'FREE' | 'PLUS' | 'PRO' | 'BOSS';
   customPlanName?: string | null;
   status: 'active' | 'warned' | 'blocked' | 'banned';
   subscores?: Subscores;
@@ -100,6 +115,7 @@ export type ModerationAction =
 
 export interface ManualPaymentRequestItem {
   id: string;
+  orderNumber?: string;
   userId: string;
   alias: string;
   telegramId: string;
@@ -120,6 +136,7 @@ export interface ManualPaymentRequestItem {
 
 export interface StarsTransactionItem {
   id: string;
+  orderNumber?: string;
   userId: string;
   alias: string;
   telegramId: string;
@@ -169,5 +186,6 @@ export interface AnalyticsData {
   totalUsers: number;
   totalCalls: number;
   starsRevenue: StarsRevenue;
+  manualUzsRevenue?: ManualUzsRevenue;
   totalMinutesSpoken?: number;
 }

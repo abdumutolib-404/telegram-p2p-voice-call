@@ -376,7 +376,7 @@ export const App: React.FC = () => {
           <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
         </div>
         <h2 className="text-xl font-bold text-slate-100 mb-1">Partner Matched!</h2>
-        <p className="text-sm text-slate-400">Connecting to encrypted LiveKit WebRTC audio channel...</p>
+        <p className="text-sm text-slate-400">Connecting to encrypted voice channel...</p>
       </div>
     );
   }

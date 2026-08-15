@@ -27,7 +27,18 @@ export interface AdminAnalyticsData {
   starsRevenue: {
     totalStars: number;
     totalUsd: number;
+    transactionCount: number;
+    refundedCount: number;
+    refundedStars: number;
     monthlyHistory: MonthlyRevenue[];
+  };
+  manualUzsRevenue: {
+    approvedUzs: number;
+    transactionCount: number;
+    pendingUzs: number;
+    pendingCount: number;
+    rejectedUzs: number;
+    rejectedCount: number;
   };
   callQuality: CallQualityBreakdown;
 }
@@ -106,12 +117,17 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     };
   }
 
-  const transactions = await prisma.starsTransaction.findMany();
-  const totalStars = transactions.reduce((acc, t) => acc + t.starsAmount, 0);
+  // 1. Telegram Stars Accounting
+  const starsTransactions = await prisma.starsTransaction.findMany();
+  const paidStarsTxs = starsTransactions.filter((t) => t.status === 'PAID');
+  const refundedStarsTxs = starsTransactions.filter((t) => t.status === 'REFUNDED');
 
-  // Build monthly breakdown for the chart
+  const totalStars = paidStarsTxs.reduce((acc, t) => acc + t.starsAmount, 0);
+  const refundedStars = refundedStarsTxs.reduce((acc, t) => acc + t.starsAmount, 0);
+
+  // Build monthly breakdown for Stars chart
   const monthlyMap = new Map<string, { stars: number; usd: number }>();
-  for (const t of transactions) {
+  for (const t of paidStarsTxs) {
     const dateStr = new Date(t.createdAt).toLocaleString('en-US', { month: 'short', year: 'numeric' });
     if (!monthlyMap.has(dateStr)) monthlyMap.set(dateStr, { stars: 0, usd: 0 });
     const entry = monthlyMap.get(dateStr)!;
@@ -125,6 +141,16 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     usd: parseFloat(data.usd.toFixed(2)),
   }));
 
+  // 2. Manual UZS Accounting (Strict isolation: never count PENDING or REJECTED into approved revenue)
+  const manualPayments = await prisma.manualPaymentRequest.findMany();
+  const approvedManual = manualPayments.filter((p) => p.status === 'APPROVED');
+  const pendingManual = manualPayments.filter((p) => p.status === 'PENDING');
+  const rejectedManual = manualPayments.filter((p) => p.status === 'REJECTED');
+
+  const approvedUzs = approvedManual.reduce((acc, p) => acc + (p.uzsAmount || 0), 0);
+  const pendingUzs = pendingManual.reduce((acc, p) => acc + (p.uzsAmount || 0), 0);
+  const rejectedUzs = rejectedManual.reduce((acc, p) => acc + (p.uzsAmount || 0), 0);
+
   return {
     totalUsers,
     mau,
@@ -135,7 +161,18 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     starsRevenue: {
       totalStars,
       totalUsd: parseFloat((totalStars * 0.013).toFixed(2)),
+      transactionCount: paidStarsTxs.length,
+      refundedCount: refundedStarsTxs.length,
+      refundedStars,
       monthlyHistory,
+    },
+    manualUzsRevenue: {
+      approvedUzs,
+      transactionCount: approvedManual.length,
+      pendingUzs,
+      pendingCount: pendingManual.length,
+      rejectedUzs,
+      rejectedCount: rejectedManual.length,
     },
     callQuality,
   };

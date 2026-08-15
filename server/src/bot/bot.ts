@@ -7,7 +7,6 @@ import { setupPaymentHandlers } from './handlers/payments';
 import { setupCallbackHandlers } from './handlers/callbacks';
 import { setupPostCallCallbackHandlers } from './handlers/postCall';
 import { prisma } from '../config/database';
-
 import { checkRateLimit } from '../services/rateLimitMatrix';
 
 export function createBot(token: string): Bot<MyContext> {
@@ -32,13 +31,13 @@ export function createBot(token: string): Bot<MyContext> {
       const waitTime = rl.retryAfterSeconds || 300;
       if (ctx.callbackQuery) {
         await ctx.answerCallbackQuery({
-          text: `⚠️ Rate limit exceeded. Please wait ${waitTime}s before sending more commands.`,
+          text: `⚠️ Rate limit reached. Please wait ${waitTime}s before sending more requests.`,
           show_alert: true,
         }).catch(() => undefined);
       } else {
         await ctx.reply(
-          `⚠️ *Rate Limit Exceeded*\n\nPlease slow down. You can send new commands in *${waitTime} seconds*.`,
-          { parse_mode: 'Markdown' }
+          `⚠️ <b>Rate Limit Reached</b>\n\nPlease slow down. You can send new requests in <b>${waitTime} seconds</b>.`,
+          { parse_mode: 'HTML' }
         ).catch(() => undefined);
       }
       return;
@@ -90,10 +89,10 @@ export function createBot(token: string): Bot<MyContext> {
             });
           } else {
             await ctx.reply(
-              `🚫 *Account Suspended (${banTimeStr})*\n\n` +
+              `🚫 <b>Account Suspended (${banTimeStr})</b>\n\n` +
                 `Your account is currently restricted from matchmaking and practicing.\n\n` +
-                `To submit an appeal to our moderation team, please type:\n\`/appeal <your reason or explanation>\` or tap *💬 Support*.`,
-              { parse_mode: 'Markdown' }
+                `To submit an appeal to our moderation team, please type:\n<code>/appeal &lt;your reason or explanation&gt;</code> or tap <b>💬 Support</b>.`,
+              { parse_mode: 'HTML' }
             );
           }
           return;
@@ -122,26 +121,26 @@ export function createBot(token: string): Bot<MyContext> {
   // Command: /privacy
   bot.command('privacy', async (ctx) => {
     await ctx.reply(
-      `🔒 *Privacy Policy Summary*\n\n` +
-        `• *Audio Streams*: Real-time voice is routed through encrypted WebRTC SFU servers and never recorded without consent.\n` +
-        `• *Recordings*: Stored securely with strict plan-based expiration (1–60 days), accessible only to call participants.\n` +
-        `• *Payments*: Telegram Stars payments are processed directly by Telegram. Card receipts are reviewed by admin.\n` +
-        `• *Data Deletion*: You can request account deletion anytime via @IELTS_P2P_Admin.\n\n` +
-        `_For full policy, see the platform documentation._`,
-      { parse_mode: 'Markdown' }
+      `🔒 <b>Privacy Policy Summary</b>\n\n` +
+        `• <b>Audio Streams</b>: Real-time voice is routed through encrypted audio channels and never recorded without consent.\n` +
+        `• <b>Recordings</b>: Stored securely with strict plan-based expiration (1–60 days), accessible only to call participants.\n` +
+        `• <b>Payments</b>: Telegram Stars payments are processed directly by Telegram. Card receipts are reviewed by administration.\n` +
+        `• <b>Data Deletion</b>: You can request account deletion anytime via support.\n\n` +
+        `<i>For full policy, see the platform documentation.</i>`,
+      { parse_mode: 'HTML' }
     );
   });
 
   // Command: /guidelines
   bot.command('guidelines', async (ctx) => {
     await ctx.reply(
-      `📖 *Community Guidelines*\n\n` +
-        `1. *Respect*: Harassment, abuse, or discrimination is strictly prohibited.\n` +
-        `2. *Practice Focus*: Dedicate speaking sessions to English conversation and IELTS topics.\n` +
-        `3. *Fair Ratings*: Submit honest, constructive feedback for speaking partners.\n` +
-        `4. *Enforcement*: Violations lead to 24h timeouts, 7d suspensions, or permanent unappealable bans.\n\n` +
-        `_Happy practicing!_`,
-      { parse_mode: 'Markdown' }
+      `📖 <b>Community Guidelines</b>\n\n` +
+        `1. <b>Respect</b>: Harassment, abuse, or discrimination is strictly prohibited.\n` +
+        `2. <b>Practice Focus</b>: Dedicate speaking sessions to English conversation and IELTS topics.\n` +
+        `3. <b>Fair Ratings</b>: Submit honest, constructive feedback for speaking partners.\n` +
+        `4. <b>Enforcement</b>: Violations lead to timeouts, temporary suspensions, or permanent unappealable bans.\n\n` +
+        `<i>Happy practicing!</i>`,
+      { parse_mode: 'HTML' }
     );
   });
 

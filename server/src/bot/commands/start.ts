@@ -1,7 +1,9 @@
 import { Bot, InlineKeyboard, Keyboard } from 'grammy';
+import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
+import { getPaidUserProfile } from '../../services/plan';
 
 export const getMainMenuKeyboard = () => {
   return new Keyboard()
@@ -22,7 +24,6 @@ export function calculateOverallBand(fc: number, lr: number, gra: number, p: num
 }
 
 export function generateUniqueAlias(): string {
-  const crypto = require('crypto');
   const hex = crypto.randomBytes(4).toString('hex');
   return `P2P-${hex.toUpperCase()}`;
 }
@@ -38,16 +39,19 @@ export function setupStartCommand(bot: Bot<MyContext>) {
 
     if (user && user.onboarded) {
       const keyboard = getMainMenuKeyboard();
+      const profile = getPaidUserProfile(user);
       await ctx.reply(
-        `👋 *Welcome back, ${user.alias}!*\n\n` +
-          `📊 *Your IELTS Band*: ${user.band.toFixed(1)}\n` +
+        `👋 <b>Welcome back, ${user.alias}!</b>\n\n` +
+          `📊 <b>Your IELTS Band</b>: ${user.band.toFixed(1)}\n` +
           `• Fluency (FC): ${user.subFC.toFixed(1)}\n` +
           `• Lexical Resource (LR): ${user.subLR.toFixed(1)}\n` +
           `• Grammar (GRA): ${user.subGRA.toFixed(1)}\n` +
           `• Pronunciation (P): ${user.subP.toFixed(1)}\n` +
-          `⭐ *Plan*: ${user.plan}\n\n` +
+          `⭐ <b>Plan</b>: ${profile.planDisplayName}\n` +
+          (profile.isActivePaid && profile.expiration ? `• <b>Expires</b>: <code>${profile.expiration}</code>\n` : '') +
+          `• <b>Daily Calls</b>: ${profile.callsRemainingToday}\n\n` +
           `Choose an option from the menu below to start practicing:`,
-        { parse_mode: 'Markdown', reply_markup: keyboard }
+        { parse_mode: 'HTML', reply_markup: keyboard }
       );
       return;
     }
@@ -61,10 +65,10 @@ export function setupStartCommand(bot: Bot<MyContext>) {
     }
 
     await ctx.reply(
-      `🎯 *Welcome to IELTS Speaking P2P Partner Match!*\n\n` +
+      `🎯 <b>Welcome to IELTS Speaking P2P Partner Match!</b>\n\n` +
         `Let's evaluate your sub-scores to pair you with complementary partners.\n\n` +
-        `*Step 1/4: Select your Fluency & Coherence (FC) score:*`,
-      { parse_mode: 'Markdown', reply_markup: inlineKb }
+        `<b>Step 1/4: Select your Fluency & Coherence (FC) score:</b>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
 }
