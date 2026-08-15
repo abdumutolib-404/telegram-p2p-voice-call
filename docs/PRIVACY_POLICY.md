@@ -40,7 +40,7 @@ For operational integrity, quota tracking, and abuse prevention, we record:
 ## 3. Data Retention & Erasure
 
 - **Account Data**: Maintained while your account is active.
-- **Right to Deletion**: You may request complete erasure of your profile and history at any time by contacting `@IELTS_P2P_Admin` or using support commands in the bot.
+- **Right to Deletion**: You may request complete erasure of your profile and history at any time by contacting `@PairTalkSupport` or using support commands in the bot.
 
 ---
 
@@ -55,5 +55,5 @@ For operational integrity, quota tracking, and abuse prevention, we record:
 ## 5. Contact & Inquiries
 
 For questions regarding this policy or data protection requests:
-- **Telegram Support**: `@IELTS_P2P_Admin`
+- **Telegram Support**: `@PairTalkSupport`
 - **In-App Command**: `/paysupport` or `/support`

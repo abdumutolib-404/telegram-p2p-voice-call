@@ -60,7 +60,7 @@ export interface PlansResponse {
   FREE: PlanTierConfig;
   PLUS: PlanTierConfig;
   PRO: PlanTierConfig;
-  BOSS?: PlanTierConfig;
+  BOSS: PlanTierConfig;
 }
 
 export interface Subscores {

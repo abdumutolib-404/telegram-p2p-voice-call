@@ -125,11 +125,11 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       const payload = `plan_purchase:${tier}:${ctx.from.id}:${orderNumber}:${Date.now()}`;
 
       await ctx.replyWithInvoice(
-        `IELTS P2P ${tier} Plan (${orderNumber})`,
-        `Upgrade to ${tier} Plan (${maxDurText} call limit, ${dailyLimText}, ${planConfig.retentionDays}d storage).`,
+        tier,
+        `IELTS Speaking ${tier} Plan — Order #${orderNumber}`,
         payload,
         'XTR', // Currency for Telegram Stars
-        [{ label: `${tier} Plan Subscription`, amount: planConfig.starsPrice }]
+        [{ label: `${tier} Plan`, amount: planConfig.starsPrice }]
       );
     } catch (err) {
       console.error('[Payments] Failed to send Stars invoice:', err);
@@ -482,7 +482,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     });
   }
 
-  // In-bot receipt ingest for users with PENDING manual payment requests
+  // In-bot receipt ingest for users with PENDING manual payment requests (photos, documents, PDFs)
   bot.on(['message:photo', 'message:document'], async (ctx, next) => {
     try {
       const telegramId = BigInt(ctx.from.id);
@@ -495,49 +495,103 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         return next();
       }
 
+      const orderNumber = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
+
       let fileId = '';
+      let fileUniqueId = '';
+      let fileName = 'receipt';
       let mimeType = 'image/jpeg';
+      let fileSize = 0;
 
       if (ctx.message?.photo && ctx.message.photo.length > 0) {
         const highestRes = ctx.message.photo[ctx.message.photo.length - 1];
         fileId = highestRes.file_id;
+        fileUniqueId = highestRes.file_unique_id;
+        fileSize = highestRes.file_size || 0;
         mimeType = 'image/jpeg';
+        fileName = `receipt_${orderNumber}.jpg`;
       } else if (ctx.message?.document) {
-        fileId = ctx.message.document.file_id;
-        mimeType = ctx.message.document.mime_type || 'application/octet-stream';
+        const doc = ctx.message.document;
+        fileId = doc.file_id;
+        fileUniqueId = doc.file_unique_id;
+        fileSize = doc.file_size || 0;
+        fileName = doc.file_name || `receipt_${orderNumber}`;
+        mimeType = doc.mime_type || 'application/octet-stream';
       }
 
       if (!fileId) {
         return next();
       }
 
-      const proofStr = `tg_file:${fileId}:${mimeType}`;
+      console.log(`[Payments] RECEIPT_RECEIVED`, {
+        orderNumber,
+        userId: pendingRequest.userId,
+        telegramId: ctx.from.id,
+        mimeType,
+        fileSize,
+        fileName,
+      });
+
+      // Max 20MB receipt limit
+      if (fileSize > 20 * 1024 * 1024) {
+        await ctx.reply(
+          `⚠️ <b>File Too Large</b>\n\nPlease send a receipt image or PDF under <b>20 MB</b>.`,
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+
+      console.log(`[Payments] RECEIPT_VALIDATED`, { orderNumber, fileId, fileUniqueId });
+
+      const proofMeta = {
+        fileId,
+        fileUniqueId,
+        fileName,
+        mimeType,
+        fileSize,
+        messageId: ctx.message?.message_id,
+        telegramId: ctx.from.id,
+        orderNumber,
+        uploadedAt: new Date().toISOString(),
+      };
+
       await prisma.manualPaymentRequest.update({
         where: { id: pendingRequest.id },
-        data: { paymentProof: proofStr },
+        data: { paymentProof: JSON.stringify(proofMeta) },
       });
+
+      console.log(`[Payments] RECEIPT_ATTACHED`, { orderNumber, requestId: pendingRequest.id });
 
       await ctx.reply(
         `✅ <b>Payment Receipt Received!</b>\n\n` +
-          `Your receipt has been attached to Order #${pendingRequest.orderNumber || pendingRequest.id.slice(0, 8)}.\n` +
-          `Our administration team will verify your transaction and activate your <b>${pendingRequest.plan} Plan</b> within 15–30 minutes.\n\n` +
+          `Your receipt (<b>${fileName}</b>) has been attached to Order #<b>${orderNumber}</b>.\n` +
+          `Our administration team will verify your payment and activate your <b>${pendingRequest.plan} Plan</b> within 15–30 minutes.\n\n` +
           `Thank you for practicing with us!`,
         { parse_mode: 'HTML' }
       );
 
       // Dispatch outbound alert to configured admins via dedicated Bot B (or Bot A fallback)
-      await sendAdminPaymentNotification(ctx.api as any, {
-        orderNumber: pendingRequest.orderNumber || pendingRequest.id.slice(0, 8),
-        userAlias: pendingRequest.alias,
-        telegramId: pendingRequest.telegramId,
-        plan: pendingRequest.plan,
-        uzsAmount: pendingRequest.uzsAmount,
-        paymentMethod: 'MANUAL',
-        receiptFileId: fileId,
-        receiptMimeType: mimeType,
-        createdAt: pendingRequest.createdAt,
-        status: pendingRequest.status,
-      });
+      console.log(`[Payments] ADMIN_NOTIFICATION_STARTED`, { orderNumber });
+      try {
+        await sendAdminPaymentNotification(ctx.api as any, {
+          orderNumber,
+          userAlias: pendingRequest.alias,
+          telegramId: pendingRequest.telegramId,
+          plan: pendingRequest.plan,
+          uzsAmount: pendingRequest.uzsAmount,
+          paymentMethod: 'MANUAL_UZS',
+          receiptFileId: fileId,
+          receiptMimeType: mimeType,
+          createdAt: pendingRequest.createdAt,
+          status: pendingRequest.status,
+        });
+        console.log(`[Payments] ADMIN_NOTIFICATION_SENT`, { orderNumber });
+      } catch (notifyErr) {
+        console.error(`[Payments] ADMIN_NOTIFICATION_FAILED`, {
+          orderNumber,
+          error: notifyErr instanceof Error ? notifyErr.message : notifyErr,
+        });
+      }
     } catch (err) {
       console.error('[Payments] Error handling receipt message:', err);
       return next();

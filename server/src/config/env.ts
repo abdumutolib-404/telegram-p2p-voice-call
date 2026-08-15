@@ -94,9 +94,9 @@ export const env: EnvConfig = {
   ADMIN_PANEL_URL: process.env.ADMIN_PANEL_URL ?? `${process.env.MINI_APP_URL ?? 'http://localhost:3001/client'}/admin`,
   RECORDINGS_DIR: path.resolve(process.cwd(), process.env.RECORDINGS_DIR ?? './recordings'),
   PAYMENTS_BOT_TOKEN: process.env.PAYMENTS_BOT_TOKEN?.trim(),
-  MANUAL_PAYMENT_ADMIN_USERNAME: process.env.MANUAL_PAYMENT_ADMIN_USERNAME?.trim() || (adminTelegramIds[0] ? `id${adminTelegramIds[0]}` : 'IELTS_P2P_Admin'),
+  MANUAL_PAYMENT_ADMIN_USERNAME: process.env.MANUAL_PAYMENT_ADMIN_USERNAME?.trim() || 'PairTalkSupport',
   MANUAL_PAYMENT_ADMIN_CHAT_ID: process.env.MANUAL_PAYMENT_ADMIN_CHAT_ID?.trim() || adminTelegramIds[0],
-  MANUAL_PAYMENT_INSTRUCTIONS: process.env.MANUAL_PAYMENT_INSTRUCTIONS?.trim() || '1. Transfer exact amount to card.\n2. Save payment screenshot/receipt.\n3. Send receipt here in bot for verification.',
-  MANUAL_PAYMENT_CARD_HOLDER: process.env.MANUAL_PAYMENT_CARD_HOLDER?.trim() || '8600 1234 5678 9012 (Humo/Uzcard - IELTS Speaking)',
+  MANUAL_PAYMENT_INSTRUCTIONS: process.env.MANUAL_PAYMENT_INSTRUCTIONS?.trim() || '1. Transfer exact amount to the card.\n2. Save receipt screenshot or PDF.\n3. Send receipt here in bot for verification.',
+  MANUAL_PAYMENT_CARD_HOLDER: process.env.MANUAL_PAYMENT_CARD_HOLDER?.trim() || 'PairTalk Official (Humo / Uzcard)',
 };
 

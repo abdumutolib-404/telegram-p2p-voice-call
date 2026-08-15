@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
-import { getPaidUserProfile, formatPriceDisplay } from '../../services/plan';
+import { getPaidUserProfile, formatPriceDisplay, getPlansConfig } from '../../services/plan';
 import { getRedis } from '../../config/redis';
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -126,18 +126,24 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       .row()
       .text(`👑 BOSS (${formatPriceDisplay('BOSS')})`, 'select_plan:BOSS');
 
+    const plans = getPlansConfig();
+    const freeDesc = plans.FREE.description;
+    const plusDesc = plans.PLUS.description;
+    const proDesc = plans.PRO.description;
+    const bossDesc = plans.BOSS.description;
+
     await ctx.reply(
       `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
         `🆓 <b>FREE Plan</b>\n` +
-        `• Duration: 15 mins | Limit: 3 calls/day | Retention: 1 day\n\n` +
+        `• ${freeDesc}\n\n` +
         `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
-        `• Duration: 30 mins | Limit: 10 calls/day | Retention: 7 days\n\n` +
+        `• ${plusDesc}\n\n` +
         `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
-        `• Duration: 60 mins | Limit: Unlimited (∞) | Retention: 30 days\n\n` +
+        `• ${proDesc}\n\n` +
         `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
-        `• Duration: 60 mins | Limit: Unlimited (∞) | Retention: 60 days\n\n` +
+        `• ${bossDesc}\n\n` +
         `Select a plan to choose your payment method (Telegram Stars or Card):`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
@@ -200,7 +206,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `• <b>Moderation</b>: Community rules enforce fair practice and mutual respect.\n\n` +
         (isPermBanned
           ? `Your account is permanently restricted. You may submit an appeal using the button below or type:\n<code>/appeal &lt;your reason&gt;</code>`
-          : `For general support or billing questions, use /paysupport or contact administration.`),
+          : `For general support or billing questions, use /paysupport or contact <b>@PairTalkSupport</b>.`),
       { parse_mode: 'HTML', reply_markup: isPermBanned ? inlineKb : undefined }
     );
   });

@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import type { FormEvent } from 'react';
 import type { PlansResponse, PlanTierConfig } from '../../types/index.ts';
 import { adminFetch } from '../../api/client.ts';
-import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, Star, Shield, CreditCard } from 'lucide-react';
+import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, Star, Shield, CreditCard, Crown } from 'lucide-react';
 
 export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse>({
     FREE: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0, uzsPrice: 0 },
     PLUS: { maxDuration: 30, dailyLimit: 10, retentionDays: 7, starsPrice: 150, uzsPrice: 25000 },
     PRO: { maxDuration: 60, dailyLimit: 999, retentionDays: 30, starsPrice: 500, uzsPrice: 75000 },
+    BOSS: { maxDuration: 60, dailyLimit: 999, retentionDays: 60, starsPrice: 1000, uzsPrice: 150000 },
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -52,7 +53,7 @@ export function PlanEditor() {
     setSuccessMessage(null);
 
     // Validation
-    for (const tierName of ['FREE', 'PLUS', 'PRO'] as const) {
+    for (const tierName of ['FREE', 'PLUS', 'PRO', 'BOSS'] as const) {
       const tier = plans[tierName];
       if (!tier || tier.maxDuration <= 0) {
         setError(`${tierName} tier duration limit must be greater than 0 minutes.`);
@@ -349,6 +350,7 @@ export function PlanEditor() {
         {renderTierCard('FREE', 'Free Tier', 'Base access for standard partners', <Shield size={24} color="#94a3b8" />, true)}
         {renderTierCard('PLUS', 'Plus Tier', 'Enhanced duration and 7-day recordings', <Sparkles size={24} color="#38bdf8" />, false)}
         {renderTierCard('PRO', 'Pro Tier', 'Unlimited access and 30-day recordings', <Star size={24} color="#fbbf24" />, false)}
+        {renderTierCard('BOSS', 'Boss Tier', 'VIP unlimited speaking with 60-day recordings', <Crown size={24} color="#ec4899" />, false)}
       </div>
     </form>
   );

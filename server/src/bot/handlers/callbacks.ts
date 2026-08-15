@@ -198,9 +198,9 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     }
   });
 
-  // Callback: favorite_partner:<partnerId>
+  // Callback: favorite_partner:<partnerOrSessionId>
   bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {
-    const partnerId = ctx.match[1];
+    const partnerOrSessionId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
 
     try {
@@ -210,24 +210,41 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      const partner = await prisma.user.findUnique({ where: { id: partnerId } });
+      let partner = await prisma.user.findUnique({ where: { id: partnerOrSessionId } });
+      if (!partner) {
+        const session = await prisma.callSession.findUnique({
+          where: { id: partnerOrSessionId },
+          include: { userA: true, userB: true },
+        });
+        if (session) {
+          partner = session.userAId === user.id ? session.userB : session.userA;
+        }
+      }
+
       if (!partner) {
         await ctx.answerCallbackQuery({ text: 'Partner not found.' });
         return;
       }
 
-      await prisma.favoritePartner.upsert({
+      const existing = await prisma.favoritePartner.findUnique({
         where: {
           userId_partnerId: {
             userId: user.id,
             partnerId: partner.id,
           },
         },
-        create: {
+      });
+
+      if (existing) {
+        await ctx.answerCallbackQuery({ text: 'Already in your favorites.' });
+        return;
+      }
+
+      await prisma.favoritePartner.create({
+        data: {
           userId: user.id,
           partnerId: partner.id,
         },
-        update: {},
       });
 
       await ctx.answerCallbackQuery({ text: `⭐ ${partner.alias} saved to Favorites!` });
@@ -517,6 +534,18 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       if (!fs.existsSync(filePath)) {
         await ctx.answerCallbackQuery({ text: 'Audio file missing from server.' });
+        return;
+      }
+
+      const fileStat = fs.statSync(filePath);
+      if (fileStat.size > 50 * 1024 * 1024) {
+        await ctx.answerCallbackQuery({ text: 'Recording exceeds 50MB Telegram limit.' });
+        await ctx.reply(
+          `📁 <b>Recording Available in Storage</b>\n\n` +
+            `This audio session file (${(fileStat.size / (1024 * 1024)).toFixed(1)} MB) exceeds Telegram's 50MB direct delivery limit.\n` +
+            `Your recording remains safely preserved in platform storage according to your plan's retention policy.`,
+          { parse_mode: 'HTML' }
+        );
         return;
       }
 

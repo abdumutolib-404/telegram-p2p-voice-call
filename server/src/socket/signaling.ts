@@ -703,7 +703,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
 
-          if (bot) {
+          if (bot && durationSeconds >= 5) {
             await Promise.allSettled([
               sendPostCallReviewCard(bot, session.userA.telegramId.toString(), session.id, session.userB.alias, durationSeconds, recordingUrl),
               sendPostCallReviewCard(bot, session.userB.telegramId.toString(), session.id, session.userA.alias, durationSeconds, recordingUrl),
@@ -798,7 +798,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     reason: 'partner_disconnected',
                   });
 
-                  if (bot) {
+                  if (bot && durationSeconds >= 5) {
                     await Promise.allSettled([
                       sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, recordingUrl),
                       sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, recordingUrl),

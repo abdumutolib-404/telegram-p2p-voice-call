@@ -50,7 +50,7 @@ export interface EffectiveEntitlement {
 let plansConfig: SystemPlansConfig = {
   FREE: {
     name: 'Free Starter',
-    description: 'Daily practice for IELTS speaking',
+    description: '3 practice calls/day, 15 min max duration, 1-day audio recording retention. Ideal for casual learners starting IELTS speaking preparation.',
     maxDuration: 15,
     dailyLimit: 3,
     retentionDays: 1,
@@ -60,7 +60,7 @@ let plansConfig: SystemPlansConfig = {
   },
   PLUS: {
     name: 'Speaking Plus',
-    description: '30-min calls, 10 daily sessions, 7-day retention',
+    description: '10 practice calls/day, 30 min max duration, 7-day audio recording retention. High-frequency practice with extended speaking topics.',
     maxDuration: 30,
     dailyLimit: 10,
     retentionDays: 7,
@@ -70,7 +70,7 @@ let plansConfig: SystemPlansConfig = {
   },
   PRO: {
     name: 'Master Pro',
-    description: '60-min calls, unlimited practice, 30-day retention',
+    description: 'Unlimited practice calls/day, 60 min full-exam simulations, 30-day audio recording retention. Perfect for serious test takers targeting Band 7.5+.',
     maxDuration: 60,
     dailyLimit: 999,
     retentionDays: 30,
@@ -80,7 +80,7 @@ let plansConfig: SystemPlansConfig = {
   },
   BOSS: {
     name: 'Executive Boss',
-    description: '60-min calls, unlimited VIP practice, 60-day retention',
+    description: 'Unlimited practice calls/day, 60 min full-exam simulations, 60-day extended audio retention, VIP priority matchmaking. Ultimate IELTS mastery.',
     maxDuration: 60,
     dailyLimit: 999,
     retentionDays: 60,
@@ -127,19 +127,32 @@ export function getRetentionDaysForPlan(plan: string): number {
 
 export function getEffectiveEntitlement(user: {
   plan?: string | null;
+  subscriptionStatus?: string | null;
+  subscriptionExpiresAt?: Date | string | null;
   dailyLimit?: number | null;
   maxDuration?: number | null;
   retentionOverride?: number | null;
   customPlanName?: string | null;
   telegramId?: bigint | string | number | null;
 }): EffectiveEntitlement {
-  const planKey = (user.plan?.toUpperCase() as keyof SystemPlansConfig) in plansConfig
+  const telegramIdStr = user.telegramId !== undefined && user.telegramId !== null ? String(user.telegramId) : '';
+  const isAdmin = Boolean(env.ADMIN_TELEGRAM_IDS && env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr));
+
+  let rawPlanKey = (user.plan?.toUpperCase() as keyof SystemPlansConfig) in plansConfig
     ? (user.plan!.toUpperCase() as keyof SystemPlansConfig)
     : 'FREE';
 
+  // Check if paid subscription is expired
+  if (rawPlanKey !== 'FREE' && !isAdmin) {
+    const isExpiredStatus = user.subscriptionStatus === 'EXPIRED' || user.subscriptionStatus === 'CANCELLED';
+    const isPastDate = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) < new Date() : false;
+    if (isExpiredStatus || isPastDate) {
+      rawPlanKey = 'FREE';
+    }
+  }
+
+  const planKey = rawPlanKey;
   const defaultTier = plansConfig[planKey] ?? plansConfig.FREE;
-  const telegramIdStr = user.telegramId !== undefined && user.telegramId !== null ? String(user.telegramId) : '';
-  const isAdmin = Boolean(env.ADMIN_TELEGRAM_IDS && env.ADMIN_TELEGRAM_IDS.includes(telegramIdStr));
 
   // Determine Daily Limit
   let dailyLimit = defaultTier.dailyLimit;

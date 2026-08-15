@@ -1,7 +1,6 @@
 import { Bot, session } from 'grammy';
 import { MyContext, SessionData } from './types';
 import { setupStartCommand } from './commands/start';
-import { setupAdminCommand } from './commands/admin';
 import { setupMenuHandlers } from './handlers/menu';
 import { setupPaymentHandlers } from './handlers/payments';
 import { setupCallbackHandlers } from './handlers/callbacks';
@@ -112,7 +111,6 @@ export function createBot(token: string): Bot<MyContext> {
 
   // Register commands & handlers
   setupStartCommand(bot);
-  setupAdminCommand(bot);
   setupMenuHandlers(bot);
   setupPaymentHandlers(bot);
   setupCallbackHandlers(bot);

@@ -613,6 +613,25 @@ router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res)
       note,
     });
 
+    if (adminBotInstance && result.request?.telegramId) {
+      const orderNum = result.request.orderNumber || `A${result.request.id.slice(0, 4)}`;
+      const reasonText = note ? `<b>Reason:</b>\n${note}\n\n` : '';
+      const supportContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
+
+      await adminBotInstance.api.sendMessage(
+        result.request.telegramId.toString(),
+        `❌ <b>Payment Request Rejected</b>\n\n` +
+          `<b>Order:</b> <code>${orderNum}</code>\n` +
+          `<b>Plan:</b> ${result.request.plan}\n\n` +
+          `${reasonText}` +
+          `Your account has not been upgraded.\n\n` +
+          `Contact ${supportContact} if you believe this decision was incorrect.`,
+        { parse_mode: 'HTML' }
+      ).catch((err: unknown) => {
+        console.warn('[Admin] Failed to send payment rejection notification to user:', err instanceof Error ? err.message : err);
+      });
+    }
+
     res.json({
       success: true,
       message: 'Payment request rejected.',
