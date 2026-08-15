@@ -35,11 +35,12 @@ describe('Final Production Hardening Suite', () => {
       const plans = getPlansConfig();
       expect(plans.BOSS).toBeDefined();
       expect(plans.BOSS.name).toBe('Executive Boss');
-      expect(plans.BOSS.maxDuration).toBe(60);
-      expect(plans.BOSS.dailyLimit).toBe(999);
-      expect(plans.BOSS.retentionDays).toBe(60);
-      expect(plans.BOSS.starsPrice).toBe(1000);
-      expect(plans.BOSS.uzsPrice).toBe(150000);
+      expect(plans.BOSS.maxDuration).toBe(90);
+      expect(plans.BOSS.dailyLimit).toBe(50);
+      expect(plans.BOSS.recordingLimit).toBe(15);
+      expect(plans.BOSS.retentionDays).toBe(90);
+      expect(plans.BOSS.starsPrice).toBe(750);
+      expect(plans.BOSS.uzsPrice).toBe(125000);
     });
 
     it('1.2 Enforces BOSS rank hierarchy (FREE < PLUS < PRO < BOSS)', () => {
@@ -62,10 +63,10 @@ describe('Final Production Hardening Suite', () => {
       };
       const entitlement = getEffectiveEntitlement(user);
       expect(entitlement.plan).toBe('BOSS');
-      expect(entitlement.maxDurationMinutes).toBe(60);
-      expect(entitlement.dailyLimit).toBe(999);
-      expect(entitlement.retentionDays).toBe(60);
-      expect(entitlement.isUnlimited).toBe(true);
+      expect(entitlement.maxDurationMinutes).toBe(90);
+      expect(entitlement.dailyLimit).toBe(50);
+      expect(entitlement.recordingLimit).toBe(15);
+      expect(entitlement.retentionDays).toBe(90);
     });
 
     it('1.4 Automatically reverts expired paid plan to FREE', () => {

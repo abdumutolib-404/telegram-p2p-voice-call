@@ -6,10 +6,10 @@ import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, S
 
 export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse>({
-    FREE: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0, uzsPrice: 0 },
-    PLUS: { maxDuration: 30, dailyLimit: 10, retentionDays: 7, starsPrice: 150, uzsPrice: 25000 },
-    PRO: { maxDuration: 60, dailyLimit: 999, retentionDays: 30, starsPrice: 500, uzsPrice: 75000 },
-    BOSS: { maxDuration: 60, dailyLimit: 999, retentionDays: 60, starsPrice: 1000, uzsPrice: 150000 },
+    FREE: { maxDuration: 15, dailyLimit: 3, recordingLimit: 1, retentionDays: 1, starsPrice: 0, uzsPrice: 0 },
+    PLUS: { maxDuration: 30, dailyLimit: 10, recordingLimit: 3, retentionDays: 7, starsPrice: 79, uzsPrice: 12000 },
+    PRO: { maxDuration: 60, dailyLimit: 25, recordingLimit: 7, retentionDays: 30, starsPrice: 300, uzsPrice: 45000 },
+    BOSS: { maxDuration: 90, dailyLimit: 50, recordingLimit: 15, retentionDays: 90, starsPrice: 750, uzsPrice: 125000 },
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -60,7 +60,11 @@ export function PlanEditor() {
         return;
       }
       if (tier.dailyLimit <= 0) {
-        setError(`${tierName} tier daily limit must be at least 1 call (or 999 for unlimited).`);
+        setError(`${tierName} tier call limit must be at least 1 call.`);
+        return;
+      }
+      if (tier.recordingLimit !== undefined && tier.recordingLimit <= 0) {
+        setError(`${tierName} tier recording limit must be at least 1 recording.`);
         return;
       }
       if (tier.retentionDays <= 0) {
@@ -89,7 +93,7 @@ export function PlanEditor() {
       if (resolvedPlans && resolvedPlans.FREE) {
         setPlans(resolvedPlans);
       }
-      setSuccessMessage('Dual pricing (Stars & UZS) and plan limits updated successfully!');
+      setSuccessMessage('Authoritative plan configurations (Stars, UZS, calls, recordings, retention) updated successfully!');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -166,10 +170,10 @@ export function PlanEditor() {
           />
         </div>
 
-        {/* Daily Limit */}
+        {/* Monthly Call Limit */}
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Calendar size={16} color="#34d399" /> Daily Limit (Calls / Day)
+            <Calendar size={16} color="#34d399" /> Calls Limit (Calls / Month)
           </label>
           <input
             type="number"
@@ -177,6 +181,31 @@ export function PlanEditor() {
             max="9999"
             value={config.dailyLimit}
             onChange={(e) => handleTierChange(tierKey, 'dailyLimit', parseInt(e.target.value) || 0)}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '0.625rem 0.875rem',
+              backgroundColor: '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: '8px',
+              color: '#f8fafc',
+              fontSize: '0.9rem',
+              outline: 'none'
+            }}
+          />
+        </div>
+
+        {/* Recording Limit */}
+        <div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
+            <Sparkles size={16} color="#f472b6" /> Recording Limit (Recordings / Month)
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            value={config.recordingLimit ?? (tierKey === 'FREE' ? 1 : tierKey === 'PLUS' ? 3 : tierKey === 'PRO' ? 7 : 15)}
+            onChange={(e) => handleTierChange(tierKey, 'recordingLimit', parseInt(e.target.value) || 1)}
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -212,9 +241,10 @@ export function PlanEditor() {
               cursor: 'pointer'
             }}
           >
-            <option value={1}>1 Day (Free Purge)</option>
-            <option value={7}>7 Days (Plus Purge)</option>
-            <option value={30}>30 Days (Pro Extended)</option>
+            <option value={1}>1 Day (Free)</option>
+            <option value={7}>7 Days (Plus)</option>
+            <option value={30}>30 Days (Pro - 1 Month)</option>
+            <option value={90}>90 Days (Boss - 3 Months)</option>
           </select>
         </div>
 

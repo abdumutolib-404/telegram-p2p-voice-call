@@ -62,14 +62,14 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
-        `🆓 <b>FREE Plan</b>\n` +
-        `• Duration: 15 mins | Limit: 3 calls/day | Retention: 1 day\n\n` +
+        `🆓 <b>FREE Plan</b> (0 UZS / 0 XTR)\n` +
+        `• 3 calls/month | 15 mins | 1 recording | 1 day retention\n\n` +
         `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
-        `• Duration: 30 mins | Limit: 10 calls/day | Retention: 7 days\n\n` +
+        `• 10 calls/month | 30 mins | 3 recordings | 7 days retention\n\n` +
         `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
-        `• Duration: 60 mins | Limit: Unlimited (∞) | Retention: 30 days\n\n` +
+        `• 25 calls/month | 60 mins | 7 recordings | 30 days retention\n\n` +
         `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
-        `• Duration: 60 mins | Limit: Unlimited (∞) | Retention: 60 days\n\n` +
+        `• 50 calls/month | 90 mins | 15 recordings | 90 days retention\n\n` +
         `Select a plan to choose payment method:`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
@@ -120,13 +120,11 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       await ctx.answerCallbackQuery();
 
       const orderNumber = await generateOrderNumber('A');
-      const maxDurText = planConfig.maxDuration >= 999 ? 'Unlimited' : `${planConfig.maxDuration}m`;
-      const dailyLimText = planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/day`;
       const payload = `plan_purchase:${tier}:${ctx.from.id}:${orderNumber}:${Date.now()}`;
 
       await ctx.replyWithInvoice(
         tier,
-        `IELTS Speaking ${tier} Plan — Order #${orderNumber}`,
+        `${tier} Plan — Order #${orderNumber}`,
         payload,
         'XTR', // Currency for Telegram Stars
         [{ label: `${tier} Plan`, amount: planConfig.starsPrice }]
@@ -187,9 +185,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
     const request = res.request;
     const formattedAmount = config.uzsPrice.toLocaleString('en-US');
-    const adminUsername = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@IELTS_P2P_Admin';
-    const cardDetails = env.MANUAL_PAYMENT_CARD_HOLDER || '8600 1234 5678 9012 (Humo/Uzcard - IELTS Speaking)';
-    const instructions = env.MANUAL_PAYMENT_INSTRUCTIONS || '1. Transfer exact amount to the card.\n2. Save receipt screenshot.\n3. Send receipt here in bot for verification.';
+    const adminUsername = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
+    const cardDetails = env.MANUAL_PAYMENT_CARD_HOLDER || '8600 1234 5678 9012 (Humo/Uzcard - PairTalk Official)';
+    const instructions = env.MANUAL_PAYMENT_INSTRUCTIONS || '1. Transfer exact amount to the card.\n2. Save receipt screenshot or PDF.\n3. Send receipt here in bot for verification.';
 
     const inlineKb = new InlineKeyboard()
       .text('❌ Cancel Request', `cancel_manual_pay:${request.id}`)
@@ -466,7 +464,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         historyText += `• 💳 UZS: <b>${req.plan}</b> (${req.uzsAmount.toLocaleString()} UZS) — <code>${req.status}</code> on ${date}\n`;
       });
 
-      const adminContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@IELTS_P2P_Admin';
+      const adminContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
       const inlineKb = new InlineKeyboard().text('⭐ View Plans & Pricing', 'show_plans');
 
       await ctx.reply(

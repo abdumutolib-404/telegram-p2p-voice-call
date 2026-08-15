@@ -59,9 +59,10 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `  - P (Pronunciation): ${user.subP.toFixed(1)}\n` +
         `• <b>Subscription Plan</b>: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `• <b>Plan Expiration</b>: <code>${profile.expiration}</code>\n` : '') +
-        `\n📊 <b>Today's Entitlements & Usage:</b>\n` +
-        `• <b>Calls Remaining Today</b>: ${profile.callsRemainingToday}\n` +
+        `\n📊 <b>Plan Entitlements & Usage:</b>\n` +
+        `• <b>Calls Remaining</b>: ${profile.callsRemaining}\n` +
         `• <b>Max Call Duration</b>: ${profile.maxCallDuration >= 999 ? 'Unlimited' : `${profile.maxCallDuration} minutes`}\n` +
+        `• <b>Recordings Remaining</b>: ${profile.recordingsRemaining}\n` +
         `• <b>Recording Retention</b>: ${profile.recordingRetention} day(s)\n` +
         `• <b>DND Status</b>: ${user.dnd ? '🔕 Do Not Disturb ON' : '🔔 Ready for Calls'}`,
       { parse_mode: 'HTML', reply_markup: inlineKb }

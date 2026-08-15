@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { calculateEffectiveCallDuration, calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement } from '../services/plan';
+import { calculateEffectiveCallDuration, calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod } from '../services/plan';
 import { checkRateLimit } from '../services/rateLimitMatrix';
 import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
@@ -566,6 +566,18 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           if (payload.record) {
+            const user = await prisma.user.findUnique({ where: { id: requesterId } });
+            const entitlement = getEffectiveEntitlement(user || {});
+            const recordingsUsed = await getUserRecordingsUsedThisPeriod(requesterId, user);
+            if (!entitlement.isAdmin && recordingsUsed >= entitlement.recordingLimit) {
+              socket.emit('record_status', { record: false });
+              socket.emit('recording_error', {
+                code: 'RECORDING_LIMIT_REACHED',
+                message: 'Your recording limit for this period has been reached.',
+              });
+              return;
+            }
+
             if (session.egressId) {
               activeEgresses.set(payload.roomName, {
                 egressId: session.egressId,

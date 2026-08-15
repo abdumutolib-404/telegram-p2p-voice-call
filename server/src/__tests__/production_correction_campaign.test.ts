@@ -248,10 +248,10 @@ describe('Production Correction Campaign Test Suite (Issues 1–14)', () => {
 
       const proEnt = getEffectiveEntitlement({ plan: 'PRO' });
       expect(proEnt.plan).toBe('PRO');
-      expect(proEnt.dailyLimit).toBe(999);
+      expect(proEnt.dailyLimit).toBe(25);
       expect(proEnt.maxDurationMinutes).toBe(60);
       expect(proEnt.retentionDays).toBe(30);
-      expect(proEnt.isUnlimited).toBe(true);
+      expect(proEnt.recordingLimit).toBe(7);
     });
 
     it('13.1 Resolves ADMIN_OVERRIDE when custom retention or limits are set', () => {

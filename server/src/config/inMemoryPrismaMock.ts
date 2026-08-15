@@ -24,7 +24,7 @@ type CallSessionWhere = {
   egressId?: string | null;
   recordingUrl?: string | null | { not?: null };
   recordingExpiresAt?: Date | null | { lte?: Date };
-  createdAt?: Date | { lte?: Date };
+  createdAt?: Date | { lte?: Date; gte?: Date };
   OR?: Array<CallSessionWhere>;
 };
 type CallSessionData = Record<string, unknown>;
@@ -794,8 +794,10 @@ export class InMemoryPrismaMock {
     if (where.recordingExpiresAt && !(where.recordingExpiresAt instanceof Date) && 'lte' in where.recordingExpiresAt && where.recordingExpiresAt.lte) {
       if (!session.recordingExpiresAt || session.recordingExpiresAt.getTime() > where.recordingExpiresAt.lte.getTime()) return false;
     }
-    if (where.createdAt && !(where.createdAt instanceof Date) && 'lte' in where.createdAt && where.createdAt.lte) {
-      if (session.createdAt.getTime() > where.createdAt.lte.getTime()) return false;
+    if (where.createdAt && !(where.createdAt instanceof Date)) {
+      const filter = where.createdAt as { lte?: Date | string; gte?: Date | string };
+      if (filter.lte && session.createdAt.getTime() > new Date(filter.lte).getTime()) return false;
+      if (filter.gte && session.createdAt.getTime() < new Date(filter.gte).getTime()) return false;
     }
     if (where.OR && !where.OR.some((condition) => this.matchesCallSession(session, condition))) return false;
     return true;

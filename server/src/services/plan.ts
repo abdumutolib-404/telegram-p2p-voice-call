@@ -6,7 +6,9 @@ export interface PlanTierConfig {
   name: string;
   description: string;
   maxDuration: number; // in minutes
-  dailyLimit: number; // max calls per day
+  dailyLimit: number; // calls limit per billing period
+  callsLimit: number; // alias for calls limit
+  recordingLimit: number; // recordings limit per billing period
   retentionDays: number; // recording retention in days
   starsPrice: number; // price in Telegram Stars (XTR)
   uzsPrice: number; // price in UZS (Uzbek Som)
@@ -37,12 +39,22 @@ export function isDowngrade(currentPlan: string, targetPlan: string): boolean {
 
 export interface EffectiveEntitlement {
   plan: string;
+  planName: string;
   planDisplayName: string;
+  callLimit: number;
   dailyLimit: number;
+  maxCallDuration: number;
   maxDurationMinutes: number;
+  recordingLimit: number;
+  recordingRetention: number;
   retentionDays: number;
+  starsPrice: number;
+  uzsPrice: number;
   isUnlimited: boolean;
   isAdmin: boolean;
+  subscriptionStatus: string;
+  subscriptionExpiresAt: Date | string | null;
+  overrideSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE';
   source: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' | 'CUSTOM_PLAN';
   retentionSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE';
 }
@@ -50,9 +62,11 @@ export interface EffectiveEntitlement {
 let plansConfig: SystemPlansConfig = {
   FREE: {
     name: 'Free Starter',
-    description: '3 practice calls/day, 15 min max duration, 1-day audio recording retention. Ideal for casual learners starting IELTS speaking preparation.',
+    description: '3 calls/month, 15 min max duration, 1 recording, 1-day retention.',
     maxDuration: 15,
     dailyLimit: 3,
+    callsLimit: 3,
+    recordingLimit: 1,
     retentionDays: 1,
     starsPrice: 0,
     uzsPrice: 0,
@@ -60,32 +74,38 @@ let plansConfig: SystemPlansConfig = {
   },
   PLUS: {
     name: 'Speaking Plus',
-    description: '10 practice calls/day, 30 min max duration, 7-day audio recording retention. High-frequency practice with extended speaking topics.',
+    description: '10 calls/month, 30 min max duration, 3 recordings, 7-day retention.',
     maxDuration: 30,
     dailyLimit: 10,
+    callsLimit: 10,
+    recordingLimit: 3,
     retentionDays: 7,
-    starsPrice: 150,
-    uzsPrice: 25000,
+    starsPrice: 79,
+    uzsPrice: 12000,
     active: true,
   },
   PRO: {
     name: 'Master Pro',
-    description: 'Unlimited practice calls/day, 60 min full-exam simulations, 30-day audio recording retention. Perfect for serious test takers targeting Band 7.5+.',
+    description: '25 calls/month, 60 min max duration, 7 recordings, 30-day retention.',
     maxDuration: 60,
-    dailyLimit: 999,
+    dailyLimit: 25,
+    callsLimit: 25,
+    recordingLimit: 7,
     retentionDays: 30,
-    starsPrice: 500,
-    uzsPrice: 75000,
+    starsPrice: 300,
+    uzsPrice: 45000,
     active: true,
   },
   BOSS: {
     name: 'Executive Boss',
-    description: 'Unlimited practice calls/day, 60 min full-exam simulations, 60-day extended audio retention, VIP priority matchmaking. Ultimate IELTS mastery.',
-    maxDuration: 60,
-    dailyLimit: 999,
-    retentionDays: 60,
-    starsPrice: 1000,
-    uzsPrice: 150000,
+    description: '50 calls/month, 90 min max duration, 15 recordings, 90-day retention.',
+    maxDuration: 90,
+    dailyLimit: 50,
+    callsLimit: 50,
+    recordingLimit: 15,
+    retentionDays: 90,
+    starsPrice: 750,
+    uzsPrice: 125000,
     active: true,
   },
 };
@@ -125,12 +145,18 @@ export function getRetentionDaysForPlan(plan: string): number {
   return plansConfig[tier]?.retentionDays ?? 1;
 }
 
+export function getRecordingLimitForPlan(plan: string): number {
+  const tier = (plan?.toUpperCase() as keyof SystemPlansConfig) in plansConfig ? (plan.toUpperCase() as keyof SystemPlansConfig) : 'FREE';
+  return plansConfig[tier]?.recordingLimit ?? 1;
+}
+
 export function getEffectiveEntitlement(user: {
   plan?: string | null;
   subscriptionStatus?: string | null;
   subscriptionExpiresAt?: Date | string | null;
   dailyLimit?: number | null;
   maxDuration?: number | null;
+  recordingLimit?: number | null;
   retentionOverride?: number | null;
   customPlanName?: string | null;
   telegramId?: bigint | string | number | null;
@@ -154,7 +180,7 @@ export function getEffectiveEntitlement(user: {
   const planKey = rawPlanKey;
   const defaultTier = plansConfig[planKey] ?? plansConfig.FREE;
 
-  // Determine Daily Limit
+  // Determine Call Limit
   let dailyLimit = defaultTier.dailyLimit;
   let isCustomLimit = false;
   if (user.dailyLimit !== undefined && user.dailyLimit !== null && user.dailyLimit !== defaultTier.dailyLimit) {
@@ -173,6 +199,14 @@ export function getEffectiveEntitlement(user: {
     isCustomDuration = true;
   }
 
+  // Determine Recording Limit
+  let recordingLimit = defaultTier.recordingLimit;
+  let isCustomRecordingLimit = false;
+  if (user.recordingLimit !== undefined && user.recordingLimit !== null && user.recordingLimit > 0) {
+    recordingLimit = user.recordingLimit;
+    isCustomRecordingLimit = true;
+  }
+
   // Determine Retention Days
   let retentionDays = defaultTier.retentionDays;
   let retentionSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' = 'PLAN_DEFAULT';
@@ -181,25 +215,61 @@ export function getEffectiveEntitlement(user: {
     retentionSource = 'ADMIN_OVERRIDE';
   }
 
-  const isUnlimited = dailyLimit >= 999 || planKey === 'PRO' || planKey === 'BOSS' || isAdmin;
+  const isUnlimited = dailyLimit >= 999 || isAdmin;
   const isCustomPlan = Boolean(user.customPlanName);
+  const overrideSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' =
+    isCustomLimit || isCustomDuration || isCustomRecordingLimit || retentionSource === 'ADMIN_OVERRIDE'
+      ? 'ADMIN_OVERRIDE'
+      : 'PLAN_DEFAULT';
   const source: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' | 'CUSTOM_PLAN' = isCustomPlan
     ? 'CUSTOM_PLAN'
-    : (isCustomLimit || isCustomDuration || retentionSource === 'ADMIN_OVERRIDE')
-    ? 'ADMIN_OVERRIDE'
-    : 'PLAN_DEFAULT';
+    : overrideSource;
+
+  const planDisplayName = user.customPlanName || defaultTier.name;
 
   return {
     plan: planKey,
-    planDisplayName: user.customPlanName || planKey,
+    planName: planDisplayName,
+    planDisplayName,
+    callLimit: dailyLimit,
     dailyLimit,
+    maxCallDuration: maxDurationMinutes,
     maxDurationMinutes,
+    recordingLimit,
+    recordingRetention: retentionDays,
     retentionDays,
+    starsPrice: defaultTier.starsPrice,
+    uzsPrice: defaultTier.uzsPrice,
     isUnlimited,
     isAdmin,
+    subscriptionStatus: user.subscriptionStatus || (planKey === 'FREE' ? 'NONE' : 'ACTIVE'),
+    subscriptionExpiresAt: user.subscriptionExpiresAt || null,
+    overrideSource,
     source,
     retentionSource,
   };
+}
+
+export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any): Promise<number> {
+  try {
+    let periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    if (user?.subscriptionExpiresAt) {
+      const expiresAt = new Date(user.subscriptionExpiresAt);
+      if (expiresAt > new Date()) {
+        periodStart = new Date(expiresAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+    }
+    const count = await prisma.callSession.count({
+      where: {
+        OR: [{ userAId: userId }, { userBId: userId }],
+        recordingUrl: { not: null },
+        createdAt: { gte: periodStart },
+      },
+    });
+    return count;
+  } catch {
+    return 0;
+  }
 }
 
 export interface PaidUserProfile {
@@ -207,6 +277,8 @@ export interface PaidUserProfile {
   planDisplayName: string;
   expiration: string | null;
   callsRemainingToday: string;
+  callsRemaining: string;
+  recordingsRemaining: string;
   maxCallDuration: number;
   recordingRetention: number;
   isActivePaid: boolean;
@@ -219,6 +291,7 @@ export function getPaidUserProfile(user: {
   subscriptionExpiresAt?: Date | string | null;
   dailyLimit?: number | null;
   dailyCallsUsed?: number | null;
+  recordingsUsed?: number | null;
   maxDuration?: number | null;
   retentionOverride?: number | null;
   customPlanName?: string | null;
@@ -241,17 +314,22 @@ export function getPaidUserProfile(user: {
   }
 
   const callsUsed = user.dailyCallsUsed || 0;
-  const callsRemaining = entitlement.isUnlimited
+  const callsRemainingFormatted = entitlement.isUnlimited
     ? 'Unlimited'
-    : `${Math.max(0, entitlement.dailyLimit - callsUsed)} / ${entitlement.dailyLimit}`;
+    : `${Math.max(0, entitlement.callLimit - callsUsed)} / ${entitlement.callLimit}`;
+
+  const recUsed = user.recordingsUsed || 0;
+  const recordingsRemainingFormatted = `${Math.max(0, entitlement.recordingLimit - recUsed)} / ${entitlement.recordingLimit}`;
 
   return {
     plan: entitlement.plan,
     planDisplayName: entitlement.planDisplayName,
     expiration: expirationFormatted,
-    callsRemainingToday: callsRemaining,
-    maxCallDuration: entitlement.maxDurationMinutes,
-    recordingRetention: entitlement.retentionDays,
+    callsRemainingToday: callsRemainingFormatted,
+    callsRemaining: callsRemainingFormatted,
+    recordingsRemaining: recordingsRemainingFormatted,
+    maxCallDuration: entitlement.maxCallDuration,
+    recordingRetention: entitlement.recordingRetention,
     isActivePaid,
     rank: PLAN_WEIGHTS[entitlement.plan] ?? 0,
   };

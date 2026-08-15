@@ -50,6 +50,8 @@ export interface PlanTierConfig {
   description?: string;
   maxDuration: number;
   dailyLimit: number;
+  callsLimit?: number;
+  recordingLimit?: number;
   retentionDays: number;
   starsPrice?: number;
   uzsPrice?: number;
