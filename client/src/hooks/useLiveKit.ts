@@ -83,13 +83,18 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         await activeRoom.startAudio();
         setCanPlaybackAudio(activeRoom.canPlaybackAudio);
       } catch (err) {
-        console.warn('[LiveKit] Failed to unlock audio playback:', err);
+        console.warn('[LiveKit] Failed to unlock audio playback via startAudio():', err);
       }
     }
     for (const el of attachedAudioElementsRef.current.values()) {
       try {
+        el.muted = false;
+        el.volume = 1.0;
         await el.play();
-      } catch {}
+        setCanPlaybackAudio(true);
+      } catch (err) {
+        console.warn('[LiveKit] Failed to play attached audio element:', err);
+      }
     }
   }, []);
 
@@ -158,24 +163,46 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
 
           const el = remoteAudioTrack.attach();
           el.autoplay = true;
+          el.muted = false;
+          el.volume = 1.0;
           (el as any).playsInline = true;
           el.setAttribute('playsinline', 'true');
           el.setAttribute('webkit-playsinline', 'true');
           el.style.position = 'fixed';
-          el.style.top = '-9999px';
-          el.style.left = '-9999px';
-          el.style.width = '1px';
-          el.style.height = '1px';
-          el.style.opacity = '0';
+          el.style.bottom = '0px';
+          el.style.right = '0px';
+          el.style.width = '2px';
+          el.style.height = '2px';
+          el.style.opacity = '0.01';
           el.style.pointerEvents = 'none';
-          document.body.appendChild(el);
+
+          let container = document.getElementById('livekit-audio-sink');
+          if (!container) {
+            container = document.createElement('div');
+            container.id = 'livekit-audio-sink';
+            container.style.position = 'fixed';
+            container.style.bottom = '0px';
+            container.style.right = '0px';
+            container.style.width = '2px';
+            container.style.height = '2px';
+            container.style.pointerEvents = 'none';
+            document.body.appendChild(container);
+          }
+          container.appendChild(el);
 
           attachedAudioElementsRef.current.set(trackSid, el);
 
-          el.play().catch((playErr) => {
-            console.warn('[LiveKit] Remote audio play() blocked by mobile autoplay policy:', playErr);
-            setCanPlaybackAudio(false);
-          });
+          const playPromise = el.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                setCanPlaybackAudio(true);
+              })
+              .catch((playErr) => {
+                console.warn('[LiveKit] Remote audio play() blocked by mobile autoplay policy:', playErr);
+                setCanPlaybackAudio(false);
+              });
+          }
         };
 
         const detachAudioTrack = (remoteAudioTrack: RemoteAudioTrack) => {
@@ -218,6 +245,29 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           }
         );
 
+        // Explicitly subscribe to published audio tracks
+        livekitRoom.on(
+          RoomEvent.TrackPublished,
+          (publication: RemoteTrackPublication) => {
+            if (publication.kind === Track.Kind.Audio) {
+              publication.setSubscribed(true);
+            }
+          }
+        );
+
+        // When a remote participant connects, ensure their tracks are subscribed
+        livekitRoom.on(
+          RoomEvent.ParticipantConnected,
+          (participant: RemoteParticipant) => {
+            for (const pub of participant.audioTrackPublications.values()) {
+              pub.setSubscribed(true);
+              if (pub.track && pub.track.kind === Track.Kind.Audio) {
+                attachAudioTrack(pub.track as RemoteAudioTrack);
+              }
+            }
+          }
+        );
+
         // Mobile autoplay permission change listener
         livekitRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
           if (livekitRoom) {
@@ -240,6 +290,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         // Attach any audio tracks already published by participants currently in the room
         for (const participant of livekitRoom.remoteParticipants.values()) {
           for (const publication of participant.audioTrackPublications.values()) {
+            publication.setSubscribed(true);
             if (publication.track && publication.track.kind === Track.Kind.Audio) {
               attachAudioTrack(publication.track as RemoteAudioTrack);
             }

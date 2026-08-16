@@ -153,7 +153,19 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span>Encrypted Voice Call</span>
           <span className="text-slate-600">•</span>
-          <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+          {onUnlockAudio ? (
+            <button
+              type="button"
+              onClick={() => onUnlockAudio()}
+              className="flex items-center gap-1 text-indigo-300 hover:text-indigo-200"
+              title="Tap to verify partner audio"
+            >
+              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Audio Active</span>
+            </button>
+          ) : (
+            <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+          )}
         </div>
 
         {/* Big High-Contrast Timer */}
