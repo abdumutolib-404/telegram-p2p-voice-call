@@ -12,7 +12,8 @@ import {
 } from '../../services/plan';
 import { checkRateLimit } from '../../services/rateLimitMatrix';
 import { env } from '../../config/env';
-import { sendAdminPaymentNotification } from '../paymentsBot';
+import { sendAdminPaymentNotification, downloadTelegramReceiptFile } from '../paymentsBot';
+import { validateReceipt } from '../receiptValidator';
 
 export function setupPaymentHandlers(bot: Bot<MyContext>) {
   // Callback: select_plan:PLUS, PRO, or BOSS
@@ -495,13 +496,14 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
       const orderNumber = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
 
+      const isPhoto = Boolean(ctx.message?.photo && ctx.message.photo.length > 0);
       let fileId = '';
       let fileUniqueId = '';
-      let fileName = 'receipt';
-      let mimeType = 'image/jpeg';
+      let fileName: string | undefined = undefined;
+      let mimeType: string | undefined = undefined;
       let fileSize = 0;
 
-      if (ctx.message?.photo && ctx.message.photo.length > 0) {
+      if (isPhoto && ctx.message?.photo) {
         const highestRes = ctx.message.photo[ctx.message.photo.length - 1];
         fileId = highestRes.file_id;
         fileUniqueId = highestRes.file_unique_id;
@@ -513,8 +515,8 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         fileId = doc.file_id;
         fileUniqueId = doc.file_unique_id;
         fileSize = doc.file_size || 0;
-        fileName = doc.file_name || `receipt_${orderNumber}`;
-        mimeType = doc.mime_type || 'application/octet-stream';
+        fileName = doc.file_name;
+        mimeType = doc.mime_type;
       }
 
       if (!fileId) {
@@ -525,28 +527,47 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         orderNumber,
         userId: pendingRequest.userId,
         telegramId: ctx.from.id,
-        mimeType,
+        mimeType: mimeType || 'unknown',
         fileSize,
-        fileName,
+        fileName: fileName || 'unnamed',
+        isPhoto,
       });
 
-      // Max 20MB receipt limit
-      if (fileSize > 20 * 1024 * 1024) {
-        await ctx.reply(
-          `⚠️ <b>File Too Large</b>\n\nPlease send a receipt image or PDF under <b>20 MB</b>.`,
-          { parse_mode: 'HTML' }
-        );
+      // Strict Authoritative Validation (P0-A)
+      const validation = validateReceipt({
+        isPhoto,
+        mimeType,
+        fileName,
+        fileSize,
+        orderNumber,
+      });
+
+      if (!validation.valid) {
+        console.log(`[Payments] RECEIPT_REJECTED`, {
+          orderNumber,
+          category: validation.category,
+          reason: validation.reason,
+        });
+
+        await ctx.reply(validation.userMessage, { parse_mode: 'HTML' });
         return;
       }
 
-      console.log(`[Payments] RECEIPT_VALIDATED`, { orderNumber, fileId, fileUniqueId });
+      console.log(`[Payments] RECEIPT_VALIDATED`, {
+        orderNumber,
+        category: validation.category,
+        fileId,
+        fileUniqueId,
+        mimeType: validation.mimeType,
+        fileName: validation.fileName,
+      });
 
       const proofMeta = {
         fileId,
         fileUniqueId,
-        fileName,
-        mimeType,
-        fileSize,
+        fileName: validation.fileName,
+        mimeType: validation.mimeType,
+        fileSize: validation.fileSize,
         messageId: ctx.message?.message_id,
         telegramId: ctx.from.id,
         orderNumber,
@@ -562,15 +583,17 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
       await ctx.reply(
         `✅ <b>Payment Receipt Received!</b>\n\n` +
-          `Your receipt (<b>${fileName}</b>) has been attached to Order #<b>${orderNumber}</b>.\n` +
+          `Your receipt (<b>${validation.fileName}</b>) has been attached to Order #<b>${orderNumber}</b>.\n` +
           `Our administration team will verify your payment and activate your <b>${pendingRequest.plan} Plan</b> within 15–30 minutes.\n\n` +
           `Thank you for practicing with us!`,
         { parse_mode: 'HTML' }
       );
 
-      // Dispatch outbound alert to configured admins via dedicated Bot B (or Bot A fallback)
+      // P0-B: Download file bytes via Main Bot so Bot B can upload raw bytes (InputFile) to admin
       console.log(`[Payments] ADMIN_NOTIFICATION_STARTED`, { orderNumber });
       try {
+        const downloadedReceipt = await downloadTelegramReceiptFile(ctx.api, fileId);
+
         await sendAdminPaymentNotification(ctx.api as any, {
           orderNumber,
           userAlias: pendingRequest.alias,
@@ -578,16 +601,20 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           plan: pendingRequest.plan,
           uzsAmount: pendingRequest.uzsAmount,
           paymentMethod: 'MANUAL_UZS',
-          receiptFileId: fileId,
-          receiptMimeType: mimeType,
+          receiptBuffer: downloadedReceipt?.buffer || null,
+          receiptFileName: validation.fileName,
+          receiptMimeType: validation.mimeType,
           createdAt: pendingRequest.createdAt,
           status: pendingRequest.status,
         });
+
         console.log(`[Payments] ADMIN_NOTIFICATION_SENT`, { orderNumber });
       } catch (notifyErr) {
+        const rawErr = notifyErr instanceof Error ? notifyErr.message : String(notifyErr);
+        const sanitizedErr = rawErr.replace(/bot\d+:[a-zA-Z0-9_-]+/g, '[REDACTED_TOKEN]');
         console.error(`[Payments] ADMIN_NOTIFICATION_FAILED`, {
           orderNumber,
-          error: notifyErr instanceof Error ? notifyErr.message : notifyErr,
+          error: sanitizedErr,
         });
       }
     } catch (err) {

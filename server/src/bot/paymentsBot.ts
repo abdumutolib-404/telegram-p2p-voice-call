@@ -1,4 +1,4 @@
-import { Bot } from 'grammy';
+import { Bot, InputFile } from 'grammy';
 import { env } from '../config/env';
 
 export interface AdminPaymentNotificationParams {
@@ -8,7 +8,8 @@ export interface AdminPaymentNotificationParams {
   plan: string;
   uzsAmount: number;
   paymentMethod: string;
-  receiptFileId?: string | null;
+  receiptBuffer?: Buffer | null;
+  receiptFileName?: string | null;
   receiptMimeType?: string | null;
   createdAt: Date;
   status: string;
@@ -29,23 +30,63 @@ export function getPaymentsBot(): Bot | null {
 }
 
 /**
- * Dispatches an outbound admin notification strictly to configured ADMIN_TELEGRAM_IDS
+ * Downloads a file buffer from Telegram servers using Main Bot (Bot A) credentials.
+ */
+export async function downloadTelegramReceiptFile(
+  mainBotApi: any,
+  fileId: string,
+  botToken: string = env.BOT_TOKEN
+): Promise<{ buffer: Buffer; filePath: string } | null> {
+  if (!fileId) return null;
+  try {
+    const fileInfo = await mainBotApi.getFile(fileId);
+    if (!fileInfo || !fileInfo.file_path) {
+      throw new Error('Telegram getFile returned empty file_path');
+    }
+
+    const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
+    const response = await fetch(downloadUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status} downloading file from Telegram`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      filePath: fileInfo.file_path,
+    };
+  } catch (err: unknown) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const sanitizedMsg = rawMsg.replace(/bot\d+:[a-zA-Z0-9_-]+/g, '[REDACTED_TOKEN]');
+    console.error('[PaymentsBot] downloadTelegramReceiptFile failed:', sanitizedMsg);
+    return null;
+  }
+}
+
+/**
+ * Dispatches an outbound admin notification strictly to configured ADMIN_TELEGRAM_IDS.
+ * When Bot B is configured with its own token, it uploads the downloaded file bytes directly
+ * via InputFile to avoid cross-bot file_id invalidation (Telegram Error 400).
  */
 export async function sendAdminPaymentNotification(
   fallbackBot: Bot | null,
   params: AdminPaymentNotificationParams
 ): Promise<void> {
   const adminIds = env.ADMIN_TELEGRAM_IDS;
-  if (!adminIds || adminIds.length === 0) return;
+  if (!adminIds || adminIds.length === 0) {
+    throw new Error('No ADMIN_TELEGRAM_IDS configured for alert delivery');
+  }
 
   const botToUse = getPaymentsBot() || fallbackBot;
-  if (!botToUse) return;
+  if (!botToUse) {
+    throw new Error('No bot instance available to dispatch payment notification');
+  }
 
   const formattedAmount = params.uzsAmount.toLocaleString('en-US');
   const dateStr = params.createdAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
   const adminUrl = env.ADMIN_PANEL_URL.replace(/\/+$/, '');
 
-  const text =
+  const caption =
     `🧾 <b>NEW MANUAL PAYMENT RECEIPT</b>\n\n` +
     `<b>Order</b>: <code>${params.orderNumber}</code>\n` +
     `<b>User</b>: ${params.userAlias} (<code>${params.telegramId.toString()}</code>)\n` +
@@ -56,27 +97,36 @@ export async function sendAdminPaymentNotification(
     `<b>Created</b>: ${dateStr}\n\n` +
     `🔗 <a href="${adminUrl}">Open Admin Panel</a>`;
 
+  const errors: string[] = [];
+
   for (const adminId of adminIds) {
     try {
-      if (params.receiptFileId) {
+      if (params.receiptBuffer && params.receiptBuffer.length > 0) {
+        const inputFile = new InputFile(params.receiptBuffer, params.receiptFileName || 'receipt');
         if (params.receiptMimeType?.startsWith('image/')) {
-          await botToUse.api.sendPhoto(adminId, params.receiptFileId, {
-            caption: text,
+          await botToUse.api.sendPhoto(adminId, inputFile, {
+            caption,
             parse_mode: 'HTML',
           });
         } else {
-          await botToUse.api.sendDocument(adminId, params.receiptFileId, {
-            caption: text,
+          await botToUse.api.sendDocument(adminId, inputFile, {
+            caption,
             parse_mode: 'HTML',
           });
         }
       } else {
-        await botToUse.api.sendMessage(adminId, text, {
+        await botToUse.api.sendMessage(adminId, caption, {
           parse_mode: 'HTML',
         });
       }
-    } catch (err) {
-      console.warn('[PaymentsBot] Failed to dispatch admin payment alert:', err instanceof Error ? err.message : err);
+    } catch (err: unknown) {
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const sanitized = rawMsg.replace(/bot\d+:[a-zA-Z0-9_-]+/g, '[REDACTED_TOKEN]');
+      errors.push(`Admin ${adminId}: ${sanitized}`);
     }
+  }
+
+  if (errors.length > 0 && errors.length === adminIds.length) {
+    throw new Error(`Failed to deliver admin notification to all admins: ${errors.join(', ')}`);
   }
 }
