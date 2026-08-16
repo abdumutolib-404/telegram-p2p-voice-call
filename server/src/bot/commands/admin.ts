@@ -84,7 +84,6 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
   bot.command('setplan', async (ctx) => {
     const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
     if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      await ctx.reply('Unknown command.');
       return;
     }
 
@@ -144,7 +143,6 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
   bot.command('resetlimit', async (ctx) => {
     const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
     if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      await ctx.reply('Unknown command.');
       return;
     }
 
@@ -177,7 +175,6 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
   bot.command('user', async (ctx) => {
     const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
     if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      await ctx.reply('Unknown command.');
       return;
     }
 
@@ -209,7 +206,6 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
   bot.command('setretention', async (ctx) => {
     const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
     if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      await ctx.reply('Unknown command.');
       return;
     }
 
@@ -290,7 +286,6 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
   bot.command('announce', async (ctx) => {
     const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
     if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      await ctx.reply('You are not authorized to use announcements.');
       return;
     }
 

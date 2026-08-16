@@ -80,8 +80,8 @@ let plansConfig: SystemPlansConfig = {
     callsLimit: 10,
     recordingLimit: 3,
     retentionDays: 7,
-    starsPrice: 79,
-    uzsPrice: 12000,
+    starsPrice: 99,
+    uzsPrice: 15000,
     active: true,
   },
   PRO: {
@@ -92,8 +92,8 @@ let plansConfig: SystemPlansConfig = {
     callsLimit: 25,
     recordingLimit: 7,
     retentionDays: 30,
-    starsPrice: 300,
-    uzsPrice: 45000,
+    starsPrice: 349,
+    uzsPrice: 55000,
     active: true,
   },
   BOSS: {
@@ -104,8 +104,8 @@ let plansConfig: SystemPlansConfig = {
     callsLimit: 50,
     recordingLimit: 15,
     retentionDays: 90,
-    starsPrice: 750,
-    uzsPrice: 125000,
+    starsPrice: 899,
+    uzsPrice: 149000,
     active: true,
   },
 };

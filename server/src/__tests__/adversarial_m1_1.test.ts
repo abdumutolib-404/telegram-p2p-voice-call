@@ -320,7 +320,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
           successful_payment: {
             currency: 'XTR',
             telegram_payment_charge_id: 'stars_tx_charge_unique_001',
-            total_amount: 300,
+            total_amount: 349,
             invoice_payload: `plan_purchase:PRO:99001122:A21:${Date.now()}`,
           },
         },
@@ -341,7 +341,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       const txs = await prisma.starsTransaction.findMany();
       const matchTx = txs.find((t) => t.telegramPaymentId === 'stars_tx_charge_unique_001');
       expect(matchTx).toBeDefined();
-      expect(matchTx?.starsAmount).toBe(300);
+      expect(matchTx?.starsAmount).toBe(349);
       expect(matchTx?.planTier).toBe('PRO');
     });
 
@@ -366,7 +366,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
           successful_payment: {
             currency: 'XTR',
             telegram_payment_charge_id: 'stars_tx_charge_unique_001', // SAME payment charge ID
-            total_amount: 300,
+            total_amount: 349,
             invoice_payload: `plan_purchase:PRO:99001122:A21:${Date.now()}`,
           },
         },

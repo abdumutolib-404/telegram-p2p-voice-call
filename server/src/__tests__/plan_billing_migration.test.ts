@@ -40,10 +40,10 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       expect(config.active).toBe(true);
     });
 
-    it('1.2 PLUS plan has exact canonical limits and 12,000 UZS / 79 XTR price', () => {
+    it('1.2 PLUS plan has exact canonical limits and 15,000 UZS / 99 XTR price', () => {
       const config = getPlansConfig().PLUS;
-      expect(config.uzsPrice).toBe(12000);
-      expect(config.starsPrice).toBe(79);
+      expect(config.uzsPrice).toBe(15000);
+      expect(config.starsPrice).toBe(99);
       expect(config.dailyLimit).toBe(10);
       expect(config.callsLimit).toBe(10);
       expect(config.maxDuration).toBe(30);
@@ -52,10 +52,10 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       expect(config.active).toBe(true);
     });
 
-    it('1.3 PRO plan has exact canonical limits and 45,000 UZS / 300 XTR price', () => {
+    it('1.3 PRO plan has exact canonical limits and 55,000 UZS / 349 XTR price', () => {
       const config = getPlansConfig().PRO;
-      expect(config.uzsPrice).toBe(45000);
-      expect(config.starsPrice).toBe(300);
+      expect(config.uzsPrice).toBe(55000);
+      expect(config.starsPrice).toBe(349);
       expect(config.dailyLimit).toBe(25);
       expect(config.callsLimit).toBe(25);
       expect(config.maxDuration).toBe(60);
@@ -64,10 +64,10 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       expect(config.active).toBe(true);
     });
 
-    it('1.4 BOSS plan has exact canonical limits and 125,000 UZS / 750 XTR price', () => {
+    it('1.4 BOSS plan has exact canonical limits and 149,000 UZS / 899 XTR price', () => {
       const config = getPlansConfig().BOSS;
-      expect(config.uzsPrice).toBe(125000);
-      expect(config.starsPrice).toBe(750);
+      expect(config.uzsPrice).toBe(149000);
+      expect(config.starsPrice).toBe(899);
       expect(config.dailyLimit).toBe(50);
       expect(config.callsLimit).toBe(50);
       expect(config.maxDuration).toBe(90);
@@ -242,15 +242,15 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       expect(getPlansConfig().PLUS.starsPrice).toBe(85);
       expect(getPlansConfig().PLUS.uzsPrice).toBe(15000);
 
-      // Revert back to canonical 79 XTR / 12,000 UZS
+      // Revert back to canonical 99 XTR / 15,000 UZS
       updatePlansConfig({
         PLUS: {
           ...getPlansConfig().PLUS,
-          starsPrice: 79,
-          uzsPrice: 12000,
+          starsPrice: 99,
+          uzsPrice: 15000,
         },
       });
-      expect(getPlansConfig().PLUS.starsPrice).toBe(79);
+      expect(getPlansConfig().PLUS.starsPrice).toBe(99);
     });
   });
 

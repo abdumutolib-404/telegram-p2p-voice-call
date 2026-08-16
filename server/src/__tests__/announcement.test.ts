@@ -283,7 +283,7 @@ describe('Admin-Only Telegram Announcement System Test Suite', () => {
   });
 
   describe('5. Bot Command Integration & /admin Easter Egg', () => {
-    it('5.1 Rejects unauthorized /announce commands', async () => {
+    it('5.1 Silently ignores unauthorized /announce commands without sending any reply', async () => {
       const nonAdminId = 999999999;
       let replyMessage = '';
 
@@ -310,7 +310,7 @@ describe('Admin-Only Telegram Announcement System Test Suite', () => {
       expect(announceHandler).toBeDefined();
 
       await announceHandler!(mockCtx);
-      expect(replyMessage).toContain('You are not authorized');
+      expect(replyMessage).toBe('');
     });
 
     it('5.2 Returns exact Easter egg for /admin regardless of user role', async () => {

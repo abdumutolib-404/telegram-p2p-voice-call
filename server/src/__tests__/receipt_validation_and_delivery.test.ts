@@ -236,7 +236,7 @@ describe('P0-A & P0-B: Receipt File Validation & Cross-Bot Delivery Test Suite',
         userAlias: 'StudentAlice',
         telegramId: 123456789n,
         plan: 'PRO',
-        uzsAmount: 45000,
+        uzsAmount: 55000,
         paymentMethod: 'MANUAL_UZS',
         receiptBuffer: pdfBuffer,
         receiptFileName: 'receipt_A99.pdf',
@@ -250,7 +250,7 @@ describe('P0-A & P0-B: Receipt File Validation & Cross-Bot Delivery Test Suite',
       expect(firstCall[0]).toBe(env.ADMIN_TELEGRAM_IDS[0]);
       expect(firstCall[1]).toBeDefined(); // InputFile instance
       expect(firstCall[2].caption).toContain('A99');
-      expect(firstCall[2].caption).toContain('45,000 UZS');
+      expect(firstCall[2].caption).toContain('55,000 UZS');
     });
 
     it('2.3 Dispatches Photo with InputFile bytes to admin via Bot B', async () => {
@@ -269,7 +269,7 @@ describe('P0-A & P0-B: Receipt File Validation & Cross-Bot Delivery Test Suite',
         userAlias: 'StudentBob',
         telegramId: 987654321n,
         plan: 'BOSS',
-        uzsAmount: 125000,
+        uzsAmount: 149000,
         paymentMethod: 'MANUAL_UZS',
         receiptBuffer: photoBuffer,
         receiptFileName: 'receipt_A100.jpg',
@@ -283,7 +283,7 @@ describe('P0-A & P0-B: Receipt File Validation & Cross-Bot Delivery Test Suite',
       expect(firstCall[0]).toBe(env.ADMIN_TELEGRAM_IDS[0]);
       expect(firstCall[1]).toBeDefined(); // InputFile instance
       expect(firstCall[2].caption).toContain('A100');
-      expect(firstCall[2].caption).toContain('125,000 UZS');
+      expect(firstCall[2].caption).toContain('149,000 UZS');
     });
 
     it('2.4 Throws and propagates sanitized error when admin delivery fails', async () => {
@@ -303,7 +303,7 @@ describe('P0-A & P0-B: Receipt File Validation & Cross-Bot Delivery Test Suite',
           userAlias: 'StudentCharlie',
           telegramId: 555666777n,
           plan: 'PLUS',
-          uzsAmount: 12000,
+          uzsAmount: 15000,
           paymentMethod: 'MANUAL_UZS',
           receiptBuffer: pdfBuffer,
           receiptFileName: 'receipt_A101.pdf',

@@ -7,9 +7,9 @@ import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, S
 export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse>({
     FREE: { maxDuration: 15, dailyLimit: 3, recordingLimit: 1, retentionDays: 1, starsPrice: 0, uzsPrice: 0 },
-    PLUS: { maxDuration: 30, dailyLimit: 10, recordingLimit: 3, retentionDays: 7, starsPrice: 79, uzsPrice: 12000 },
-    PRO: { maxDuration: 60, dailyLimit: 25, recordingLimit: 7, retentionDays: 30, starsPrice: 300, uzsPrice: 45000 },
-    BOSS: { maxDuration: 90, dailyLimit: 50, recordingLimit: 15, retentionDays: 90, starsPrice: 750, uzsPrice: 125000 },
+    PLUS: { maxDuration: 30, dailyLimit: 10, recordingLimit: 3, retentionDays: 7, starsPrice: 99, uzsPrice: 15000 },
+    PRO: { maxDuration: 60, dailyLimit: 25, recordingLimit: 7, retentionDays: 30, starsPrice: 349, uzsPrice: 55000 },
+    BOSS: { maxDuration: 90, dailyLimit: 50, recordingLimit: 15, retentionDays: 90, starsPrice: 899, uzsPrice: 149000 },
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -380,7 +380,7 @@ export function PlanEditor() {
         {renderTierCard('FREE', 'Free Tier', 'Base access for standard partners', <Shield size={24} color="#94a3b8" />, true)}
         {renderTierCard('PLUS', 'Plus Tier', 'Enhanced duration and 7-day recordings', <Sparkles size={24} color="#38bdf8" />, false)}
         {renderTierCard('PRO', 'Pro Tier', 'Unlimited access and 30-day recordings', <Star size={24} color="#fbbf24" />, false)}
-        {renderTierCard('BOSS', 'Boss Tier', 'VIP unlimited speaking with 60-day recordings', <Crown size={24} color="#ec4899" />, false)}
+        {renderTierCard('BOSS', 'Boss Tier', 'VIP speaking with 90-day recordings', <Crown size={24} color="#ec4899" />, false)}
       </div>
     </form>
   );
