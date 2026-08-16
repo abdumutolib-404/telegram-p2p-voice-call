@@ -47,6 +47,21 @@ export function isRecordingStorageConfigured(): boolean {
 /**
  * Builds a strictly-typed EncodedFileOutput protobuf object matching LiveKit Server SDK v2.
  */
+export function generateRecordingFileName(roomName?: string): string {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+  const hour = String(now.getUTCHours()).padStart(2, '0');
+  const min = String(now.getUTCMinutes()).padStart(2, '0');
+  const sec = String(now.getUTCSeconds()).padStart(2, '0');
+  const shortId = crypto.randomBytes(2).toString('hex').toUpperCase();
+  return `${year}-${month}-${day}_${hour}-${min}-${sec}_${shortId}.mp3`;
+}
+
+/**
+ * Builds a strictly-typed EncodedFileOutput protobuf object matching LiveKit Server SDK v2.
+ */
 export function buildAudioEncodedFileOutput(fileName: string): { output: EncodedFileOutput; relativeUrl: string } {
   const hasS3 = Boolean(env.S3_KEY && env.S3_SECRET && env.S3_BUCKET);
   const relativeUrl = `recordings/${fileName}`;
@@ -56,7 +71,7 @@ export function buildAudioEncodedFileOutput(fileName: string): { output: Encoded
       accessKey: env.S3_KEY!,
       secret: env.S3_SECRET!,
       bucket: env.S3_BUCKET!,
-      region: env.S3_REGION || 'us-east-1',
+      region: env.S3_REGION || 'eu-north-1',
       endpoint: env.S3_ENDPOINT || undefined,
       forcePathStyle: env.S3_FORCE_PATH_STYLE ?? false,
     });
@@ -144,8 +159,7 @@ export async function startAudioEgress(roomName: string): Promise<EgressResult> 
     throw err;
   }
 
-  const safeRoomName = roomName.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const fileName = `${safeRoomName}_${Date.now()}_${cryptoRandomSuffix()}.mp3`;
+  const fileName = generateRecordingFileName(roomName);
   const { output, relativeUrl } = buildAudioEncodedFileOutput(fileName);
 
   try {

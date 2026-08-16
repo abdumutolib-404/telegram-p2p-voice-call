@@ -47,6 +47,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
   // Callback: show_plans (overview)
   bot.callbackQuery('show_plans', async (ctx) => {
+    ctx.session.pendingPaymentPlan = undefined;
+    ctx.session.step = 'idle';
+
     const telegramId = BigInt(ctx.from.id);
     const user = await prisma.user.findUnique({ where: { telegramId } });
     const profile = user ? getPaidUserProfile(user) : getPaidUserProfile({ plan: 'FREE' });
@@ -64,13 +67,21 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
         `🆓 <b>FREE Plan</b> (0 UZS / 0 XTR)\n` +
-        `• 3 calls/month | 15 mins | 1 recording | 1 day retention\n\n` +
+        `• Max Call Duration: 15 minutes\n` +
+        `• Monthly Calls: 3\n` +
+        `• Recording Retention: 1 day\n\n` +
         `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
-        `• 10 calls/month | 30 mins | 3 recordings | 7 days retention\n\n` +
+        `• Max Call Duration: 30 minutes\n` +
+        `• Monthly Calls: 10\n` +
+        `• Recording Retention: 7 days\n\n` +
         `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
-        `• 25 calls/month | 60 mins | 7 recordings | 30 days retention\n\n` +
+        `• Max Call Duration: 60 minutes\n` +
+        `• Monthly Calls: 25\n` +
+        `• Recording Retention: 30 days\n\n` +
         `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
-        `• 50 calls/month | 90 mins | 15 recordings | 90 days retention\n\n` +
+        `• Max Call Duration: 90 minutes\n` +
+        `• Monthly Calls: 50\n` +
+        `• Recording Retention: 90 days\n\n` +
         `Select a plan to choose payment method:`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
@@ -168,43 +179,27 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       return;
     }
 
-    const res = await createManualPaymentRequest({
-      userId: user.id,
-      telegramId,
-      alias: user.alias,
-      plan: tier,
-      uzsAmount: config.uzsPrice,
-    });
+    ctx.session.pendingPaymentPlan = tier;
+    ctx.session.step = 'awaiting_receipt';
 
-    if (!res.success || !res.request) {
-      await ctx.answerCallbackQuery({
-        text: res.error?.message || 'Unable to create payment request.',
-        show_alert: true,
-      });
-      return;
-    }
-
-    const request = res.request;
     const formattedAmount = config.uzsPrice.toLocaleString('en-US');
     const adminUsername = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
     const cardDetails = env.MANUAL_PAYMENT_CARD_HOLDER || '8600 1234 5678 9012 (Humo/Uzcard - PairTalk Official)';
     const instructions = env.MANUAL_PAYMENT_INSTRUCTIONS || '1. Transfer exact amount to the card.\n2. Save receipt screenshot or PDF.\n3. Send receipt here in bot for verification.';
 
     const inlineKb = new InlineKeyboard()
-      .text('❌ Cancel Request', `cancel_manual_pay:${request.id}`)
-      .row()
       .text('⬅️ Back to Plans', 'show_plans');
 
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      `📋 <b>Manual Payment Request (Order #${request.orderNumber || request.id.slice(0, 8)})</b>\n\n` +
-        `You have requested the <b>${tier} Plan</b> subscription.\n\n` +
+      `📋 <b>Manual Payment Instructions</b>\n\n` +
+        `You are subscribing to the <b>${tier} Plan</b>.\n\n` +
         `💵 <b>Amount Due</b>: <b>${formattedAmount} UZS</b>\n` +
         `💳 <b>Card Requisites</b>:\n<code>${cardDetails}</code>\n\n` +
         `📌 <b>Instructions</b>:\n` +
         `${instructions}\n` +
-        `Admin: ${adminUsername}\n\n` +
-        `<i>Send your receipt (photo or document) right here in this chat to complete verification.</i>`,
+        `Support: ${adminUsername}\n\n` +
+        `<i>Send your receipt (photo or PDF) right here in this chat to submit your request for verification.</i>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
@@ -481,20 +476,30 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     });
   }
 
-  // In-bot receipt ingest for users with PENDING manual payment requests (photos, documents, PDFs)
+  // In-bot receipt ingest for users submitting manual payment receipts (photos, documents, PDFs)
   bot.on(['message:photo', 'message:document'], async (ctx, next) => {
     try {
       const telegramId = BigInt(ctx.from.id);
-      const pendingRequest = await prisma.manualPaymentRequest.findFirst({
+      const pendingPlan = ctx.session.pendingPaymentPlan;
+
+      let pendingRequest = await prisma.manualPaymentRequest.findFirst({
         where: { telegramId, status: 'PENDING' },
         orderBy: { createdAt: 'desc' },
       });
 
-      if (!pendingRequest) {
+      if (!pendingPlan && !pendingRequest) {
         return next();
       }
 
-      const orderNumber = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
+      const user = await prisma.user.findUnique({ where: { telegramId } });
+      if (!user) {
+        return next();
+      }
+
+      const planTier = pendingPlan || pendingRequest?.plan || 'PLUS';
+      const plans = getPlansConfig();
+      const config = plans[planTier as keyof typeof plans] || plans.PLUS;
+      const orderNumber = pendingRequest?.orderNumber || await generateOrderNumber('A');
 
       const isPhoto = Boolean(ctx.message?.photo && ctx.message.photo.length > 0);
       let fileId = '';
@@ -525,7 +530,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
       console.log(`[Payments] RECEIPT_RECEIVED`, {
         orderNumber,
-        userId: pendingRequest.userId,
+        userId: user.id,
         telegramId: ctx.from.id,
         mimeType: mimeType || 'unknown',
         fileSize,
@@ -574,17 +579,35 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         uploadedAt: new Date().toISOString(),
       };
 
-      await prisma.manualPaymentRequest.update({
-        where: { id: pendingRequest.id },
-        data: { paymentProof: JSON.stringify(proofMeta) },
-      });
+      if (!pendingRequest) {
+        const res = await createManualPaymentRequest({
+          userId: user.id,
+          telegramId,
+          alias: user.alias,
+          plan: planTier,
+          uzsAmount: config.uzsPrice,
+        });
+        if (res.success && res.request) {
+          pendingRequest = res.request as any;
+        }
+      }
 
-      console.log(`[Payments] RECEIPT_ATTACHED`, { orderNumber, requestId: pendingRequest.id });
+      if (pendingRequest) {
+        await prisma.manualPaymentRequest.update({
+          where: { id: pendingRequest.id },
+          data: { paymentProof: JSON.stringify(proofMeta), orderNumber },
+        });
+      }
+
+      ctx.session.pendingPaymentPlan = undefined;
+      ctx.session.step = 'idle';
+
+      console.log(`[Payments] RECEIPT_ATTACHED`, { orderNumber, requestId: pendingRequest?.id });
 
       await ctx.reply(
         `✅ <b>Payment Receipt Received!</b>\n\n` +
-          `Your receipt (<b>${validation.fileName}</b>) has been attached to Order #<b>${orderNumber}</b>.\n` +
-          `Our administration team will verify your payment and activate your <b>${pendingRequest.plan} Plan</b> within 15–30 minutes.\n\n` +
+          `Your receipt (<b>${validation.fileName}</b>) has been submitted for Order #<b>${orderNumber}</b>.\n` +
+          `Our administration team will verify your payment and activate your <b>${planTier} Plan</b> subscription shortly.\n\n` +
           `Thank you for practicing with us!`,
         { parse_mode: 'HTML' }
       );
@@ -596,16 +619,16 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
         await sendAdminPaymentNotification(ctx.api as any, {
           orderNumber,
-          userAlias: pendingRequest.alias,
-          telegramId: pendingRequest.telegramId,
-          plan: pendingRequest.plan,
-          uzsAmount: pendingRequest.uzsAmount,
+          userAlias: user.alias,
+          telegramId: user.telegramId,
+          plan: planTier,
+          uzsAmount: config.uzsPrice,
           paymentMethod: 'MANUAL_UZS',
           receiptBuffer: downloadedReceipt?.buffer || null,
           receiptFileName: validation.fileName,
           receiptMimeType: validation.mimeType,
-          createdAt: pendingRequest.createdAt,
-          status: pendingRequest.status,
+          createdAt: pendingRequest?.createdAt || new Date(),
+          status: 'PENDING',
         });
 
         console.log(`[Payments] ADMIN_NOTIFICATION_SENT`, { orderNumber });

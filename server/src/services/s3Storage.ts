@@ -71,7 +71,23 @@ export async function checkS3ObjectExists(
     if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
       return { exists: false };
     }
-    console.warn('[S3Storage] check_exists_failed:', err.message || err);
+    const errorName = err.name || 'UnknownError';
+    let diagnosis = 'General S3 error';
+    if (errorName === 'InvalidAccessKeyId') {
+      diagnosis = 'AWS Access Key ID does not exist in AWS IAM';
+    } else if (errorName === 'SignatureDoesNotMatch') {
+      diagnosis = 'AWS Secret Access Key is incorrect';
+    } else if (errorName === 'AccessDenied' || err.$metadata?.httpStatusCode === 403) {
+      diagnosis = 'IAM User lacks permission on S3 bucket';
+    } else if (errorName === 'NoSuchBucket') {
+      diagnosis = 'S3 Bucket does not exist in target region';
+    }
+    console.warn('[S3Storage] check_exists_failed:', {
+      errorName,
+      statusCode: err.$metadata?.httpStatusCode,
+      diagnosis,
+      key: storageKey,
+    });
     return { exists: false };
   }
 }

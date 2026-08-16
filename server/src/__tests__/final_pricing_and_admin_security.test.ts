@@ -93,36 +93,15 @@ describe('Final Pricing Migration & Admin Command Privacy Test Suite', () => {
       expect(replyCalled).toBe(false);
     });
 
-    it('2.2 Non-admin sending /setplan produces ZERO response (silent ignore)', async () => {
-      let replyCalled = false;
-      const mockCtx: any = {
-        from: { id: 987654321 },
-        message: { text: '/setplan 11111 BOSS' },
-        reply: async () => {
-          replyCalled = true;
-        },
-      };
-
-      const handler = handlers.get('setplan');
-      expect(handler).toBeDefined();
-      await handler!(mockCtx);
-      expect(replyCalled).toBe(false);
+    it('2.2 Obsolete admin commands (setplan, resetlimit, setretention) are completely deregistered', () => {
+      expect(handlers.get('setplan')).toBeUndefined();
+      expect(handlers.get('resetlimit')).toBeUndefined();
+      expect(handlers.get('setretention')).toBeUndefined();
     });
 
-    it('2.3 Non-admin sending /resetlimit produces ZERO response (silent ignore)', async () => {
-      let replyCalled = false;
-      const mockCtx: any = {
-        from: { id: 987654321 },
-        message: { text: '/resetlimit 11111' },
-        reply: async () => {
-          replyCalled = true;
-        },
-      };
-
-      const handler = handlers.get('resetlimit');
-      expect(handler).toBeDefined();
-      await handler!(mockCtx);
-      expect(replyCalled).toBe(false);
+    it('2.3 Obsolete public commands (privacy, guidelines) are completely deregistered', () => {
+      expect(handlers.get('privacy')).toBeUndefined();
+      expect(handlers.get('guidelines')).toBeUndefined();
     });
 
     it('2.4 Non-admin sending /user produces ZERO response (silent ignore)', async () => {
@@ -136,22 +115,6 @@ describe('Final Pricing Migration & Admin Command Privacy Test Suite', () => {
       };
 
       const handler = handlers.get('user');
-      expect(handler).toBeDefined();
-      await handler!(mockCtx);
-      expect(replyCalled).toBe(false);
-    });
-
-    it('2.5 Non-admin sending /setretention produces ZERO response (silent ignore)', async () => {
-      let replyCalled = false;
-      const mockCtx: any = {
-        from: { id: 987654321 },
-        message: { text: '/setretention 11111 60' },
-        reply: async () => {
-          replyCalled = true;
-        },
-      };
-
-      const handler = handlers.get('setretention');
       expect(handler).toBeDefined();
       await handler!(mockCtx);
       expect(replyCalled).toBe(false);

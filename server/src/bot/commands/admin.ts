@@ -4,7 +4,6 @@ import { MyContext } from '../types';
 import { env } from '../../config/env';
 import { getRedis } from '../../config/redis';
 import { prisma } from '../../config/database';
-import { getDailyLimitForPlan, getMaxDurationForPlan } from '../../services/plan';
 import {
   executeAnnouncementBroadcast,
   isBroadcastActive,
@@ -81,97 +80,6 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
     await ctx.reply("Aha! Got you, lil hacker😈\n📞Calling 911...");
   });
 
-  bot.command('setplan', async (ctx) => {
-    const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
-    if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      return;
-    }
-
-    const text = ctx.message?.text || '';
-    const parts = text.split(/\s+/).slice(1);
-    if (parts.length < 2) {
-      await ctx.reply(
-        `⚙️ <b>Admin Plan Management</b>\n\n` +
-          `<b>Usage:</b> <code>/setplan &lt;telegramId or alias&gt; &lt;FREE | PLUS | PRO | BOSS&gt;</code>\n\n` +
-          `<b>Examples:</b>\n` +
-          `• <code>/setplan ${adminId} PRO</code>\n` +
-          `• <code>/setplan 123456789 PLUS</code>\n` +
-          `• <code>/setplan Partner-4921 FREE</code>`,
-        { parse_mode: 'HTML' }
-      );
-      return;
-    }
-
-    const [targetId, tierRaw] = parts;
-    const tier = tierRaw.toUpperCase();
-    if (!['FREE', 'PLUS', 'PRO', 'BOSS'].includes(tier)) {
-      await ctx.reply('❌ Invalid plan tier. Must be FREE, PLUS, PRO, or BOSS.');
-      return;
-    }
-
-    const user = await findUserByIdOrAlias(targetId);
-    if (!user) {
-      await ctx.reply(`❌ User not found for identifier: <code>${targetId}</code>`, { parse_mode: 'HTML' });
-      return;
-    }
-
-    const maxDuration = getMaxDurationForPlan(tier);
-    const dailyLimit = getDailyLimitForPlan(tier);
-
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        plan: tier,
-        maxDuration,
-        dailyLimit,
-        dailyCallsUsed: 0,
-        subscriptionStatus: tier === 'FREE' ? 'NONE' : 'ACTIVE',
-        subscriptionExpiresAt: tier === 'FREE' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
-
-    await ctx.reply(
-      `✅ <b>Plan Updated Successfully</b>\n\n` +
-        `• <b>User</b>: <code>${updated.alias}</code> (ID: <code>${updated.telegramId.toString()}</code>)\n` +
-        `• <b>New Plan</b>: <b>${updated.plan}</b>\n` +
-        `• <b>Max Duration</b>: ${updated.maxDuration >= 999 ? 'Unlimited' : `${updated.maxDuration} mins`}\n` +
-        `• <b>Daily Limit</b>: ${updated.dailyLimit >= 999 ? 'Unlimited' : `${updated.dailyLimit} calls/day`}`,
-      { parse_mode: 'HTML' }
-    );
-  });
-
-  bot.command('resetlimit', async (ctx) => {
-    const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
-    if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      return;
-    }
-
-    const text = ctx.message?.text || '';
-    const targetId = text.split(/\s+/)[1];
-    if (!targetId) {
-      await ctx.reply('<b>Usage:</b> <code>/resetlimit &lt;telegramId or alias&gt;</code>', { parse_mode: 'HTML' });
-      return;
-    }
-
-    const user = await findUserByIdOrAlias(targetId);
-    if (!user) {
-      await ctx.reply(`❌ User not found for identifier: <code>${targetId}</code>`, { parse_mode: 'HTML' });
-      return;
-    }
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { dailyCallsUsed: 0 },
-    });
-
-    await ctx.reply(
-      `✅ <b>Daily Limit Reset</b>\n\n` +
-        `• <b>User</b>: <code>${user.alias}</code>\n` +
-        `• <b>Daily Calls Used</b>: 0 / ${user.dailyLimit}`,
-      { parse_mode: 'HTML' }
-    );
-  });
-
   bot.command('user', async (ctx) => {
     const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
     if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
@@ -199,52 +107,6 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
         `• <b>Plan</b>: <b>${user.plan}</b>\n` +
         `• <b>Daily Limit</b>: ${user.dailyCallsUsed} / ${user.dailyLimit}\n` +
         `• <b>Status</b>: ${user.isPermanentlyBanned ? '⛔ Permanently Banned' : user.isBanned ? '🚫 Temporarily Suspended' : '✅ Active'}`,
-      { parse_mode: 'HTML' }
-    );
-  });
-
-  bot.command('setretention', async (ctx) => {
-    const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
-    if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
-      return;
-    }
-
-    const text = ctx.message?.text || '';
-    const parts = text.split(/\s+/).slice(1);
-    if (parts.length < 2) {
-      await ctx.reply(
-        `⚙️ <b>Admin Retention Override</b>\n\n` +
-          `<b>Usage:</b> <code>/setretention &lt;telegramId or alias&gt; &lt;days&gt;</code>\n\n` +
-          `<b>Examples:</b>\n` +
-          `• <code>/setretention ${adminId} 30</code>\n` +
-          `• <code>/setretention Partner-4921 7</code>`,
-        { parse_mode: 'HTML' }
-      );
-      return;
-    }
-
-    const [targetId, daysRaw] = parts;
-    const days = parseInt(daysRaw, 10);
-    if (isNaN(days) || days <= 0 || days > 365) {
-      await ctx.reply('❌ Invalid retention days (must be between 1 and 365).');
-      return;
-    }
-
-    const user = await findUserByIdOrAlias(targetId);
-    if (!user) {
-      await ctx.reply(`❌ User not found for identifier: <code>${targetId}</code>`, { parse_mode: 'HTML' });
-      return;
-    }
-
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: { retentionOverride: days },
-    });
-
-    await ctx.reply(
-      `✅ <b>Recording Retention Override Applied</b>\n\n` +
-        `• <b>User</b>: <code>${updated.alias}</code> (ID: <code>${updated.telegramId.toString()}</code>)\n` +
-        `• <b>Recording Retention</b>: ${updated.retentionOverride} days (Admin Override)`,
       { parse_mode: 'HTML' }
     );
   });

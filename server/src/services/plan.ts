@@ -12,6 +12,7 @@ export interface PlanTierConfig {
   retentionDays: number; // recording retention in days
   starsPrice: number; // price in Telegram Stars (XTR)
   uzsPrice: number; // price in UZS (Uzbek Som)
+  subscriptionDurationDays: number; // validity term in days
   active: boolean;
 }
 
@@ -50,6 +51,7 @@ export interface EffectiveEntitlement {
   retentionDays: number;
   starsPrice: number;
   uzsPrice: number;
+  subscriptionDurationDays: number;
   isUnlimited: boolean;
   isAdmin: boolean;
   subscriptionStatus: string;
@@ -70,6 +72,7 @@ let plansConfig: SystemPlansConfig = {
     retentionDays: 1,
     starsPrice: 0,
     uzsPrice: 0,
+    subscriptionDurationDays: 0,
     active: true,
   },
   PLUS: {
@@ -82,6 +85,7 @@ let plansConfig: SystemPlansConfig = {
     retentionDays: 7,
     starsPrice: 99,
     uzsPrice: 15000,
+    subscriptionDurationDays: 30,
     active: true,
   },
   PRO: {
@@ -94,6 +98,7 @@ let plansConfig: SystemPlansConfig = {
     retentionDays: 30,
     starsPrice: 349,
     uzsPrice: 55000,
+    subscriptionDurationDays: 30,
     active: true,
   },
   BOSS: {
@@ -106,6 +111,7 @@ let plansConfig: SystemPlansConfig = {
     retentionDays: 90,
     starsPrice: 899,
     uzsPrice: 149000,
+    subscriptionDurationDays: 30,
     active: true,
   },
 };
@@ -240,6 +246,7 @@ export function getEffectiveEntitlement(user: {
     retentionDays,
     starsPrice: defaultTier.starsPrice,
     uzsPrice: defaultTier.uzsPrice,
+    subscriptionDurationDays: defaultTier.subscriptionDurationDays ?? (planKey === 'FREE' ? 0 : 30),
     isUnlimited,
     isAdmin,
     subscriptionStatus: user.subscriptionStatus || (planKey === 'FREE' ? 'NONE' : 'ACTIVE'),
@@ -456,7 +463,8 @@ export async function approveManualPaymentRequest(params: {
     }
   }
 
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30-day subscription term
+  const durationDays = config.subscriptionDurationDays ?? 30;
+  const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
   const [updatedReq, updatedUser] = await prisma.$transaction([
     prisma.manualPaymentRequest.update({

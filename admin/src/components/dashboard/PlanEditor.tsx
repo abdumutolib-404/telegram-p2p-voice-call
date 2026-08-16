@@ -300,6 +300,33 @@ export function PlanEditor() {
             }}
           />
         </div>
+
+        {/* Subscription Validity / Duration */}
+        <div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
+            <Calendar size={16} color="#38bdf8" /> Subscription Duration (Days)
+          </label>
+          <input
+            type="number"
+            min="0"
+            max="365"
+            disabled={isFree}
+            value={isFree ? 0 : (config.subscriptionDurationDays ?? 30)}
+            onChange={(e) => handleTierChange(tierKey, 'subscriptionDurationDays', parseInt(e.target.value) || 0)}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '0.625rem 0.875rem',
+              backgroundColor: isFree ? '#1e293b' : '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: '8px',
+              color: isFree ? '#64748b' : '#f8fafc',
+              fontSize: '0.9rem',
+              outline: 'none',
+              cursor: isFree ? 'not-allowed' : 'text'
+            }}
+          />
+        </div>
       </div>
     );
   };

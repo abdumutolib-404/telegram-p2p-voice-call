@@ -118,31 +118,5 @@ export function createBot(token: string): Bot<MyContext> {
   setupCallbackHandlers(bot);
   setupPostCallCallbackHandlers(bot);
 
-  // Command: /privacy
-  bot.command('privacy', async (ctx) => {
-    await ctx.reply(
-      `🔒 <b>Privacy Policy Summary</b>\n\n` +
-        `• <b>Audio Streams</b>: Real-time voice is routed through encrypted audio channels and never recorded without consent.\n` +
-        `• <b>Recordings</b>: Stored securely with strict plan-based expiration (1–60 days), accessible only to call participants.\n` +
-        `• <b>Payments</b>: Telegram Stars payments are processed directly by Telegram. Card receipts are reviewed by administration.\n` +
-        `• <b>Data Deletion</b>: You can request account deletion anytime via support.\n\n` +
-        `<i>For full policy, see the platform documentation.</i>`,
-      { parse_mode: 'HTML' }
-    );
-  });
-
-  // Command: /guidelines
-  bot.command('guidelines', async (ctx) => {
-    await ctx.reply(
-      `📖 <b>Community Guidelines</b>\n\n` +
-        `1. <b>Respect</b>: Harassment, abuse, or discrimination is strictly prohibited.\n` +
-        `2. <b>Practice Focus</b>: Dedicate speaking sessions to English conversation and IELTS topics.\n` +
-        `3. <b>Fair Ratings</b>: Submit honest, constructive feedback for speaking partners.\n` +
-        `4. <b>Enforcement</b>: Violations lead to timeouts, temporary suspensions, or permanent unappealable bans.\n\n` +
-        `<i>Happy practicing!</i>`,
-      { parse_mode: 'HTML' }
-    );
-  });
-
   return bot;
 }

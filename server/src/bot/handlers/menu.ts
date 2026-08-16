@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
-import { getPaidUserProfile, formatPriceDisplay, getPlansConfig } from '../../services/plan';
+import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement } from '../../services/plan';
 import { getRedis } from '../../config/redis';
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -51,20 +51,19 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
     await ctx.reply(
       `👤 <b>Your Student Profile</b>\n\n` +
-        `• <b>Permanent Alias</b>: <code>${user.alias}</code> (Locked)\n` +
+        `• <b>Permanent Alias</b>: <code>${user.alias}</code> (Locked)\n\n` +
         `• <b>Overall IELTS Band</b>: ${user.band.toFixed(1)}\n` +
         `  - FC (Fluency & Coherence): ${user.subFC.toFixed(1)}\n` +
         `  - LR (Lexical Resource): ${user.subLR.toFixed(1)}\n` +
         `  - GRA (Grammar): ${user.subGRA.toFixed(1)}\n` +
-        `  - P (Pronunciation): ${user.subP.toFixed(1)}\n` +
-        `• <b>Subscription Plan</b>: <b>${profile.planDisplayName}</b>\n` +
-        (profile.isActivePaid && profile.expiration ? `• <b>Plan Expiration</b>: <code>${profile.expiration}</code>\n` : '') +
-        `\n📊 <b>Plan Entitlements & Usage:</b>\n` +
-        `• <b>Calls Remaining</b>: ${profile.callsRemaining}\n` +
-        `• <b>Max Call Duration</b>: ${profile.maxCallDuration >= 999 ? 'Unlimited' : `${profile.maxCallDuration} minutes`}\n` +
-        `• <b>Recordings Remaining</b>: ${profile.recordingsRemaining}\n` +
-        `• <b>Recording Retention</b>: ${profile.recordingRetention} day(s)\n` +
-        `• <b>DND Status</b>: ${user.dnd ? '🔕 Do Not Disturb ON' : '🔔 Ready for Calls'}`,
+        `  - P (Pronunciation): ${user.subP.toFixed(1)}\n\n` +
+        `• <b>Subscription Plan</b>: ${profile.planDisplayName}\n\n` +
+        `📊 <b>Plan Entitlements & Usage:</b>\n` +
+        `• Calls Remaining: ${profile.callsRemaining}\n` +
+        `• Max Call Duration: ${profile.maxCallDuration >= 999 ? 'Unlimited' : `${profile.maxCallDuration} minutes`}\n` +
+        `• Recordings Remaining: ${profile.recordingsRemaining}\n` +
+        `• Recording Retention: ${profile.recordingRetention} day(s)\n` +
+        `• DND Status: ${user.dnd ? '🔕 Do Not Disturb' : '🔔 Ready for Calls'}`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
@@ -79,12 +78,13 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
-    const profile = getPaidUserProfile(user);
-    const retentionDays = profile.recordingRetention;
+    const entitlement = getEffectiveEntitlement(user);
+    const retentionDays = entitlement.retentionDays;
     const recordings = await prisma.callSession.findMany({
       where: {
         OR: [{ userAId: user.id }, { userBId: user.id }],
         recordingUrl: { not: null },
+        status: 'COMPLETED',
       },
       orderBy: { createdAt: 'desc' },
       take: 5,
@@ -127,24 +127,26 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       .row()
       .text(`👑 BOSS (${formatPriceDisplay('BOSS')})`, 'select_plan:BOSS');
 
-    const plans = getPlansConfig();
-    const freeDesc = plans.FREE.description;
-    const plusDesc = plans.PLUS.description;
-    const proDesc = plans.PRO.description;
-    const bossDesc = plans.BOSS.description;
-
     await ctx.reply(
       `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
-        `🆓 <b>FREE Plan</b>\n` +
-        `• ${freeDesc}\n\n` +
+        `🆓 <b>FREE Plan</b> (0 UZS / 0 XTR)\n` +
+        `• Max Call Duration: 15 minutes\n` +
+        `• Monthly Calls: 3\n` +
+        `• Recording Retention: 1 day\n\n` +
         `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
-        `• ${plusDesc}\n\n` +
+        `• Max Call Duration: 30 minutes\n` +
+        `• Monthly Calls: 10\n` +
+        `• Recording Retention: 7 days\n\n` +
         `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
-        `• ${proDesc}\n\n` +
+        `• Max Call Duration: 60 minutes\n` +
+        `• Monthly Calls: 25\n` +
+        `• Recording Retention: 30 days\n\n` +
         `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
-        `• ${bossDesc}\n\n` +
+        `• Max Call Duration: 90 minutes\n` +
+        `• Monthly Calls: 50\n` +
+        `• Recording Retention: 90 days\n\n` +
         `Select a plan to choose your payment method (Telegram Stars or Card):`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );

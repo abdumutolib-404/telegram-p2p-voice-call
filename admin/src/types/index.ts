@@ -55,6 +55,7 @@ export interface PlanTierConfig {
   retentionDays: number;
   starsPrice?: number;
   uzsPrice?: number;
+  subscriptionDurationDays?: number;
   active?: boolean;
 }
 

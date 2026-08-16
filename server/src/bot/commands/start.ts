@@ -39,14 +39,12 @@ export function setupStartCommand(bot: Bot<MyContext>) {
 
     if (user && user.onboarded) {
       const keyboard = getMainMenuKeyboard();
-      const profile = getPaidUserProfile(user);
       await ctx.reply(
-        `👋 <b>Welcome back!</b>\n\n` +
-          `• <b>Plan</b>: ${profile.planDisplayName}\n` +
-          `• <b>Calls remaining</b>: ${profile.callsRemaining}\n` +
-          `• <b>Recordings remaining</b>: ${profile.recordingsRemaining}\n` +
-          (profile.isActivePaid && profile.expiration ? `• <b>Expires</b>: <code>${profile.expiration}</code>\n` : '') +
-          `\nChoose an option below:`,
+        `👋 <b>Welcome to PairTalk!</b>\n\n` +
+          `🎙️ Practice English by talking to real learners.\n` +
+          `🤝 Find a speaking partner and start a voice call.\n` +
+          `⭐ Improve your fluency through regular conversations.\n\n` +
+          `Choose an option below to get started:`,
         { parse_mode: 'HTML', reply_markup: keyboard }
       );
       return;
