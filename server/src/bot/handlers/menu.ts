@@ -155,18 +155,22 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `🆓 <b>FREE Plan</b> (0 UZS / 0 XTR)\n` +
         `• Max Call Duration: 15 minutes\n` +
         `• Monthly Calls: 3\n` +
+        `• Monthly Recordings: 1\n` +
         `• Recording Retention: 1 day\n\n` +
         `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
         `• Max Call Duration: 30 minutes\n` +
         `• Monthly Calls: 10\n` +
+        `• Monthly Recordings: 3\n` +
         `• Recording Retention: 7 days\n\n` +
         `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
         `• Max Call Duration: 60 minutes\n` +
         `• Monthly Calls: 25\n` +
+        `• Monthly Recordings: 7\n` +
         `• Recording Retention: 30 days\n\n` +
         `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
         `• Max Call Duration: 90 minutes\n` +
         `• Monthly Calls: 50\n` +
+        `• Monthly Recordings: 15\n` +
         `• Recording Retention: 90 days\n\n` +
         `Select a plan to choose your payment method (Telegram Stars or Card):`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
