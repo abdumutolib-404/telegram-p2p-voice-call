@@ -55,7 +55,13 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
       el.autoplay = true;
       el.setAttribute('playsinline', 'true');
       el.setAttribute('webkit-playsinline', 'true');
-      el.style.display = 'none';
+      el.style.position = 'fixed';
+      el.style.top = '-9999px';
+      el.style.left = '-9999px';
+      el.style.width = '1px';
+      el.style.height = '1px';
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
       document.body.appendChild(el);
       audioElementRef.current = el;
     }
@@ -74,15 +80,11 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     };
   }, [getOrCreateAudioElement]);
 
-  // Handle mobile visibility change & resume AudioContext on app wake
+  // Handle mobile visibility change & resume audio on app wake
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (
-        document.visibilityState === 'visible' &&
-        audioContextRef.current &&
-        audioContextRef.current.state === 'suspended'
-      ) {
-        audioContextRef.current.resume().catch((err) => console.warn('Failed to resume AudioContext:', err));
+      if (document.visibilityState === 'visible' && roomRef.current) {
+        roomRef.current.startAudio().catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -177,6 +179,11 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         console.warn('Failed to unlock audio playback:', err);
       }
     }
+    if (audioElementRef.current) {
+      try {
+        await audioElementRef.current.play();
+      } catch {}
+    }
     if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
       try {
         await audioContextRef.current.resume();
@@ -237,6 +244,15 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           },
         });
 
+        const attachAudioTrack = (remoteAudioTrack: RemoteAudioTrack) => {
+          const el = getOrCreateAudioElement();
+          if (el) {
+            remoteAudioTrack.attach(el);
+            el.play().catch(() => {});
+          }
+          setupAudioAnalyzer(remoteAudioTrack);
+        };
+
         // Track subscription event
         livekitRoom.on(
           RoomEvent.TrackSubscribed,
@@ -246,12 +262,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
             _participant: RemoteParticipant
           ) => {
             if (track.kind === Track.Kind.Audio) {
-              const remoteAudioTrack = track as RemoteAudioTrack;
-              const el = getOrCreateAudioElement();
-              if (el) {
-                remoteAudioTrack.attach(el);
-              }
-              setupAudioAnalyzer(remoteAudioTrack);
+              attachAudioTrack(track as RemoteAudioTrack);
             }
           }
         );
@@ -296,6 +307,15 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         });
 
         await livekitRoom.connect(url, token);
+
+        // Attach any audio tracks already published by participants currently in the room
+        for (const participant of livekitRoom.remoteParticipants.values()) {
+          for (const publication of participant.audioTrackPublications.values()) {
+            if (publication.track && publication.track.kind === Track.Kind.Audio) {
+              attachAudioTrack(publication.track as RemoteAudioTrack);
+            }
+          }
+        }
 
         // Check if disconnect() was called while connect() was in-flight
         if (cancelConnectRef.current) {

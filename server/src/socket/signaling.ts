@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { calculateEffectiveCallDuration, calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod } from '../services/plan';
+import { calculateEffectiveCallDuration, calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod } from '../services/plan';
 import { checkRateLimit } from '../services/rateLimitMatrix';
 import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
@@ -314,14 +314,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             }
           }
 
-          // Check daily call quota before queue entry using Effective Entitlements
+          // Check monthly call quota before queue entry using Effective Entitlements
           const entitlement = getEffectiveEntitlement(user);
-          const today = new Date().toISOString().slice(0, 10);
-          const dailyCallsToday = user.lastCallDate === today ? user.dailyCallsUsed : 0;
-          if (!entitlement.isAdmin && !entitlement.isUnlimited && dailyCallsToday >= entitlement.dailyLimit) {
+          const callsUsed = await getUserCallsUsedThisPeriod(user.id, user);
+          if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit) {
             socket.emit('error', {
               code: 'MATCHMAKING_QUOTA_EXCEEDED',
-              message: `You have reached your daily limit of ${entitlement.dailyLimit} calls. Please upgrade to PLUS or PRO to continue practicing!`,
+              message: `You have reached your monthly limit of ${entitlement.callLimit} calls. Please upgrade your plan to continue practicing!`,
             });
             return;
           }

@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
-import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement } from '../../services/plan';
+import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../../services/plan';
 import { getRedis } from '../../config/redis';
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -42,7 +42,13 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
-    const profile = getPaidUserProfile(user);
+    const callsUsed = await getUserCallsUsedThisPeriod(user.id, user);
+    const recUsed = await getUserRecordingsUsedThisPeriod(user.id, user);
+    const profile = getPaidUserProfile({
+      ...user,
+      dailyCallsUsed: callsUsed,
+      recordingsUsed: recUsed,
+    });
 
     const inlineKb = new InlineKeyboard()
       .text('✏️ Re-evaluate Sub-scores', 're_evaluate_subscores')
@@ -105,9 +111,23 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
     const inlineKb = new InlineKeyboard();
 
     recordings.forEach((rec, idx) => {
-      const dateStr = rec.createdAt.toISOString().split('T')[0];
-      const durationMin = Math.round((rec.duration || 0) / 60);
-      messageText += `${idx + 1}. 📅 <b>${dateStr}</b> (${durationMin} min)\n`;
+      const d = rec.createdAt;
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      const hours = String(d.getUTCHours()).padStart(2, '0');
+      const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+      const dateTimeStr = `${year}-${month}-${day} ${hours}:${minutes}`;
+
+      let durationStr = 'Duration unavailable';
+      const durationSec = (rec as any).recordingDuration || rec.duration;
+      if (typeof durationSec === 'number' && durationSec > 0) {
+        const mins = Math.floor(durationSec / 60);
+        const secs = durationSec % 60;
+        durationStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+
+      messageText += `${idx + 1}. 📅 <b>${dateTimeStr}</b> — <code>${durationStr}</code>\n`;
       inlineKb.text(`🎧 Play #${idx + 1}`, `play_recording_${rec.id}`).row();
     });
 

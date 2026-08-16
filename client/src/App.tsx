@@ -312,6 +312,7 @@ export const App: React.FC = () => {
   };
 
   const handleRestart = () => {
+    startAudio().catch(() => {});
     setMatchData(null);
     setErrorMessage(null);
     setAppState('radar');
@@ -319,6 +320,7 @@ export const App: React.FC = () => {
 
   // Handler for the "Start Searching" button — captures user gesture for autoplay policy
   const handleStartSearching = () => {
+    startAudio().catch(() => {});
     setAppState('radar');
   };
 

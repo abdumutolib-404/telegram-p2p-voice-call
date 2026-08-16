@@ -257,13 +257,38 @@ export function getEffectiveEntitlement(user: {
   };
 }
 
+export async function getUserCallsUsedThisPeriod(userId: string, user?: any): Promise<number> {
+  try {
+    let periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    if (user?.subscriptionExpiresAt) {
+      const expiresAt = new Date(user.subscriptionExpiresAt);
+      if (expiresAt > new Date()) {
+        const durationDays = user.subscriptionDurationDays || 30;
+        periodStart = new Date(expiresAt.getTime() - durationDays * 24 * 60 * 60 * 1000);
+      }
+    }
+    const count = await prisma.callSession.count({
+      where: {
+        OR: [{ userAId: userId }, { userBId: userId }],
+        status: 'COMPLETED',
+        duration: { gte: 5 },
+        createdAt: { gte: periodStart },
+      },
+    });
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
 export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any): Promise<number> {
   try {
     let periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     if (user?.subscriptionExpiresAt) {
       const expiresAt = new Date(user.subscriptionExpiresAt);
       if (expiresAt > new Date()) {
-        periodStart = new Date(expiresAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const durationDays = user.subscriptionDurationDays || 30;
+        periodStart = new Date(expiresAt.getTime() - durationDays * 24 * 60 * 60 * 1000);
       }
     }
     const count = await prisma.callSession.count({
@@ -320,13 +345,15 @@ export function getPaidUserProfile(user: {
     expirationFormatted = `${year}-${month}-${day} ${hours}:${minutes} UTC`;
   }
 
-  const callsUsed = user.dailyCallsUsed || 0;
-  const callsRemainingFormatted = entitlement.isUnlimited
+  const callsUsed = typeof user.dailyCallsUsed === 'number' ? user.dailyCallsUsed : 0;
+  const callsRemainingFormatted = entitlement.isAdmin
     ? 'Unlimited'
     : `${Math.max(0, entitlement.callLimit - callsUsed)} / ${entitlement.callLimit}`;
 
-  const recUsed = user.recordingsUsed || 0;
-  const recordingsRemainingFormatted = `${Math.max(0, entitlement.recordingLimit - recUsed)} / ${entitlement.recordingLimit}`;
+  const recUsed = typeof user.recordingsUsed === 'number' ? user.recordingsUsed : 0;
+  const recordingsRemainingFormatted = entitlement.isAdmin
+    ? 'Unlimited'
+    : `${Math.max(0, entitlement.recordingLimit - recUsed)} / ${entitlement.recordingLimit}`;
 
   return {
     plan: entitlement.plan,
