@@ -38,7 +38,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     await ctx.editMessageText(
       `💎 <b>Upgrade to ${tier} Plan</b>\n\n` +
         `• Max Call Duration: <b>${planConfig.maxDuration} mins</b>\n` +
-        `• Daily Limit: <b>${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/day`}</b>\n` +
+        `• Monthly Calls: <b>${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/month`}</b>\n` +
         `• Recording Storage: <b>${planConfig.retentionDays} days</b>\n\n` +
         `Choose your preferred payment method:`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
@@ -403,9 +403,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           `🎉 <b>Payment Successful!</b>\n\n` +
             `Your subscription has been upgraded to <b>${result.user.plan} Plan</b> (Order #${orderNumber}).\n` +
             `• Max Call Duration: ${config.maxDuration >= 999 ? 'Unlimited' : `${config.maxDuration} minutes`}\n` +
-            `• Daily Limit: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/day`}\n` +
+            `• Monthly Calls: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/month`}\n` +
             `• Recording Storage: ${config.retentionDays} days\n\n` +
-            `Thank you for supporting IELTS Speaking P2P!`,
+            `Thank you for supporting PairTalk!`,
           { parse_mode: 'HTML' }
         );
       } else {

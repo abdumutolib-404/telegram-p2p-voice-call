@@ -7,8 +7,18 @@ import { RadarScreen } from './components/RadarScreen';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { logger } from './services/logger';
 import { Loader2, PhoneOff, RefreshCw, AlertTriangle } from 'lucide-react';
+import { PrivacyScreen } from './components/PrivacyScreen';
+import { GuidelinesScreen } from './components/GuidelinesScreen';
 
 export const App: React.FC = () => {
+  const currentPath = typeof window !== 'undefined' ? (window.location.pathname + window.location.hash).toLowerCase() : '';
+  if (currentPath.includes('privacy')) {
+    return <PrivacyScreen />;
+  }
+  if (currentPath.includes('guidelines')) {
+    return <GuidelinesScreen />;
+  }
+
   const [appState, setAppState] = useState<AppState>('idle');
   const [lockdownReason, setLockdownReason] = useState<LockdownReason>('browser_direct');
   const [initData, setInitData] = useState<string>('');

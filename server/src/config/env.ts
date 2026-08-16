@@ -30,6 +30,8 @@ export interface EnvConfig {
   S3_REGION?: string;
   S3_ENDPOINT?: string;
   S3_FORCE_PATH_STYLE?: boolean;
+  PRIVACY_POLICY_URL: string;
+  COMMUNITY_GUIDELINES_URL: string;
 }
 
 function required(name: string): string {
@@ -110,5 +112,7 @@ export const env: EnvConfig = {
   S3_REGION: (process.env.S3_REGION || process.env.AWS_REGION)?.trim() || 'us-east-1',
   S3_ENDPOINT: process.env.S3_ENDPOINT?.trim(),
   S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE === 'true' || process.env.S3_FORCE_PATH_STYLE === '1',
+  PRIVACY_POLICY_URL: process.env.PRIVACY_POLICY_URL?.trim() || `${(process.env.MINI_APP_URL ?? 'http://localhost:3001/client').replace(/\/+$/, '')}/privacy`,
+  COMMUNITY_GUIDELINES_URL: process.env.COMMUNITY_GUIDELINES_URL?.trim() || `${(process.env.MINI_APP_URL ?? 'http://localhost:3001/client').replace(/\/+$/, '')}/guidelines`,
 };
 

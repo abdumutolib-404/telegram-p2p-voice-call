@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import crypto from 'node:crypto';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
+import { env } from '../../config/env';
 import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../../services/plan';
 import { getRedis } from '../../config/redis';
 
@@ -329,5 +330,49 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       console.error('[Bot] Failed to create appeal:', err);
       await ctx.reply('⚠️ Failed to record your appeal. Please try again in a moment.');
     }
+  });
+
+  // 🔐 Privacy Policy
+  bot.hears('🔐 Privacy Policy', async (ctx) => {
+    const inlineKb = new InlineKeyboard().url(
+      '🌐 View Privacy Policy',
+      env.PRIVACY_POLICY_URL || `${env.MINI_APP_URL}/privacy`
+    );
+    await ctx.reply(
+      `🔐 <b>PairTalk Privacy Policy</b>\n\n` +
+        `We are committed to protecting your personal data, ensuring privacy, and maintaining transparency.\n\n` +
+        `• <b>100% Anonymous</b>: Randomized aliases with zero phone number or username leaks.\n` +
+        `• <b>Ephemeral Audio</b>: Live calls are end-to-end encrypted and never monitored.\n` +
+        `• <b>Auto-Purge</b>: Cloud recordings are automatically purged when your tier retention expires.\n\n` +
+        `Tap the button below to view the full policy in your browser:`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
+  });
+
+  // 📜 Community Guidelines
+  bot.hears('📜 Community Guidelines', async (ctx) => {
+    const inlineKb = new InlineKeyboard().url(
+      '🌐 View Guidelines on Web',
+      env.COMMUNITY_GUIDELINES_URL || `${env.MINI_APP_URL}/guidelines`
+    );
+    await ctx.reply(
+      `📜 <b>PairTalk Community Guidelines & Practice Rules</b>\n\n` +
+        `Our mission is to provide an encouraging, high-quality, and respectful environment for IELTS Speaking practice.\n\n` +
+        `<b>1. Core Principles</b>\n` +
+        `• Respect & Courtesy towards every learner.\n` +
+        `• Dedicated English Speaking & IELTS practice only.\n` +
+        `• Constructive, helpful post-call feedback.\n\n` +
+        `<b>2. Prohibited Behavior</b>\n` +
+        `• Harassment, bullying, or hate speech.\n` +
+        `• Explicit or inappropriate language.\n` +
+        `• Rapid queue spamming or matchmaking manipulation.\n` +
+        `• Impersonation of administrators or fake payment receipts.\n\n` +
+        `<b>3. Moderation & Enforcement</b>\n` +
+        `• 24-Hour Timeout for repeated low ratings.\n` +
+        `• 7-Day Restriction for continued violations.\n` +
+        `• Permanent Ban for severe misconduct.\n\n` +
+        `<i>Permanently banned users may submit an appeal using <code>/appeal &lt;reason&gt;</code>.</i>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
   });
 }

@@ -1,8 +1,8 @@
-# Community Guidelines & Practice Rules
+# PairTalk Community Guidelines & Practice Rules
 
-**Effective Date:** August 14, 2026
+**Effective Date:** August 16, 2026
 
-Our mission is to provide an encouraging, high-quality, and respectful environment for IELTS Speaking practice. All learners are expected to adhere to these community standards.
+Our mission at **PairTalk** is to provide an encouraging, high-quality, and respectful environment for IELTS Speaking practice. All learners are expected to adhere to these community standards.
 
 ---
 
@@ -10,7 +10,7 @@ Our mission is to provide an encouraging, high-quality, and respectful environme
 
 - **Respect & Courtesy**: Treat every speaking partner with respect regardless of nationality, accent, gender, or background.
 - **Dedicated Practice**: Focus on speaking English and practicing IELTS topics. Do not use the service for unsolicited commercial promotions, solicitation, or unrelated broadcasting.
-- **Constructive Feedback**: Provide constructive, helpful IELTS feedback when rating your partner after a call.
+- **Constructive Feedback**: Provide constructive, helpful IELTS feedback across criteria (Fluency, Vocabulary, Grammar, Pronunciation) when rating your partner after a call.
 
 ---
 

@@ -113,6 +113,112 @@ app.get('/health', async (_req, res) => {
   }
 });
 
+app.get('/privacy', (_req, res) => {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PairTalk Privacy Policy</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #020617; color: #cbd5e1; margin: 0; padding: 24px; line-height: 1.6; }
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { color: #ffffff; font-size: 24px; margin-bottom: 4px; }
+    .date { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+    h2 { color: #f8fafc; font-size: 16px; margin-top: 0; }
+    p, li { font-size: 14px; color: #94a3b8; }
+    strong { color: #f1f5f9; }
+    code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: #a5b4fc; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PairTalk Privacy Policy</h1>
+    <div class="date">Effective Date: August 16, 2026</div>
+    <p>Welcome to <strong>PairTalk</strong>, the real-time peer-to-peer IELTS Speaking practice platform. We are committed to protecting your personal data, ensuring privacy, and maintaining transparency about how our platform operates.</p>
+    <div class="card">
+      <h2>1. Information We Collect</h2>
+      <p><strong>• Telegram Profile Data:</strong> Numeric Telegram User ID for account authentication; a permanent randomized alias (e.g. <code>P2P-0284DB68</code>) ensuring complete anonymity without exposing real phone numbers or usernames; and self-reported target IELTS band score and sub-scores.</p>
+      <p><strong>• Voice Call Metadata:</strong> Unique session IDs, start/end timestamps, connected durations, and call outcomes.</p>
+      <p><strong>• Payment Records:</strong> Telegram Stars transaction IDs and manual UZS transfer receipt metadata for administrative verification.</p>
+    </div>
+    <div class="card">
+      <h2>2. Voice Audio & Recording Policy</h2>
+      <p><strong>• Real-Time Voice Calls:</strong> Active audio streams are routed through encrypted WebRTC Selective Forwarding Units (SFUs). Live audio is ephemeral and never listened to or recorded without user action.</p>
+      <p><strong>• Cloud Recordings:</strong> Opt-in session recordings are stored in access-controlled AWS S3 storage with strict expiration windows:</p>
+      <ul>
+        <li><strong>Free Plan:</strong> 1 day retention (1 recording/month)</li>
+        <li><strong>Plus Plan:</strong> 7 days retention (3 recordings/month)</li>
+        <li><strong>Pro Plan:</strong> 30 days retention (7 recordings/month)</li>
+        <li><strong>Boss Plan:</strong> 90 days retention (15 recordings/month)</li>
+      </ul>
+      <p>Only call participants may access their session recordings. Recordings are permanently purged when their retention window expires.</p>
+    </div>
+    <div class="card">
+      <h2>3. Security & Contact</h2>
+      <p>All WebRTC media connections use DTLS/SRTP encryption. Administrative endpoints are secured with multi-factor one-time passwords and strict Telegram ID whitelisting.</p>
+      <p><strong>Telegram Support:</strong> @PairTalkSupport</p>
+    </div>
+  </div>
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
+app.get('/guidelines', (_req, res) => {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PairTalk Community Guidelines</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #020617; color: #cbd5e1; margin: 0; padding: 24px; line-height: 1.6; }
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { color: #ffffff; font-size: 24px; margin-bottom: 4px; }
+    .date { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+    h2 { color: #f8fafc; font-size: 16px; margin-top: 0; }
+    p, li { font-size: 14px; color: #94a3b8; }
+    strong { color: #f1f5f9; }
+    code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: #a5b4fc; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PairTalk Community Guidelines</h1>
+    <div class="date">PairTalk Practice & Conduct Rules</div>
+    <p>Our mission at <strong>PairTalk</strong> is to provide an encouraging, high-quality, and respectful environment for IELTS Speaking practice. All learners are expected to adhere to these community standards.</p>
+    <div class="card">
+      <h2>1. Core Principles</h2>
+      <p><strong>• Respect & Courtesy:</strong> Treat every speaking partner with respect regardless of nationality, accent, gender, or background.</p>
+      <p><strong>• Dedicated Practice:</strong> Focus on speaking English and practicing IELTS topics. Commercial promotions and unsolicited solicitation are strictly prohibited.</p>
+      <p><strong>• Constructive Feedback:</strong> Provide constructive, helpful IELTS feedback across criteria (Fluency, Vocabulary, Grammar, Pronunciation) after each call.</p>
+    </div>
+    <div class="card">
+      <h2>2. Prohibited Behavior</h2>
+      <ul>
+        <li><strong>Harassment, Bullying, or Hate Speech:</strong> Derogatory remarks or hostile conduct.</li>
+        <li><strong>Explicit or Offensive Content:</strong> Sharing inappropriate language or materials during calls.</li>
+        <li><strong>Spam & Exploitation:</strong> Rapid queue flooding or intentional matchmaking disruptions.</li>
+        <li><strong>Impersonation & Fraud:</strong> Falsifying identity or payment receipts.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>3. Moderation & Appeals</h2>
+      <p><strong>• Temporary Suspension:</strong> Repeated low ratings or harassment reports trigger an automated 24-hour timeout.</p>
+      <p><strong>• Permanent Account Ban:</strong> Severe misconduct results in a permanent platform ban.</p>
+      <p><strong>• Appeals:</strong> Permanently banned users may submit an unban appeal directly inside the Telegram Bot using <code>/appeal &lt;reason&gt;</code>.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
 app.use('/client', express.static(path.join(__dirname, '../public/client')));
 app.get('/client', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));
 app.get('/client/*', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));

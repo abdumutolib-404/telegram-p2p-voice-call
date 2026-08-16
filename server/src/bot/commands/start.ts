@@ -15,6 +15,9 @@ export const getMainMenuKeyboard = () => {
     .row()
     .text('📞 Direct Call')
     .text('💬 Support')
+    .row()
+    .text('🔐 Privacy Policy')
+    .text('📜 Community Guidelines')
     .resized();
 };
 

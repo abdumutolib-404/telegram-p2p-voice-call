@@ -105,7 +105,7 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
         `• <b>Telegram ID</b>: <code>${user.telegramId.toString()}</code>\n` +
         `• <b>Band Score</b>: ${user.band.toFixed(1)} (FC: ${user.subFC.toFixed(1)}, LR: ${user.subLR.toFixed(1)}, GRA: ${user.subGRA.toFixed(1)}, P: ${user.subP.toFixed(1)})\n` +
         `• <b>Plan</b>: <b>${user.plan}</b>\n` +
-        `• <b>Daily Limit</b>: ${user.dailyCallsUsed} / ${user.dailyLimit}\n` +
+        `• <b>Monthly Calls</b>: ${user.dailyCallsUsed} / ${user.dailyLimit}\n` +
         `• <b>Status</b>: ${user.isPermanentlyBanned ? '⛔ Permanently Banned' : user.isBanned ? '🚫 Temporarily Suspended' : '✅ Active'}`,
       { parse_mode: 'HTML' }
     );
