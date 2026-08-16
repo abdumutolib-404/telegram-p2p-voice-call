@@ -4,6 +4,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
+import { isS3Configured, deleteS3Object } from './s3Storage';
 
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
 
@@ -38,30 +39,41 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
     if (session.recordingUrl) {
       let fileDeleted = false;
 
-      try {
-        const filePath = resolveSafeRecordingPath(session.recordingUrl);
-        if (!filePath) {
-          console.warn(`[Storage Purge] Path traversal or invalid recordingUrl for session ${session.id}: ${session.recordingUrl}`);
-          await prisma.callSession.update({
-            where: { id: session.id },
-            data: { recordingUrl: null },
-          });
-          purgedCount++;
+      // 1. If S3 is configured
+      if (isS3Configured()) {
+        try {
+          await deleteS3Object(session.recordingUrl);
+          fileDeleted = true;
+        } catch (s3Err) {
+          console.warn(`[Storage Purge] Could not delete S3 object for session ${session.id}:`, s3Err);
+        }
+      } else {
+        // 2. Local filesystem cleanup
+        try {
+          const filePath = resolveSafeRecordingPath(session.recordingUrl);
+          if (!filePath) {
+            console.warn(`[Storage Purge] Path traversal or invalid recordingUrl for session ${session.id}: ${session.recordingUrl}`);
+            await prisma.callSession.update({
+              where: { id: session.id },
+              data: { recordingUrl: null },
+            });
+            purgedCount++;
+            continue;
+          }
+
+          if (fsSync.existsSync(filePath)) {
+            const stats = await fs.stat(filePath);
+            await fs.unlink(filePath);
+            freedSpaceBytes += stats.size;
+            fileDeleted = true;
+          } else {
+            // File does not exist on disk (already cleaned up or never written)
+            fileDeleted = true;
+          }
+        } catch (err) {
+          console.warn(`[Storage Purge] Could not delete file for session ${session.id}:`, err);
           continue;
         }
-
-        if (fsSync.existsSync(filePath)) {
-          const stats = await fs.stat(filePath);
-          await fs.unlink(filePath);
-          freedSpaceBytes += stats.size;
-          fileDeleted = true;
-        } else {
-          // File does not exist on disk (already cleaned up or never written)
-          fileDeleted = true;
-        }
-      } catch (err) {
-        console.warn(`[Storage Purge] Could not delete file for session ${session.id}:`, err);
-        continue;
       }
 
       if (fileDeleted) {

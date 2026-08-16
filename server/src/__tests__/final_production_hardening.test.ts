@@ -34,7 +34,7 @@ describe('Final Production Hardening Suite', () => {
     it('1.1 Includes BOSS in default plans configuration with first-class limits', () => {
       const plans = getPlansConfig();
       expect(plans.BOSS).toBeDefined();
-      expect(plans.BOSS.name).toBe('Executive Boss');
+      expect(plans.BOSS.name).toBe('Boss');
       expect(plans.BOSS.maxDuration).toBe(90);
       expect(plans.BOSS.dailyLimit).toBe(50);
       expect(plans.BOSS.recordingLimit).toBe(15);

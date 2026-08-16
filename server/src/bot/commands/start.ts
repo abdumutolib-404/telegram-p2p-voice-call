@@ -41,16 +41,12 @@ export function setupStartCommand(bot: Bot<MyContext>) {
       const keyboard = getMainMenuKeyboard();
       const profile = getPaidUserProfile(user);
       await ctx.reply(
-        `👋 <b>Welcome back, ${user.alias}!</b>\n\n` +
-          `📊 <b>Your IELTS Band</b>: ${user.band.toFixed(1)}\n` +
-          `• Fluency (FC): ${user.subFC.toFixed(1)}\n` +
-          `• Lexical Resource (LR): ${user.subLR.toFixed(1)}\n` +
-          `• Grammar (GRA): ${user.subGRA.toFixed(1)}\n` +
-          `• Pronunciation (P): ${user.subP.toFixed(1)}\n` +
-          `⭐ <b>Plan</b>: ${profile.planDisplayName}\n` +
+        `👋 <b>Welcome back!</b>\n\n` +
+          `• <b>Plan</b>: ${profile.planDisplayName}\n` +
+          `• <b>Calls remaining</b>: ${profile.callsRemaining}\n` +
+          `• <b>Recordings remaining</b>: ${profile.recordingsRemaining}\n` +
           (profile.isActivePaid && profile.expiration ? `• <b>Expires</b>: <code>${profile.expiration}</code>\n` : '') +
-          `• <b>Daily Calls</b>: ${profile.callsRemainingToday}\n\n` +
-          `Choose an option from the menu below to start practicing:`,
+          `\nChoose an option below:`,
         { parse_mode: 'HTML', reply_markup: keyboard }
       );
       return;

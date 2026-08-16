@@ -497,7 +497,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
   });
 
   // Callback: play_rec:<sessionId> or play_recording_<sessionId>
-  bot.callbackQuery(/^(?:play_rec|play_recording)_(.+)$/, async (ctx) => {
+  bot.callbackQuery(/^(?:play_rec|play_recording)[:_](.+)$/, async (ctx) => {
     const sessionId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
 
@@ -515,7 +515,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       }
 
       if (!session.recordingUrl) {
-        await ctx.answerCallbackQuery({ text: 'Recording is no longer available.' });
+        await ctx.answerCallbackQuery({ text: 'Recording is no longer available or still finalizing.' });
         return;
       }
 
@@ -526,6 +526,42 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
+      const { isS3Configured, getS3ObjectBuffer, generatePresignedDownloadUrl, checkS3ObjectExists } = await import('../../services/s3Storage');
+
+      // 1. S3 Cloud Storage Flow
+      if (isS3Configured()) {
+        const existsInfo = await checkS3ObjectExists(session.recordingUrl);
+        if (!existsInfo.exists) {
+          await ctx.answerCallbackQuery({ text: 'Audio recording is still processing or unavailable.' });
+          return;
+        }
+
+        const sizeBytes = existsInfo.size || 0;
+        if (sizeBytes > 50 * 1024 * 1024) {
+          await ctx.answerCallbackQuery({ text: 'Recording exceeds 50MB Telegram limit.' });
+          const presignedUrl = await generatePresignedDownloadUrl(session.recordingUrl, 3600);
+          await ctx.reply(
+            `📁 <b>Recording Available in Storage</b>\n\n` +
+              `This audio session file (${(sizeBytes / (1024 * 1024)).toFixed(1)} MB) exceeds Telegram's 50MB direct delivery limit.\n\n` +
+              `🔗 <a href="${presignedUrl}">Click here to listen or download your recording</a> (link valid for 1 hour).`,
+            { parse_mode: 'HTML' }
+          );
+          return;
+        }
+
+        await ctx.answerCallbackQuery({ text: 'Fetching audio recording...' });
+        const { buffer } = await getS3ObjectBuffer(session.recordingUrl);
+        const fileName = `session_${sessionId.slice(0, 8)}.mp3`;
+        const { InputFile } = await import('grammy');
+
+        await ctx.replyWithAudio(new InputFile(buffer, fileName), {
+          caption: `🎙️ <b>Practice Recording</b> — Session ${sessionId.slice(0, 8)} (${Math.floor((session.duration || 0) / 60)} min)`,
+          parse_mode: 'HTML',
+        });
+        return;
+      }
+
+      // 2. Local Filesystem Flow (Fallback)
       const path = await import('path');
       const fs = await import('fs');
       const filePath = path.isAbsolute(session.recordingUrl)
@@ -550,7 +586,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       }
 
       await ctx.answerCallbackQuery({ text: 'Sending audio recording...' });
-      const InputFile = (await import('grammy')).InputFile;
+      const { InputFile } = await import('grammy');
       await ctx.replyWithAudio(new InputFile(filePath), {
         caption: `🎙️ <b>Audio Recording</b> — Session ${sessionId.slice(0, 8)} (${Math.floor((session.duration || 0) / 60)} min)`,
         parse_mode: 'HTML',

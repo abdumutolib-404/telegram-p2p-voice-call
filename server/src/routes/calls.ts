@@ -7,6 +7,7 @@ import { initDataLockdownMiddleware, type AuthenticatedTelegramRequest } from '.
 import { generateLiveKitToken } from '../config/livekit';
 import { getEffectiveEntitlement, calculateEffectiveCallDuration } from '../services/plan';
 import { createCanonicalError } from '../types/canonical';
+import { isS3Configured, generatePresignedDownloadUrl, checkS3ObjectExists } from '../services/s3Storage';
 
 const router = Router();
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
@@ -19,7 +20,7 @@ function resolveRecordingPath(recordingUrl: string): string | null {
   return resolved;
 }
 
-router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: AuthenticatedTelegramRequest, res) => {
+const handleRecordingRetrieval = async (req: AuthenticatedTelegramRequest, res: any) => {
   try {
     const sessionId = req.params.sessionId;
     const tgUser = req.telegramUser;
@@ -52,6 +53,30 @@ router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: Auth
       return;
     }
 
+    // 1. S3 Cloud Storage Retrieval
+    if (isS3Configured()) {
+      const existsInfo = await checkS3ObjectExists(session.recordingUrl);
+      if (!existsInfo.exists) {
+        res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE', 'Audio recording is not yet ready or unavailable in storage.'));
+        return;
+      }
+
+      const presignedUrl = await generatePresignedDownloadUrl(session.recordingUrl, 3600);
+      if (req.query.format === 'json' || req.headers.accept?.includes('application/json')) {
+        res.json({
+          url: presignedUrl,
+          size: existsInfo.size,
+          contentType: existsInfo.contentType || 'audio/mpeg',
+          expiresInSeconds: 3600,
+        });
+        return;
+      }
+
+      res.redirect(302, presignedUrl);
+      return;
+    }
+
+    // 2. Local Filesystem Retrieval (Fallback for self-hosted)
     const filePath = resolveRecordingPath(session.recordingUrl);
     if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE', 'Audio recording is no longer available.'));
@@ -71,7 +96,10 @@ router.get('/recording/:sessionId', initDataLockdownMiddleware, async (req: Auth
       res.status(500).json(createCanonicalError('INTERNAL_ERROR', 'Unable to retrieve recording at this time.'));
     }
   }
-});
+};
+
+router.get('/recording/:sessionId', initDataLockdownMiddleware, handleRecordingRetrieval);
+router.get('/:sessionId/recording', initDataLockdownMiddleware, handleRecordingRetrieval);
 
 router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTelegramRequest, res) => {
   try {
@@ -119,7 +147,7 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
     console.error('[Calls] active_session_lookup_failed', {
       error: error instanceof Error ? error.message : 'unknown_error',
     });
-    res.status(500).json(createCanonicalError('INTERNAL_ERROR', 'Failed to check active call session.'));
+    res.status(500).json(createCanonicalError('INTERNAL_ERROR', 'Failed to retrieve active session.'));
   }
 });
 

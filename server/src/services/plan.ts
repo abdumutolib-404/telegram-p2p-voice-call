@@ -61,7 +61,7 @@ export interface EffectiveEntitlement {
 
 let plansConfig: SystemPlansConfig = {
   FREE: {
-    name: 'Free Starter',
+    name: 'Free',
     description: '3 calls/month, 15 min max duration, 1 recording, 1-day retention.',
     maxDuration: 15,
     dailyLimit: 3,
@@ -73,7 +73,7 @@ let plansConfig: SystemPlansConfig = {
     active: true,
   },
   PLUS: {
-    name: 'Speaking Plus',
+    name: 'Plus',
     description: '10 calls/month, 30 min max duration, 3 recordings, 7-day retention.',
     maxDuration: 30,
     dailyLimit: 10,
@@ -85,7 +85,7 @@ let plansConfig: SystemPlansConfig = {
     active: true,
   },
   PRO: {
-    name: 'Master Pro',
+    name: 'Pro',
     description: '25 calls/month, 60 min max duration, 7 recordings, 30-day retention.',
     maxDuration: 60,
     dailyLimit: 25,
@@ -97,7 +97,7 @@ let plansConfig: SystemPlansConfig = {
     active: true,
   },
   BOSS: {
-    name: 'Executive Boss',
+    name: 'Boss',
     description: '50 calls/month, 90 min max duration, 15 recordings, 90-day retention.',
     maxDuration: 90,
     dailyLimit: 50,
