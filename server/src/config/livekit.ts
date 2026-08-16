@@ -1,4 +1,13 @@
-import { AccessToken, EgressClient, RoomServiceClient, EncodedFileOutput, EncodedFileType } from 'livekit-server-sdk';
+import {
+  AccessToken,
+  EgressClient,
+  RoomServiceClient,
+  EncodedFileOutput,
+  EncodedFileType,
+  S3Upload,
+  EgressInfo,
+  EgressStatus,
+} from 'livekit-server-sdk';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -11,6 +20,7 @@ export interface EgressResult {
 
 let egressClient: EgressClient | null = null;
 let roomServiceClient: RoomServiceClient | null = null;
+
 try {
   egressClient = new EgressClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
   roomServiceClient = new RoomServiceClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
@@ -18,6 +28,60 @@ try {
   console.error('[LiveKit] client_init_failed', {
     error: error instanceof Error ? error.message : 'unknown_error',
   });
+}
+
+/**
+ * Checks whether the environment has a valid storage configuration for Egress.
+ * - LiveKit Cloud requires external S3/compatible cloud storage.
+ * - Self-hosted LiveKit can use either S3 or a mounted local recordings directory.
+ */
+export function isRecordingStorageConfigured(): boolean {
+  const isLiveKitCloud = env.LIVEKIT_HOST.includes('.livekit.cloud');
+  const hasS3 = Boolean(env.S3_KEY && env.S3_SECRET && env.S3_BUCKET);
+  if (isLiveKitCloud) {
+    return hasS3;
+  }
+  return hasS3 || Boolean(env.RECORDINGS_DIR);
+}
+
+/**
+ * Builds a strictly-typed EncodedFileOutput protobuf object matching LiveKit Server SDK v2.
+ */
+export function buildAudioEncodedFileOutput(fileName: string): { output: EncodedFileOutput; relativeUrl: string } {
+  const hasS3 = Boolean(env.S3_KEY && env.S3_SECRET && env.S3_BUCKET);
+  const relativeUrl = `recordings/${fileName}`;
+
+  if (hasS3) {
+    const s3 = new S3Upload({
+      accessKey: env.S3_KEY!,
+      secret: env.S3_SECRET!,
+      bucket: env.S3_BUCKET!,
+      region: env.S3_REGION || 'us-east-1',
+      endpoint: env.S3_ENDPOINT || undefined,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE ?? false,
+    });
+
+    const output = new EncodedFileOutput({
+      fileType: EncodedFileType.MP3,
+      filepath: relativeUrl,
+      disableManifest: true,
+      output: {
+        case: 's3',
+        value: s3,
+      },
+    });
+
+    return { output, relativeUrl };
+  }
+
+  const filepath = path.join(env.RECORDINGS_DIR, fileName);
+  const output = new EncodedFileOutput({
+    fileType: EncodedFileType.MP3,
+    filepath,
+    disableManifest: true,
+  });
+
+  return { output, relativeUrl };
 }
 
 export async function deleteLiveKitRoom(roomName: string): Promise<void> {
@@ -60,35 +124,94 @@ export async function generateLiveKitToken(
   }
 }
 
+/**
+ * Starts audio-only RoomComposite Egress for two-way mixed call recording.
+ */
 export async function startAudioEgress(roomName: string): Promise<EgressResult> {
   if (!roomName || roomName.length > 128) throw new TypeError('Invalid roomName');
   if (!egressClient) {
-    throw new Error('LiveKit Egress client is uninitialized or unavailable');
+    const err = new Error('LiveKit Egress client is uninitialized or unavailable');
+    err.name = 'RECORDING_UNAVAILABLE';
+    throw err;
+  }
+
+  // Pre-validate cloud storage availability for LiveKit Cloud instances
+  const isLiveKitCloud = env.LIVEKIT_HOST.includes('.livekit.cloud');
+  const hasS3 = Boolean(env.S3_KEY && env.S3_SECRET && env.S3_BUCKET);
+  if (isLiveKitCloud && !hasS3) {
+    const err = new Error('Cloud recording storage is not configured (S3 credentials required for LiveKit Cloud Egress).');
+    err.name = 'RECORDING_STORAGE_UNAVAILABLE';
+    throw err;
   }
 
   const safeRoomName = roomName.replace(/[^a-zA-Z0-9_-]/g, '_');
   const fileName = `${safeRoomName}_${Date.now()}_${cryptoRandomSuffix()}.mp3`;
-  const filepath = path.join(env.RECORDINGS_DIR, fileName);
-  const relativeUrl = `recordings/${fileName}`;
+  const { output, relativeUrl } = buildAudioEncodedFileOutput(fileName);
 
   try {
-    await fs.mkdir(env.RECORDINGS_DIR, { recursive: true });
-    const output = new EncodedFileOutput({ fileType: EncodedFileType.MP3, filepath });
-    const info = await egressClient.startRoomCompositeEgress(roomName, output, { audioOnly: true });
+    if (!hasS3) {
+      await fs.mkdir(env.RECORDINGS_DIR, { recursive: true });
+    }
+
+    const info = await egressClient.startRoomCompositeEgress(
+      roomName,
+      output,
+      {
+        audioOnly: true,
+      }
+    );
+
+    console.log('[LiveKit] RECORDING_START_ACCEPTED', {
+      roomName,
+      egressId: info.egressId,
+      status: info.status,
+    });
+
     return { egressId: info.egressId, relativeUrl };
   } catch (error: unknown) {
-    console.error('[LiveKit] Real audio egress start failed:', error instanceof Error ? error.message : error);
+    console.warn('[LiveKit] RECORDING_START_FAILED', {
+      roomName,
+      error: error instanceof Error ? error.message : error,
+    });
     throw error;
   }
 }
 
-export async function stopAudioEgress(egressId: string): Promise<void> {
-  if (!egressId || !egressClient) return;
+/**
+ * Stops an active Egress job and returns the final EgressInfo.
+ */
+export async function stopAudioEgress(egressId: string): Promise<EgressInfo | null> {
+  if (!egressId || !egressClient) return null;
   try {
-    await egressClient.stopEgress(egressId);
+    const info = await egressClient.stopEgress(egressId);
+    console.log('[LiveKit] RECORDING_STOP_ACCEPTED', {
+      egressId,
+      status: info?.status,
+    });
+    return info;
   } catch (error: unknown) {
-    console.warn('[LiveKit] egress_stop_failed:', error instanceof Error ? error.message : error);
-    throw error;
+    console.warn('[LiveKit] egress_stop_failed', {
+      egressId,
+      error: error instanceof Error ? error.message : error,
+    });
+    return null;
+  }
+}
+
+/**
+ * Fetches current status and metadata of an Egress job.
+ */
+export async function getAudioEgressInfo(egressId: string): Promise<EgressInfo | null> {
+  if (!egressId || !egressClient) return null;
+  try {
+    const list = await egressClient.listEgress({ egressId });
+    return list && list.length > 0 ? list[0] : null;
+  } catch (error: unknown) {
+    console.warn('[LiveKit] get_egress_info_failed', {
+      egressId,
+      error: error instanceof Error ? error.message : error,
+    });
+    return null;
   }
 }
 

@@ -24,6 +24,12 @@ export interface EnvConfig {
   MANUAL_PAYMENT_ADMIN_CHAT_ID?: string;
   MANUAL_PAYMENT_INSTRUCTIONS?: string;
   MANUAL_PAYMENT_CARD_HOLDER?: string;
+  S3_KEY?: string;
+  S3_SECRET?: string;
+  S3_BUCKET?: string;
+  S3_REGION?: string;
+  S3_ENDPOINT?: string;
+  S3_FORCE_PATH_STYLE?: boolean;
 }
 
 function required(name: string): string {
@@ -98,5 +104,11 @@ export const env: EnvConfig = {
   MANUAL_PAYMENT_ADMIN_CHAT_ID: process.env.MANUAL_PAYMENT_ADMIN_CHAT_ID?.trim() || adminTelegramIds[0],
   MANUAL_PAYMENT_INSTRUCTIONS: process.env.MANUAL_PAYMENT_INSTRUCTIONS?.trim() || '1. Transfer exact amount to the card.\n2. Save receipt screenshot or PDF.\n3. Send receipt here in bot for verification.',
   MANUAL_PAYMENT_CARD_HOLDER: process.env.MANUAL_PAYMENT_CARD_HOLDER?.trim() || 'PairTalk Official (Humo / Uzcard)',
+  S3_KEY: (process.env.S3_KEY || process.env.AWS_ACCESS_KEY_ID)?.trim(),
+  S3_SECRET: (process.env.S3_SECRET || process.env.AWS_SECRET_ACCESS_KEY)?.trim(),
+  S3_BUCKET: (process.env.S3_BUCKET || process.env.RECORDINGS_BUCKET)?.trim(),
+  S3_REGION: (process.env.S3_REGION || process.env.AWS_REGION)?.trim() || 'us-east-1',
+  S3_ENDPOINT: process.env.S3_ENDPOINT?.trim(),
+  S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE === 'true' || process.env.S3_FORCE_PATH_STYLE === '1',
 };
 
