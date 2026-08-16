@@ -3,7 +3,7 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { calculateOverallBand, generateUniqueAlias, getMainMenuKeyboard } from '../commands/start';
-import { getEffectiveEntitlement } from '../../services/plan';
+import { getEffectiveEntitlement, getUserCallsUsedThisPeriod } from '../../services/plan';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
@@ -284,8 +284,20 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      if (caller.isBanned || caller.isPermanentlyBanned) {
+      const callerIsBanned = caller.isPermanentlyBanned || (caller.isBanned && (!caller.bannedUntil || new Date(caller.bannedUntil) > new Date()));
+      if (callerIsBanned) {
         await ctx.answerCallbackQuery({ text: 'Your account is currently suspended.', show_alert: true });
+        return;
+      }
+
+      // Check caller call quota
+      const callerEntitlement = getEffectiveEntitlement(caller);
+      const callerCallsUsed = await getUserCallsUsedThisPeriod(caller.id, caller);
+      if (!callerEntitlement.isAdmin && callerCallsUsed >= callerEntitlement.callLimit) {
+        await ctx.answerCallbackQuery({
+          text: `You have reached your monthly limit of ${callerEntitlement.callLimit} calls. Upgrade your plan to make direct calls!`,
+          show_alert: true,
+        });
         return;
       }
 
@@ -295,7 +307,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      if (partner.isBanned || partner.isPermanentlyBanned) {
+      const partnerIsBanned = partner.isPermanentlyBanned || (partner.isBanned && (!partner.bannedUntil || new Date(partner.bannedUntil) > new Date()));
+      if (partnerIsBanned) {
         await ctx.answerCallbackQuery({ text: `${partner.alias} is currently unavailable.`, show_alert: true });
         return;
       }

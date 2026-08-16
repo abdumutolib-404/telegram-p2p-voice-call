@@ -277,9 +277,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           const isSuspended =
-            user.isBanned ||
             user.isPermanentlyBanned ||
-            Boolean(user.bannedUntil && new Date(user.bannedUntil) > new Date());
+            (user.isBanned && (!user.bannedUntil || new Date(user.bannedUntil) > new Date()));
           if (isSuspended) {
             socket.emit('error', {
               code: 'MATCHMAKING_SUSPENDED',
