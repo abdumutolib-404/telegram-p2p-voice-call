@@ -3,6 +3,7 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { moderationService } from '../../services/moderation';
 import { notificationQueue } from '../notifications';
+import { notifyQuotaLimitReachedIfExhausted } from '../../services/subscriptionExpiry';
 
 export async function sendPostCallReviewCard(
   bot: Bot<MyContext>,
@@ -43,6 +44,13 @@ export async function sendPostCallReviewCard(
         `<b>How was your call audio quality?</b>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
+
+    // Check and notify if user has reached their monthly plan limit
+    if (/^\d+$/.test(userTelegramId)) {
+      prisma.user.findUnique({ where: { telegramId: BigInt(userTelegramId) } }).then((u) => {
+        if (u) notifyQuotaLimitReachedIfExhausted(bot, u.id, u);
+      }).catch(() => undefined);
+    }
   } catch (err) {
     console.warn(`[PostCall Review] Failed to enqueue review card to ${userTelegramId}:`, err);
   }

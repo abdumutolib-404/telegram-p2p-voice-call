@@ -15,6 +15,7 @@ import { livekitWebhookRouter } from './routes/livekitWebhook';
 import { setupSocketSignaling } from './socket/signaling';
 import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
+import { startSubscriptionExpiryCron } from './services/subscriptionExpiry';
 import type { MyContext } from './bot/types';
 
 // Global BigInt JSON serialization guard
@@ -267,6 +268,7 @@ async function bootstrap(): Promise<void> {
     setAdminBot(bot);
     setupSocketSignaling(io, bot ?? undefined);
     startStoragePurgeCron();
+    startSubscriptionExpiryCron(() => bot);
 
     if (env.NODE_ENV !== 'test') {
       await new Promise<void>((resolve, reject) => {

@@ -6,6 +6,8 @@ type UserWhere = {
   id?: string | { in: string[] };
   telegramId?: bigint | string | number;
   alias?: string;
+  plan?: string | { not?: string; in?: string[] };
+  subscriptionExpiresAt?: Date | string | null | { lte?: Date | string; gt?: Date | string; gte?: Date | string; not?: null };
   updatedAt?: DateFilter;
   lastCallDate?: string | null | { not?: string };
   dailyCallsUsed?: { lt?: number; gt?: number };
@@ -767,6 +769,21 @@ export class InMemoryPrismaMock {
     if (typeof where.id === 'object' && !where.id.in.includes(user.id)) return false;
     if (where.telegramId !== undefined && user.telegramId !== BigInt(String(where.telegramId))) return false;
     if (where.alias && user.alias !== where.alias) return false;
+    if (where.plan) {
+      if (typeof where.plan === 'string' && user.plan !== where.plan) return false;
+      if (typeof where.plan === 'object' && 'not' in where.plan && user.plan === (where.plan as { not: string }).not) return false;
+      if (typeof where.plan === 'object' && 'in' in where.plan && !((where.plan as { in: string[] }).in).includes(user.plan)) return false;
+    }
+    if (where.subscriptionExpiresAt !== undefined) {
+      if (where.subscriptionExpiresAt === null && user.subscriptionExpiresAt !== null) return false;
+      if (where.subscriptionExpiresAt && typeof where.subscriptionExpiresAt === 'object') {
+        const filter = where.subscriptionExpiresAt as { lte?: Date | string; gt?: Date | string; gte?: Date | string; not?: null };
+        if (filter.not === null && user.subscriptionExpiresAt === null) return false;
+        if (filter.lte && (!user.subscriptionExpiresAt || user.subscriptionExpiresAt.getTime() > new Date(filter.lte).getTime())) return false;
+        if (filter.gt && (!user.subscriptionExpiresAt || user.subscriptionExpiresAt.getTime() <= new Date(filter.gt).getTime())) return false;
+        if (filter.gte && (!user.subscriptionExpiresAt || user.subscriptionExpiresAt.getTime() < new Date(filter.gte).getTime())) return false;
+      }
+    }
     if (where.updatedAt?.gte && user.updatedAt.getTime() < dateValue(where.updatedAt.gte, user.updatedAt).getTime()) return false;
     if (where.lastCallDate && typeof where.lastCallDate !== 'string' && where.lastCallDate.not !== undefined && user.lastCallDate === where.lastCallDate.not) return false;
     if (where.lastCallDate === null && user.lastCallDate !== null) return false;
