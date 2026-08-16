@@ -57,6 +57,7 @@ model CallSession {
   egressId           String?
   recordingUrl       String?
   recordingExpiresAt DateTime?
+  recordedByUserId   String?
   duration           Int          @default(0) // call duration in seconds
   createdAt          DateTime     @default(now())
   endedAt            DateTime?

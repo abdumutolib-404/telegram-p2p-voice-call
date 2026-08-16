@@ -87,28 +87,36 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
     const entitlement = getEffectiveEntitlement(user);
     const retentionDays = entitlement.retentionDays;
+    const now = new Date();
     const recordings = await prisma.callSession.findMany({
       where: {
-        OR: [{ userAId: user.id }, { userBId: user.id }],
+        OR: [
+          { recordedByUserId: user.id },
+          { recordedByUserId: null, userAId: user.id },
+          { recordedByUserId: null, userBId: user.id },
+        ],
         recordingUrl: { not: null },
         status: 'COMPLETED',
+        recordingExpiresAt: { gt: now },
       },
       orderBy: { createdAt: 'desc' },
-      take: 5,
+      take: 10,
     });
 
     if (recordings.length === 0) {
       await ctx.reply(
         `📁 <b>Session Audio Recordings</b>\n\n` +
           `You have no active audio recordings.\n` +
-          `<i>Recordings are saved automatically when recording is toggled ON during a practice call.</i>\n\n` +
-          `⭐ <b>Retention policy for your account</b>: ${retentionDays} day(s).`,
+          `<i>Audio recordings are saved only when you toggle recording ON during a practice call and are automatically removed once their retention period expires.</i>\n\n` +
+          `⭐ <b>Retention policy for your ${entitlement.planDisplayName} Plan</b>: ${retentionDays} day${retentionDays > 1 ? 's' : ''}.`,
         { parse_mode: 'HTML' }
       );
       return;
     }
 
-    let messageText = `📁 <b>Your Recent Practice Recordings</b> (Retention: ${retentionDays}d):\n\n`;
+    let messageText =
+      `📁 <b>Your Practice Recordings</b>\n` +
+      `⏳ <i>Recordings are automatically deleted after <b>${retentionDays} day${retentionDays > 1 ? 's' : ''}</b> according to your ${entitlement.planDisplayName} Plan.</i>\n\n`;
     const inlineKb = new InlineKeyboard();
 
     recordings.forEach((rec, idx) => {
@@ -129,7 +137,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       }
 
       messageText += `${idx + 1}. 📅 <b>${dateTimeStr}</b> — <code>${durationStr}</code>\n`;
-      inlineKb.text(`🎧 Play #${idx + 1}`, `play_recording_${rec.id}`).row();
+      inlineKb.text(`🎧 Play #${idx + 1}`, `play_rec:${rec.id}`).row();
     });
 
     await ctx.reply(messageText, { parse_mode: 'HTML', reply_markup: inlineKb });

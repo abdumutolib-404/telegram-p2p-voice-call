@@ -440,29 +440,57 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       const starsTx = await prisma.starsTransaction.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: 'desc' },
-        take: 3,
+        take: 20,
       });
 
       const manualRequests = await prisma.manualPaymentRequest.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: 'desc' },
-        take: 3,
+        take: 20,
       });
 
-      let historyText = '<b>Recent Transactions</b>:\n';
-      if (starsTx.length === 0 && manualRequests.length === 0) {
-        historyText += '<i>No payment transactions found.</i>\n';
+      interface UnifiedTx {
+        id: string;
+        orderNumber?: string;
+        type: 'STARS' | 'UZS';
+        plan: string;
+        amountStr: string;
+        status: string;
+        createdAt: Date;
       }
 
-      starsTx.forEach((tx) => {
-        const date = tx.createdAt.toISOString().split('T')[0];
-        historyText += `• ⭐ Stars: <b>${tx.planTier}</b> (${tx.starsAmount} XTR) — <code>${tx.status}</code> on ${date}\n`;
-      });
+      const combined: UnifiedTx[] = [
+        ...starsTx.map((tx) => ({
+          id: tx.id,
+          orderNumber: tx.orderNumber || undefined,
+          type: 'STARS' as const,
+          plan: tx.planTier,
+          amountStr: `⭐ ${tx.starsAmount} XTR`,
+          status: tx.status,
+          createdAt: tx.createdAt,
+        })),
+        ...manualRequests.map((req) => ({
+          id: req.id,
+          orderNumber: req.orderNumber || `A${req.id.slice(0, 4)}`,
+          type: 'UZS' as const,
+          plan: req.plan,
+          amountStr: `💳 ${req.uzsAmount.toLocaleString()} UZS`,
+          status: req.status,
+          createdAt: req.createdAt,
+        })),
+      ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-      manualRequests.forEach((req) => {
-        const date = req.createdAt.toISOString().split('T')[0];
-        historyText += `• 💳 UZS: <b>${req.plan}</b> (${req.uzsAmount.toLocaleString()} UZS) — <code>${req.status}</code> on ${date}\n`;
-      });
+      let historyText = '<b>Recent Transactions:</b>\n';
+      if (combined.length === 0) {
+        historyText += '<i>No payment transactions recorded for this account.</i>\n';
+      } else {
+        combined.slice(0, 15).forEach((tx) => {
+          const dateStr = tx.createdAt.toISOString().slice(0, 16).replace('T', ' ');
+          const statusIcon = tx.status === 'APPROVED' || tx.status === 'SUCCESS' ? '✅' : tx.status === 'PENDING' ? '⏳' : '❌';
+          const orderPrefix = tx.orderNumber ? `[#${tx.orderNumber}] ` : '';
+          historyText += `• ${tx.amountStr} — <b>${tx.plan}</b>: ${statusIcon} <code>${tx.status}</code> (${orderPrefix}${dateStr})\n`;
+        });
+      }
 
       const adminContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
       const inlineKb = new InlineKeyboard().text('⭐ View Plans & Pricing', 'show_plans');

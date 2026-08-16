@@ -409,6 +409,30 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
+      // Re-verify Callee quota
+      const calleeEntitlement = getEffectiveEntitlement(callee);
+      const calleeCallsUsed = await getUserCallsUsedThisPeriod(callee.id, callee);
+      if (!calleeEntitlement.isAdmin && calleeCallsUsed >= calleeEntitlement.callLimit) {
+        await ctx.answerCallbackQuery({
+          text: `You have reached your monthly limit of ${calleeEntitlement.callLimit} calls. Please upgrade your plan!`,
+          show_alert: true,
+        });
+        await ctx.editMessageText('❌ You cannot accept this call because you have reached your monthly call limit.');
+        return;
+      }
+
+      // Re-verify Caller quota
+      const callerEntitlement = getEffectiveEntitlement(caller);
+      const callerCallsUsed = await getUserCallsUsedThisPeriod(caller.id, caller);
+      if (!callerEntitlement.isAdmin && callerCallsUsed >= callerEntitlement.callLimit) {
+        await ctx.answerCallbackQuery({
+          text: `${caller.alias} has reached their monthly call limit.`,
+          show_alert: true,
+        });
+        await ctx.editMessageText(`❌ Call cannot be connected because ${caller.alias} has reached their monthly call limit.`);
+        return;
+      }
+
       // Mark session ACTIVE
       await prisma.callSession.update({
         where: { id: session.id },
@@ -527,15 +551,29 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      if (!session.recordingUrl) {
-        await ctx.answerCallbackQuery({ text: 'Recording is no longer available or still finalizing.' });
+      if (session.recordedByUserId && session.recordedByUserId !== user.id) {
+        await ctx.answerCallbackQuery({
+          text: 'This recording was saved by your practice partner and is only available to them.',
+          show_alert: true,
+        });
+        return;
+      }
+
+      if (!session.recordingUrl || (session.recordingExpiresAt && session.recordingExpiresAt <= new Date())) {
+        await ctx.answerCallbackQuery({
+          text: 'This recording has expired and was automatically deleted per your plan retention policy.',
+          show_alert: true,
+        });
         return;
       }
 
       const allowedRetentionDays = getEffectiveEntitlement(user).retentionDays;
       const sessionAgeMs = Date.now() - session.createdAt.getTime();
       if (sessionAgeMs > allowedRetentionDays * 24 * 60 * 60 * 1000) {
-        await ctx.answerCallbackQuery({ text: 'Recording retention expired for your plan level.' });
+        await ctx.answerCallbackQuery({
+          text: 'This recording has expired and was automatically deleted per your plan retention policy.',
+          show_alert: true,
+        });
         return;
       }
 

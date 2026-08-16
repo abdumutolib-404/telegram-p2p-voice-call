@@ -11,7 +11,8 @@ export async function sendPostCallReviewCard(
   callSessionId: string,
   partnerAlias: string,
   durationSeconds: number,
-  recordingUrl?: string
+  recordingUrl?: string,
+  retentionDays?: number
 ) {
   const durationMin = Math.floor(durationSeconds / 60);
   const durationSec = durationSeconds % 60;
@@ -34,13 +35,18 @@ export async function sendPostCallReviewCard(
     .row()
     .text('⚠️ Report Bad Partner', `report_partner:${callSessionId}`);
 
+  const retentionNotice = recordingUrl && retentionDays
+    ? `\n\n🎙️ <i>Audio saved. Retention: <b>${retentionDays} day${retentionDays > 1 ? 's' : ''}</b> (automatically deleted thereafter).</i>`
+    : '';
+
   try {
     await notificationQueue.enqueue(
       bot,
       userTelegramId,
       `📞 <b>Practice Session Complete!</b>\n\n` +
         `• <b>Partner</b>: ${partnerAlias}\n` +
-        `• <b>Duration</b>: ${durationStr}\n\n` +
+        `• <b>Duration</b>: ${durationStr}` +
+        `${retentionNotice}\n\n` +
         `<b>How was your call audio quality?</b>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );

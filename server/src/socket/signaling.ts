@@ -589,7 +589,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               const egress = await startAudioEgress(payload.roomName);
               const updated = await prisma.callSession.updateMany({
                 where: { id: session.id, status: 'ACTIVE', egressId: null },
-                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl },
+                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl, recordedByUserId: requesterId },
               });
               if (updated.count !== 1) {
                 await stopAudioEgress(egress.egressId).catch((error: unknown) => {
@@ -698,10 +698,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
           activeEgresses.delete(payload.roomName);
 
-          const retentionA = getEffectiveEntitlement(session.userA).retentionDays;
-          const retentionB = getEffectiveEntitlement(session.userB).retentionDays;
+          const recorderId = session.recordedByUserId;
+          const recorderUser = recorderId === session.userBId ? session.userB : session.userA;
+          const recorderRetention = getEffectiveEntitlement(recorderUser).retentionDays;
           const recordingExpiresAt = recordingUrl
-            ? new Date(Date.now() + Math.max(retentionA, retentionB) * 24 * 60 * 60 * 1000)
+            ? new Date(Date.now() + recorderRetention * 24 * 60 * 60 * 1000)
             : null;
 
           await prisma.callSession.update({
@@ -714,9 +715,28 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
 
           if (bot && durationSeconds >= 5) {
+            const isUserARecorder = Boolean(recordingUrl && (recorderId === session.userAId || (!recorderId && session.userAId === requesterId)));
+            const isUserBRecorder = Boolean(recordingUrl && (recorderId === session.userBId || (!recorderId && session.userBId === requesterId)));
+
             await Promise.allSettled([
-              sendPostCallReviewCard(bot, session.userA.telegramId.toString(), session.id, session.userB.alias, durationSeconds, recordingUrl),
-              sendPostCallReviewCard(bot, session.userB.telegramId.toString(), session.id, session.userA.alias, durationSeconds, recordingUrl),
+              sendPostCallReviewCard(
+                bot,
+                session.userA.telegramId.toString(),
+                session.id,
+                session.userB.alias,
+                durationSeconds,
+                isUserARecorder ? recordingUrl : undefined,
+                isUserARecorder ? getEffectiveEntitlement(session.userA).retentionDays : undefined
+              ),
+              sendPostCallReviewCard(
+                bot,
+                session.userB.telegramId.toString(),
+                session.id,
+                session.userA.alias,
+                durationSeconds,
+                isUserBRecorder ? recordingUrl : undefined,
+                isUserBRecorder ? getEffectiveEntitlement(session.userB).retentionDays : undefined
+              ),
             ]);
           }
         });
@@ -784,8 +804,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     activeEgresses.delete(session.roomName);
                   }
 
+                  const recorderId = currentSession.recordedByUserId;
+                  const recorderUser = recorderId === currentSession.userBId ? currentSession.userB : currentSession.userA;
+                  const recorderRetention = getEffectiveEntitlement(recorderUser).retentionDays;
                   const recordingExpiresAt = recordingUrl
-                    ? new Date(Date.now() + Math.max(getRetentionDaysForPlan(currentSession.userA.plan), getRetentionDaysForPlan(currentSession.userB.plan)) * 24 * 60 * 60 * 1000)
+                    ? new Date(Date.now() + recorderRetention * 24 * 60 * 60 * 1000)
                     : null;
 
                   await prisma.callSession.update({
@@ -809,9 +832,28 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   });
 
                   if (bot && durationSeconds >= 5) {
+                    const isUserARecorder = Boolean(recordingUrl && (recorderId === currentSession.userAId || (!recorderId && currentSession.userAId === session.userAId)));
+                    const isUserBRecorder = Boolean(recordingUrl && (recorderId === currentSession.userBId || (!recorderId && currentSession.userBId === session.userBId)));
+
                     await Promise.allSettled([
-                      sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, recordingUrl),
-                      sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, recordingUrl),
+                      sendPostCallReviewCard(
+                        bot,
+                        currentSession.userA.telegramId.toString(),
+                        currentSession.id,
+                        currentSession.userB.alias,
+                        durationSeconds,
+                        isUserARecorder ? recordingUrl : undefined,
+                        isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : undefined
+                      ),
+                      sendPostCallReviewCard(
+                        bot,
+                        currentSession.userB.telegramId.toString(),
+                        currentSession.id,
+                        currentSession.userA.alias,
+                        durationSeconds,
+                        isUserBRecorder ? recordingUrl : undefined,
+                        isUserBRecorder ? getEffectiveEntitlement(currentSession.userB).retentionDays : undefined
+                      ),
                     ]);
                   }
                 });

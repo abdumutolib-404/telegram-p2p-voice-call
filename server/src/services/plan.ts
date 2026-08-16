@@ -311,7 +311,11 @@ export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any
     }
     const count = await prisma.callSession.count({
       where: {
-        OR: [{ userAId: userId }, { userBId: userId }],
+        OR: [
+          { recordedByUserId: userId },
+          { recordedByUserId: null, userAId: userId },
+          { recordedByUserId: null, userBId: userId },
+        ],
         recordingUrl: { not: null },
         createdAt: { gte: periodStart },
       },

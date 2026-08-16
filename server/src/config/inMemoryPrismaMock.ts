@@ -22,10 +22,11 @@ type CallSessionWhere = {
   roomName?: string;
   userAId?: string;
   userBId?: string;
+  recordedByUserId?: string | null;
   status?: string | { in?: string[] };
   egressId?: string | null;
   recordingUrl?: string | null | { not?: null };
-  recordingExpiresAt?: Date | null | { lte?: Date };
+  recordingExpiresAt?: Date | null | { lte?: Date; gt?: Date };
   createdAt?: Date | { lte?: Date; gte?: Date };
   OR?: Array<CallSessionWhere>;
 };
@@ -71,6 +72,7 @@ interface CallSessionRow {
   egressId: string | null;
   recordingUrl: string | null;
   recordingExpiresAt: Date | null;
+  recordedByUserId: string | null;
   duration: number;
   createdAt: Date;
   endedAt: Date | null;
@@ -318,6 +320,7 @@ export class InMemoryPrismaMock {
         egressId: args.data.egressId ? stringValue(args.data.egressId) : null,
         recordingUrl: args.data.recordingUrl ? stringValue(args.data.recordingUrl) : null,
         recordingExpiresAt: args.data.recordingExpiresAt ? dateValue(args.data.recordingExpiresAt, now) : null,
+        recordedByUserId: args.data.recordedByUserId ? stringValue(args.data.recordedByUserId) : null,
         duration: numberValue(args.data.duration, 0),
         createdAt: dateValue(args.data.createdAt, now),
         endedAt: args.data.endedAt ? dateValue(args.data.endedAt, now) : null,
@@ -807,9 +810,12 @@ export class InMemoryPrismaMock {
     if (where.egressId !== undefined && session.egressId !== where.egressId) return false;
     if (where.recordingUrl === null && session.recordingUrl !== null) return false;
     if (where.recordingUrl && typeof where.recordingUrl === 'object' && where.recordingUrl.not === null && session.recordingUrl === null) return false;
+    if (where.recordedByUserId !== undefined && session.recordedByUserId !== where.recordedByUserId) return false;
     if (where.recordingExpiresAt === null && session.recordingExpiresAt !== null) return false;
-    if (where.recordingExpiresAt && !(where.recordingExpiresAt instanceof Date) && 'lte' in where.recordingExpiresAt && where.recordingExpiresAt.lte) {
-      if (!session.recordingExpiresAt || session.recordingExpiresAt.getTime() > where.recordingExpiresAt.lte.getTime()) return false;
+    if (where.recordingExpiresAt && !(where.recordingExpiresAt instanceof Date)) {
+      const expFilter = where.recordingExpiresAt as { lte?: Date; gt?: Date };
+      if (expFilter.lte && (!session.recordingExpiresAt || session.recordingExpiresAt.getTime() > expFilter.lte.getTime())) return false;
+      if (expFilter.gt && (!session.recordingExpiresAt || session.recordingExpiresAt.getTime() <= expFilter.gt.getTime())) return false;
     }
     if (where.createdAt && !(where.createdAt instanceof Date)) {
       const filter = where.createdAt as { lte?: Date | string; gte?: Date | string };
