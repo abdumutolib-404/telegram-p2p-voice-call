@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { createRateLimiter } from '../middleware/rateLimit';
 import { generateUniqueAlias } from '../bot/commands/start';
-import { getPaidUserProfile } from '../services/plan';
+import { getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../services/plan';
 
 const router = Router();
 const authLimiter = createRateLimiter(20, 60 * 1000);
@@ -51,9 +51,11 @@ router.post('/verify', authLimiter, async (req, res) => {
     });
 
     const isSuspended =
-      dbUser.isBanned ||
       dbUser.isPermanentlyBanned ||
-      Boolean(dbUser.bannedUntil && new Date(dbUser.bannedUntil) > new Date());
+      (dbUser.isBanned && (!dbUser.bannedUntil || new Date(dbUser.bannedUntil) > new Date()));
+
+    const callsUsed = await getUserCallsUsedThisPeriod(dbUser.id, dbUser);
+    const recUsed = await getUserRecordingsUsedThisPeriod(dbUser.id, dbUser);
 
     res.json({
       success: true,
@@ -68,7 +70,11 @@ router.post('/verify', authLimiter, async (req, res) => {
         subP: dbUser.subP,
         plan: dbUser.plan,
         isBanned: isSuspended,
-        profile: getPaidUserProfile(dbUser),
+        profile: getPaidUserProfile({
+          ...dbUser,
+          dailyCallsUsed: callsUsed,
+          recordingsUsed: recUsed,
+        }),
       },
     });
   } catch (error: unknown) {
