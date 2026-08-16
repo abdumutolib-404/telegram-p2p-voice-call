@@ -59,6 +59,25 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Automatically unlock browser audio playback on any initial user touch or click gesture
+  useEffect(() => {
+    if (!onUnlockAudio) return;
+
+    const unlockOnGesture = () => {
+      onUnlockAudio().catch(() => {});
+    };
+
+    window.addEventListener('click', unlockOnGesture, { capture: true, passive: true });
+    window.addEventListener('touchstart', unlockOnGesture, { capture: true, passive: true });
+    window.addEventListener('touchend', unlockOnGesture, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener('click', unlockOnGesture, { capture: true });
+      window.removeEventListener('touchstart', unlockOnGesture, { capture: true });
+      window.removeEventListener('touchend', unlockOnGesture, { capture: true });
+    };
+  }, [onUnlockAudio]);
+
   useEffect(() => {
     if (elapsedSeconds >= callDurationLimit) {
       handleFinishCallRef.current();
