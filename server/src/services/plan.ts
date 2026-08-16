@@ -259,11 +259,18 @@ export function getEffectiveEntitlement(user: {
 
 export async function getUserCallsUsedThisPeriod(userId: string, user?: any): Promise<number> {
   try {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const targetUser = user || (await prisma.user.findUnique({ where: { id: userId } }));
+
+    if (targetUser && targetUser.lastCallDate === currentMonth && typeof targetUser.dailyCallsUsed === 'number') {
+      return targetUser.dailyCallsUsed;
+    }
+
     let periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    if (user?.subscriptionExpiresAt) {
-      const expiresAt = new Date(user.subscriptionExpiresAt);
+    if (targetUser?.subscriptionExpiresAt) {
+      const expiresAt = new Date(targetUser.subscriptionExpiresAt);
       if (expiresAt > new Date()) {
-        const durationDays = user.subscriptionDurationDays || 30;
+        const durationDays = targetUser.subscriptionDurationDays || 30;
         periodStart = new Date(expiresAt.getTime() - durationDays * 24 * 60 * 60 * 1000);
       }
     }

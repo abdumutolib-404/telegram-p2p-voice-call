@@ -112,23 +112,23 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
   const recordCompletedCallCredits = async (userAId: string, userBId: string, durationSeconds: number): Promise<void> => {
     if (durationSeconds < 5) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const currentMonth = new Date().toISOString().slice(0, 7);
     await Promise.allSettled([
       prisma.user.updateMany({
-        where: { id: userAId, lastCallDate: today },
+        where: { id: userAId, lastCallDate: currentMonth },
         data: { dailyCallsUsed: { increment: 1 } },
       }),
       prisma.user.updateMany({
-        where: { id: userAId, OR: [{ lastCallDate: null }, { lastCallDate: { not: today } }] },
-        data: { lastCallDate: today, dailyCallsUsed: 1 },
+        where: { id: userAId, OR: [{ lastCallDate: null }, { lastCallDate: { not: currentMonth } }] },
+        data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
       }),
       prisma.user.updateMany({
-        where: { id: userBId, lastCallDate: today },
+        where: { id: userBId, lastCallDate: currentMonth },
         data: { dailyCallsUsed: { increment: 1 } },
       }),
       prisma.user.updateMany({
-        where: { id: userBId, OR: [{ lastCallDate: null }, { lastCallDate: { not: today } }] },
-        data: { lastCallDate: today, dailyCallsUsed: 1 },
+        where: { id: userBId, OR: [{ lastCallDate: null }, { lastCallDate: { not: currentMonth } }] },
+        data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
       }),
     ]);
   };

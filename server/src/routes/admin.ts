@@ -948,7 +948,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
 
     const updateData: Prisma.UserUpdateInput = {};
 
-    if (plan && ['FREE', 'PLUS', 'PRO'].includes(String(plan).toUpperCase())) {
+    if (plan && ['FREE', 'PLUS', 'PRO', 'BOSS'].includes(String(plan).toUpperCase())) {
       const normalizedPlan = String(plan).toUpperCase();
       updateData.plan = normalizedPlan;
       if (dailyLimit === undefined) {
@@ -977,6 +977,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
 
     if (resetDailyCalls === true) {
       updateData.dailyCallsUsed = 0;
+      updateData.lastCallDate = new Date().toISOString().slice(0, 7);
     }
 
     const updated = await prisma.user.update({
