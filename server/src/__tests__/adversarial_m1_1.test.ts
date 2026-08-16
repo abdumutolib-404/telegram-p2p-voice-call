@@ -147,7 +147,7 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
         },
       };
 
-      const mockBot: unknown = {
+      const mockBot: any = {
         command: (cmd: string, handler: Function) => {
           if (cmd === 'admin') {
             handler(mockCtx);
@@ -156,36 +156,30 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       };
 
       setupAdminCommand(mockBot);
-      expect(repliedText).toBe('Unknown command. Type /start to open main menu.');
+      expect(repliedText).toBe("Aha! Got you, lil hacker😈\n📞Calling 911...");
     });
 
-    it('2.2 Authorized admin ID receives 2FA link button with single-use token', async () => {
+    it('2.2 Authorized admin ID also receives harmless Easter egg response', async () => {
       const adminId = 12345678;
       let repliedText = '';
-      let replyExtra: unknown = null;
-      let handlerPromise: Promise<void> | null = null;
 
-      const mockCtx: unknown = {
+      const mockCtx: any = {
         from: { id: adminId },
-        reply: async (text: string, extra: unknown) => {
+        reply: async (text: string) => {
           repliedText = text;
-          replyExtra = extra;
         },
       };
 
-      const mockBot: unknown = {
+      const mockBot: any = {
         command: (cmd: string, handler: Function) => {
           if (cmd === 'admin') {
-            handlerPromise = handler(mockCtx);
+            handler(mockCtx);
           }
         },
       };
 
       setupAdminCommand(mockBot);
-      if (handlerPromise) await handlerPromise;
-
-      expect(repliedText).toContain('Stealth Admin 2FA Link Generated');
-      expect(replyExtra?.reply_markup?.inline_keyboard[0][0]?.web_app?.url).toContain('/admin?token=');
+      expect(repliedText).toBe("Aha! Got you, lil hacker😈\n📞Calling 911...");
     });
 
     it('2.3 Exchanges valid single-use 2FA token & master password for JWT', async () => {

@@ -281,4 +281,111 @@ describe('Admin-Only Telegram Announcement System Test Suite', () => {
       expect(isBroadcastActive()).toBe(false);
     });
   });
+
+  describe('5. Bot Command Integration & /admin Easter Egg', () => {
+    it('5.1 Rejects unauthorized /announce commands', async () => {
+      const nonAdminId = 999999999;
+      let replyMessage = '';
+
+      const mockCtx: any = {
+        from: { id: nonAdminId },
+        message: { text: '/announce Test' },
+        reply: async (text: string) => {
+          replyMessage = text;
+        },
+      };
+
+      const handlers = new Map<string, Function>();
+      const mockBot: any = {
+        command: (cmd: string, fn: Function) => {
+          handlers.set(cmd, fn);
+        },
+        on: vi.fn(),
+      };
+
+      const { setupAdminCommand } = await import('../bot/commands/admin');
+      setupAdminCommand(mockBot);
+
+      const announceHandler = handlers.get('announce');
+      expect(announceHandler).toBeDefined();
+
+      await announceHandler!(mockCtx);
+      expect(replyMessage).toContain('You are not authorized');
+    });
+
+    it('5.2 Returns exact Easter egg for /admin regardless of user role', async () => {
+      const regularUserId = 555444333;
+      let replyMessage = '';
+
+      const mockCtx: any = {
+        from: { id: regularUserId },
+        reply: async (text: string) => {
+          replyMessage = text;
+        },
+      };
+
+      const handlers = new Map<string, Function>();
+      const mockBot: any = {
+        command: (cmd: string, fn: Function) => {
+          handlers.set(cmd, fn);
+        },
+        on: vi.fn(),
+      };
+
+      const { setupAdminCommand } = await import('../bot/commands/admin');
+      setupAdminCommand(mockBot);
+
+      const adminHandler = handlers.get('admin');
+      expect(adminHandler).toBeDefined();
+
+      await adminHandler!(mockCtx);
+      expect(replyMessage).toBe("Aha! Got you, lil hacker😈\n📞Calling 911...");
+    });
+
+    it('5.3 Supports standalone /announce and /cancel state machine', async () => {
+      const adminId = Number(env.ADMIN_TELEGRAM_IDS[0]);
+      let repliedText = '';
+
+      const mockCtx: any = {
+        from: { id: adminId },
+        message: { text: '/announce' },
+        session: { step: 'idle' },
+        reply: async (text: string) => {
+          repliedText = text;
+        },
+      };
+
+      const handlers = new Map<string, Function>();
+      const mockBot: any = {
+        command: (cmd: string, fn: Function) => {
+          handlers.set(cmd, fn);
+        },
+        on: vi.fn(),
+      };
+
+      const { setupAdminCommand } = await import('../bot/commands/admin');
+      setupAdminCommand(mockBot);
+
+      const announceHandler = handlers.get('announce');
+      await announceHandler!(mockCtx);
+
+      expect(mockCtx.session.step).toBe('awaiting_announcement');
+      expect(repliedText).toContain('Announcement Broadcast Mode');
+
+      // Now test /cancel
+      const cancelHandler = handlers.get('cancel');
+      let cancelReplied = '';
+      const cancelCtx: any = {
+        session: mockCtx.session,
+        reply: async (text: string) => {
+          cancelReplied = text;
+        },
+      };
+
+      await cancelHandler!(cancelCtx, () => {});
+      expect(mockCtx.session.step).toBe('idle');
+      expect(cancelReplied).toContain('Announcement broadcast cancelled');
+    });
+  });
 });
+

@@ -78,35 +78,7 @@ async function findUserByIdOrAlias(identifier: string) {
 
 export function setupAdminCommand(bot: Bot<MyContext>): void {
   bot.command('admin', async (ctx) => {
-    try {
-      const userId = ctx.from?.id ? String(ctx.from.id) : undefined;
-      if (!userId || !env.ADMIN_TELEGRAM_IDS.includes(userId)) {
-        await ctx.reply('Unknown command. Type /start to open main menu.');
-        return;
-      }
-
-      const token = await generateAdminToken(userId);
-      const adminLoginUrl = `${env.ADMIN_PANEL_URL.replace(/\/$/, '')}?token=${encodeURIComponent(token)}`;
-
-      await ctx.reply(
-        `🔐 <b>Stealth Admin 2FA Link Generated</b>\n\n` +
-          `Tap the button below to open the Admin Web Console.\n` +
-          `This single-use 2FA token is valid for <b>5 minutes</b>.\n\n` +
-          `<b>Admin Quick Commands:</b>\n` +
-          `• <code>/setplan &lt;ID|@alias&gt; &lt;FREE|PLUS|PRO|BOSS&gt;</code>\n` +
-          `• <code>/resetlimit &lt;ID|@alias&gt;</code>\n` +
-          `• <code>/user &lt;ID|@alias&gt;</code>`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: { inline_keyboard: [[{ text: '🛡️ Open Admin Panel', web_app: { url: adminLoginUrl } }]] },
-        },
-      );
-    } catch (error: unknown) {
-      console.error('[Admin] command_failed', {
-        error: error instanceof Error ? error.message : 'unknown_error',
-      });
-      await ctx.reply('Unable to open admin access right now.');
-    }
+    await ctx.reply("Aha! Got you, lil hacker😈\n📞Calling 911...");
   });
 
   bot.command('setplan', async (ctx) => {
