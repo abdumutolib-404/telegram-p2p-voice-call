@@ -279,14 +279,17 @@ export function UserManagement() {
         </div>
       )}
 
-      {/* Users Table */}
+      {/* Users Table Container with Internal Horizontal Scroll */}
       <div style={{
         backgroundColor: '#1e293b',
         border: '1px solid #334155',
         borderRadius: '12px',
-        overflow: 'hidden'
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
       }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem', color: '#f8fafc' }}>
+        <table style={{ width: '100%', minWidth: '750px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem', color: '#f8fafc' }}>
           <thead>
             <tr style={{ backgroundColor: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
               <th style={{ padding: '0.875rem 1rem' }}>User Alias</th>
@@ -488,9 +491,12 @@ export function UserManagement() {
             border: '1px solid #334155',
             borderRadius: '12px',
             width: '100%',
-            maxWidth: '480px',
-            padding: '1.75rem',
-            color: '#f8fafc'
+            maxWidth: 'min(480px, 95vw)',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '1.5rem',
+            color: '#f8fafc',
+            boxSizing: 'border-box',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <Zap size={20} style={{ color: '#38bdf8' }} />
@@ -761,9 +767,12 @@ export function UserManagement() {
             border: '1px solid #334155',
             borderRadius: '12px',
             width: '100%',
-            maxWidth: '450px',
-            padding: '1.75rem',
-            color: '#f8fafc'
+            maxWidth: 'min(450px, 95vw)',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '1.5rem',
+            color: '#f8fafc',
+            boxSizing: 'border-box',
           }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.5rem 0' }}>
               Confirm Moderation Action

@@ -5,6 +5,11 @@ import { env } from '../../config/env';
 import { getRedis } from '../../config/redis';
 import { prisma } from '../../config/database';
 import { getDailyLimitForPlan, getMaxDurationForPlan } from '../../services/plan';
+import {
+  executeAnnouncementBroadcast,
+  isBroadcastActive,
+  AnnouncementPayload,
+} from '../../services/announcement';
 
 export const adminTokenStore = new Map<string, { telegramId: number; expiresAt: number }>();
 const ADMIN_TOKEN_TTL_SECONDS = 300;
@@ -275,4 +280,190 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
       { parse_mode: 'HTML' }
     );
   });
+
+  // ============================================================
+  // ADMIN-ONLY ANNOUNCEMENT SYSTEM
+  // ============================================================
+
+  const handleBroadcastExecution = async (ctx: MyContext, payload: AnnouncementPayload) => {
+    const adminId = ctx.from?.id ? String(ctx.from.id) : 'unknown';
+
+    if (isBroadcastActive()) {
+      await ctx.reply('⚠️ Another announcement broadcast is currently in progress. Please wait for it to finish.');
+      return;
+    }
+
+    await ctx.reply('⏳ <b>Broadcasting announcement...</b>\n\nStarting recipient delivery.', { parse_mode: 'HTML' });
+
+    try {
+      const stats = await executeAnnouncementBroadcast(ctx.api, payload, adminId);
+
+      await ctx.reply(
+        `✅ <b>Announcement sent</b>\n\n` +
+          `<b>Sent:</b> ${stats.sent.toLocaleString()}\n` +
+          `<b>Failed:</b> ${stats.failed.toLocaleString()}\n` +
+          `<b>Skipped:</b> ${stats.skipped.toLocaleString()}\n` +
+          `<b>Total:</b> ${stats.total.toLocaleString()}`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (err: unknown) {
+      console.error('[AdminAnnouncement] broadcast_failed', err);
+      await ctx.reply(
+        `❌ <b>Broadcast Error:</b> ${err instanceof Error ? err.message : 'Broadcast failed.'}`,
+        { parse_mode: 'HTML' }
+      );
+    }
+  };
+
+  bot.command('announce', async (ctx) => {
+    const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
+    if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
+      await ctx.reply('You are not authorized to use announcements.');
+      return;
+    }
+
+    if (isBroadcastActive()) {
+      await ctx.reply('⚠️ Another announcement broadcast is currently in progress. Please wait for it to finish.');
+      return;
+    }
+
+    // Path 1: Replying to a message with /announce
+    const replyMsg = ctx.message?.reply_to_message;
+    if (replyMsg) {
+      if (replyMsg.photo && replyMsg.photo.length > 0) {
+        const highestRes = replyMsg.photo[replyMsg.photo.length - 1];
+        await handleBroadcastExecution(ctx, {
+          type: 'photo',
+          fileId: highestRes.file_id,
+          caption: replyMsg.caption,
+          captionEntities: replyMsg.caption_entities,
+        });
+        return;
+      }
+
+      if (replyMsg.video) {
+        await handleBroadcastExecution(ctx, {
+          type: 'video',
+          fileId: replyMsg.video.file_id,
+          caption: replyMsg.caption,
+          captionEntities: replyMsg.caption_entities,
+        });
+        return;
+      }
+
+      if (replyMsg.animation) {
+        await handleBroadcastExecution(ctx, {
+          type: 'animation',
+          fileId: replyMsg.animation.file_id,
+          caption: replyMsg.caption,
+          captionEntities: replyMsg.caption_entities,
+        });
+        return;
+      }
+
+      if (replyMsg.text) {
+        await handleBroadcastExecution(ctx, {
+          type: 'text',
+          text: replyMsg.text,
+          entities: replyMsg.entities,
+        });
+        return;
+      }
+    }
+
+    // Path 2: /announce with inline text (e.g. "/announce Hello everyone!")
+    const fullText = ctx.message?.text || '';
+    const rawMatch = fullText.match(/^\/announce(?:@\w+)?(?:\s+([\s\S]+))?$/i);
+    const inlineContent = rawMatch?.[1]?.trim();
+
+    if (inlineContent) {
+      await handleBroadcastExecution(ctx, {
+        type: 'text',
+        text: inlineContent,
+      });
+      return;
+    }
+
+    // Path 3: Standalone /announce -> Enter interactive announcement capture mode
+    ctx.session.step = 'awaiting_announcement';
+    await ctx.reply(
+      `📢 <b>Announcement Broadcast Mode</b>\n\n` +
+        `Please send the message, photo, video, or GIF you wish to broadcast to all active learners.\n\n` +
+        `Type <code>/cancel</code> to abort.`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  bot.command('cancel', async (ctx, next) => {
+    if (ctx.session.step === 'awaiting_announcement') {
+      ctx.session.step = 'idle';
+      await ctx.reply('Announcement broadcast cancelled.');
+      return;
+    }
+    return next();
+  });
+
+  // Interactive message interceptor when in awaiting_announcement mode
+  if (typeof bot.on === 'function') {
+    bot.on(['message:text', 'message:photo', 'message:video', 'message:animation'], async (ctx, next) => {
+      if (ctx.session?.step !== 'awaiting_announcement') {
+        return next();
+      }
+
+    const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
+    if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
+      ctx.session.step = 'idle';
+      return next();
+    }
+
+    // If it's a command like /cancel or /start, let next() handle it
+    if (ctx.message?.text?.startsWith('/')) {
+      return next();
+    }
+
+    ctx.session.step = 'idle';
+
+    if (ctx.message?.photo && ctx.message.photo.length > 0) {
+      const highestRes = ctx.message.photo[ctx.message.photo.length - 1];
+      await handleBroadcastExecution(ctx, {
+        type: 'photo',
+        fileId: highestRes.file_id,
+        caption: ctx.message.caption,
+        captionEntities: ctx.message.caption_entities,
+      });
+      return;
+    }
+
+    if (ctx.message?.video) {
+      await handleBroadcastExecution(ctx, {
+        type: 'video',
+        fileId: ctx.message.video.file_id,
+        caption: ctx.message.caption,
+        captionEntities: ctx.message.caption_entities,
+      });
+      return;
+    }
+
+    if (ctx.message?.animation) {
+      await handleBroadcastExecution(ctx, {
+        type: 'animation',
+        fileId: ctx.message.animation.file_id,
+        caption: ctx.message.caption,
+        captionEntities: ctx.message.caption_entities,
+      });
+      return;
+    }
+
+    if (ctx.message?.text) {
+      await handleBroadcastExecution(ctx, {
+        type: 'text',
+        text: ctx.message.text,
+        entities: ctx.message.entities,
+      });
+      return;
+    }
+
+      await ctx.reply('❌ Unsupported media format. Please send text, photo, video, or GIF.');
+    });
+  }
 }

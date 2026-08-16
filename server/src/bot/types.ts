@@ -1,7 +1,7 @@
 import { Context, SessionFlavor } from 'grammy';
 
 export interface SessionData {
-  step: 'idle' | 'fc' | 'lr' | 'gra' | 'p' | 'confirm' | 'appeal';
+  step: 'idle' | 'fc' | 'lr' | 'gra' | 'p' | 'confirm' | 'appeal' | 'awaiting_announcement';
   fc?: number;
   lr?: number;
   gra?: number;

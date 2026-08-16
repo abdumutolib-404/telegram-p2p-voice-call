@@ -200,8 +200,8 @@ export function ManualPaymentsQueue() {
           </p>
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px' }}>
+          <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
                 <th style={{ padding: '0.875rem 1rem' }}>Order #</th>
