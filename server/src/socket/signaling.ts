@@ -719,16 +719,14 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const deniedUser = requesterId === session.userAId ? session.userA : session.userB;
             const partnerUser = requesterId === session.userAId ? session.userB : session.userA;
             await Promise.allSettled([
-              notificationQueue.enqueue(
-                bot,
+              bot.api.sendMessage(
                 deniedUser.telegramId.toString(),
                 `🎙️ <b>Call Ended: Microphone Access Denied</b>\n\n` +
                   `Microphone access was not granted after 3 attempts. Speaking practice requires a working microphone so your partner can hear you.\n\n` +
                   `💡 <i>Please allow microphone permissions in your browser / Telegram settings before starting your next session.</i>`,
                 { parse_mode: 'HTML' }
               ),
-              notificationQueue.enqueue(
-                bot,
+              bot.api.sendMessage(
                 partnerUser.telegramId.toString(),
                 `⚠️ <b>Call Disconnected</b>\n\n` +
                   `Your practice partner was unable to grant microphone permissions. No call limits were consumed for this session.`,
