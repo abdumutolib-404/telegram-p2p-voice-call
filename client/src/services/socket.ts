@@ -13,7 +13,7 @@ export interface ClientToServerEvents {
   join_queue: (data: UserMatchData) => void;
   cancel_queue: (data: { userId: string }) => void;
   toggle_record: (data: { roomName: string; record: boolean }) => void;
-  finish_call: (data: { roomName: string; userId: string }) => void;
+  finish_call: (data: { roomName: string; userId: string; reason?: string }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -74,8 +74,8 @@ class SocketService {
     this.socket?.emit('toggle_record', { roomName, record });
   }
 
-  public finishCall(roomName: string, userId: string): void {
-    this.socket?.emit('finish_call', { roomName, userId });
+  public finishCall(roomName: string, userId: string, reason?: string): void {
+    this.socket?.emit('finish_call', { roomName, userId, reason });
   }
 
   public disconnect(): void {

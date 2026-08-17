@@ -43,7 +43,9 @@ export const App: React.FC = () => {
     isMicMuted,
     canPlaybackAudio,
     micError,
+    micDeniedCount,
     toggleMic,
+    retryMicrophone,
     startAudio,
     analyserNode,
   } = useLiveKit();
@@ -313,11 +315,14 @@ export const App: React.FC = () => {
     setAppState('ended');
   };
 
-  const handleFinishCall = () => {
+  const handleFinishCall = (reason?: string) => {
     if (matchData) {
-      socketService.finishCall(matchData.roomName, userData.userId);
+      socketService.finishCall(matchData.roomName, userData.userId, reason);
     }
     disconnectLiveKit();
+    if (reason === 'microphone_permission_denied') {
+      setErrorMessage('Microphone access was denied 3 times. Speaking practice requires microphone access.');
+    }
     setAppState('ended');
   };
 
@@ -404,8 +409,10 @@ export const App: React.FC = () => {
         isMicMuted={isMicMuted}
         canPlaybackAudio={canPlaybackAudio}
         micError={micError}
+        micDeniedCount={micDeniedCount}
         analyserNode={analyserNode}
         onToggleMic={toggleMic}
+        onRetryMic={retryMicrophone}
         onFinishCall={handleFinishCall}
         onUnlockAudio={startAudio}
       />

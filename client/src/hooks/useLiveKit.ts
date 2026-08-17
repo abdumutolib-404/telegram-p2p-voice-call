@@ -21,11 +21,13 @@ export interface UseLiveKitReturn {
   isMicMuted: boolean;
   canPlaybackAudio: boolean;
   micError: string | null;
+  micDeniedCount: number;
   analyserNode: AnalyserNode | null;
   connect: (url: string, token: string) => Promise<void>;
   disconnect: () => void;
   toggleMic: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
+  retryMicrophone: () => Promise<boolean>;
   startAudio: () => Promise<void>;
 }
 
@@ -37,20 +39,21 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const [isMicMuted, setIsMicMutedState] = useState<boolean>(false);
   const [canPlaybackAudio, setCanPlaybackAudio] = useState<boolean>(true);
   const [micError, setMicError] = useState<string | null>(null);
+  const [micDeniedCount, setMicDeniedCount] = useState<number>(0);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   const roomRef = useRef<Room | null>(null);
   const isConnectingRef = useRef<boolean>(false);
   const cancelConnectRef = useRef<boolean>(false);
+  const attachedElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   // Handle mobile visibility change & resume audio on app wake
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && roomRef.current) {
         roomRef.current.startAudio().catch(() => {});
-        const audioTags = document.getElementsByTagName('audio');
-        for (let i = 0; i < audioTags.length; i++) {
-          audioTags[i].play().catch(() => {});
+        for (const el of attachedElementsRef.current.values()) {
+          el.play().catch(() => {});
         }
       }
     };
@@ -64,18 +67,14 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
 
   // Teardown attached audio elements
   const cleanupAudio = useCallback(() => {
-    if (roomRef.current) {
-      for (const participant of roomRef.current.remoteParticipants.values()) {
-        for (const pub of participant.audioTrackPublications.values()) {
-          if (pub.track && pub.track.kind === Track.Kind.Audio) {
-            try {
-              const elements = (pub.track as RemoteAudioTrack).detach();
-              elements.forEach((el) => el.remove());
-            } catch {}
-          }
-        }
-      }
+    for (const [, el] of attachedElementsRef.current) {
+      try {
+        el.pause();
+        el.srcObject = null;
+        el.remove();
+      } catch {}
     }
+    attachedElementsRef.current.clear();
     setAnalyserNode(null);
   }, []);
 
@@ -90,10 +89,9 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         console.warn('[LiveKit] Failed to unlock audio playback via startAudio():', err);
       }
     }
-    const audioTags = document.getElementsByTagName('audio');
-    for (let i = 0; i < audioTags.length; i++) {
+    for (const el of attachedElementsRef.current.values()) {
       try {
-        await audioTags[i].play();
+        await el.play();
         setCanPlaybackAudio(true);
       } catch {}
     }
@@ -120,6 +118,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     setIsMicMutedState(false);
     setCanPlaybackAudio(true);
     setMicError(null);
+    setMicDeniedCount(0);
   }, [cleanupAudio]);
 
   const connect = useCallback(
@@ -156,11 +155,22 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         });
 
         const attachAudioTrack = (remoteAudioTrack: RemoteAudioTrack) => {
+          const trackSid = remoteAudioTrack.sid || `track_${Math.random().toString(36).slice(2)}`;
+          const existingEl = attachedElementsRef.current.get(trackSid);
+          if (existingEl) {
+            try {
+              remoteAudioTrack.detach(existingEl);
+              existingEl.remove();
+            } catch {}
+            attachedElementsRef.current.delete(trackSid);
+          }
+
           const el = remoteAudioTrack.attach();
           el.autoplay = true;
           el.setAttribute('playsinline', 'true');
           el.setAttribute('webkit-playsinline', 'true');
           document.body.appendChild(el);
+          attachedElementsRef.current.set(trackSid, el);
 
           el.play()
             .then(() => {
@@ -173,10 +183,20 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         };
 
         const detachAudioTrack = (remoteAudioTrack: RemoteAudioTrack) => {
-          try {
-            const elements = remoteAudioTrack.detach();
-            elements.forEach((el) => el.remove());
-          } catch {}
+          const trackSid = remoteAudioTrack.sid;
+          if (trackSid && attachedElementsRef.current.has(trackSid)) {
+            const el = attachedElementsRef.current.get(trackSid)!;
+            try {
+              remoteAudioTrack.detach(el);
+              el.remove();
+            } catch {}
+            attachedElementsRef.current.delete(trackSid);
+          } else {
+            try {
+              const elements = remoteAudioTrack.detach();
+              elements.forEach((el) => el.remove());
+            } catch {}
+          }
         };
 
         // Track subscription event
@@ -258,6 +278,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           await livekitRoom.localParticipant.setMicrophoneEnabled(true);
           setIsMicMutedState(false);
           setMicError(null);
+          setMicDeniedCount(0);
         } catch (micErr) {
           console.warn('[LiveKit] Primary microphone enable failed, trying fallback audio constraints:', micErr);
           try {
@@ -266,10 +287,12 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
             });
             setIsMicMutedState(false);
             setMicError(null);
+            setMicDeniedCount(0);
           } catch (fallbackErr) {
             console.error('[LiveKit] Fallback microphone enable failed:', fallbackErr);
             setIsMicMutedState(true);
             setMicError('MICROPHONE_PERMISSION_DENIED');
+            setMicDeniedCount(1);
           }
         }
 
@@ -318,6 +341,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     } catch (err) {
       console.error('Failed to toggle microphone state:', err);
       setMicError('MICROPHONE_PERMISSION_DENIED');
+      setMicDeniedCount((prev) => prev + 1);
     }
   }, []);
 
@@ -331,6 +355,36 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     } catch (err) {
       console.error('Failed to set microphone state:', err);
       setMicError('MICROPHONE_PERMISSION_DENIED');
+      setMicDeniedCount((prev) => prev + 1);
+    }
+  }, []);
+
+  const retryMicrophone = useCallback(async (): Promise<boolean> => {
+    const activeRoom = roomRef.current;
+    if (!activeRoom) return false;
+    try {
+      await activeRoom.localParticipant.setMicrophoneEnabled(true);
+      setIsMicMutedState(false);
+      setMicError(null);
+      setMicDeniedCount(0);
+      return true;
+    } catch (err) {
+      console.warn('[LiveKit] retryMicrophone primary failed, trying fallback:', err);
+      try {
+        await activeRoom.localParticipant.setMicrophoneEnabled(true, {
+          echoCancellation: true,
+        });
+        setIsMicMutedState(false);
+        setMicError(null);
+        setMicDeniedCount(0);
+        return true;
+      } catch (fallbackErr) {
+        console.error('[LiveKit] retryMicrophone fallback failed:', fallbackErr);
+        setIsMicMutedState(true);
+        setMicError('MICROPHONE_PERMISSION_DENIED');
+        setMicDeniedCount((prev) => prev + 1);
+        return false;
+      }
     }
   }, []);
 
@@ -357,11 +411,13 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     isMicMuted,
     canPlaybackAudio,
     micError,
+    micDeniedCount,
     analyserNode,
     connect,
     disconnect,
     toggleMic,
     setMicMuted,
+    retryMicrophone,
     startAudio,
   };
 }

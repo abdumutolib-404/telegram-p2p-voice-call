@@ -19,6 +19,7 @@ interface ToggleRecordPayload {
 
 interface FinishCallPayload {
   readonly roomName: string;
+  readonly reason?: string;
 }
 
 interface SocketData {
@@ -37,7 +38,7 @@ function isToggleRecordPayload(value: unknown): value is ToggleRecordPayload {
 function isFinishCallPayload(value: unknown): value is FinishCallPayload {
   if (!value || typeof value !== 'object') return false;
   const data = value as Record<string, unknown>;
-  return typeof data.roomName === 'string' && data.roomName.length > 0 && data.roomName.length <= 128;
+  return typeof data.roomName === 'string' && data.roomName.length > 0 && data.roomName.length <= 128 && (data.reason === undefined || typeof data.reason === 'string');
 }
 
 function getUserBucket(user: {
@@ -714,7 +715,27 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
 
-          if (bot && durationSeconds >= 5) {
+          if (bot && payload.reason === 'microphone_permission_denied') {
+            const deniedUser = requesterId === session.userAId ? session.userA : session.userB;
+            const partnerUser = requesterId === session.userAId ? session.userB : session.userA;
+            await Promise.allSettled([
+              notificationQueue.enqueue(
+                bot,
+                deniedUser.telegramId.toString(),
+                `🎙️ <b>Call Ended: Microphone Access Denied</b>\n\n` +
+                  `Microphone access was not granted after 3 attempts. Speaking practice requires a working microphone so your partner can hear you.\n\n` +
+                  `💡 <i>Please allow microphone permissions in your browser / Telegram settings before starting your next session.</i>`,
+                { parse_mode: 'HTML' }
+              ),
+              notificationQueue.enqueue(
+                bot,
+                partnerUser.telegramId.toString(),
+                `⚠️ <b>Call Disconnected</b>\n\n` +
+                  `Your practice partner was unable to grant microphone permissions. No call limits were consumed for this session.`,
+                { parse_mode: 'HTML' }
+              ),
+            ]);
+          } else if (bot && durationSeconds >= 5) {
             const isUserARecorder = Boolean(recordingUrl && (recorderId === session.userAId || (!recorderId && session.userAId === requesterId)));
             const isUserBRecorder = Boolean(recordingUrl && (recorderId === session.userBId || (!recorderId && session.userBId === requesterId)));
 

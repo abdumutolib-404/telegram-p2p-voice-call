@@ -13,9 +13,11 @@ interface ActiveCallScreenProps {
   isMicMuted: boolean;
   canPlaybackAudio?: boolean;
   micError?: string | null;
+  micDeniedCount?: number;
   analyserNode?: AnalyserNode | null;
   onToggleMic: () => void;
-  onFinishCall: () => void;
+  onRetryMic?: () => Promise<boolean>;
+  onFinishCall: (reason?: string) => void;
   onUnlockAudio?: () => Promise<void>;
 }
 
@@ -28,8 +30,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   isMicMuted,
   canPlaybackAudio = true,
   micError = null,
+  micDeniedCount = 0,
   analyserNode,
   onToggleMic,
+  onRetryMic,
   onFinishCall,
   onUnlockAudio,
 }) => {
@@ -39,11 +43,11 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
 
   const hasFinishedRef = useRef(false);
-  const handleFinishCall = useCallback(() => {
+  const handleFinishCall = useCallback((reason?: string) => {
     if (hasFinishedRef.current) return;
     hasFinishedRef.current = true;
-    socketService.finishCall(roomName, userId);
-    onFinishCall();
+    socketService.finishCall(roomName, userId, reason);
+    onFinishCall(reason);
   }, [roomName, userId, onFinishCall]);
 
   const handleFinishCallRef = useRef(handleFinishCall);
@@ -77,6 +81,13 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       window.removeEventListener('touchend', unlockOnGesture, { capture: true });
     };
   }, [onUnlockAudio]);
+
+  // Auto-finish call if microphone permission is denied 3 times
+  useEffect(() => {
+    if (micDeniedCount >= 3) {
+      handleFinishCallRef.current('microphone_permission_denied');
+    }
+  }, [micDeniedCount]);
 
   useEffect(() => {
     if (elapsedSeconds >= callDurationLimit) {
@@ -139,11 +150,46 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         </button>
       )}
 
-      {/* 2. Microphone Permission Warning */}
-      {micError && (
+      {/* 2. Microphone Permission Retry Modal (Attempt 1 or 2 of 3) */}
+      {micError && micDeniedCount > 0 && micDeniedCount < 3 && onRetryMic && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-fadeIn">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-4 border border-amber-500/30">
+              <MicOff className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-100 mb-2">Microphone Access Required</h3>
+            <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+              Speaking practice requires your microphone so your partner can hear you.
+            </p>
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl py-2 px-3 mb-5 text-xs text-amber-300 font-medium">
+              Attempt {micDeniedCount} of 3 • Denying 3 times ends the call
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => onRetryMic()}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2"
+              >
+                <Mic className="w-4 h-4" />
+                <span>Allow Microphone Access</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFinishCall('microphone_permission_denied')}
+                className="w-full py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Cancel Call
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Subtle Microphone Warning if muted */}
+      {micError && micDeniedCount === 0 && (
         <div className="fixed top-4 inset-x-4 z-40 py-2.5 px-4 bg-amber-500/20 border border-amber-500/40 text-amber-300 font-medium rounded-2xl text-xs flex items-center justify-center gap-2 text-center">
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>Microphone muted or permission required. Tap MUTE to unmute.</span>
+          <span>Microphone muted or permission required. Tap UNMUTE to speak.</span>
         </div>
       )}
 
@@ -277,7 +323,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
         <button
           type="button"
-          onClick={handleFinishCall}
+          onClick={() => handleFinishCall()}
           aria-label="End call"
           className="flex-1 py-4 px-4 rounded-2xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all active:scale-95 flex items-center justify-center gap-2"
         >
