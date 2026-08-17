@@ -12,6 +12,25 @@ import { checkRateLimit } from '../services/rateLimitMatrix';
 export function createBot(token: string): Bot<MyContext> {
   const bot = new Bot<MyContext>(token);
 
+  // Global API 429 auto-retry transformer for all outgoing Telegram Bot API requests
+  bot.api.config.use(async (prev, method, payload, signal) => {
+    const maxRetries = 3;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await prev(method, payload, signal);
+      } catch (error: any) {
+        if (error?.error_code === 429 && attempt < maxRetries) {
+          const retryAfter = (error.parameters?.retry_after || 1) * 1000;
+          console.warn(`[Telegram API 429] Method ${method} rate limited. Retrying in ${retryAfter}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise((resolve) => setTimeout(resolve, retryAfter));
+          continue;
+        }
+        throw error;
+      }
+    }
+    return prev(method, payload, signal);
+  });
+
   // Session middleware
   bot.use(
     session({
