@@ -579,8 +579,8 @@ router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res
         `🎉 <b>Payment Verified & Approved!</b>\n\n` +
           `Your <b>${result.user.plan} Plan</b> has been activated.\n` +
           `• Max Call Duration: ${config.maxDuration >= 999 ? 'Unlimited' : `${config.maxDuration} minutes`}\n` +
-          `• Daily Limit: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/day`}\n` +
-          `• Recording Storage: ${config.retentionDays} days\n\n` +
+          `• Monthly Calls: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/month`}\n` +
+          `• Recording Retention: ${config.retentionDays} days\n\n` +
           `Happy practicing!`,
         { parse_mode: 'HTML' }
       ).catch(() => undefined);
@@ -987,17 +987,17 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
 
     if (adminBotInstance && (plan || resetDailyCalls || dailyLimit !== undefined || retentionOverride !== undefined)) {
       const planName = updated.customPlanName || updated.plan;
-      const limitText = updated.dailyLimit >= 999 ? 'Unlimited' : `${updated.dailyLimit} calls/day`;
+      const limitText = updated.dailyLimit >= 999 ? 'Unlimited' : `${updated.dailyLimit} calls/month`;
       const durText = `${updated.maxDuration} minutes`;
       const retentionText = updated.retentionOverride ? `${updated.retentionOverride} days (Custom)` : `${getRetentionDaysForPlan(updated.plan)} days`;
       const msg =
         `⭐ *Account Plan Updated by Administrator*\n\n` +
         `Your IELTS Speaking P2P limits have been updated:\n` +
         `• *Plan Tier*: *${planName}*\n` +
-        `• *Daily Call Limit*: ${limitText}\n` +
+        `• *Monthly Call Limit*: ${limitText}\n` +
         `• *Max Call Duration*: ${durText}\n` +
         `• *Recording Retention*: ${retentionText}\n` +
-        (resetDailyCalls ? `• *Calls Used Today*: Reset to 0\n` : '') +
+        (resetDailyCalls ? `• *Calls Used This Month*: Reset to 0\n` : '') +
         `\nEnjoy practicing!`;
       await adminBotInstance.api.sendMessage(updated.telegramId.toString(), msg, { parse_mode: 'Markdown' })
         .catch((e: unknown) => console.warn('[Admin] Failed to send plan update notice:', e));
