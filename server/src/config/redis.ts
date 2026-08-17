@@ -219,6 +219,36 @@ class InMemoryRedisMock {
     return val;
   }
 
+  async ttl(key: string): Promise<number> {
+    const entry = this.kv.get(key);
+    if (!entry) return -2;
+    if (entry.expiresAt === undefined) return -1;
+    const now = Date.now();
+    if (now >= entry.expiresAt) {
+      this.kv.delete(key);
+      return -2;
+    }
+    return Math.ceil((entry.expiresAt - now) / 1000);
+  }
+
+  async exists(...keys: string[]): Promise<number> {
+    let count = 0;
+    const now = Date.now();
+    for (const key of keys) {
+      const entry = this.kv.get(key);
+      if (entry) {
+        if (entry.expiresAt !== undefined && now >= entry.expiresAt) {
+          this.kv.delete(key);
+        } else {
+          count += 1;
+          continue;
+        }
+      }
+      if (this.sets.has(key)) count += 1;
+    }
+    return count;
+  }
+
   async flushall(): Promise<'OK'> {
     this.sets.clear();
     this.kv.clear();
@@ -239,6 +269,8 @@ export interface RedisClientInterface {
     duration?: number,
     condition?: 'NX',
   ): Promise<string | null>;
+  ttl(key: string): Promise<number>;
+  exists(...keys: string[]): Promise<number>;
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
   del(...keys: string[]): Promise<number>;

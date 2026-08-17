@@ -2,12 +2,12 @@ import { Router } from 'express';
 import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
-import { createRateLimiter } from '../middleware/rateLimit';
+import { createActionRateLimiter } from '../middleware/rateLimit';
 import { generateUniqueAlias } from '../bot/commands/start';
 import { getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../services/plan';
 
 const router = Router();
-const authLimiter = createRateLimiter(20, 60 * 1000);
+const authLimiter = createActionRateLimiter('AUTH_VERIFY', (req) => req.ip || 'unknown');
 
 router.post('/verify', authLimiter, async (req, res) => {
   try {

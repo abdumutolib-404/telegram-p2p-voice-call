@@ -208,18 +208,29 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     );
   });
 
-  // Callback: cancel_manual_pay:<id>
+  // Callback: cancel_manual_pay:<id> (F1 Fix: IDOR & Status Precondition Protection)
   bot.callbackQuery(/^cancel_manual_pay:(.+)$/, async (ctx) => {
     const requestId = ctx.match[1];
+    const telegramId = BigInt(ctx.from.id);
     try {
-      await prisma.manualPaymentRequest.update({
-        where: { id: requestId },
+      const updated = await prisma.manualPaymentRequest.updateMany({
+        where: {
+          id: requestId,
+          telegramId,
+          status: 'PENDING',
+        },
         data: { status: 'REJECTED', adminNote: 'Cancelled by user' },
       });
+
+      if (updated.count === 0) {
+        await ctx.answerCallbackQuery({ text: 'Unable to cancel this request.', show_alert: true });
+        return;
+      }
+
       await ctx.answerCallbackQuery({ text: 'Payment request cancelled.' });
       await ctx.editMessageText('❌ Your manual payment request has been cancelled.');
     } catch {
-      await ctx.answerCallbackQuery({ text: 'Unable to cancel request.' });
+      await ctx.answerCallbackQuery({ text: 'Unable to cancel this request.', show_alert: true });
     }
   });
 

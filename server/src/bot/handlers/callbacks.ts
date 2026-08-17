@@ -340,7 +340,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      const roomName = `direct_${Date.now()}_${caller.id.slice(0, 4)}_${partner.id.slice(0, 4)}`;
+      const roomName = `direct_${crypto.randomUUID()}`;
 
       // Create PENDING CallSession
       const session = await prisma.callSession.create({

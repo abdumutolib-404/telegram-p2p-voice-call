@@ -5,6 +5,7 @@ import { createCanonicalError, CanonicalErrorResponse } from '../types/canonical
 export type RateLimitAction =
   | 'AUTH_PASSWORD'
   | 'AUTH_OTP'
+  | 'AUTH_VERIFY'
   | 'MATCH_JOIN'
   | 'MATCH_CANCEL'
   | 'MATCHMAKING'
@@ -37,6 +38,7 @@ interface MatrixRule {
 const MATRIX_RULES: Record<RateLimitAction, MatrixRule> = {
   AUTH_PASSWORD: { maxRequests: 5, windowSeconds: 900, penaltySeconds: 900 },
   AUTH_OTP: { maxRequests: 5, windowSeconds: 300, penaltySeconds: 300 },
+  AUTH_VERIFY: { maxRequests: 20, windowSeconds: 60, penaltySeconds: 300 },
   MATCH_JOIN: { maxRequests: 10, windowSeconds: 60, penaltySeconds: 300, inFlightLockSeconds: 4, poolCategory: 'matchmaking' },
   MATCH_CANCEL: { maxRequests: 10, windowSeconds: 60, penaltySeconds: 300, idempotent: true, poolCategory: 'matchmaking' },
   MATCHMAKING: { maxRequests: 10, windowSeconds: 60, penaltySeconds: 300 },
@@ -55,10 +57,18 @@ const MATRIX_RULES: Record<RateLimitAction, MatrixRule> = {
   PROFILE_UPDATE: { maxRequests: 6, windowSeconds: 60, penaltySeconds: 300 },
   DND: { maxRequests: 8, windowSeconds: 30, idempotent: true },
   ADMIN_LOGIN: { maxRequests: 5, windowSeconds: 900, penaltySeconds: 900 },
-  ADMIN_OTP: { maxRequests: 5, windowSeconds: 300, penaltySeconds: 300 },
+  ADMIN_OTP: { maxRequests: 10, windowSeconds: 900, penaltySeconds: 900 },
 };
 
-// In-memory fallback and penalty stores
+const LOCK_RELEASE_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+else
+  return 0
+end
+`;
+
+// In-memory fallback and penalty stores (used when Redis is unavailable)
 const memoryCounters = new Map<string, { count: number; resetAt: number }>();
 const inFlightLocks = new Map<string, number>();
 const penaltyBlocks = new Map<string, number>();
@@ -78,7 +88,22 @@ export async function checkRateLimit(
   const key = `rl:${poolCategory}:${identifier}`;
   const penaltyKey = `penalty:${poolCategory}:${identifier}`;
 
-  // 1. Check Active Abuse Penalty Block (e.g. 5-minute lockout)
+  // 1. Check Active Abuse Penalty Block (Redis first, then fallback to local memory)
+  try {
+    const redis = getRedis();
+    const ttl = await redis.ttl(penaltyKey);
+    if (ttl > 0) {
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: ttl,
+        error: createCanonicalError('RATE_LIMITED', `Too many requests. Please wait ${ttl} seconds before trying again.`),
+      };
+    }
+  } catch {
+    // Redis unavailable: fallback to local memory check below
+  }
+
   const penaltyExpires = penaltyBlocks.get(penaltyKey);
   if (penaltyExpires && now < penaltyExpires) {
     const retryAfter = Math.ceil((penaltyExpires - now) / 1000);
@@ -90,11 +115,28 @@ export async function checkRateLimit(
     };
   }
 
-  // 2. Check In-Flight Lock
+  // 2. Check In-Flight Lock (Redis first, then fallback to local memory)
   if (rule.inFlightLockSeconds) {
     const lockKey = `inflight:${action}:${identifier}`;
-    const lockExpires = inFlightLocks.get(lockKey);
-    if (lockExpires && now < lockExpires) {
+    let isLocked = false;
+    try {
+      const redis = getRedis();
+      const exists = await redis.exists(lockKey);
+      if (exists) {
+        isLocked = true;
+      }
+    } catch {
+      // Redis unavailable: fallback to local map check
+    }
+
+    if (!isLocked) {
+      const lockExpires = inFlightLocks.get(lockKey);
+      if (lockExpires && now < lockExpires) {
+        isLocked = true;
+      }
+    }
+
+    if (isLocked) {
       return {
         allowed: false,
         remaining: 0,
@@ -113,7 +155,7 @@ export async function checkRateLimit(
       await redis.expire(key, rule.windowSeconds);
     }
     if (current > rule.maxRequests) {
-      // Trigger abuse penalty block
+      // Trigger abuse penalty block in Redis and local memory
       penaltyBlocks.set(penaltyKey, now + penaltySec * 1000);
       try {
         await redis.set(penaltyKey, '1', 'EX', penaltySec);
@@ -147,15 +189,32 @@ export async function checkRateLimit(
   }
 }
 
-export function setInFlightLock(action: RateLimitAction, identifier: string): void {
+export function setInFlightLock(action: RateLimitAction, identifier: string, token: string = '1'): void {
   const rule = MATRIX_RULES[action];
   if (!rule?.inFlightLockSeconds) return;
   const lockKey = `inflight:${action}:${identifier}`;
-  inFlightLocks.set(lockKey, Date.now() + rule.inFlightLockSeconds * 1000);
+  const ttlMs = rule.inFlightLockSeconds * 1000;
+  try {
+    const redis = getRedis();
+    redis.set(lockKey, token, 'PX', ttlMs).catch(() => undefined);
+  } catch {
+    // Fallback to in-memory
+  }
+  inFlightLocks.set(lockKey, Date.now() + ttlMs);
 }
 
-export function releaseInFlightLock(action: RateLimitAction, identifier: string): void {
+export function releaseInFlightLock(action: RateLimitAction, identifier: string, token?: string): void {
   const lockKey = `inflight:${action}:${identifier}`;
+  try {
+    const redis = getRedis();
+    if (token) {
+      redis.eval(LOCK_RELEASE_LUA, 1, lockKey, token).catch(() => undefined);
+    } else {
+      redis.del(lockKey).catch(() => undefined);
+    }
+  } catch {
+    // Fallback to in-memory
+  }
   inFlightLocks.delete(lockKey);
 }
 

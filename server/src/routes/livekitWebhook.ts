@@ -40,11 +40,13 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
   });
 
   try {
+    // Session lookup: egressId is the primary identifier for egress lifecycle events.
+    // roomName (generated as a cryptographically unique UUID) is used as a fallback for egress_started where egressId may not yet be persisted.
     const session = await prisma.callSession.findFirst({
       where: {
         OR: [
-          { egressId },
-          { roomName },
+          ...(egressId ? [{ egressId }] : []),
+          ...(roomName ? [{ roomName }] : []),
         ],
       },
     });
@@ -68,24 +70,42 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
       if (status === EgressStatus.EGRESS_COMPLETE) {
         const fileResult = egressInfo.fileResults?.[0];
         const storageKey = fileResult?.filename || session.recordingUrl;
-        const size = fileResult?.size ? Number(fileResult.size) : null;
+        const size = fileResult?.size ? Number(fileResult.size) : 0;
         const duration = fileResult?.duration ? Number(fileResult.duration) : null;
 
-        await prisma.callSession.update({
-          where: { id: session.id },
-          data: {
+        // F5 Fix: Reject zero-byte or missing egress results so empty files do not consume quota
+        if (!fileResult || !size || size <= 0) {
+          console.warn('[LiveKit Webhook] RECORDING_EMPTY_RESULT', {
+            sessionId: session.id,
             egressId,
-            recordingUrl: storageKey,
-          },
-        });
+            status,
+            size,
+            storageKey,
+          });
 
-        console.log('[LiveKit Webhook] RECORDING_COMPLETED', {
-          sessionId: session.id,
-          egressId,
-          storageKey,
-          size,
-          duration,
-        });
+          await prisma.callSession.update({
+            where: { id: session.id },
+            data: {
+              recordingUrl: null,
+            },
+          });
+        } else {
+          await prisma.callSession.update({
+            where: { id: session.id },
+            data: {
+              egressId,
+              recordingUrl: storageKey,
+            },
+          });
+
+          console.log('[LiveKit Webhook] RECORDING_COMPLETED', {
+            sessionId: session.id,
+            egressId,
+            storageKey,
+            size,
+            duration,
+          });
+        }
       } else {
         console.warn('[LiveKit Webhook] RECORDING_FAILED', {
           sessionId: session.id,
@@ -103,7 +123,10 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
       }
     }
   } catch (dbErr: unknown) {
+    // F6 Fix: Return 500 on database failure so LiveKit retries delivery via exponential backoff
     console.error('[LiveKit Webhook] db_update_failed', dbErr);
+    res.status(500).send('Database update failed');
+    return;
   }
 
   res.status(200).send('OK');

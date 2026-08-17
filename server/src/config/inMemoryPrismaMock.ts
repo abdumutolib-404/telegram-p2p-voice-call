@@ -661,6 +661,18 @@ export class InMemoryPrismaMock {
       this.manualPaymentRequests.set(item.id, updated);
       return { ...updated };
     },
+    updateMany: async (args: { where: { id?: string; telegramId?: bigint; status?: string }; data: Record<string, unknown> }): Promise<{ count: number }> => {
+      let count = 0;
+      for (const [id, req] of this.manualPaymentRequests) {
+        if (args.where.id && id !== args.where.id) continue;
+        if (args.where.telegramId !== undefined && req.telegramId !== args.where.telegramId) continue;
+        if (args.where.status && req.status !== args.where.status) continue;
+        const updated = { ...req, ...args.data } as ManualPaymentRequestRow;
+        this.manualPaymentRequests.set(id, updated);
+        count += 1;
+      }
+      return { count };
+    },
     count: async (args?: { where?: { userId?: string; status?: string } }): Promise<number> => {
       let c = 0;
       for (const r of this.manualPaymentRequests.values()) {
@@ -669,6 +681,21 @@ export class InMemoryPrismaMock {
         c += 1;
       }
       return c;
+    },
+    deleteMany: async (args?: { where?: { userId?: string; id?: string } }): Promise<{ count: number }> => {
+      if (!args?.where) {
+        const count = this.manualPaymentRequests.size;
+        this.manualPaymentRequests.clear();
+        return { count };
+      }
+      let count = 0;
+      for (const [id, r] of this.manualPaymentRequests) {
+        if (args.where.id && id !== args.where.id) continue;
+        if (args.where.userId && r.userId !== args.where.userId) continue;
+        this.manualPaymentRequests.delete(id);
+        count += 1;
+      }
+      return { count };
     },
   };
 
@@ -688,13 +715,20 @@ export class InMemoryPrismaMock {
       this.auditLogs.set(id, row);
       return { ...row };
     },
-    findMany: async (args?: { orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<AuditLogRow[]> => {
+    findMany: async (args?: { where?: { targetId?: string; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<AuditLogRow[]> => {
       let list = [...this.auditLogs.values()];
+      if (args?.where?.targetId) list = list.filter((l) => l.targetId === args.where!.targetId);
+      if (args?.where?.action) list = list.filter((l) => l.action === args.where!.action);
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       if (args?.take !== undefined) list = list.slice(0, args.take);
       return list.map((l) => ({ ...l }));
     },
     count: async (): Promise<number> => this.auditLogs.size,
+    deleteMany: async (): Promise<{ count: number }> => {
+      const count = this.auditLogs.size;
+      this.auditLogs.clear();
+      return { count };
+    },
   };
 
   favoritePartner = {

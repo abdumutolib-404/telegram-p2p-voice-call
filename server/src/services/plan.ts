@@ -515,17 +515,22 @@ export async function approveManualPaymentRequest(params: {
   const durationDays = config.subscriptionDurationDays ?? 30;
   const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
-  const [updatedReq, updatedUser] = await prisma.$transaction([
-    prisma.manualPaymentRequest.update({
-      where: { id: req.id },
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.manualPaymentRequest.updateMany({
+      where: { id: req.id, status: 'PENDING' },
       data: {
         status: 'APPROVED',
         adminNote: params.note || 'Payment verified and approved by admin',
         reviewedBy: params.adminId,
         reviewedAt: new Date(),
       },
-    }),
-    prisma.user.update({
+    });
+
+    if (updated.count !== 1) {
+      throw new Error('Payment request not found or already processed.');
+    }
+
+    const updatedUser = await tx.user.update({
       where: { id: req.userId },
       data: {
         plan: tier,
@@ -535,8 +540,9 @@ export async function approveManualPaymentRequest(params: {
         dailyLimit: config.dailyLimit,
         dailyCallsUsed: 0,
       },
-    }),
-    prisma.auditLog.create({
+    });
+
+    await tx.auditLog.create({
       data: {
         action: 'MANUAL_PAYMENT_APPROVAL',
         targetId: req.userId,
@@ -545,10 +551,16 @@ export async function approveManualPaymentRequest(params: {
         afterState: JSON.stringify({ plan: tier, subscriptionStatus: 'ACTIVE' }),
         reason: params.note || 'Manual payment approved',
       },
-    }),
-  ]);
+    });
 
-  return { request: updatedReq, user: updatedUser };
+    const updatedReq = await tx.manualPaymentRequest.findUnique({
+      where: { id: req.id },
+    });
+
+    return { request: updatedReq!, user: updatedUser };
+  });
+
+  return result;
 }
 
 export async function rejectManualPaymentRequest(params: {
@@ -564,17 +576,22 @@ export async function rejectManualPaymentRequest(params: {
     throw new Error('Payment request not found or already processed.');
   }
 
-  const [updatedReq] = await prisma.$transaction([
-    prisma.manualPaymentRequest.update({
-      where: { id: req.id },
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.manualPaymentRequest.updateMany({
+      where: { id: req.id, status: 'PENDING' },
       data: {
         status: 'REJECTED',
         adminNote: params.note || 'Payment rejected by admin',
         reviewedBy: params.adminId,
         reviewedAt: new Date(),
       },
-    }),
-    prisma.auditLog.create({
+    });
+
+    if (updated.count !== 1) {
+      throw new Error('Payment request not found or already processed.');
+    }
+
+    await tx.auditLog.create({
       data: {
         action: 'MANUAL_PAYMENT_REJECTION',
         targetId: req.userId,
@@ -583,10 +600,16 @@ export async function rejectManualPaymentRequest(params: {
         afterState: JSON.stringify({ status: 'REJECTED' }),
         reason: params.note || 'Payment rejected',
       },
-    }),
-  ]);
+    });
 
-  return { request: updatedReq };
+    const updatedReq = await tx.manualPaymentRequest.findUnique({
+      where: { id: req.id },
+    });
+
+    return { request: updatedReq! };
+  });
+
+  return result;
 }
 
 export async function revokePlanOnRefund(params: {
