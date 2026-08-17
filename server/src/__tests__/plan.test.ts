@@ -35,4 +35,63 @@ describe('Plan & Duration Service', () => {
       FREE: { maxDuration: 15, dailyLimit: 3, retentionDays: 1, starsPrice: 0 },
     });
   });
+
+  describe('Single Pending Payment Request Invariant', () => {
+    it('blocks creating a second manual payment request while one is PENDING', async () => {
+      const { createManualPaymentRequest, approveManualPaymentRequest, rejectManualPaymentRequest } = await import('../services/plan');
+      const { prisma } = await import('../config/database');
+
+      const user = await prisma.user.create({
+        data: {
+          telegramId: BigInt(888123456),
+          alias: 'PendingTester',
+          plan: 'FREE',
+          subscriptionStatus: 'INACTIVE',
+        },
+      });
+
+      // First request succeeds
+      const req1 = await createManualPaymentRequest({
+        userId: user.id,
+        telegramId: user.telegramId,
+        alias: user.alias,
+        plan: 'PLUS',
+        uzsAmount: 15000,
+      });
+
+      expect(req1.success).toBe(true);
+      expect(req1.request?.status).toBe('PENDING');
+
+      // Second request while first is PENDING is blocked
+      const req2 = await createManualPaymentRequest({
+        userId: user.id,
+        telegramId: user.telegramId,
+        alias: user.alias,
+        plan: 'PRO',
+        uzsAmount: 55000,
+      });
+
+      expect(req2.success).toBe(false);
+      expect(req2.error?.code).toBe('PAYMENT_ALREADY_PENDING');
+
+      // Rejection frees the user to submit a new request
+      await rejectManualPaymentRequest({
+        requestId: req1.request!.id,
+        adminId: 'admin_test',
+        note: 'Invalid receipt',
+      });
+
+      const req3 = await createManualPaymentRequest({
+        userId: user.id,
+        telegramId: user.telegramId,
+        alias: user.alias,
+        plan: 'PRO',
+        uzsAmount: 55000,
+      });
+
+      expect(req3.success).toBe(true);
+      expect(req3.request?.plan).toBe('PRO');
+      expect(req3.request?.status).toBe('PENDING');
+    });
+  });
 });

@@ -149,17 +149,42 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
     const user = await prisma.user.findUnique({ where: { telegramId } });
     const profile = user ? getPaidUserProfile(user) : getPaidUserProfile({ plan: 'FREE' });
 
-    const inlineKb = new InlineKeyboard()
-      .text(`⚡ PLUS (${formatPriceDisplay('PLUS')})`, 'select_plan:PLUS')
-      .row()
-      .text(`🚀 PRO (${formatPriceDisplay('PRO')})`, 'select_plan:PRO')
-      .row()
-      .text(`👑 BOSS (${formatPriceDisplay('BOSS')})`, 'select_plan:BOSS');
+    const pendingRequest = await prisma.manualPaymentRequest.findFirst({
+      where: { telegramId, status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const inlineKb = new InlineKeyboard();
+
+    if (pendingRequest) {
+      inlineKb
+        .text('✖️ Cancel Pending Request', `cancel_manual_pay:${pendingRequest.id}`)
+        .row();
+    } else {
+      inlineKb
+        .text(`⚡ PLUS (${formatPriceDisplay('PLUS')})`, 'select_plan:PLUS')
+        .row()
+        .text(`🚀 PRO (${formatPriceDisplay('PRO')})`, 'select_plan:PRO')
+        .row()
+        .text(`👑 BOSS (${formatPriceDisplay('BOSS')})`, 'select_plan:BOSS');
+    }
+
+    let pendingBanner = '';
+    if (pendingRequest) {
+      const orderNum = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
+      pendingBanner =
+        `⏳ <b>Active Pending Request:</b>\n` +
+        `• <b>Plan</b>: ${pendingRequest.plan}\n` +
+        `• <b>Order</b>: <code>#${orderNum}</code>\n` +
+        `• <b>Status</b>: <i>Under Review by Administrators</i>\n` +
+        `<i>You cannot submit another payment request until this one is approved, rejected, or cancelled.</i>\n\n`;
+    }
 
     await ctx.reply(
       `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
+        pendingBanner +
         `🆓 <b>FREE Plan</b> (0 UZS / 0 XTR)\n` +
         `• Max Call Duration: 15 minutes\n` +
         `• Monthly Calls: 3\n` +
@@ -180,7 +205,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `• Monthly Calls: 50\n` +
         `• Monthly Recordings: 15\n` +
         `• Recording Retention: 90 days\n\n` +
-        `Select a plan to choose your payment method (Telegram Stars or Card):`,
+        (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose your payment method (Telegram Stars or Card):`),
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
