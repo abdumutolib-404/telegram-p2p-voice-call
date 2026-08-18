@@ -951,6 +951,13 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
     if (plan && ['FREE', 'PLUS', 'PRO', 'BOSS'].includes(String(plan).toUpperCase())) {
       const normalizedPlan = String(plan).toUpperCase();
       updateData.plan = normalizedPlan;
+      if (normalizedPlan === 'FREE') {
+        updateData.subscriptionStatus = 'NONE';
+        updateData.subscriptionExpiresAt = null;
+      } else {
+        updateData.subscriptionStatus = 'ACTIVE';
+        updateData.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      }
       if (dailyLimit === undefined) {
         updateData.dailyLimit = getDailyLimitForPlan(normalizedPlan);
       }
@@ -978,6 +985,11 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
     if (resetDailyCalls === true) {
       updateData.dailyCallsUsed = 0;
       updateData.lastCallDate = new Date().toISOString().slice(0, 7);
+      const effectivePlan = updateData.plan ? String(updateData.plan) : user.plan;
+      if (effectivePlan !== 'FREE') {
+        updateData.subscriptionStatus = 'ACTIVE';
+      }
+      updateData.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     }
 
     const updated = await prisma.user.update({

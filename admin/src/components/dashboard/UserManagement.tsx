@@ -705,7 +705,7 @@ export function UserManagement() {
                 style={{ width: '16px', height: '16px', cursor: 'pointer' }}
               />
               <label htmlFor="resetCallsCheckbox" style={{ fontSize: '0.85rem', color: '#cbd5e1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <RotateCcw size={14} style={{ color: '#38bdf8' }} /> Reset calls used today to <strong>0</strong>
+                <RotateCcw size={14} style={{ color: '#38bdf8' }} /> Reset call & recording usage for this cycle to <strong>0</strong>
               </label>
             </div>
 
