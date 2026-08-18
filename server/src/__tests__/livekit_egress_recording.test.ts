@@ -163,4 +163,47 @@ describe('LiveKit Egress & Voice Recording Architecture Test Suite', () => {
       expect(boss.retentionDays).toBe(90);
     });
   });
+
+  describe('4. Personal Recording Isolation & Partner Quota Protection', () => {
+    it('4.1 Counts recording quota ONLY for the user who initiated recording', async () => {
+      const { getUserRecordingsUsedThisPeriod } = await import('../services/plan');
+
+      const userA = await prisma.user.create({
+        data: {
+          telegramId: BigInt(777111222),
+          alias: 'RecorderUserA',
+          plan: 'PLUS',
+        },
+      });
+
+      const userB = await prisma.user.create({
+        data: {
+          telegramId: BigInt(777333444),
+          alias: 'NonRecorderUserB',
+          plan: 'FREE',
+        },
+      });
+
+      // Session where User A explicitly pressed record
+      await prisma.callSession.create({
+        data: {
+          roomName: `personal_rec_room_${Date.now()}`,
+          userAId: userA.id,
+          userBId: userB.id,
+          recordedByUserId: userA.id,
+          status: 'COMPLETED',
+          recordingUrl: 'recordings/user_a_only.mp3',
+          duration: 400,
+        },
+      });
+
+      const usageA = await getUserRecordingsUsedThisPeriod(userA.id, userA);
+      const usageB = await getUserRecordingsUsedThisPeriod(userB.id, userB);
+
+      // User A who recorded has 1 used
+      expect(usageA).toBe(1);
+      // User B who did NOT record has 0 used (quota preserved!)
+      expect(usageB).toBe(0);
+    });
+  });
 });

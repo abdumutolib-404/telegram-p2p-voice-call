@@ -426,10 +426,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     }
                     activeEgresses.delete(roomName);
 
-                    const retentionA = getEffectiveEntitlement(currentSession.userA).retentionDays;
-                    const retentionB = getEffectiveEntitlement(currentSession.userB).retentionDays;
+                    const recorderId = currentSession.recordedByUserId;
+                    const recorderUser = recorderId === currentSession.userBId ? currentSession.userB : currentSession.userA;
+                    const recorderRetention = getEffectiveEntitlement(recorderUser).retentionDays;
                     const recordingExpiresAt = recordingUrl
-                      ? new Date(Date.now() + Math.max(retentionA, retentionB) * 24 * 60 * 60 * 1000)
+                      ? new Date(Date.now() + recorderRetention * 24 * 60 * 60 * 1000)
                       : null;
 
                     await prisma.callSession.update({
@@ -446,9 +447,28 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     });
 
                     if (bot) {
+                      const isUserARecorder = Boolean(recordingUrl && recorderId === currentSession.userAId);
+                      const isUserBRecorder = Boolean(recordingUrl && recorderId === currentSession.userBId);
+
                       await Promise.allSettled([
-                        sendPostCallReviewCard(bot, currentSession.userA.telegramId.toString(), currentSession.id, currentSession.userB.alias, durationSeconds, recordingUrl),
-                        sendPostCallReviewCard(bot, currentSession.userB.telegramId.toString(), currentSession.id, currentSession.userA.alias, durationSeconds, recordingUrl),
+                        sendPostCallReviewCard(
+                          bot,
+                          currentSession.userA.telegramId.toString(),
+                          currentSession.id,
+                          currentSession.userB.alias,
+                          durationSeconds,
+                          isUserARecorder ? recordingUrl : undefined,
+                          isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : undefined
+                        ),
+                        sendPostCallReviewCard(
+                          bot,
+                          currentSession.userB.telegramId.toString(),
+                          currentSession.id,
+                          currentSession.userA.alias,
+                          durationSeconds,
+                          isUserBRecorder ? recordingUrl : undefined,
+                          isUserBRecorder ? getEffectiveEntitlement(currentSession.userB).retentionDays : undefined
+                        ),
                       ]);
                     }
                   });
@@ -582,7 +602,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 egressId: session.egressId,
                 relativeUrl: session.recordingUrl ?? '',
               });
-              io.to(payload.roomName).emit('record_status', { record: true });
+              socket.emit('record_status', { record: true });
               return;
             }
 
@@ -603,7 +623,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               }
 
               activeEgresses.set(payload.roomName, egress);
-              io.to(payload.roomName).emit('record_status', { record: true });
+              socket.emit('record_status', { record: true });
               return;
             } catch (egressErr) {
               console.warn('[Socket] Recording start failed gracefully:', egressErr instanceof Error ? egressErr.message : egressErr);
@@ -616,6 +636,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             }
           }
 
+          // If turning record OFF: only the user who started the recording can stop it
+          if (session.recordedByUserId && session.recordedByUserId !== requesterId) {
+            socket.emit('record_status', { record: false });
+            return;
+          }
+
           const egressId = session.egressId ?? activeEgresses.get(payload.roomName)?.egressId;
           if (egressId) {
             try {
@@ -623,11 +649,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             } catch {}
             await prisma.callSession.updateMany({
               where: { id: session.id, status: 'ACTIVE', egressId },
-              data: { egressId: null },
+              data: { egressId: null, recordedByUserId: null },
             });
             activeEgresses.delete(payload.roomName);
           }
-          io.to(payload.roomName).emit('record_status', { record: false });
+          socket.emit('record_status', { record: false });
         });
       } catch (error: unknown) {
         console.error('[Socket] toggle_record_failed', {
@@ -734,8 +760,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               ),
             ]);
           } else if (bot && durationSeconds >= 5) {
-            const isUserARecorder = Boolean(recordingUrl && (recorderId === session.userAId || (!recorderId && session.userAId === requesterId)));
-            const isUserBRecorder = Boolean(recordingUrl && (recorderId === session.userBId || (!recorderId && session.userBId === requesterId)));
+            const isUserARecorder = Boolean(recordingUrl && recorderId === session.userAId);
+            const isUserBRecorder = Boolean(recordingUrl && recorderId === session.userBId);
 
             await Promise.allSettled([
               sendPostCallReviewCard(
@@ -851,8 +877,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   });
 
                   if (bot && durationSeconds >= 5) {
-                    const isUserARecorder = Boolean(recordingUrl && (recorderId === currentSession.userAId || (!recorderId && currentSession.userAId === session.userAId)));
-                    const isUserBRecorder = Boolean(recordingUrl && (recorderId === currentSession.userBId || (!recorderId && currentSession.userBId === session.userBId)));
+                    const isUserARecorder = Boolean(recordingUrl && recorderId === currentSession.userAId);
+                    const isUserBRecorder = Boolean(recordingUrl && recorderId === currentSession.userBId);
 
                     await Promise.allSettled([
                       sendPostCallReviewCard(
