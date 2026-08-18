@@ -92,6 +92,8 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       where: {
         OR: [
           { recordedByUserId: user.id },
+          { recordedByUserId: { contains: user.id } },
+          { recordedByUserId: 'BOTH' },
           { recordedByUserId: null, userAId: user.id },
           { recordedByUserId: null, userBId: user.id },
         ],

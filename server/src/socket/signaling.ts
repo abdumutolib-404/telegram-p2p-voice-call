@@ -57,6 +57,28 @@ function getUserBucket(user: {
   return matchmakingService.getBucketKey(user.band, weakSkill, strongSkill);
 }
 
+export function isUserSessionRecorder(recordedByUserId: string | null | undefined, userId: string): boolean {
+  if (!recordedByUserId || !userId) return false;
+  if (recordedByUserId === 'BOTH' || recordedByUserId === 'ALL') return true;
+  const ids = recordedByUserId.split(',').map((id) => id.trim()).filter(Boolean);
+  return ids.includes(userId);
+}
+
+export function addSessionRecorder(currentRecordedBy: string | null | undefined, userId: string): string {
+  if (!currentRecordedBy) return userId;
+  const ids = currentRecordedBy.split(',').map((id) => id.trim()).filter(Boolean);
+  if (!ids.includes(userId)) {
+    ids.push(userId);
+  }
+  return ids.join(',');
+}
+
+export function removeSessionRecorder(currentRecordedBy: string | null | undefined, userId: string): string | null {
+  if (!currentRecordedBy) return null;
+  const ids = currentRecordedBy.split(',').map((id) => id.trim()).filter((id) => id && id !== userId);
+  return ids.length > 0 ? ids.join(',') : null;
+}
+
 export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
   const userSockets = new Map<string, Set<string>>();
   const activeEgresses = new Map<string, ActiveEgress>();
@@ -426,11 +448,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     }
                     activeEgresses.delete(roomName);
 
-                    const recorderId = currentSession.recordedByUserId;
-                    const recorderUser = recorderId === currentSession.userBId ? currentSession.userB : currentSession.userA;
-                    const recorderRetention = getEffectiveEntitlement(recorderUser).retentionDays;
-                    const recordingExpiresAt = recordingUrl
-                      ? new Date(Date.now() + recorderRetention * 24 * 60 * 60 * 1000)
+                    const isUserARecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userAId));
+                    const isUserBRecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userBId));
+                    const retentionA = isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : 0;
+                    const retentionB = isUserBRecorder ? getEffectiveEntitlement(currentSession.userB).retentionDays : 0;
+                    const maxRetention = Math.max(retentionA, retentionB, 1);
+                    const recordingExpiresAt = (recordingUrl && (isUserARecorder || isUserBRecorder))
+                      ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
                       : null;
 
                     await prisma.callSession.update({
@@ -447,9 +471,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     });
 
                     if (bot) {
-                      const isUserARecorder = Boolean(recordingUrl && recorderId === currentSession.userAId);
-                      const isUserBRecorder = Boolean(recordingUrl && recorderId === currentSession.userBId);
-
                       await Promise.allSettled([
                         sendPostCallReviewCard(
                           bot,
@@ -602,15 +623,21 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 egressId: session.egressId,
                 relativeUrl: session.recordingUrl ?? '',
               });
+              const newRecorders = addSessionRecorder(session.recordedByUserId, requesterId);
+              await prisma.callSession.updateMany({
+                where: { id: session.id, status: 'ACTIVE' },
+                data: { recordedByUserId: newRecorders },
+              });
               socket.emit('record_status', { record: true });
               return;
             }
 
             try {
               const egress = await startAudioEgress(payload.roomName);
+              const newRecorders = addSessionRecorder(session.recordedByUserId, requesterId);
               const updated = await prisma.callSession.updateMany({
                 where: { id: session.id, status: 'ACTIVE', egressId: null },
-                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl, recordedByUserId: requesterId },
+                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl, recordedByUserId: newRecorders },
               });
               if (updated.count !== 1) {
                 await stopAudioEgress(egress.egressId).catch((error: unknown) => {
@@ -636,12 +663,19 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             }
           }
 
-          // If turning record OFF: only the user who started the recording can stop it
-          if (session.recordedByUserId && session.recordedByUserId !== requesterId) {
+          // If turning record OFF:
+          const newRecorders = removeSessionRecorder(session.recordedByUserId, requesterId);
+          if (newRecorders !== null) {
+            // Partner is still recording, so keep egress alive and just remove this requester
+            await prisma.callSession.updateMany({
+              where: { id: session.id, status: 'ACTIVE' },
+              data: { recordedByUserId: newRecorders },
+            });
             socket.emit('record_status', { record: false });
             return;
           }
 
+          // No recorders left; stop egress
           const egressId = session.egressId ?? activeEgresses.get(payload.roomName)?.egressId;
           if (egressId) {
             try {
@@ -725,11 +759,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
           activeEgresses.delete(payload.roomName);
 
-          const recorderId = session.recordedByUserId;
-          const recorderUser = recorderId === session.userBId ? session.userB : session.userA;
-          const recorderRetention = getEffectiveEntitlement(recorderUser).retentionDays;
-          const recordingExpiresAt = recordingUrl
-            ? new Date(Date.now() + recorderRetention * 24 * 60 * 60 * 1000)
+          const isUserARecorder = Boolean(recordingUrl && isUserSessionRecorder(session.recordedByUserId, session.userAId));
+          const isUserBRecorder = Boolean(recordingUrl && isUserSessionRecorder(session.recordedByUserId, session.userBId));
+          const retentionA = isUserARecorder ? getEffectiveEntitlement(session.userA).retentionDays : 0;
+          const retentionB = isUserBRecorder ? getEffectiveEntitlement(session.userB).retentionDays : 0;
+          const maxRetention = Math.max(retentionA, retentionB, 1);
+          const recordingExpiresAt = (recordingUrl && (isUserARecorder || isUserBRecorder))
+            ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
             : null;
 
           await prisma.callSession.update({
@@ -760,9 +796,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               ),
             ]);
           } else if (bot && durationSeconds >= 5) {
-            const isUserARecorder = Boolean(recordingUrl && recorderId === session.userAId);
-            const isUserBRecorder = Boolean(recordingUrl && recorderId === session.userBId);
-
             await Promise.allSettled([
               sendPostCallReviewCard(
                 bot,
@@ -849,11 +882,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     activeEgresses.delete(session.roomName);
                   }
 
-                  const recorderId = currentSession.recordedByUserId;
-                  const recorderUser = recorderId === currentSession.userBId ? currentSession.userB : currentSession.userA;
-                  const recorderRetention = getEffectiveEntitlement(recorderUser).retentionDays;
-                  const recordingExpiresAt = recordingUrl
-                    ? new Date(Date.now() + recorderRetention * 24 * 60 * 60 * 1000)
+                  const isUserARecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userAId));
+                  const isUserBRecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userBId));
+                  const retentionA = isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : 0;
+                  const retentionB = isUserBRecorder ? getEffectiveEntitlement(currentSession.userB).retentionDays : 0;
+                  const maxRetention = Math.max(retentionA, retentionB, 1);
+                  const recordingExpiresAt = (recordingUrl && (isUserARecorder || isUserBRecorder))
+                    ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
                     : null;
 
                   await prisma.callSession.update({
@@ -877,9 +912,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   });
 
                   if (bot && durationSeconds >= 5) {
-                    const isUserARecorder = Boolean(recordingUrl && recorderId === currentSession.userAId);
-                    const isUserBRecorder = Boolean(recordingUrl && recorderId === currentSession.userBId);
-
                     await Promise.allSettled([
                       sendPostCallReviewCard(
                         bot,

@@ -205,5 +205,63 @@ describe('LiveKit Egress & Voice Recording Architecture Test Suite', () => {
       // User B who did NOT record has 0 used (quota preserved!)
       expect(usageB).toBe(0);
     });
+
+    it('4.2 Supports both users recording in the same session without losing either recording delivery', async () => {
+      const { getUserRecordingsUsedThisPeriod } = await import('../services/plan');
+      const { isUserSessionRecorder, addSessionRecorder, removeSessionRecorder } = await import('../socket/signaling');
+
+      const userA = await prisma.user.create({
+        data: {
+          telegramId: BigInt(777555666),
+          alias: 'ConcurrentRecorderA',
+          plan: 'PRO',
+        },
+      });
+
+      const userB = await prisma.user.create({
+        data: {
+          telegramId: BigInt(777777888),
+          alias: 'ConcurrentRecorderB',
+          plan: 'BOSS',
+        },
+      });
+
+      // 1. User A starts recording
+      let recorders = addSessionRecorder(null, userA.id);
+      expect(recorders).toBe(userA.id);
+      expect(isUserSessionRecorder(recorders, userA.id)).toBe(true);
+      expect(isUserSessionRecorder(recorders, userB.id)).toBe(false);
+
+      // 2. User B starts recording later in the same call
+      recorders = addSessionRecorder(recorders, userB.id);
+      expect(recorders).toBe(`${userA.id},${userB.id}`);
+      expect(isUserSessionRecorder(recorders, userA.id)).toBe(true);
+      expect(isUserSessionRecorder(recorders, userB.id)).toBe(true);
+
+      // 3. Save completed session with both recorders
+      await prisma.callSession.create({
+        data: {
+          roomName: `concurrent_rec_room_${Date.now()}`,
+          userAId: userA.id,
+          userBId: userB.id,
+          recordedByUserId: recorders,
+          status: 'COMPLETED',
+          recordingUrl: 'recordings/concurrent_rec.mp3',
+          duration: 600,
+        },
+      });
+
+      // 4. Both users have 1 recording quota counted
+      const usageA = await getUserRecordingsUsedThisPeriod(userA.id, userA);
+      const usageB = await getUserRecordingsUsedThisPeriod(userB.id, userB);
+      expect(usageA).toBe(1);
+      expect(usageB).toBe(1);
+
+      // 5. If User A stops recording, User B remains
+      const afterUserAStops = removeSessionRecorder(recorders, userA.id);
+      expect(afterUserAStops).toBe(userB.id);
+      expect(isUserSessionRecorder(afterUserAStops, userA.id)).toBe(false);
+      expect(isUserSessionRecorder(afterUserAStops, userB.id)).toBe(true);
+    });
   });
 });

@@ -551,7 +551,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      if (session.recordedByUserId && session.recordedByUserId !== user.id) {
+      const { isUserSessionRecorder } = await import('../../socket/signaling');
+      if (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId, user.id)) {
         await ctx.answerCallbackQuery({
           text: 'This recording was saved by your practice partner and is only available to them.',
           show_alert: true,

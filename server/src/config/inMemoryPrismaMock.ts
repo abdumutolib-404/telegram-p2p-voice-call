@@ -22,7 +22,7 @@ type CallSessionWhere = {
   roomName?: string;
   userAId?: string;
   userBId?: string;
-  recordedByUserId?: string | null;
+  recordedByUserId?: string | null | { contains?: string };
   status?: string | { in?: string[] };
   egressId?: string | null;
   recordingUrl?: string | null | { not?: null };
@@ -844,7 +844,15 @@ export class InMemoryPrismaMock {
     if (where.egressId !== undefined && session.egressId !== where.egressId) return false;
     if (where.recordingUrl === null && session.recordingUrl !== null) return false;
     if (where.recordingUrl && typeof where.recordingUrl === 'object' && where.recordingUrl.not === null && session.recordingUrl === null) return false;
-    if (where.recordedByUserId !== undefined && session.recordedByUserId !== where.recordedByUserId) return false;
+    if (where.recordedByUserId !== undefined) {
+      if (typeof where.recordedByUserId === 'object' && where.recordedByUserId !== null && 'contains' in where.recordedByUserId) {
+        if (!session.recordedByUserId || !session.recordedByUserId.includes((where.recordedByUserId as { contains: string }).contains)) {
+          return false;
+        }
+      } else if (session.recordedByUserId !== where.recordedByUserId) {
+        return false;
+      }
+    }
     if (where.recordingExpiresAt === null && session.recordingExpiresAt !== null) return false;
     if (where.recordingExpiresAt && !(where.recordingExpiresAt instanceof Date)) {
       const expFilter = where.recordingExpiresAt as { lte?: Date; gt?: Date };

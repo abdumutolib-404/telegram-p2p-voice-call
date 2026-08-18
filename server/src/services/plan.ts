@@ -313,6 +313,8 @@ export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any
       where: {
         OR: [
           { recordedByUserId: userId },
+          { recordedByUserId: { contains: userId } },
+          { recordedByUserId: 'BOTH' },
           { recordedByUserId: null, userAId: userId },
           { recordedByUserId: null, userBId: userId },
         ],
