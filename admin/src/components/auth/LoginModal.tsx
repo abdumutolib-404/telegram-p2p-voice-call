@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { Lock, Key, Eye, EyeOff, ShieldAlert, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react';
+import { Lock, Key, Eye, EyeOff, ShieldAlert, ShieldCheck, ArrowRight, RefreshCw, Sparkles } from 'lucide-react';
 
 export function LoginModal() {
   const { requestOtp, verifyOtp } = useAuth();
@@ -29,7 +29,7 @@ export function LoginModal() {
       const res = await requestOtp(masterPassword);
       setChallengeId(res.challengeId);
       setStep('otp');
-      setSuccessMsg('Verification code sent to Telegram admin account!');
+      setSuccessMsg('6-digit code dispatched to Admin Telegram account!');
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -69,68 +69,85 @@ export function LoginModal() {
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.85)',
-        backdropFilter: 'blur(8px)',
+        backgroundColor: 'rgba(9, 13, 22, 0.88)',
+        backdropFilter: 'blur(16px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 1000,
-        padding: '1rem',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
+        padding: '1.5rem',
       }}
     >
       <div
         style={{
-          backgroundColor: '#1e293b',
-          border: '1px solid #334155',
-          borderRadius: '16px',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-card)',
+          borderRadius: '20px',
           width: '100%',
           maxWidth: '440px',
           padding: '2.5rem 2rem',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-          color: '#f8fafc',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(99, 102, 241, 0.1)',
+          color: 'var(--text-primary)',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
+        {/* Glow Accent */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '-60px',
+            right: '-60px',
+            width: '140px',
+            height: '140px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%)',
+            filter: 'blur(20px)',
+            pointerEvents: 'none',
+          }}
+        />
+
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '56px',
-              height: '56px',
+              width: '58px',
+              height: '58px',
               borderRadius: '16px',
-              backgroundColor: '#0284c720',
-              color: '#38bdf8',
-              marginBottom: '1rem',
-              border: '1px solid #0284c740',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.3))',
+              color: '#818cf8',
+              marginBottom: '1.25rem',
+              border: '1px solid rgba(99, 102, 241, 0.35)',
+              boxShadow: '0 8px 24px -4px rgba(99, 102, 241, 0.3)',
             }}
           >
-            <Lock size={28} />
+            {step === 'password' ? <Lock size={26} /> : <Key size={26} />}
           </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.5rem 0' }}>
-            Admin 2FA Authentication
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: '0 0 0.5rem 0', letterSpacing: '-0.02em' }}>
+            PairTalk Admin Console
           </h2>
-          <p style={{ color: '#94a3b8', fontSize: '0.875rem', margin: 0 }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
             {step === 'password'
-              ? 'Enter Master Password to request Telegram OTP code'
-              : 'Enter 6-digit verification code sent to Telegram'}
+              ? 'Enter Master Password to request Telegram 2FA OTP'
+              : 'Enter the 6-digit verification code sent to Telegram'}
           </p>
         </div>
 
         {error && (
           <div
             style={{
-              backgroundColor: '#451a1a',
-              border: '1px solid #991b1b',
-              borderRadius: '8px',
+              backgroundColor: 'var(--danger-bg)',
+              border: '1px solid var(--danger-border)',
+              borderRadius: '10px',
               padding: '0.75rem 1rem',
               marginBottom: '1.5rem',
               display: 'flex',
               alignItems: 'center',
               gap: '0.75rem',
               color: '#fca5a5',
-              fontSize: '0.875rem',
+              fontSize: '0.85rem',
             }}
           >
             <ShieldAlert size={18} style={{ flexShrink: 0 }} />
@@ -141,16 +158,16 @@ export function LoginModal() {
         {successMsg && (
           <div
             style={{
-              backgroundColor: '#064e3b20',
-              border: '1px solid #05966940',
-              borderRadius: '8px',
+              backgroundColor: 'var(--success-bg)',
+              border: '1px solid var(--success-border)',
+              borderRadius: '10px',
               padding: '0.75rem 1rem',
               marginBottom: '1.5rem',
               display: 'flex',
               alignItems: 'center',
               gap: '0.75rem',
-              color: '#34d399',
-              fontSize: '0.875rem',
+              color: '#6ee7b7',
+              fontSize: '0.85rem',
             }}
           >
             <ShieldCheck size={18} style={{ flexShrink: 0 }} />
@@ -161,27 +178,24 @@ export function LoginModal() {
         {step === 'password' ? (
           <form onSubmit={handlePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 Master Password
               </label>
               <div style={{ position: 'relative' }}>
-                <Lock size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                <Lock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={masterPassword}
                   onChange={(e) => setMasterPassword(e.target.value)}
-                  placeholder="Enter Master Password..."
+                  placeholder="••••••••••••••••"
                   required
+                  autoFocus
+                  className="input-modern"
                   style={{
                     width: '100%',
+                    paddingLeft: '2.5rem',
+                    paddingRight: '2.5rem',
                     boxSizing: 'border-box',
-                    padding: '0.75rem 2.5rem 0.75rem 2.5rem',
-                    backgroundColor: '#0f172a',
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    color: '#f8fafc',
-                    fontSize: '0.9rem',
-                    outline: 'none',
                   }}
                 />
                 <button
@@ -194,9 +208,9 @@ export function LoginModal() {
                     transform: 'translateY(-50%)',
                     background: 'none',
                     border: 'none',
-                    color: '#64748b',
+                    color: 'var(--text-muted)',
                     cursor: 'pointer',
-                    padding: 0,
+                    padding: '4px',
                     display: 'flex',
                     alignItems: 'center',
                   }}
@@ -209,28 +223,17 @@ export function LoginModal() {
             <button
               type="submit"
               disabled={isSubmitting}
-              style={{
-                marginTop: '0.5rem',
-                width: '100%',
-                padding: '0.875rem',
-                backgroundColor: isSubmitting ? '#0284c780' : '#0284c7',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: 600,
-                fontSize: '0.95rem',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-              }}
+              className="btn-primary"
+              style={{ width: '100%', padding: '0.85rem' }}
             >
               {isSubmitting ? (
-                'Validating Password...'
+                <>
+                  <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                  Verifying Password...
+                </>
               ) : (
                 <>
-                  Send Telegram OTP Code <ArrowRight size={18} />
+                  Request 2FA OTP <ArrowRight size={18} />
                 </>
               )}
             </button>
@@ -238,30 +241,28 @@ export function LoginModal() {
         ) : (
           <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-                6-Digit Telegram OTP Code
+              <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                6-Digit Verification Code
               </label>
               <div style={{ position: 'relative' }}>
-                <Key size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                <Key size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
-                  value={otpInput}
-                  onChange={(e) => setOtpInput(e.target.value)}
-                  placeholder="Enter 6-digit code..."
                   maxLength={6}
+                  value={otpInput}
+                  onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456"
                   required
+                  autoFocus
+                  className="input-modern num-tabular"
                   style={{
                     width: '100%',
-                    boxSizing: 'border-box',
-                    padding: '0.75rem 0.75rem 0.75rem 2.5rem',
-                    backgroundColor: '#0f172a',
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    color: '#f8fafc',
-                    fontSize: '1rem',
-                    letterSpacing: '0.2em',
+                    paddingLeft: '2.5rem',
+                    letterSpacing: '0.35em',
+                    fontSize: '1.25rem',
+                    fontWeight: 700,
                     textAlign: 'center',
-                    outline: 'none',
+                    boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -270,28 +271,17 @@ export function LoginModal() {
             <button
               type="submit"
               disabled={isSubmitting}
-              style={{
-                marginTop: '0.5rem',
-                width: '100%',
-                padding: '0.875rem',
-                backgroundColor: isSubmitting ? '#0284c780' : '#0284c7',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: 600,
-                fontSize: '0.95rem',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-              }}
+              className="btn-primary"
+              style={{ width: '100%', padding: '0.85rem' }}
             >
               {isSubmitting ? (
-                'Verifying OTP...'
+                <>
+                  <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                  Authenticating...
+                </>
               ) : (
                 <>
-                  Verify OTP & Login <ArrowRight size={18} />
+                  <Sparkles size={18} /> Unlock Dashboard
                 </>
               )}
             </button>
@@ -300,22 +290,14 @@ export function LoginModal() {
               type="button"
               onClick={() => {
                 setStep('password');
+                setOtpInput('');
                 setError(null);
                 setSuccessMsg(null);
               }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#94a3b8',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.4rem',
-              }}
+              className="btn-secondary"
+              style={{ width: '100%', padding: '0.75rem', fontSize: '0.825rem' }}
             >
-              <RefreshCw size={14} /> Back to password step
+              ← Back to Password Step
             </button>
           </form>
         )}

@@ -17,7 +17,6 @@ import {
   CreditCard,
   Menu,
   X,
-  Radio,
   Trophy,
 } from 'lucide-react';
 
@@ -131,16 +130,7 @@ function MainDashboard() {
   const currentTabMeta = NAV_ITEMS.find((item) => item.id === activeTab) || NAV_ITEMS[0];
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        width: '100%',
-        backgroundColor: '#0f172a',
-        color: '#f8fafc',
-        display: 'flex',
-        overflowX: 'hidden',
-      }}
-    >
+    <div className="app-container">
       {/* Mobile Drawer Backdrop */}
       {isMobileNavOpen && (
         <div
@@ -148,8 +138,8 @@ function MainDashboard() {
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.65)',
-            backdropFilter: 'blur(4px)',
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
             zIndex: 40,
           }}
           aria-hidden="true"
@@ -159,11 +149,12 @@ function MainDashboard() {
       {/* Left Sidebar (Desktop Fixed + Mobile Slide-Over Drawer) */}
       <aside
         style={{
-          width: '270px',
-          minWidth: '270px',
-          maxWidth: '270px',
-          backgroundColor: '#1e293b',
-          borderRight: '1px solid #334155',
+          width: '280px',
+          minWidth: '280px',
+          maxWidth: '280px',
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          borderRight: '1px solid var(--border-card)',
+          backdropFilter: 'blur(16px)',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -172,8 +163,9 @@ function MainDashboard() {
           bottom: 0,
           left: 0,
           zIndex: 50,
+          boxShadow: '4px 0 24px rgba(0, 0, 0, 0.4)',
           transform: isMobileNavOpen ? 'translateX(0)' : window.innerWidth < 1024 ? 'translateX(-100%)' : 'translateX(0)',
-          transition: 'transform 0.25s ease-in-out',
+          transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
         {/* Sidebar Header */}
@@ -181,7 +173,7 @@ function MainDashboard() {
           <div
             style={{
               padding: '1.25rem 1.5rem',
-              borderBottom: '1px solid #334155',
+              borderBottom: '1px solid var(--border-subtle)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -190,25 +182,27 @@ function MainDashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <div
                 style={{
-                  padding: '0.5rem',
+                  width: '38px',
+                  height: '38px',
                   borderRadius: '10px',
-                  backgroundColor: '#0284c720',
-                  color: '#38bdf8',
+                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                  color: '#ffffff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)',
                 }}
               >
-                <ShieldCheck size={22} />
+                <ShieldCheck size={20} />
               </div>
               <div>
-                <h1 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#f8fafc', letterSpacing: '-0.01em' }}>
-                  IELTS P2P Admin
+                <h1 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#f8fafc', letterSpacing: '-0.02em' }}>
+                  PairTalk <span style={{ color: 'var(--primary-light)', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', background: 'rgba(99,102,241,0.15)', borderRadius: '4px' }}>OPS</span>
                 </h1>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.15rem' }}>
-                  <Radio size={10} color="#22c55e" />
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>
-                    Live Operations
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} className="dot-pulse" />
+                  <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 600, letterSpacing: '0.03em' }}>
+                    SYSTEM ONLINE
                   </span>
                 </div>
               </div>
@@ -219,16 +213,16 @@ function MainDashboard() {
               onClick={() => setIsMobileNavOpen(false)}
               style={{
                 display: window.innerWidth < 1024 ? 'flex' : 'none',
-                background: 'transparent',
-                border: 'none',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border-subtle)',
                 color: '#94a3b8',
                 cursor: 'pointer',
-                padding: '0.25rem',
+                padding: '0.35rem',
                 borderRadius: '6px',
               }}
               aria-label="Close menu"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
 
@@ -244,25 +238,10 @@ function MainDashboard() {
                     setActiveTab(item.id);
                     setIsMobileNavOpen(false);
                   }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.85rem',
-                    padding: '0.75rem 1rem',
-                    border: 'none',
-                    borderRadius: '8px',
-                    backgroundColor: isActive ? '#0284c7' : 'transparent',
-                    color: isActive ? '#ffffff' : '#94a3b8',
-                    fontWeight: isActive ? 600 : 500,
-                    fontSize: '0.875rem',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.15s, color 0.15s',
-                    textAlign: 'left',
-                    width: '100%',
-                  }}
+                  className={`nav-tab-btn ${isActive ? 'active' : ''}`}
                 >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
+                  <Icon size={18} className="nav-icon" />
+                  <span style={{ flex: 1 }}>{item.label}</span>
                 </button>
               );
             })}
@@ -270,33 +249,22 @@ function MainDashboard() {
         </div>
 
         {/* Sidebar Footer: Session Info & Logout */}
-        <div style={{ padding: '1rem', borderTop: '1px solid #334155', backgroundColor: '#0f172a50' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <div style={{ padding: '1.25rem 1rem', borderTop: '1px solid var(--border-subtle)', backgroundColor: 'rgba(9, 13, 22, 0.6)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
             <div>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#e2e8f0' }}>Admin Console</div>
-              <div style={{ fontSize: '0.7rem', color: '#22c55e' }}>● 2FA Active Session</div>
+              <div style={{ fontSize: '0.7rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.1rem' }}>
+                <span>●</span> 2FA Verified Session
+              </div>
             </div>
+            <div className="badge badge-info" style={{ fontSize: '0.65rem' }}>v2.4</div>
           </div>
           <button
             onClick={logout}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              width: '100%',
-              padding: '0.6rem 1rem',
-              backgroundColor: '#451a1a40',
-              border: '1px solid #dc262640',
-              borderRadius: '8px',
-              color: '#f87171',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              fontWeight: 500,
-              transition: 'background-color 0.15s',
-            }}
+            className="btn-danger"
+            style={{ width: '100%', fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
           >
-            <LogOut size={16} /> Logout Session
+            <LogOut size={15} /> Logout Session
           </button>
         </div>
       </aside>
@@ -308,18 +276,19 @@ function MainDashboard() {
           display: 'flex',
           flexDirection: 'column',
           minWidth: 0,
-          marginLeft: window.innerWidth >= 1024 ? '270px' : 0,
-          width: window.innerWidth >= 1024 ? 'calc(100% - 270px)' : '100%',
+          marginLeft: window.innerWidth >= 1024 ? '280px' : 0,
+          width: window.innerWidth >= 1024 ? 'calc(100% - 280px)' : '100%',
           overflowX: 'hidden',
         }}
       >
         {/* Top Header */}
         <header
           style={{
-            height: '64px',
-            backgroundColor: '#1e293b',
-            borderBottom: '1px solid #334155',
-            padding: '0 1.5rem',
+            height: '68px',
+            backgroundColor: 'rgba(9, 13, 22, 0.8)',
+            borderBottom: '1px solid var(--border-card)',
+            backdropFilter: 'blur(16px)',
+            padding: '0 2rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -330,7 +299,7 @@ function MainDashboard() {
           }}
         >
           {/* Header Left: Hamburger Toggle (Mobile) + Current View Info */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
             <button
               onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
               style={{
@@ -338,8 +307,8 @@ function MainDashboard() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 padding: '0.5rem',
-                backgroundColor: '#0f172a',
-                border: '1px solid #334155',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border-card)',
                 borderRadius: '8px',
                 color: '#f8fafc',
                 cursor: 'pointer',
@@ -350,10 +319,10 @@ function MainDashboard() {
             </button>
 
             <div style={{ minWidth: 0 }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '-0.01em' }}>
                 {currentTabMeta.label}
               </h2>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <p style={{ fontSize: '0.775rem', color: '#94a3b8', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {currentTabMeta.description}
               </p>
             </div>
@@ -361,49 +330,17 @@ function MainDashboard() {
 
           {/* Header Right: Quick Status & Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '9999px',
-                backgroundColor: '#064e3b40',
-                border: '1px solid #05966950',
-                color: '#34d399',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-              }}
-            >
-              <ShieldCheck size={14} /> Stealth 2FA Active
+            <div className="badge badge-success" style={{ padding: '0.35rem 0.75rem' }}>
+              <ShieldCheck size={14} /> Stealth 2FA Guarded
             </div>
-
-            <button
-              onClick={logout}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.4rem 0.85rem',
-                backgroundColor: '#0f172a',
-                border: '1px solid #334155',
-                borderRadius: '8px',
-                color: '#cbd5e1',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 500,
-              }}
-            >
-              <LogOut size={14} /> Logout
-            </button>
           </div>
         </header>
 
-        {/* Content Canvas */}
+        {/* Dynamic View Canvas */}
         <main
           style={{
             flex: 1,
-            padding: '1.5rem',
+            padding: '2rem',
             width: '100%',
             maxWidth: '100%',
             boxSizing: 'border-box',

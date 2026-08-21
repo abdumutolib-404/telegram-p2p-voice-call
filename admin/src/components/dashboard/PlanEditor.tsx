@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { FormEvent } from 'react';
 import type { PlansResponse, PlanTierConfig } from '../../types/index.ts';
 import { adminFetch } from '../../api/client.ts';
-import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, Star, Shield, CreditCard, Crown } from 'lucide-react';
+import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, Star, Shield, CreditCard, Crown, Zap } from 'lucide-react';
 
 export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse>({
@@ -93,7 +93,7 @@ export function PlanEditor() {
       if (resolvedPlans && resolvedPlans.FREE) {
         setPlans(resolvedPlans);
       }
-      setSuccessMessage('Authoritative plan configurations (Stars, UZS, calls, recordings, retention) updated successfully!');
+      setSuccessMessage('Authoritative plan configurations updated and broadcasted across platform!');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -106,11 +106,11 @@ export function PlanEditor() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !plans) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px', color: '#94a3b8' }}>
-        <Settings size={24} className="animate-spin" style={{ marginRight: '0.5rem' }} />
-        Loading plan configurations...
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '350px', color: 'var(--text-secondary)' }}>
+        <Settings size={24} style={{ animation: 'spin 1s linear infinite', marginRight: '0.75rem', color: 'var(--primary-light)' }} />
+        <span>Loading plan configurations...</span>
       </div>
     );
   }
@@ -120,35 +120,31 @@ export function PlanEditor() {
     title: string,
     subtitle: string,
     icon: React.ReactNode,
+    badgeClass: string,
     isFree = false
   ) => {
     const config = plans[tierKey];
     if (!config) return null;
 
     return (
-      <div
-        style={{
-          backgroundColor: '#1e293b',
-          border: '1px solid #334155',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1.25rem'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingBottom: '1rem', borderBottom: '1px solid #334155' }}>
-          {icon}
-          <div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>{title}</h3>
-            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{subtitle}</span>
+      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '1rem', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ padding: '0.5rem', borderRadius: '10px', backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+              {icon}
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{subtitle}</span>
+            </div>
           </div>
+          <span className={`badge ${badgeClass}`}>{tierKey}</span>
         </div>
 
         {/* Max Duration */}
         <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Clock size={16} color="#38bdf8" /> Call Duration Limit (Minutes)
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+            <Clock size={15} color="#38bdf8" /> Duration (Min / Call)
           </label>
           <input
             type="number"
@@ -156,24 +152,15 @@ export function PlanEditor() {
             max="180"
             value={config.maxDuration}
             onChange={(e) => handleTierChange(tierKey, 'maxDuration', parseInt(e.target.value) || 0)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.625rem 0.875rem',
-              backgroundColor: '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: '#f8fafc',
-              fontSize: '0.9rem',
-              outline: 'none'
-            }}
+            className="input-modern num-tabular"
+            style={{ width: '100%', boxSizing: 'border-box' }}
           />
         </div>
 
         {/* Monthly Call Limit */}
         <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Calendar size={16} color="#34d399" /> Calls Limit (Calls / Month)
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+            <Calendar size={15} color="#34d399" /> Calls Limit (Calls / Mo)
           </label>
           <input
             type="number"
@@ -181,24 +168,15 @@ export function PlanEditor() {
             max="9999"
             value={config.dailyLimit}
             onChange={(e) => handleTierChange(tierKey, 'dailyLimit', parseInt(e.target.value) || 0)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.625rem 0.875rem',
-              backgroundColor: '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: '#f8fafc',
-              fontSize: '0.9rem',
-              outline: 'none'
-            }}
+            className="input-modern num-tabular"
+            style={{ width: '100%', boxSizing: 'border-box' }}
           />
         </div>
 
         {/* Recording Limit */}
         <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Sparkles size={16} color="#f472b6" /> Recording Limit (Recordings / Month)
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+            <Sparkles size={15} color="#f472b6" /> Recordings (Rec / Mo)
           </label>
           <input
             type="number"
@@ -206,208 +184,144 @@ export function PlanEditor() {
             max="100"
             value={config.recordingLimit ?? (tierKey === 'FREE' ? 1 : tierKey === 'PLUS' ? 3 : tierKey === 'PRO' ? 7 : 15)}
             onChange={(e) => handleTierChange(tierKey, 'recordingLimit', parseInt(e.target.value) || 1)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.625rem 0.875rem',
-              backgroundColor: '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: '#f8fafc',
-              fontSize: '0.9rem',
-              outline: 'none'
-            }}
+            className="input-modern num-tabular"
+            style={{ width: '100%', boxSizing: 'border-box' }}
           />
         </div>
 
         {/* Audio Retention */}
         <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Shield size={16} color="#a78bfa" /> Audio Recording Retention
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+            <Shield size={15} color="#a78bfa" /> Audio Retention
           </label>
           <select
             value={config.retentionDays}
             onChange={(e) => handleTierChange(tierKey, 'retentionDays', parseInt(e.target.value) || 1)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.625rem 0.875rem',
-              backgroundColor: '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: '#f8fafc',
-              fontSize: '0.9rem',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
+            className="input-modern"
+            style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
           >
-            <option value={1}>1 Day (Free)</option>
-            <option value={7}>7 Days (Plus)</option>
-            <option value={30}>30 Days (Pro - 1 Month)</option>
-            <option value={90}>90 Days (Boss - 3 Months)</option>
+            <option value={1}>1 Day (Ephemeral)</option>
+            <option value={7}>7 Days (1 Week)</option>
+            <option value={14}>14 Days (2 Weeks)</option>
+            <option value={30}>30 Days (1 Month)</option>
+            <option value={60}>60 Days (2 Months)</option>
+            <option value={90}>90 Days (3 Months)</option>
+            <option value={180}>180 Days (6 Months)</option>
+            <option value={365}>365 Days (1 Year)</option>
           </select>
         </div>
 
-        {/* Stars Price */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Star size={16} color="#fbbf24" /> Price (Telegram Stars - XTR)
-          </label>
-          <input
-            type="number"
-            min="0"
-            disabled={isFree}
-            value={isFree ? 0 : (config.starsPrice ?? 0)}
-            onChange={(e) => handleTierChange(tierKey, 'starsPrice', parseInt(e.target.value) || 0)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.625rem 0.875rem',
-              backgroundColor: isFree ? '#1e293b' : '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: isFree ? '#64748b' : '#f8fafc',
-              fontSize: '0.9rem',
-              outline: 'none',
-              cursor: isFree ? 'not-allowed' : 'text'
-            }}
-          />
-        </div>
+        {/* Price Section */}
+        {!isFree ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                <Star size={15} color="#fbbf24" fill="#fbbf24" /> Stars Price (XTR)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={config.starsPrice ?? 0}
+                onChange={(e) => handleTierChange(tierKey, 'starsPrice', parseInt(e.target.value) || 0)}
+                className="input-modern num-tabular"
+                style={{ width: '100%', boxSizing: 'border-box', color: '#fde047', fontWeight: 700 }}
+              />
+            </div>
 
-        {/* UZS Price */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <CreditCard size={16} color="#10b981" /> Price (UZS Card / Bank Transfer)
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="1000"
-            disabled={isFree}
-            value={isFree ? 0 : (config.uzsPrice ?? 0)}
-            onChange={(e) => handleTierChange(tierKey, 'uzsPrice', parseInt(e.target.value) || 0)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.625rem 0.875rem',
-              backgroundColor: isFree ? '#1e293b' : '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: isFree ? '#64748b' : '#f8fafc',
-              fontSize: '0.9rem',
-              outline: 'none',
-              cursor: isFree ? 'not-allowed' : 'text'
-            }}
-          />
-        </div>
-
-        {/* Subscription Validity / Duration */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#cbd5e1', marginBottom: '0.5rem' }}>
-            <Calendar size={16} color="#38bdf8" /> Subscription Duration (Days)
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="365"
-            disabled={isFree}
-            value={isFree ? 0 : (config.subscriptionDurationDays ?? 30)}
-            onChange={(e) => handleTierChange(tierKey, 'subscriptionDurationDays', parseInt(e.target.value) || 0)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.625rem 0.875rem',
-              backgroundColor: isFree ? '#1e293b' : '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: isFree ? '#64748b' : '#f8fafc',
-              fontSize: '0.9rem',
-              outline: 'none',
-              cursor: isFree ? 'not-allowed' : 'text'
-            }}
-          />
-        </div>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                <CreditCard size={15} color="#34d399" /> Card Price (UZS)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={config.uzsPrice ?? 0}
+                onChange={(e) => handleTierChange(tierKey, 'uzsPrice', parseInt(e.target.value) || 0)}
+                className="input-modern num-tabular"
+                style={{ width: '100%', boxSizing: 'border-box', color: '#34d399', fontWeight: 700 }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+            Free Default Tier ($0.00 / 0 Stars)
+          </div>
+        )}
       </div>
     );
   };
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Header bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>
-            Dual-Pricing & Plan Editor
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+            Authoritative Plan Configurations
           </h2>
-          <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
-            Configure tier call durations, daily call limits, audio retention, and dual Stars (XTR) / UZS pricing
+          <p style={{ margin: '0.35rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            Configure default duration limits, call allowances, recording retention, and official Stars & UZS pricing
           </p>
         </div>
 
         <button
           type="submit"
           disabled={isSaving}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.75rem 1.5rem',
-            backgroundColor: isSaving ? '#0284c780' : '#0284c7',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '8px',
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            cursor: isSaving ? 'not-allowed' : 'pointer'
-          }}
+          className="btn-primary"
+          style={{ padding: '0.625rem 1.25rem' }}
         >
-          <Save size={18} />
-          {isSaving ? 'Saving Changes...' : 'Save Plan Changes'}
+          <Save size={16} />
+          {isSaving ? 'Saving Configurations...' : 'Save All Plan Settings'}
         </button>
       </div>
 
       {error && (
-        <div style={{
-          backgroundColor: '#451a1a',
-          border: '1px solid #991b1b',
-          borderRadius: '8px',
-          padding: '0.875rem 1rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          color: '#fca5a5',
-          fontSize: '0.875rem'
-        }}>
-          <AlertCircle size={20} style={{ flexShrink: 0 }} />
+        <div
+          style={{
+            padding: '0.875rem 1.25rem',
+            borderRadius: '10px',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: '#fca5a5',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.625rem',
+            fontSize: '0.875rem',
+            fontWeight: 500,
+          }}
+        >
+          <AlertCircle size={18} />
           <span>{error}</span>
         </div>
       )}
 
       {successMessage && (
-        <div style={{
-          backgroundColor: '#064e3b',
-          border: '1px solid #047857',
-          borderRadius: '8px',
-          padding: '0.875rem 1rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          color: '#6ee7b7',
-          fontSize: '0.875rem'
-        }}>
-          <CheckCircle2 size={20} style={{ flexShrink: 0 }} />
+        <div
+          style={{
+            padding: '0.875rem 1.25rem',
+            borderRadius: '10px',
+            backgroundColor: 'var(--success-bg)',
+            border: '1px solid var(--success-border)',
+            color: '#6ee7b7',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.625rem',
+            fontSize: '0.875rem',
+            fontWeight: 500,
+          }}
+        >
+          <CheckCircle2 size={18} />
           <span>{successMessage}</span>
         </div>
       )}
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '1.5rem'
-      }}>
-        {renderTierCard('FREE', 'Free Tier', 'Base access for standard partners', <Shield size={24} color="#94a3b8" />, true)}
-        {renderTierCard('PLUS', 'Plus Tier', 'Enhanced duration and 7-day recordings', <Sparkles size={24} color="#38bdf8" />, false)}
-        {renderTierCard('PRO', 'Pro Tier', 'Unlimited access and 30-day recordings', <Star size={24} color="#fbbf24" />, false)}
-        {renderTierCard('BOSS', 'Boss Tier', 'VIP speaking with 90-day recordings', <Crown size={24} color="#ec4899" />, false)}
+      {/* 4-Column Grid for Plan Tiers */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
+        {renderTierCard('FREE', 'FREE Plan', 'Default student starter tier', <Shield size={22} color="#94a3b8" />, 'badge-neutral', true)}
+        {renderTierCard('PLUS', 'PLUS Plan', 'Essential speaking practice', <Zap size={22} color="#38bdf8" />, 'badge-info')}
+        {renderTierCard('PRO', 'PRO Plan', 'Intensive candidate preparation', <Sparkles size={22} color="#c084fc" />, 'badge-warning')}
+        {renderTierCard('BOSS', 'BOSS Plan', 'Unlimited candidate coaching', <Crown size={22} color="#fde047" />, 'badge-gold')}
       </div>
     </form>
   );
