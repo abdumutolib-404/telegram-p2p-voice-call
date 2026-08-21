@@ -96,6 +96,35 @@ describe('Referral Engine, Hall of Fame & Custom Plan Maker Test Suite', () => {
       const refreshed = await prisma.user.findUnique({ where: { id: friend.id } });
       expect(refreshed?.referredByUserId).toBe(inviter1.id);
     });
+
+    it('1.4 Delivers instant automatic notification to inviter when guest registers', async () => {
+      const inviter = await prisma.user.create({
+        data: {
+          telegramId: 987654321n,
+          alias: 'P2P-InviterNotified',
+          plan: 'FREE',
+          onboarded: true,
+        },
+      });
+
+      const sentMessages: Array<{ chatId: string; text: string }> = [];
+      const mockBot: any = {
+        api: {
+          sendMessage: async (chatId: string, text: string) => {
+            sentMessages.push({ chatId, text });
+            return { message_id: 123 };
+          },
+        },
+      };
+
+      const result = await bindReferral(123456789n, `ref_${inviter.telegramId}`, mockBot, 'John Doe');
+      expect(result.success).toBe(true);
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].chatId).toBe(inviter.telegramId.toString());
+      expect(sentMessages[0].text).toContain('New Invite Registered');
+      expect(sentMessages[0].text).toContain('John Doe');
+      expect(sentMessages[0].text).toContain('30 seconds');
+    });
   });
 
   describe('2. Qualifying Call Rewards (Duration >= 30s) & Permanent Bonus', () => {

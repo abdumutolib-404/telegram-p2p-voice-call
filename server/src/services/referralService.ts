@@ -41,7 +41,9 @@ export interface ContestStatus {
  */
 export async function bindReferral(
   invitedTelegramId: bigint,
-  referralParam?: string
+  referralParam?: string,
+  bot?: Bot<MyContext>,
+  guestDisplayName?: string
 ): Promise<{ success: boolean; inviterAlias?: string }> {
   if (!referralParam || !referralParam.startsWith('ref_')) {
     return { success: false };
@@ -90,6 +92,31 @@ export async function bindReferral(
           referredAt: new Date(),
         },
       });
+    } else {
+      const randomAlias = `P2P-${Math.floor(1000 + Math.random() * 9000)}-${Date.now().toString(36).slice(-3).toUpperCase()}`;
+      await prisma.user.create({
+        data: {
+          telegramId: invitedTelegramId,
+          alias: randomAlias,
+          referredByUserId: inviter.id,
+          referredAt: new Date(),
+          onboarded: false,
+        },
+      });
+    }
+
+    // 4. Send instant automatic notification to the inviter
+    if (bot && inviter && !inviter.dnd) {
+      const guestName = guestDisplayName ? `<b>${guestDisplayName}</b>` : 'A new student';
+      const msg =
+        `👋 <b>New Invite Registered!</b>\n\n` +
+        `${guestName} just joined PairTalk using your personal invite link! 🚀\n\n` +
+        `⚠️ <b>Important:</b>\n` +
+        `Your <b>1 Free Permanent Bonus Call</b> will be granted automatically once they complete a speaking call of at least <b>30 seconds</b>.\n\n` +
+        `💡 <i>Encourage your friend to practice their first IELTS call to unlock your bonus!</i>`;
+
+      await bot.api.sendMessage(inviter.telegramId.toString(), msg, { parse_mode: 'HTML' })
+        .catch((e: unknown) => console.warn('[Referral] Failed to send new invite notification:', e));
     }
 
     return { success: true, inviterAlias: inviter.alias };

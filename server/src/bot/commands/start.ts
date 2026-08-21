@@ -42,7 +42,8 @@ export function setupStartCommand(bot: Bot<MyContext>) {
 
     const startPayload = typeof ctx.match === 'string' ? ctx.match.trim() : '';
     if (startPayload.startsWith('ref_')) {
-      await bindReferral(telegramId, startPayload).catch((e) => console.warn('[Start] bindReferral error:', e));
+      const guestName = ctx.from?.first_name || (ctx.from?.username ? `@${ctx.from.username}` : undefined);
+      await bindReferral(telegramId, startPayload, bot, guestName).catch((e) => console.warn('[Start] bindReferral error:', e));
     }
 
     let user = await prisma.user.findUnique({
