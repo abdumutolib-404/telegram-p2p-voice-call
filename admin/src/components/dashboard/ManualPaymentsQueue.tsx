@@ -134,33 +134,32 @@ export function ManualPaymentsQueue() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Manual Payments (UZS)"
-        description="Verify candidate offline card/bank transfers, inspect payment proofs, and manage fulfillment"
+        description="Verify candidate offline card/bank transfers, inspect receipts, and manage fulfillment"
         actions={
-          <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             {/* Segmented Tab Controls */}
-            <div style={{ display: 'inline-flex', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '8px', padding: '0.2rem', border: '1px solid var(--border-card)' }}>
+            <div style={{ display: 'inline-flex', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '8px', padding: '0.25rem', border: '1px solid var(--border-card)' }}>
               <button
                 onClick={() => setActiveTab('queue')}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
+                  gap: '6px',
                   padding: '0.35rem 0.75rem',
                   borderRadius: '6px',
                   border: 'none',
-                  backgroundColor: activeTab === 'queue' ? '#FFFFFF' : 'transparent',
-                  color: activeTab === 'queue' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  backgroundColor: activeTab === 'queue' ? 'var(--primary-bg)' : 'transparent',
+                  color: activeTab === 'queue' ? '#FFFFFF' : 'var(--text-secondary)',
                   fontWeight: activeTab === 'queue' ? 600 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
-                  boxShadow: activeTab === 'queue' ? 'var(--shadow-xs)' : 'none',
                   transition: 'all 0.12s ease',
                 }}
               >
                 <Inbox size={14} />
                 <span>Pending Queue</span>
                 {pendingCount > 0 && (
-                  <span style={{ padding: '0.1rem 0.4rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--warning)', color: '#FFFFFF', fontWeight: 600 }}>
+                  <span style={{ padding: '0.1rem 0.45rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--warning)', color: '#FFFFFF', fontWeight: 600 }}>
                     {pendingCount}
                   </span>
                 )}
@@ -170,16 +169,15 @@ export function ManualPaymentsQueue() {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
+                  gap: '6px',
                   padding: '0.35rem 0.75rem',
                   borderRadius: '6px',
                   border: 'none',
-                  backgroundColor: activeTab === 'history' ? '#FFFFFF' : 'transparent',
-                  color: activeTab === 'history' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  backgroundColor: activeTab === 'history' ? 'var(--primary-bg)' : 'transparent',
+                  color: activeTab === 'history' ? '#FFFFFF' : 'var(--text-secondary)',
                   fontWeight: activeTab === 'history' ? 600 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
-                  boxShadow: activeTab === 'history' ? 'var(--shadow-xs)' : 'none',
                   transition: 'all 0.12s ease',
                 }}
               >
@@ -192,7 +190,7 @@ export function ManualPaymentsQueue() {
               onClick={() => fetchRequests()}
               disabled={isLoading}
               className="btn-secondary"
-              style={{ padding: '0.45rem 0.75rem', fontSize: '0.825rem' }}
+              style={{ fontSize: '0.825rem' }}
             >
               <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
               <span>Refresh</span>
@@ -217,14 +215,14 @@ export function ManualPaymentsQueue() {
       {error && (
         <div
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.875rem 1.125rem',
             borderRadius: '8px',
             backgroundColor: 'var(--danger-bg)',
             border: '1px solid var(--danger-border)',
             color: 'var(--danger-text)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '8px',
             fontSize: '0.85rem',
           }}
         >
@@ -266,8 +264,8 @@ export function ManualPaymentsQueue() {
             <tbody>
               {requests.map((req) => (
                 <tr key={req.id}>
-                  <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <td style={{ fontWeight: 600, color: 'var(--primary-light)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <code>{req.orderNumber || `A${req.id.slice(0, 4)}`}</code>
                       <button
                         onClick={() => copyToClipboard(req.orderNumber || req.id.slice(0, 4), `order-${req.id}`)}
@@ -291,7 +289,7 @@ export function ManualPaymentsQueue() {
                   <td>
                     {getStatusBadgeComponent(req.status)}
                     {req.adminNote && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
                         Note: {req.adminNote}
                       </div>
                     )}
@@ -301,7 +299,7 @@ export function ManualPaymentsQueue() {
                       <button
                         onClick={() => setInspectReceiptUrl({ url: req.paymentProof!, order: req.orderNumber || req.id.slice(0, 4), user: req.alias })}
                         className="btn-secondary"
-                        style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem', color: 'var(--primary)' }}
+                        style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
                       >
                         <Eye size={12} /> View Receipt
                       </button>
@@ -320,18 +318,18 @@ export function ManualPaymentsQueue() {
                   {activeTab === 'queue' && (
                     <td style={{ textAlign: 'right' }}>
                       {req.status === 'PENDING' && (
-                        <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
                           <button
                             onClick={() => handleOpenActionModal('approve', req)}
                             className="btn-success"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
                           >
                             <Check size={12} /> Approve
                           </button>
                           <button
                             onClick={() => handleOpenActionModal('reject', req)}
                             className="btn-danger"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
                           >
                             <X size={12} /> Reject
                           </button>
@@ -352,8 +350,8 @@ export function ManualPaymentsQueue() {
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(16, 24, 40, 0.6)',
-            backdropFilter: 'blur(4px)',
+            backgroundColor: 'rgba(7, 10, 18, 0.85)',
+            backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -365,21 +363,22 @@ export function ManualPaymentsQueue() {
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '600px',
+              maxWidth: '620px',
               maxHeight: '90vh',
               overflowY: 'auto',
-              padding: '1.25rem',
+              padding: '1.5rem',
               boxSizing: 'border-box',
-              backgroundColor: '#FFFFFF',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border-card)',
               boxShadow: 'var(--shadow-lg)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '0.875rem',
+              gap: '1rem',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                   Receipt Inspection — Order #{inspectReceiptUrl.order}
                 </h3>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Candidate: {inspectReceiptUrl.user}</span>
@@ -387,7 +386,7 @@ export function ManualPaymentsQueue() {
               <button
                 onClick={() => setInspectReceiptUrl(null)}
                 className="btn-secondary"
-                style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                style={{ padding: '0 0.75rem', height: '32px', fontSize: '0.75rem' }}
               >
                 Close
               </button>
@@ -398,13 +397,13 @@ export function ManualPaymentsQueue() {
                 width: '100%',
                 maxHeight: '60vh',
                 overflow: 'auto',
-                backgroundColor: 'var(--bg-canvas)',
+                backgroundColor: 'var(--bg-primary)',
                 borderRadius: '8px',
                 border: '1px solid var(--border-card)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '0.75rem',
+                padding: '1rem',
               }}
             >
               {inspectReceiptUrl.url.startsWith('http') || inspectReceiptUrl.url.startsWith('data:') ? (
@@ -414,9 +413,9 @@ export function ManualPaymentsQueue() {
                   style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '4px' }}
                 />
               ) : (
-                <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  <FileText size={32} style={{ margin: '0 auto 0.5rem auto', color: 'var(--primary)' }} />
-                  <div>Receipt: <code>{inspectReceiptUrl.url}</code></div>
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <FileText size={32} style={{ margin: '0 auto 0.5rem auto', color: 'var(--primary-light)' }} />
+                  <div>Receipt Reference: <code>{inspectReceiptUrl.url}</code></div>
                 </div>
               )}
             </div>
@@ -430,8 +429,8 @@ export function ManualPaymentsQueue() {
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(16, 24, 40, 0.6)',
-            backdropFilter: 'blur(4px)',
+            backgroundColor: 'rgba(7, 10, 18, 0.85)',
+            backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -443,23 +442,24 @@ export function ManualPaymentsQueue() {
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '440px',
-              padding: '1.5rem',
+              maxWidth: '460px',
+              padding: '1.75rem',
               boxSizing: 'border-box',
-              backgroundColor: '#FFFFFF',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border-card)',
               boxShadow: 'var(--shadow-lg)',
             }}
           >
             <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: '0 0 0.35rem 0', color: 'var(--text-primary)' }}>
               {selectedAction.type === 'approve' ? 'Approve Payment & Fulfill Plan' : 'Reject Payment Request'}
             </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1rem 0' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1.25rem 0' }}>
               Order <code style={{ color: 'var(--text-primary)' }}>#{selectedAction.item.orderNumber || selectedAction.item.id.slice(0, 4)}</code> for{' '}
               <strong>{selectedAction.item.alias}</strong> ({selectedAction.item.amountUzs.toLocaleString()} UZS for {selectedAction.item.planTier})
             </p>
 
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 {selectedAction.type === 'approve' ? 'Audit Note (Optional)' : 'Rejection Reason (Sent to Student)'}
               </label>
               <input
@@ -472,7 +472,7 @@ export function ManualPaymentsQueue() {
               />
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.625rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
               <button
                 onClick={() => setSelectedAction(null)}
                 disabled={isProcessingAction}

@@ -101,13 +101,13 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
       {/* Header */}
       <PageHeader
         title="Operations Overview"
-        description="Real-time platform activity, infrastructure health, and pending operational tasks"
+        description="Real-time platform activity, infrastructure vitals, and pending operational actions"
         actions={
           <button
             onClick={fetchDashboardData}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
+            style={{ fontSize: '0.825rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
             <span>Refresh</span>
@@ -118,14 +118,14 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
       {error && (
         <div
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.875rem 1.125rem',
             borderRadius: '8px',
             backgroundColor: 'var(--danger-bg)',
             border: '1px solid var(--danger-border)',
             color: 'var(--danger-text)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '8px',
             fontSize: '0.85rem',
           }}
         >
@@ -148,7 +148,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
           label="Active Calls"
           value={activeCalls}
           subValue={
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: activeCalls > 0 ? 'var(--success-text)' : 'var(--text-muted)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: activeCalls > 0 ? 'var(--success-text)' : 'var(--text-muted)' }}>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: activeCalls > 0 ? 'var(--success)' : 'var(--text-muted)' }} />
               {activeCalls > 0 ? 'Live in WebRTC rooms' : 'Idle / Standby'}
             </span>
@@ -170,7 +170,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
           value={pendingPayments.length}
           subValue={pendingPayments.length > 0 ? 'Needs administrative review' : 'All receipts verified'}
           icon={<CreditCard size={16} />}
-          badge={pendingPayments.length > 0 ? <StatusBadge variant="warning" label="Needs Review" size="sm" /> : undefined}
+          badge={pendingPayments.length > 0 ? <StatusBadge variant="warning" label="Review" size="sm" /> : undefined}
           onClick={() => onNavigateTab('payments')}
         />
 
@@ -188,8 +188,8 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
         {/* Priority Action Tasks Panel */}
         <div className="glass-panel" style={{ padding: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Clock size={16} color="var(--primary)" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={16} color="var(--primary-light)" />
               <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                 Pending Operational Work
               </h3>
@@ -213,10 +213,10 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
                 justifyContent: 'space-between',
                 cursor: 'pointer',
                 borderColor: pendingPayments.length > 0 ? 'var(--warning-border)' : 'var(--border-card)',
-                backgroundColor: pendingPayments.length > 0 ? 'var(--warning-bg)' : '#FFFFFF',
+                backgroundColor: pendingPayments.length > 0 ? 'var(--warning-bg)' : 'var(--bg-surface-elevated)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <CreditCard size={16} color={pendingPayments.length > 0 ? 'var(--warning-text)' : 'var(--text-muted)'} />
                 <div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -227,7 +227,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <StatusBadge variant={pendingPayments.length > 0 ? 'warning' : 'neutral'} label={String(pendingPayments.length)} size="sm" />
                 <ArrowRight size={14} color="var(--text-muted)" />
               </div>
@@ -244,10 +244,10 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
                 justifyContent: 'space-between',
                 cursor: 'pointer',
                 borderColor: pendingAppeals.length > 0 ? 'var(--danger-border)' : 'var(--border-card)',
-                backgroundColor: pendingAppeals.length > 0 ? 'var(--danger-bg)' : '#FFFFFF',
+                backgroundColor: pendingAppeals.length > 0 ? 'var(--danger-bg)' : 'var(--bg-surface-elevated)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <ShieldAlert size={16} color={pendingAppeals.length > 0 ? 'var(--danger-text)' : 'var(--text-muted)'} />
                 <div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -258,7 +258,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <StatusBadge variant={pendingAppeals.length > 0 ? 'danger' : 'neutral'} label={String(pendingAppeals.length)} size="sm" />
                 <ArrowRight size={14} color="var(--text-muted)" />
               </div>
@@ -269,8 +269,8 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
         {/* System Health Panel */}
         <div className="glass-panel" style={{ padding: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Server size={16} color="var(--primary)" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Server size={16} color="var(--primary-light)" />
               <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                 System Infrastructure Health
               </h3>
@@ -280,8 +280,8 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.625rem' }}>
             <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Server size={15} color="var(--primary)" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Server size={15} color="var(--primary-light)" />
                 <div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>API Server</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Express REST</div>
@@ -291,7 +291,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
             </div>
 
             <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Database size={15} color="var(--accent-blue)" />
                 <div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Database</div>
@@ -302,8 +302,8 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
             </div>
 
             <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Radio size={15} color="var(--primary)" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Radio size={15} color="var(--primary-light)" />
                 <div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Signaling</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>WebRTC Rooms</div>
@@ -313,8 +313,8 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
             </div>
 
             <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Bot size={15} color="var(--gold)" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Bot size={15} color="var(--gold-text)" />
                 <div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Telegram Bot</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Grammy Engine</div>
@@ -324,11 +324,11 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
             </div>
           </div>
 
-          <div style={{ marginTop: '0.875rem', padding: '0.625rem 0.75rem', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '6px', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+          <div style={{ marginTop: '0.875rem', padding: '0.625rem 0.875rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
             <span>Audio Quality Score: <strong style={{ color: 'var(--text-primary)' }}>{stats?.callQuality?.score ?? 98}/100</strong></span>
             <button
               onClick={() => onNavigateTab('analytics')}
-              style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 600, fontSize: '0.75rem' }}
+              style={{ background: 'none', border: 'none', color: 'var(--primary-light)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, fontSize: '0.75rem' }}
             >
               Telemetry <ArrowRight size={12} />
             </button>

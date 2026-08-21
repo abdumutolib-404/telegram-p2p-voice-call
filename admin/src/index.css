@@ -2,73 +2,74 @@
   --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Surfaces & Elevation */
-  --bg-canvas: #F7F8FA;
-  --bg-surface: #FFFFFF;
-  --bg-surface-elevated: #F9FAFB;
-  --bg-surface-hover: #F2F4F7;
-  --bg-surface-active: #EAECF0;
+  /* Black Diamond Color Palette */
+  --bg-primary: #070A12;
+  --bg-secondary: #0B1020;
+  --bg-surface: #0F172A;
+  --bg-surface-elevated: #121A2B;
+  --bg-surface-hover: #162238;
+  --bg-surface-active: #1A2844;
+  --bg-input: #0B1220;
 
   /* Borders & Dividers */
-  --border-subtle: #F2F4F7;
-  --border-card: #E4E7EC;
-  --border-strong: #D0D5DD;
-  --border-focus: #6D5DFB;
+  --border-card: #1E293B;
+  --border-subtle: #162033;
+  --border-input: #253047;
+  --border-focus: #7C5CFC;
+  --border-strong: #334155;
 
-  /* Shadows (Subtle, Crisp Stripe/Linear elevation) */
-  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.06), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.03);
+  /* Shadows & Depth */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 32px -4px rgba(0, 0, 0, 0.7), 0 6px 12px -2px rgba(0, 0, 0, 0.4);
 
   /* Typography Colors */
-  --text-primary: #111827;
-  --text-secondary: #667085;
-  --text-muted: #98A2B3;
-  --text-inverse: #FFFFFF;
+  --text-primary: #F8FAFC;
+  --text-secondary: #A8B3C7;
+  --text-muted: #6B778C;
+  --text-inverse: #070A12;
 
-  /* PairTalk Accent Colors */
-  --primary: #6D5DFB;
-  --primary-hover: #5B4AE3;
-  --primary-light: #8B7EFF;
-  --primary-bg: #F4F3FF;
-  --primary-border: #D9D6FE;
+  /* PairTalk Accents */
+  --primary: #7C5CFC;
+  --primary-hover: #6944FA;
+  --primary-light: #9B82FD;
+  --primary-bg: rgba(124, 92, 252, 0.12);
+  --primary-border: rgba(124, 92, 252, 0.28);
+  --primary-glow: 0 0 16px rgba(124, 92, 252, 0.25);
 
-  /* Secondary Blue */
-  --accent-blue: #3B82F6;
-  --accent-blue-bg: #EFF8FF;
-  --accent-blue-border: #B2DDFF;
-  --accent-blue-text: #175CD3;
+  --accent-blue: #4F8CFF;
+  --accent-blue-bg: rgba(79, 140, 255, 0.12);
+  --accent-blue-border: rgba(79, 140, 255, 0.28);
 
-  /* Semantic Colors */
-  --success: #12B76A;
-  --success-bg: #ECFDF3;
-  --success-border: #D1FADF;
-  --success-text: #027A48;
+  /* Functional Status Colors */
+  --success: #22C55E;
+  --success-bg: rgba(34, 197, 94, 0.12);
+  --success-border: rgba(34, 197, 94, 0.28);
+  --success-text: #4ADE80;
 
-  --warning: #F79009;
-  --warning-bg: #FFFAEB;
-  --warning-border: #FEDF89;
-  --warning-text: #B54708;
+  --warning: #F59E0B;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --warning-border: rgba(245, 158, 11, 0.28);
+  --warning-text: #FBBF24;
 
-  --danger: #F04438;
-  --danger-bg: #FEF3F2;
-  --danger-border: #FECDCA;
-  --danger-text: #B42318;
+  --danger: #EF4444;
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --danger-border: rgba(239, 68, 68, 0.28);
+  --danger-text: #F87171;
 
-  --info: #3B82F6;
-  --info-bg: #EFF8FF;
-  --info-border: #B2DDFF;
-  --info-text: #175CD3;
+  --info: #38BDF8;
+  --info-bg: rgba(56, 189, 248, 0.12);
+  --info-border: rgba(56, 189, 248, 0.28);
+  --info-text: #7DD3FC;
 
-  --gold: #D97706;
-  --gold-bg: #FFFBEB;
-  --gold-border: #FDE68A;
-  --gold-text: #92400E;
+  --gold: #F59E0B;
+  --gold-bg: rgba(245, 158, 11, 0.12);
+  --gold-border: rgba(245, 158, 11, 0.32);
+  --gold-text: #FDE68A;
 
   font-family: var(--sans);
-  color-scheme: light;
-  background-color: var(--bg-canvas);
+  color-scheme: dark;
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -85,7 +86,7 @@ html, body {
   min-height: 100vh;
   margin: 0;
   padding: 0;
-  background-color: var(--bg-canvas);
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   overflow-x: hidden;
 }
@@ -101,60 +102,59 @@ html, body {
   box-sizing: border-box;
 }
 
-/* Custom Scrollbar */
+/* Custom Dark Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-canvas);
+  background: var(--bg-primary);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--border-card);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--border-strong);
 }
 
-/* Tabular Numerals for Financials & Counters */
+/* Tabular Numerals for Metrics & Financials */
 .num-tabular {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
 
-/* Base Card / Surface */
+/* Card / Surface Containers */
 .glass-panel {
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: 12px;
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .glass-card {
-  background: var(--bg-surface);
+  background: var(--bg-surface-elevated);
   border: 1px solid var(--border-card);
   border-radius: 10px;
-  box-shadow: var(--shadow-xs);
   transition: all 0.15s ease;
 }
 
 .glass-card:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  background: var(--bg-surface-hover);
 }
 
-/* Status Badges */
+/* Status Badges with 8px gap */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.2rem 0.625rem;
-  border-radius: 16px;
+  gap: 8px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.2;
@@ -202,19 +202,19 @@ html, body {
   height: 6px;
   border-radius: 50%;
   display: inline-block;
+  flex-shrink: 0;
 }
 
-/* Interactive Form Controls */
+/* Dark Input Fields */
 .input-modern {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-card);
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
   border-radius: 8px;
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.85rem;
   font-size: 0.875rem;
   color: var(--text-primary);
   outline: none;
   transition: all 0.15s ease;
-  box-shadow: var(--shadow-xs);
   font-family: inherit;
 }
 
@@ -224,28 +224,28 @@ html, body {
 
 .input-modern:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(109, 93, 251, 0.15);
+  box-shadow: 0 0 0 3px rgba(124, 92, 252, 0.2);
 }
 
 .input-modern::placeholder {
   color: var(--text-muted);
 }
 
-/* Modern Data Table */
+/* Modern Dark Data Table */
 .table-container {
   width: 100%;
   overflow-x: auto;
   border: 1px solid var(--border-card);
   border-radius: 12px;
   background: var(--bg-surface);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
 }
 
 .table-modern {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.84rem;
+  font-size: 0.85rem;
 }
 
 .table-modern thead th {
@@ -255,7 +255,7 @@ html, body {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.125rem;
   border-bottom: 1px solid var(--border-card);
   white-space: nowrap;
 }
@@ -270,11 +270,11 @@ html, body {
 }
 
 .table-modern tbody tr:hover {
-  background-color: var(--bg-surface-elevated);
+  background-color: var(--bg-surface-hover);
 }
 
 .table-modern td {
-  padding: 0.875rem 1rem;
+  padding: 0.95rem 1.125rem;
   color: var(--text-primary);
   vertical-align: middle;
 }

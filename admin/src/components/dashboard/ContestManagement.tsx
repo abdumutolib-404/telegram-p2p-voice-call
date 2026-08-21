@@ -138,7 +138,7 @@ export function ContestManagement() {
             onClick={fetchContest}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
+            style={{ fontSize: '0.825rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
             <span>Refresh</span>
@@ -156,7 +156,7 @@ export function ContestManagement() {
             flexDirection: 'column',
             justifyContent: 'space-between',
             borderColor: data?.isActive ? 'var(--success-border)' : 'var(--border-card)',
-            backgroundColor: data?.isActive ? 'var(--success-bg)' : '#FFFFFF',
+            backgroundColor: data?.isActive ? 'var(--success-bg)' : 'var(--bg-surface)',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -173,7 +173,7 @@ export function ContestManagement() {
               onClick={handleToggleActive}
               disabled={isToggling}
               className={data?.isActive ? 'btn-danger' : 'btn-success'}
-              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+              style={{ height: '32px', fontSize: '0.75rem' }}
             >
               {data?.isActive ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Launch</>}
             </button>
@@ -203,14 +203,14 @@ export function ContestManagement() {
       {feedback && (
         <div
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.875rem 1.125rem',
             borderRadius: '8px',
             backgroundColor: feedback.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
             border: feedback.type === 'success' ? '1px solid var(--success-border)' : '1px solid var(--danger-border)',
             color: feedback.type === 'success' ? 'var(--success-text)' : 'var(--danger-text)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '8px',
             fontSize: '0.85rem',
           }}
         >
@@ -222,9 +222,9 @@ export function ContestManagement() {
       {/* 2-Column Grid: Form & Leaderboard */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem' }}>
         {/* Left Column: Form */}
-        <div className="glass-panel" style={{ padding: '1.25rem', backgroundColor: '#FFFFFF' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <Sparkles size={16} color="var(--primary)" />
+        <div className="glass-panel" style={{ padding: '1.5rem', backgroundColor: 'var(--bg-surface)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
+            <Sparkles size={16} color="var(--primary-light)" />
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               Championship Configuration
             </h3>
@@ -232,7 +232,7 @@ export function ContestManagement() {
 
           <form onSubmit={handleSaveDetails} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Title
               </label>
               <input
@@ -247,7 +247,7 @@ export function ContestManagement() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Description
               </label>
               <textarea
@@ -262,7 +262,7 @@ export function ContestManagement() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Prizes Breakdown
               </label>
               <textarea
@@ -280,7 +280,7 @@ export function ContestManagement() {
               type="submit"
               disabled={isSaving}
               className="btn-primary"
-              style={{ marginTop: '0.25rem', width: '100%' }}
+              style={{ marginTop: '0.25rem', width: '100%', height: '38px' }}
             >
               <Save size={14} /> {isSaving ? 'Saving...' : 'Save Configuration'}
             </button>
@@ -288,10 +288,10 @@ export function ContestManagement() {
         </div>
 
         {/* Right Column: Leaderboard */}
-        <div className="glass-panel" style={{ padding: '1.25rem', backgroundColor: '#FFFFFF' }}>
+        <div className="glass-panel" style={{ padding: '1.5rem', backgroundColor: 'var(--bg-surface)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Flame size={16} color="var(--primary)" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Flame size={16} color="var(--primary-light)" />
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 Live Leaderboard (Top 10)
               </h3>
@@ -300,7 +300,7 @@ export function ContestManagement() {
               type="button"
               onClick={fetchContest}
               className="btn-secondary"
-              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+              style={{ padding: '0 0.6rem', height: '28px', fontSize: '0.75rem' }}
             >
               <RefreshCw size={12} /> Refresh
             </button>
@@ -320,11 +320,11 @@ export function ContestManagement() {
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '0.75rem 1rem',
-                      backgroundColor: isTop3 ? 'var(--primary-bg)' : '#FFFFFF',
+                      backgroundColor: isTop3 ? 'var(--primary-bg)' : 'var(--bg-surface-elevated)',
                       borderColor: isTop3 ? 'var(--primary-border)' : 'var(--border-card)',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '1.1rem', minWidth: '24px', textAlign: 'center', fontWeight: 700 }}>
                         {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`}
                       </span>
@@ -342,7 +342,7 @@ export function ContestManagement() {
                       <span className="num-tabular" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                         {entry.invitesCount}
                       </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '0.25rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '0.35rem' }}>
                         invites
                       </span>
                     </div>

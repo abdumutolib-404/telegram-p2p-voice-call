@@ -3,7 +3,7 @@
   display: flex;
   min-height: 100vh;
   width: 100%;
-  background-color: var(--bg-canvas);
+  background-color: var(--bg-primary);
   position: relative;
 }
 
@@ -11,9 +11,9 @@
 .nav-tab-btn {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 8px;
   width: 100%;
-  padding: 0.55rem 0.85rem;
+  padding: 0.6rem 0.85rem;
   border-radius: 8px;
   background: transparent;
   border: none;
@@ -22,24 +22,26 @@
   font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: all 0.12s ease;
+  transition: all 0.15s ease;
   font-family: inherit;
 }
 
 .nav-tab-btn:hover {
-  background-color: var(--bg-surface-hover);
+  background-color: var(--bg-surface-elevated);
   color: var(--text-primary);
 }
 
 .nav-tab-btn.active {
   background-color: var(--primary-bg);
-  color: var(--primary);
+  color: #FFFFFF;
+  border: 1px solid var(--primary-border);
   font-weight: 600;
 }
 
 .nav-tab-btn .nav-icon {
   color: var(--text-muted);
-  transition: color 0.12s ease;
+  transition: color 0.15s ease;
+  flex-shrink: 0;
 }
 
 .nav-tab-btn:hover .nav-icon {
@@ -47,32 +49,32 @@
 }
 
 .nav-tab-btn.active .nav-icon {
-  color: var(--primary);
+  color: var(--primary-light);
 }
 
-/* Action Buttons */
+/* Standardized Buttons (Same height, radius, icon spacing) */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: 8px;
+  height: 36px;
+  padding: 0 1rem;
   border-radius: 8px;
   background-color: var(--primary);
-  color: var(--text-inverse);
+  color: #FFFFFF;
   border: 1px solid var(--primary);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: all 0.12s ease;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
   font-family: inherit;
 }
 
 .btn-primary:hover:not(:disabled) {
   background-color: var(--primary-hover);
   border-color: var(--primary-hover);
-  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:disabled {
@@ -84,24 +86,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  padding: 0.5rem 0.875rem;
+  gap: 8px;
+  height: 36px;
+  padding: 0 0.875rem;
   border-radius: 8px;
-  background-color: var(--bg-surface);
-  color: #344054;
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-primary);
   border: 1px solid var(--border-card);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: all 0.12s ease;
+  transition: all 0.15s ease;
   font-family: inherit;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: var(--bg-surface-elevated);
+  background-color: var(--bg-surface-hover);
   border-color: var(--border-strong);
-  color: var(--text-primary);
 }
 
 .btn-secondary:disabled {
@@ -113,8 +114,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  padding: 0.5rem 0.875rem;
+  gap: 8px;
+  height: 36px;
+  padding: 0 0.875rem;
   border-radius: 8px;
   background-color: var(--danger-bg);
   color: var(--danger-text);
@@ -122,13 +124,13 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all 0.15s ease;
   font-family: inherit;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background-color: #FEE4E2;
-  border-color: #FECDCA;
+  background-color: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .btn-danger:disabled {
@@ -140,8 +142,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  padding: 0.5rem 0.875rem;
+  gap: 8px;
+  height: 36px;
+  padding: 0 0.875rem;
   border-radius: 8px;
   background-color: var(--success-bg);
   color: var(--success-text);
@@ -149,13 +152,13 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all 0.15s ease;
   font-family: inherit;
 }
 
 .btn-success:hover:not(:disabled) {
-  background-color: #D1FADF;
-  border-color: #A6F4C5;
+  background-color: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.4);
 }
 
 .btn-success:disabled {
@@ -163,18 +166,19 @@
   cursor: not-allowed;
 }
 
-/* Metric / KPI Card */
+/* Metric / KPI Card (Equal Height, Calibrated Spacing) */
 .metric-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: 12px;
   padding: 1.25rem 1.25rem;
-  box-shadow: var(--shadow-xs);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  position: relative;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .metric-card:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
 }

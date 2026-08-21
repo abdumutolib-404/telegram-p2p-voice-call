@@ -95,13 +95,13 @@ export function AppealsQueue() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Moderation Appeals Queue"
-        description="Triage permanent ban unblock requests, review recorded violation logs, and assess candidate statements"
+        description="Triage permanent ban unblock requests, review violation audit logs, and assess candidate statements"
         actions={
           <button
             onClick={fetchAppeals}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
+            style={{ fontSize: '0.825rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
             <span>Refresh</span>
@@ -112,14 +112,14 @@ export function AppealsQueue() {
       {error && (
         <div
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.875rem 1.125rem',
             borderRadius: '8px',
             backgroundColor: 'var(--danger-bg)',
             border: '1px solid var(--danger-border)',
             color: 'var(--danger-text)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '8px',
             fontSize: '0.85rem',
           }}
         >
@@ -139,10 +139,10 @@ export function AppealsQueue() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {appeals.map((appeal) => (
-            <div key={appeal.id} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', backgroundColor: '#FFFFFF' }}>
+            <div key={appeal.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.125rem', backgroundColor: 'var(--bg-surface)' }}>
               {/* User Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ padding: '0.5rem', borderRadius: '8px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger-text)', border: '1px solid var(--danger-border)' }}>
                     <User size={18} />
                   </div>
@@ -158,7 +158,7 @@ export function AppealsQueue() {
 
                 {/* Sub-scores */}
                 {appeal.subscores && (
-                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>FC: {appeal.subscores.fc}</span>
                     <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>LR: {appeal.subscores.lr}</span>
                     <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>GRA: {appeal.subscores.gra}</span>
@@ -168,8 +168,8 @@ export function AppealsQueue() {
               </div>
 
               {/* Ban Reason */}
-              <div style={{ padding: '0.625rem 0.875rem', backgroundColor: 'var(--danger-bg)', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
-                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--danger-text)', fontWeight: 600, marginBottom: '0.15rem' }}>
+              <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--danger-bg)', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--danger-text)', fontWeight: 600, marginBottom: '0.2rem' }}>
                   Recorded Infraction
                 </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
@@ -180,7 +180,7 @@ export function AppealsQueue() {
               {/* Offense Logs */}
               {appeal.offenseLogs && appeal.offenseLogs.length > 0 && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
                     <FileText size={13} /> Violation Logs
                   </div>
                   <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
@@ -192,21 +192,21 @@ export function AppealsQueue() {
               )}
 
               {/* Appeal Statement */}
-              <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>
+              <div style={{ padding: '0.875rem 1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary-light)', marginBottom: '0.35rem' }}>
                   <MessageSquare size={13} /> Candidate Appeal Statement
                 </div>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4, fontStyle: 'italic' }}>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.45, fontStyle: 'italic' }}>
                   "{appeal.appealText}"
                 </p>
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.625rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
                 <button
                   onClick={() => triggerDecisionConfirm(appeal, 'reject')}
                   className="btn-danger"
-                  style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}
+                  style={{ height: '32px', fontSize: '0.8rem' }}
                 >
                   <X size={13} /> Reject Appeal
                 </button>
@@ -214,7 +214,7 @@ export function AppealsQueue() {
                 <button
                   onClick={() => triggerDecisionConfirm(appeal, 'approve')}
                   className="btn-success"
-                  style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}
+                  style={{ height: '32px', fontSize: '0.8rem' }}
                 >
                   <Check size={13} /> Approve & Restore
                 </button>

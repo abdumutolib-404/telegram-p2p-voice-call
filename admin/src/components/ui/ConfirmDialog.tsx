@@ -31,11 +31,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const getIcon = () => {
     switch (severity) {
       case 'danger':
-        return <ShieldAlert size={20} color="#D92D20" />;
+        return <ShieldAlert size={20} color="var(--danger-text)" />;
       case 'warning':
-        return <AlertTriangle size={20} color="#B54708" />;
+        return <AlertTriangle size={20} color="var(--warning-text)" />;
       default:
-        return <Info size={20} color="#175CD3" />;
+        return <Info size={20} color="var(--info-text)" />;
     }
   };
 
@@ -55,8 +55,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(16, 24, 40, 0.6)',
-        backdropFilter: 'blur(4px)',
+        backgroundColor: 'rgba(7, 10, 18, 0.8)',
+        backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -68,14 +68,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         className="glass-panel"
         style={{
           width: '100%',
-          maxWidth: '440px',
-          padding: '1.5rem',
+          maxWidth: '460px',
+          padding: '1.75rem',
           boxSizing: 'border-box',
           boxShadow: 'var(--shadow-lg)',
-          backgroundColor: '#FFFFFF',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-card)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
           <div
             style={{
               padding: '0.5rem',
@@ -97,13 +98,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         {affectedItem && (
           <div
             style={{
-              padding: '0.5rem 0.75rem',
-              backgroundColor: 'var(--bg-surface-elevated)',
+              padding: '0.625rem 0.875rem',
+              backgroundColor: 'var(--bg-input)',
               borderRadius: '6px',
-              border: '1px solid var(--border-card)',
+              border: '1px solid var(--border-input)',
               fontSize: '0.8rem',
               color: 'var(--text-secondary)',
-              marginBottom: '0.875rem',
+              marginBottom: '1rem',
             }}
           >
             Target: <code style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{affectedItem}</code>
@@ -120,7 +121,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             onClick={onCancel}
             disabled={isConfirming}
             className="btn-secondary"
-            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
           >
             {cancelLabel}
           </button>
@@ -129,7 +129,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             onClick={onConfirm}
             disabled={isConfirming}
             className={getConfirmButtonClass()}
-            style={{ padding: '0.5rem 1.125rem', fontSize: '0.85rem' }}
           >
             {isConfirming ? 'Processing...' : confirmLabel}
           </button>

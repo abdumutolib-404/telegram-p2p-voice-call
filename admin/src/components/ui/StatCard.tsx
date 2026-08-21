@@ -25,17 +25,13 @@ export const StatCard: React.FC<StatCardProps> = ({
       onClick={onClick}
       style={{
         cursor: onClick ? 'pointer' : 'default',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        height: '100%',
-        minHeight: '120px',
+        minHeight: '128px',
         ...style,
       }}
     >
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
+          <span style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             {label}
           </span>
           {icon && (
@@ -46,7 +42,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+          <div className="num-tabular" style={{ fontSize: '1.85rem', fontWeight: 650, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
             {value}
           </div>
           {badge && <div>{badge}</div>}
@@ -54,7 +50,7 @@ export const StatCard: React.FC<StatCardProps> = ({
       </div>
 
       {subValue && (
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.625rem' }}>
           {subValue}
         </div>
       )}

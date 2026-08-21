@@ -26,7 +26,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   style = {},
 }) => {
   const variantClass = `badge-${variant}`;
-  const sizeStyle = size === 'sm' ? { fontSize: '0.72rem', padding: '0.15rem 0.5rem' } : {};
+  const sizeStyle = size === 'sm' ? { fontSize: '0.725rem', padding: '0.2rem 0.55rem' } : {};
 
   return (
     <span className={`badge ${variantClass} ${className}`} style={{ ...sizeStyle, ...style }}>

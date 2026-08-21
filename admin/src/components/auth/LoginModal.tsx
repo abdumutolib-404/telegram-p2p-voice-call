@@ -29,7 +29,7 @@ export function LoginModal() {
       const res = await requestOtp(masterPassword);
       setChallengeId(res.challengeId);
       setStep('otp');
-      setSuccessMsg('6-digit verification code sent to Admin Telegram account.');
+      setSuccessMsg('6-digit verification code dispatched to Admin Telegram account.');
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -69,8 +69,8 @@ export function LoginModal() {
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(16, 24, 40, 0.5)',
-        backdropFilter: 'blur(4px)',
+        backgroundColor: 'rgba(7, 10, 18, 0.85)',
+        backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -79,15 +79,14 @@ export function LoginModal() {
       }}
     >
       <div
+        className="glass-panel"
         style={{
-          backgroundColor: '#FFFFFF',
-          border: '1px solid var(--border-card)',
-          borderRadius: '16px',
           width: '100%',
           maxWidth: '420px',
           padding: '2rem',
           boxShadow: 'var(--shadow-lg)',
-          color: 'var(--text-primary)',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-card)',
           position: 'relative',
         }}
       >
@@ -101,14 +100,14 @@ export function LoginModal() {
               height: '48px',
               borderRadius: '12px',
               backgroundColor: 'var(--primary-bg)',
-              color: 'var(--primary)',
+              color: 'var(--primary-light)',
               marginBottom: '1rem',
               border: '1px solid var(--primary-border)',
             }}
           >
             {step === 'password' ? <Lock size={22} /> : <Key size={22} />}
           </div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.35rem 0', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 650, margin: '0 0 0.35rem 0', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
             PairTalk Operations Console
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
@@ -128,7 +127,7 @@ export function LoginModal() {
               marginBottom: '1.25rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.625rem',
+              gap: '8px',
               color: 'var(--danger-text)',
               fontSize: '0.85rem',
             }}
@@ -148,7 +147,7 @@ export function LoginModal() {
               marginBottom: '1.25rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.625rem',
+              gap: '8px',
               color: 'var(--success-text)',
               fontSize: '0.85rem',
             }}
@@ -207,7 +206,7 @@ export function LoginModal() {
               type="submit"
               disabled={isSubmitting}
               className="btn-primary"
-              style={{ width: '100%', padding: '0.625rem', marginTop: '0.25rem' }}
+              style={{ width: '100%', height: '40px', marginTop: '0.25rem' }}
             >
               {isSubmitting ? (
                 <>
@@ -255,7 +254,7 @@ export function LoginModal() {
               type="submit"
               disabled={isSubmitting}
               className="btn-primary"
-              style={{ width: '100%', padding: '0.625rem' }}
+              style={{ width: '100%', height: '40px' }}
             >
               {isSubmitting ? (
                 <>
@@ -276,7 +275,7 @@ export function LoginModal() {
                 setSuccessMsg(null);
               }}
               className="btn-secondary"
-              style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem' }}
+              style={{ width: '100%', height: '36px', fontSize: '0.8rem' }}
             >
               ← Back to Password
             </button>

@@ -28,11 +28,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       }}
     >
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <h1
             style={{
-              fontSize: '1.5rem',
-              fontWeight: 700,
+              fontSize: '1.75rem',
+              fontWeight: 650,
               margin: 0,
               color: 'var(--text-primary)',
               letterSpacing: '-0.02em',
@@ -45,10 +45,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         {description && (
           <p
             style={{
-              margin: '0.25rem 0 0 0',
+              margin: '0.35rem 0 0 0',
               color: 'var(--text-secondary)',
               fontSize: '0.875rem',
-              lineHeight: 1.4,
+              lineHeight: 1.45,
             }}
           >
             {description}
