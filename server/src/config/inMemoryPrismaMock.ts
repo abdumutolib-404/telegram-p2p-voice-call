@@ -52,6 +52,9 @@ interface UserRow {
   dailyLimit: number;
   dailyCallsUsed: number;
   retentionOverride?: number | null;
+  recordingLimitOverride?: number | null;
+  referredByUserId?: string | null;
+  referredAt?: Date | null;
   lastCallDate: string | null;
   warningCount: number;
   isBanned: boolean;
@@ -59,6 +62,29 @@ interface UserRow {
   isPermanentlyBanned: boolean;
   dnd: boolean;
   onboarded: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ReferralRewardRow {
+  id: string;
+  userId: string;
+  referredUserId: string;
+  qualifyingCallId: string | null;
+  status: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
+interface ContestRow {
+  id: string;
+  title: string;
+  description: string;
+  prizes: string;
+  isActive: boolean;
+  startsAt: Date;
+  endsAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -188,6 +214,8 @@ export class InMemoryPrismaMock {
   private readonly manualPaymentRequests = new Map<string, ManualPaymentRequestRow>();
   private readonly auditLogs = new Map<string, AuditLogRow>();
   private readonly favoritePartners = new Map<string, FavoriteRow>();
+  private readonly referralRewards = new Map<string, ReferralRewardRow>();
+  private readonly contests = new Map<string, ContestRow>();
 
   private txQueue: Promise<unknown> = Promise.resolve();
 
@@ -227,6 +255,9 @@ export class InMemoryPrismaMock {
         dailyLimit: numberValue(args.data.dailyLimit, 3),
         dailyCallsUsed: numberValue(args.data.dailyCallsUsed, 0),
         retentionOverride: args.data.retentionOverride ? Number(args.data.retentionOverride) : null,
+        recordingLimitOverride: args.data.recordingLimitOverride ? Number(args.data.recordingLimitOverride) : null,
+        referredByUserId: args.data.referredByUserId ? String(args.data.referredByUserId) : null,
+        referredAt: args.data.referredAt ? dateValue(args.data.referredAt, now) : null,
         lastCallDate: args.data.lastCallDate == null ? null : stringValue(args.data.lastCallDate),
         warningCount: numberValue(args.data.warningCount, 0),
         isBanned: booleanValue(args.data.isBanned, false),
@@ -785,6 +816,164 @@ export class InMemoryPrismaMock {
         if (args.where.partnerId && row.partnerId !== args.where.partnerId) continue;
         this.favoritePartners.delete(id);
         count += 1;
+      }
+      return { count };
+    },
+  };
+
+  referralReward = {
+    create: async (args: { data: Record<string, unknown> }): Promise<ReferralRewardRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const now = new Date();
+      const expiresAt = args.data.expiresAt ? dateValue(args.data.expiresAt, new Date(now.getTime() + 7 * 86400000)) : new Date(now.getTime() + 7 * 86400000);
+      const row: ReferralRewardRow = {
+        id,
+        userId: stringValue(args.data.userId),
+        referredUserId: stringValue(args.data.referredUserId),
+        qualifyingCallId: args.data.qualifyingCallId ? String(args.data.qualifyingCallId) : null,
+        status: stringValue(args.data.status, 'AVAILABLE'),
+        expiresAt,
+        usedAt: args.data.usedAt ? dateValue(args.data.usedAt, now) : null,
+        createdAt: dateValue(args.data.createdAt, now),
+      };
+      this.referralRewards.set(id, row);
+      return { ...row };
+    },
+    findUnique: async (args: { where: { id: string } }): Promise<ReferralRewardRow | null> => {
+      const row = this.referralRewards.get(args.where.id);
+      return row ? { ...row } : null;
+    },
+    findFirst: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> }): Promise<ReferralRewardRow | null> => {
+      const list = [...this.referralRewards.values()].filter((r) => {
+        if (args?.where?.userId && r.userId !== args.where.userId) return false;
+        if (args?.where?.referredUserId && r.referredUserId !== args.where.referredUserId) return false;
+        if (args?.where?.status && r.status !== args.where.status) return false;
+        if (args?.where?.expiresAt && typeof args.where.expiresAt === 'object') {
+          const filter = args.where.expiresAt as { gt?: Date; lte?: Date };
+          if (filter.gt && r.expiresAt.getTime() <= filter.gt.getTime()) return false;
+          if (filter.lte && r.expiresAt.getTime() > filter.lte.getTime()) return false;
+        }
+        if (args?.where?.createdAt && typeof args.where.createdAt === 'object') {
+          const filter = args.where.createdAt as { gte?: Date | string; lte?: Date | string };
+          if (filter.gte && r.createdAt.getTime() < new Date(filter.gte).getTime()) return false;
+          if (filter.lte && r.createdAt.getTime() > new Date(filter.lte).getTime()) return false;
+        }
+        return true;
+      });
+      if (args?.orderBy?.expiresAt === 'asc') {
+        list.sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
+      }
+      return list[0] ? { ...list[0] } : null;
+    },
+    findMany: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'>; take?: number }): Promise<ReferralRewardRow[]> => {
+      const list = [...this.referralRewards.values()].filter((r) => {
+        if (args?.where?.userId && r.userId !== args.where.userId) return false;
+        if (args?.where?.referredUserId && r.referredUserId !== args.where.referredUserId) return false;
+        if (args?.where?.status && r.status !== args.where.status) return false;
+        if (args?.where?.expiresAt && typeof args.where.expiresAt === 'object') {
+          const filter = args.where.expiresAt as { gt?: Date; lte?: Date };
+          if (filter.gt && r.expiresAt.getTime() <= filter.gt.getTime()) return false;
+          if (filter.lte && r.expiresAt.getTime() > filter.lte.getTime()) return false;
+        }
+        if (args?.where?.createdAt && typeof args.where.createdAt === 'object') {
+          const filter = args.where.createdAt as { gte?: Date | string; lte?: Date | string };
+          if (filter.gte && r.createdAt.getTime() < new Date(filter.gte).getTime()) return false;
+          if (filter.lte && r.createdAt.getTime() > new Date(filter.lte).getTime()) return false;
+        }
+        return true;
+      });
+      if (args?.orderBy?.expiresAt === 'asc') {
+        list.sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
+      } else if (args?.orderBy?.createdAt === 'desc') {
+        list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+      return (args?.take ? list.slice(0, args.take) : list).map((r) => ({ ...r }));
+    },
+    count: async (args?: { where?: Record<string, unknown> }): Promise<number> => {
+      return [...this.referralRewards.values()].filter((r) => {
+        if (args?.where?.userId && r.userId !== args.where.userId) return false;
+        if (args?.where?.referredUserId && r.referredUserId !== args.where.referredUserId) return false;
+        if (args?.where?.status && r.status !== args.where.status) return false;
+        if (args?.where?.expiresAt && typeof args.where.expiresAt === 'object') {
+          const filter = args.where.expiresAt as { gt?: Date; lte?: Date };
+          if (filter.gt && r.expiresAt.getTime() <= filter.gt.getTime()) return false;
+          if (filter.lte && r.expiresAt.getTime() > filter.lte.getTime()) return false;
+        }
+        if (args?.where?.createdAt && typeof args.where.createdAt === 'object') {
+          const filter = args.where.createdAt as { gte?: Date | string; lte?: Date | string };
+          if (filter.gte && r.createdAt.getTime() < new Date(filter.gte).getTime()) return false;
+          if (filter.lte && r.createdAt.getTime() > new Date(filter.lte).getTime()) return false;
+        }
+        return true;
+      }).length;
+    },
+    update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<ReferralRewardRow> => {
+      const existing = this.referralRewards.get(args.where.id);
+      if (!existing) throw new Error('ReferralReward not found');
+      const updated = { ...existing, ...args.data } as ReferralRewardRow;
+      this.referralRewards.set(args.where.id, updated);
+      return { ...updated };
+    },
+    updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<{ count: number }> => {
+      let count = 0;
+      for (const [id, r] of this.referralRewards) {
+        let match = true;
+        if (args.where.id && r.id !== args.where.id) match = false;
+        if (args.where.userId && r.userId !== args.where.userId) match = false;
+        if (args.where.status && r.status !== args.where.status) match = false;
+        if (match) {
+          this.referralRewards.set(id, { ...r, ...args.data } as ReferralRewardRow);
+          count++;
+        }
+      }
+      return { count };
+    },
+  };
+
+  contest = {
+    create: async (args: { data: Record<string, unknown> }): Promise<ContestRow> => {
+      const id = stringValue(args.data.id, crypto.randomUUID());
+      const now = new Date();
+      const row: ContestRow = {
+        id,
+        title: stringValue(args.data.title, 'IELTS Speaking Referral Championship'),
+        description: stringValue(args.data.description, 'Invite friends to win exclusive prizes!'),
+        prizes: stringValue(args.data.prizes, '🥇 1st: 60-Day VIP Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan'),
+        isActive: booleanValue(args.data.isActive, false),
+        startsAt: args.data.startsAt ? dateValue(args.data.startsAt, now) : now,
+        endsAt: args.data.endsAt ? dateValue(args.data.endsAt, now) : null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.contests.set(id, row);
+      return { ...row };
+    },
+    findFirst: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> }): Promise<ContestRow | null> => {
+      const list = [...this.contests.values()].filter((c) => {
+        if (args?.where?.isActive !== undefined && c.isActive !== args.where.isActive) return false;
+        return true;
+      });
+      return list[0] ? { ...list[0] } : null;
+    },
+    findUnique: async (args: { where: { id: string } }): Promise<ContestRow | null> => {
+      const row = this.contests.get(args.where.id);
+      return row ? { ...row } : null;
+    },
+    findMany: async (): Promise<ContestRow[]> => {
+      return [...this.contests.values()].map((c) => ({ ...c }));
+    },
+    update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<ContestRow> => {
+      const existing = this.contests.get(args.where.id);
+      if (!existing) throw new Error('Contest not found');
+      const updated = { ...existing, ...args.data, updatedAt: new Date() } as ContestRow;
+      this.contests.set(args.where.id, updated);
+      return { ...updated };
+    },
+    updateMany: async (args: { where?: Record<string, unknown>; data: Record<string, unknown> }): Promise<{ count: number }> => {
+      let count = 0;
+      for (const [id, c] of this.contests) {
+        this.contests.set(id, { ...c, ...args.data, updatedAt: new Date() } as ContestRow);
+        count++;
       }
       return { count };
     },

@@ -4,6 +4,7 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../../services/plan';
+import { getReferralStats, getContestStatus, getActiveBonusCallsCount } from '../../services/referralService';
 import { getRedis } from '../../config/redis';
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -45,6 +46,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
     const callsUsed = await getUserCallsUsedThisPeriod(user.id, user);
     const recUsed = await getUserRecordingsUsedThisPeriod(user.id, user);
+    const activeBonusCalls = await getActiveBonusCallsCount(user.id);
     const profile = getPaidUserProfile({
       ...user,
       dailyCallsUsed: callsUsed,
@@ -56,6 +58,8 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       .row()
       .text(user.dnd ? '🔔 Turn DND OFF' : '🔕 Turn DND ON', 'toggle_dnd');
 
+    const bonusCallsDisplay = activeBonusCalls > 0 ? ` + <b>${activeBonusCalls} Active Bonus (7d)</b>` : '';
+
     await ctx.reply(
       `👤 <b>Your Student Profile</b>\n\n` +
         `• <b>Permanent Alias</b>: <code>${user.alias}</code> (Locked)\n\n` +
@@ -66,11 +70,102 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `  - P (Pronunciation): ${user.subP.toFixed(1)}\n\n` +
         `• <b>Subscription Plan</b>: ${profile.planDisplayName}\n\n` +
         `📊 <b>Plan Entitlements & Usage:</b>\n` +
-        `• Calls Remaining: ${profile.callsRemaining}\n` +
+        `• Calls Remaining: ${profile.callsRemaining}${bonusCallsDisplay}\n` +
         `• Max Call Duration: ${profile.maxCallDuration >= 999 ? 'Unlimited' : `${profile.maxCallDuration} minutes`}\n` +
         `• Recordings Remaining: ${profile.recordingsRemaining}\n` +
         `• Recording Retention: ${profile.recordingRetention} day(s)\n` +
         `• DND Status: ${user.dnd ? '🔕 Do Not Disturb' : '🔔 Ready for Calls'}`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
+  });
+
+  // 👥 Invite Friends
+  bot.hears(/👥 (?:Invite Friends|Referrals)/i, async (ctx) => {
+    const telegramId = BigInt(ctx.from?.id || 0);
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+
+    if (!user) {
+      await ctx.reply('Please type /start to set up your profile first.');
+      return;
+    }
+
+    const botInfo = await ctx.api.getMe().catch(() => ({ username: 'PairTalkBot' }));
+    const botUsername = botInfo.username || 'PairTalkBot';
+    const inviteLink = `https://t.me/${botUsername}?start=ref_${user.telegramId}`;
+
+    const stats = await getReferralStats(user.id);
+    const contest = await getContestStatus();
+
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Join me on PairTalk to practice IELTS Speaking with real learners!')}`;
+
+    const inlineKb = new InlineKeyboard().url('🚀 Share Invite Link', shareUrl);
+
+    if (contest.isActive) {
+      inlineKb.row().text('🏆 View Hall of Fame', 'view_hall_of_fame');
+    }
+
+    let contestBanner = '';
+    if (contest.isActive && contest.contest) {
+      contestBanner =
+        `🔥 <b>ACTIVE CHAMPIONSHIP:</b> <i>${contest.contest.title}</i>\n` +
+        `🏆 Top referrers win exclusive custom prizes!\n\n`;
+    }
+
+    await ctx.reply(
+      `👥 <b>Invite Friends & Earn Free Bonus Calls!</b>\n\n` +
+        contestBanner +
+        `🔗 <b>Your Personal Invite Link:</b>\n` +
+        `<code>${inviteLink}</code>\n\n` +
+        `🎁 <b>How It Works:</b>\n` +
+        `1. Send your link to friends.\n` +
+        `2. Your friend joins and completes their 1st speaking session (≥30s).\n` +
+        `3. You instantly get <b>1 Free Bonus Call</b> (valid for 7 days)!\n\n` +
+        `📊 <b>Your Referral Stats:</b>\n` +
+        `• <b>Total Friends Invited</b>: <code>${stats.totalInvited}</code>\n` +
+        `• <b>Qualifying Sessions Done</b>: <code>${stats.qualifyingCompleted}</code>\n` +
+        `• <b>Active Bonus Calls Available</b>: <code>${stats.activeBonusCalls}</code> (7-day validity)\n\n` +
+        `💡 <i>Bonus calls are automatically used once your monthly plan credits reach 0.</i>`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
+  });
+
+  // 🏆 Hall of Fame
+  bot.hears(/🏆 (?:Hall of Fame|Leaderboard)/i, async (ctx) => {
+    const contest = await getContestStatus();
+
+    if (!contest.isActive || !contest.contest) {
+      await ctx.reply(
+        `🏆 <b>Hall of Fame — Referral Championship</b>\n\n` +
+          `ℹ️ <i>There is no active championship at the moment.</i>\n\n` +
+          `Stay tuned for the next contest! In the meantime, you can still invite friends using <b>👥 Invite Friends</b> to earn free 7-day bonus calls.`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    const { title, description, prizes } = contest.contest;
+    let leaderboardText = '';
+    if (contest.leaderboard.length === 0) {
+      leaderboardText = `<i>No referrals recorded yet. Be the first to invite friends and top the leaderboard!</i>\n`;
+    } else {
+      leaderboardText = contest.leaderboard
+        .map((entry) => {
+          const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
+          return `${medal} <b>${entry.alias}</b> — <code>${entry.invitesCount} friend${entry.invitesCount > 1 ? 's' : ''}</code>`;
+        })
+        .join('\n');
+    }
+
+    const inlineKb = new InlineKeyboard().text('👥 Get My Invite Link', 'get_my_invite_link');
+
+    await ctx.reply(
+      `🏆 <b>${title}</b>\n\n` +
+        `📝 ${description}\n\n` +
+        `🎁 <b>Contest Prizes:</b>\n` +
+        `${prizes}\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🌟 <b>Live Leaderboard (Top 10):</b>\n\n` +
+        leaderboardText,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });

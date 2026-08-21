@@ -4,11 +4,15 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { getPaidUserProfile } from '../../services/plan';
+import { bindReferral } from '../../services/referralService';
 
 export const getMainMenuKeyboard = () => {
   return new Keyboard()
     .webApp('📞 Find Partner', env.MINI_APP_URL)
     .text('👤 Profile')
+    .row()
+    .text('👥 Invite Friends')
+    .text('🏆 Hall of Fame')
     .row()
     .text('📁 Recordings')
     .text('⭐ Plans')
@@ -35,6 +39,11 @@ export function setupStartCommand(bot: Bot<MyContext>) {
   bot.command('start', async (ctx) => {
     const telegramId = BigInt(ctx.from?.id || 0);
     if (!telegramId) return;
+
+    const startPayload = typeof ctx.match === 'string' ? ctx.match.trim() : '';
+    if (startPayload.startsWith('ref_')) {
+      await bindReferral(telegramId, startPayload).catch((e) => console.warn('[Start] bindReferral error:', e));
+    }
 
     let user = await prisma.user.findUnique({
       where: { telegramId },

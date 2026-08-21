@@ -25,6 +25,9 @@ model User {
   dailyLimit          Int                    @default(3)
   dailyCallsUsed      Int                    @default(0)
   retentionOverride   Int?                   // custom recording retention in days
+  recordingLimitOverride Int?               // custom recording limit
+  referredByUserId    String?                // User ID of inviter
+  referredAt          DateTime?              // Timestamp of referral
   lastCallDate        String?                // YYYY-MM-DD
   warningCount        Int                    @default(0)
   isBanned            Boolean                @default(false)
@@ -35,6 +38,10 @@ model User {
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
+  referredBy          User?                  @relation("UserReferrals", fields: [referredByUserId], references: [id])
+  referrals           User[]                 @relation("UserReferrals")
+  referralRewards     ReferralReward[]       @relation("UserRewards")
+  friendRewards       ReferralReward[]       @relation("ReferredFriendRewards")
   callsAsA            CallSession[]          @relation("UserACalls")
   callsAsB            CallSession[]          @relation("UserBCalls")
   ratingsGiven        CallRating[]           @relation("RatingsGiven")
@@ -148,4 +155,32 @@ model FavoritePartner {
   partner   User     @relation("PartnerFavorites", fields: [partnerId], references: [id])
 
   @@unique([userId, partnerId])
+}
+
+model ReferralReward {
+  id               String       @id @default(uuid())
+  userId           String       // Inviter user ID
+  referredUserId   String       // Friend user ID
+  qualifyingCallId String?      // Call ID that triggered reward
+  status           String       @default("AVAILABLE") // "AVAILABLE", "USED", "EXPIRED"
+  expiresAt        DateTime     // createdAt + 7 days
+  usedAt           DateTime?
+  createdAt        DateTime     @default(now())
+
+  user             User         @relation("UserRewards", fields: [userId], references: [id])
+  referredFriend   User         @relation("ReferredFriendRewards", fields: [referredUserId], references: [id])
+
+  @@index([userId, status, expiresAt])
+}
+
+model Contest {
+  id          String    @id @default(uuid())
+  title       String    @default("IELTS Speaking Referral Championship")
+  description String    @default("Invite your friends to practice IELTS speaking! Top referrers win exclusive custom plans and prizes.")
+  prizes      String    @default("🥇 1st: 60-Day VIP Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan")
+  isActive    Boolean   @default(false)
+  startsAt    DateTime  @default(now())
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }

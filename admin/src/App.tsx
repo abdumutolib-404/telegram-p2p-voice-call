@@ -6,6 +6,7 @@ import { PlanEditor } from './components/dashboard/PlanEditor.tsx';
 import { ManualPaymentsQueue } from './components/dashboard/ManualPaymentsQueue.tsx';
 import { AppealsQueue } from './components/dashboard/AppealsQueue.tsx';
 import { UserManagement } from './components/dashboard/UserManagement.tsx';
+import { ContestManagement } from './components/dashboard/ContestManagement.tsx';
 import {
   BarChart3,
   Settings,
@@ -17,9 +18,10 @@ import {
   Menu,
   X,
   Radio,
+  Trophy,
 } from 'lucide-react';
 
-type NavigationTab = 'analytics' | 'users' | 'plans' | 'payments' | 'appeals';
+type NavigationTab = 'analytics' | 'users' | 'contest' | 'plans' | 'payments' | 'appeals';
 
 const NAV_ITEMS: Array<{
   id: NavigationTab;
@@ -38,6 +40,12 @@ const NAV_ITEMS: Array<{
     label: 'User Management',
     description: 'Inspect learners, band scores, plan limits & moderation',
     icon: Users,
+  },
+  {
+    id: 'contest',
+    label: 'Hall of Fame & Contests',
+    description: 'Toggle championships, track referral leaders & award winners',
+    icon: Trophy,
   },
   {
     id: 'plans',
@@ -405,6 +413,7 @@ function MainDashboard() {
         >
           {activeTab === 'analytics' && <AnalyticsOverview />}
           {activeTab === 'users' && <UserManagement />}
+          {activeTab === 'contest' && <ContestManagement />}
           {activeTab === 'plans' && <PlanEditor />}
           {activeTab === 'payments' && <ManualPaymentsQueue />}
           {activeTab === 'appeals' && <AppealsQueue />}

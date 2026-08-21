@@ -2,7 +2,8 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { calculateEffectiveCallDuration, calculateMixedPlanDuration, getRetentionDaysForPlan, getDailyLimitForPlan, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod } from '../services/plan';
+import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod } from '../services/plan';
+import { getActiveBonusCallsCount, consumeOldestBonusCall, onCallFinishedCheckReferralReward } from '../services/referralService';
 import { checkRateLimit } from '../services/rateLimitMatrix';
 import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
@@ -136,23 +137,40 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
   const recordCompletedCallCredits = async (userAId: string, userBId: string, durationSeconds: number): Promise<void> => {
     if (durationSeconds < 5) return;
     const currentMonth = new Date().toISOString().slice(0, 7);
+
+    const recordUserCredit = async (userId: string) => {
+      try {
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) return;
+        const entitlement = getEffectiveEntitlement(user);
+        const callsUsed = await getUserCallsUsedThisPeriod(userId, user);
+
+        if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit) {
+          const bonusConsumed = await consumeOldestBonusCall(userId);
+          if (bonusConsumed) {
+            return;
+          }
+        }
+
+        if (user.lastCallDate === currentMonth) {
+          await prisma.user.updateMany({
+            where: { id: userId, lastCallDate: currentMonth },
+            data: { dailyCallsUsed: { increment: 1 } },
+          });
+        } else {
+          await prisma.user.updateMany({
+            where: { id: userId },
+            data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
+          });
+        }
+      } catch (err) {
+        console.error('[Signaling] recordUserCredit error:', err);
+      }
+    };
+
     await Promise.allSettled([
-      prisma.user.updateMany({
-        where: { id: userAId, lastCallDate: currentMonth },
-        data: { dailyCallsUsed: { increment: 1 } },
-      }),
-      prisma.user.updateMany({
-        where: { id: userAId, OR: [{ lastCallDate: null }, { lastCallDate: { not: currentMonth } }] },
-        data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
-      }),
-      prisma.user.updateMany({
-        where: { id: userBId, lastCallDate: currentMonth },
-        data: { dailyCallsUsed: { increment: 1 } },
-      }),
-      prisma.user.updateMany({
-        where: { id: userBId, OR: [{ lastCallDate: null }, { lastCallDate: { not: currentMonth } }] },
-        data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
-      }),
+      recordUserCredit(userAId),
+      recordUserCredit(userBId),
     ]);
   };
 
@@ -339,10 +357,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           // Check monthly call quota before queue entry using Effective Entitlements
           const entitlement = getEffectiveEntitlement(user);
           const callsUsed = await getUserCallsUsedThisPeriod(user.id, user);
-          if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit) {
+          const activeBonusCalls = await getActiveBonusCallsCount(user.id);
+          if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit && activeBonusCalls <= 0) {
             socket.emit('error', {
               code: 'MATCHMAKING_QUOTA_EXCEEDED',
-              message: `You have reached your monthly limit of ${entitlement.callLimit} calls. Please upgrade your plan to continue practicing!`,
+              message: `You have reached your monthly limit of ${entitlement.callLimit} calls. Invite friends with '👥 Invite Friends' to earn bonus calls or upgrade your plan!`,
             });
             return;
           }
@@ -431,6 +450,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     if (claimed.count !== 1) return;
 
                     await recordCompletedCallCredits(currentSession.userAId, currentSession.userBId, durationSeconds);
+                    await onCallFinishedCheckReferralReward(
+                      { id: currentSession.id, userAId: currentSession.userAId, userBId: currentSession.userBId, duration: durationSeconds },
+                      bot
+                    ).catch(() => undefined);
 
                     const egress = activeEgresses.get(roomName);
                     const egressId = egress?.egressId ?? currentSession.egressId;
@@ -742,6 +765,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           await recordCompletedCallCredits(session.userAId, session.userBId, durationSeconds);
+          await onCallFinishedCheckReferralReward(
+            { id: session.id, userAId: session.userAId, userBId: session.userBId, duration: durationSeconds },
+            bot
+          ).catch(() => undefined);
 
           const egress = activeEgresses.get(payload.roomName);
           const egressId = egress?.egressId ?? session.egressId;
@@ -910,6 +937,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     duration: durationSeconds,
                     reason: 'partner_disconnected',
                   });
+
+                  await recordCompletedCallCredits(currentSession.userAId, currentSession.userBId, durationSeconds);
+                  await onCallFinishedCheckReferralReward(
+                    { id: currentSession.id, userAId: currentSession.userAId, userBId: currentSession.userBId, duration: durationSeconds },
+                    bot
+                  ).catch(() => undefined);
 
                   if (bot && durationSeconds >= 5) {
                     await Promise.allSettled([

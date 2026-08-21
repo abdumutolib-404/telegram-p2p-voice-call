@@ -667,4 +667,70 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       { parse_mode: 'HTML' }
     );
   });
+
+  // Callback: view_hall_of_fame
+  bot.callbackQuery('view_hall_of_fame', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const { getContestStatus } = await import('../../services/referralService');
+    const contest = await getContestStatus();
+
+    if (!contest.isActive || !contest.contest) {
+      await ctx.reply(
+        `🏆 <b>Hall of Fame</b>\n\n` +
+          `ℹ️ <i>There is no active championship at the moment. Stay tuned for the next contest!</i>`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    const { title, description, prizes } = contest.contest;
+    let leaderboardText = '';
+    if (contest.leaderboard.length === 0) {
+      leaderboardText = `<i>No referrals recorded yet. Be the first to invite friends and top the leaderboard!</i>\n`;
+    } else {
+      leaderboardText = contest.leaderboard
+        .map((entry) => {
+          const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
+          return `${medal} <b>${entry.alias}</b> — <code>${entry.invitesCount} friend${entry.invitesCount > 1 ? 's' : ''}</code>`;
+        })
+        .join('\n');
+    }
+
+    const { InlineKeyboard } = await import('grammy');
+    const inlineKb = new InlineKeyboard().text('👥 Get My Invite Link', 'get_my_invite_link');
+
+    await ctx.reply(
+      `🏆 <b>${title}</b>\n\n` +
+        `📝 ${description}\n\n` +
+        `🎁 <b>Contest Prizes:</b>\n` +
+        `${prizes}\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🌟 <b>Live Leaderboard (Top 10):</b>\n\n` +
+        leaderboardText,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
+  });
+
+  // Callback: get_my_invite_link
+  bot.callbackQuery('get_my_invite_link', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const telegramId = BigInt(ctx.from.id);
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) return;
+
+    const botInfo = await ctx.api.getMe().catch(() => ({ username: 'PairTalkBot' }));
+    const botUsername = botInfo.username || 'PairTalkBot';
+    const inviteLink = `https://t.me/${botUsername}?start=ref_${user.telegramId}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Join me on PairTalk to practice IELTS Speaking with real learners!')}`;
+
+    const { InlineKeyboard } = await import('grammy');
+    const inlineKb = new InlineKeyboard().url('🚀 Share Invite Link', shareUrl);
+
+    await ctx.reply(
+      `🔗 <b>Your Personal Invite Link:</b>\n\n` +
+        `<code>${inviteLink}</code>\n\n` +
+        `🎁 Share this link with IELTS learners. For every friend who completes their 1st call (≥30s), you get <b>1 Free Bonus Call</b> (valid for 7 days)!`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
+  });
 }

@@ -938,7 +938,7 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
 // PATCH /api/admin/users/:id/plan (Protected - Manual Plan & Limit Updates)
 router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { plan, dailyLimit, maxDuration, retentionOverride, customPlanName, resetDailyCalls } = req.body;
+  const { plan, dailyLimit, maxDuration, retentionOverride, recordingLimit, recordingLimitOverride, customPlanName, durationDays, resetDailyCalls } = req.body;
 
   try {
     const user = await prisma.user.findUnique({ where: { id } });
@@ -956,7 +956,8 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
         updateData.subscriptionExpiresAt = null;
       } else {
         updateData.subscriptionStatus = 'ACTIVE';
-        updateData.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        const days = typeof durationDays === 'number' && durationDays > 0 ? durationDays : 30;
+        updateData.subscriptionExpiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
       }
       if (dailyLimit === undefined) {
         updateData.dailyLimit = getDailyLimitForPlan(normalizedPlan);
@@ -978,18 +979,38 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       updateData.retentionOverride = typeof retentionOverride === 'number' && retentionOverride > 0 ? retentionOverride : null;
     }
 
+    if (recordingLimit !== undefined || recordingLimitOverride !== undefined) {
+      const rec = recordingLimit !== undefined ? recordingLimit : recordingLimitOverride;
+      updateData.recordingLimitOverride = typeof rec === 'number' && rec > 0 ? rec : null;
+    }
+
     if (customPlanName !== undefined) {
       updateData.customPlanName = typeof customPlanName === 'string' && customPlanName.trim().length > 0 ? customPlanName.trim() : null;
+      if (updateData.customPlanName) {
+        updateData.subscriptionStatus = 'ACTIVE';
+        if (durationDays && typeof durationDays === 'number' && durationDays > 0) {
+          updateData.subscriptionExpiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+        } else if (!user.subscriptionExpiresAt || user.subscriptionExpiresAt <= new Date()) {
+          updateData.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        }
+      }
+    }
+
+    if (durationDays !== undefined && typeof durationDays === 'number' && durationDays > 0) {
+      updateData.subscriptionStatus = 'ACTIVE';
+      updateData.subscriptionExpiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
     }
 
     if (resetDailyCalls === true) {
       updateData.dailyCallsUsed = 0;
       updateData.lastCallDate = new Date().toISOString().slice(0, 7);
       const effectivePlan = updateData.plan ? String(updateData.plan) : user.plan;
-      if (effectivePlan !== 'FREE') {
+      if (effectivePlan !== 'FREE' || updateData.customPlanName || user.customPlanName) {
         updateData.subscriptionStatus = 'ACTIVE';
+        if (!updateData.subscriptionExpiresAt) {
+          updateData.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        }
       }
-      updateData.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     }
 
     const updated = await prisma.user.update({
@@ -1169,6 +1190,109 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[Admin] Moderation action failed:', err);
     res.status(500).json({ error: 'Failed to execute moderation action.' });
+  }
+});
+
+// GET /api/admin/contest (Protected - Get Contest & Leaderboard)
+router.get('/contest', adminAuthMiddleware, async (_req, res) => {
+  try {
+    const { getContestStatus } = await import('../services/referralService');
+    const contestStatus = await getContestStatus();
+    const allContests = await prisma.contest.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    const totalReferrals = await prisma.referralReward.count();
+    const activeBonusCalls = await prisma.referralReward.count({
+      where: { status: 'AVAILABLE', expiresAt: { gt: new Date() } },
+    });
+
+    res.json({
+      ...contestStatus,
+      totalReferrals,
+      activeBonusCalls,
+      history: allContests,
+    });
+  } catch (err) {
+    console.error('[Admin] Failed to fetch contest status:', err);
+    res.status(500).json({ error: 'Failed to fetch contest status.' });
+  }
+});
+
+// POST /api/admin/contest (Protected - Create/Update Contest)
+router.post('/contest', adminAuthMiddleware, async (req, res) => {
+  try {
+    const { title, description, prizes, isActive, endsAt } = req.body;
+
+    const existingActive = await prisma.contest.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let contest;
+    if (existingActive) {
+      contest = await prisma.contest.update({
+        where: { id: existingActive.id },
+        data: {
+          title: title || existingActive.title,
+          description: description || existingActive.description,
+          prizes: prizes || existingActive.prizes,
+          isActive: isActive !== undefined ? Boolean(isActive) : existingActive.isActive,
+          endsAt: endsAt ? new Date(endsAt) : existingActive.endsAt,
+        },
+      });
+    } else {
+      contest = await prisma.contest.create({
+        data: {
+          title: title || 'IELTS Speaking Referral Championship',
+          description: description || 'Invite friends to practice speaking and win exclusive prizes!',
+          prizes: prizes || '🥇 1st: 60-Day VIP Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
+          isActive: isActive !== undefined ? Boolean(isActive) : true,
+          endsAt: endsAt ? new Date(endsAt) : null,
+        },
+      });
+    }
+
+    res.json({ success: true, contest });
+  } catch (err) {
+    console.error('[Admin] Failed to save contest:', err);
+    res.status(500).json({ error: 'Failed to save contest.' });
+  }
+});
+
+// POST /api/admin/contest/toggle (Protected - Toggle Contest Active State)
+router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
+  try {
+    const { isActive } = req.body;
+    const targetState = Boolean(isActive);
+
+    const latest = await prisma.contest.findFirst({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latest) {
+      const created = await prisma.contest.create({
+        data: {
+          title: 'IELTS Speaking Referral Championship',
+          description: 'Invite your friends to practice IELTS speaking! Top referrers win exclusive custom plans and prizes.',
+          prizes: '🥇 1st: 60-Day VIP Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
+          isActive: targetState,
+        },
+      });
+      res.json({ success: true, contest: created });
+      return;
+    }
+
+    const updated = await prisma.contest.update({
+      where: { id: latest.id },
+      data: { isActive: targetState },
+    });
+
+    res.json({ success: true, contest: updated });
+  } catch (err) {
+    console.error('[Admin] Failed to toggle contest:', err);
+    res.status(500).json({ error: 'Failed to toggle contest.' });
   }
 });
 

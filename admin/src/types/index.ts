@@ -103,6 +103,7 @@ export interface UserItem {
   dailyCallsUsed?: number;
   maxDuration?: number;
   retentionOverride?: number | null;
+  recordingLimitOverride?: number | null;
   createdAt: string;
 }
 

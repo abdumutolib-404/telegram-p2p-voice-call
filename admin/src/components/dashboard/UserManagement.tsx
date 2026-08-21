@@ -20,6 +20,8 @@ export function UserManagement() {
   const [dailyLimitInput, setDailyLimitInput] = useState<number>(3);
   const [maxDurationInput, setMaxDurationInput] = useState<number>(15);
   const [retentionOverrideInput, setRetentionOverrideInput] = useState<number | ''>('');
+  const [recordingLimitInput, setRecordingLimitInput] = useState<number | ''>('');
+  const [durationDaysInput, setDurationDaysInput] = useState<number | ''>(30);
   const [customPlanNameInput, setCustomPlanNameInput] = useState<string>('');
   const [resetDailyCallsCheckbox, setResetDailyCallsCheckbox] = useState<boolean>(false);
   const [isSubmittingPlan, setIsSubmittingPlan] = useState<boolean>(false);
@@ -74,12 +76,54 @@ export function UserManagement() {
     setDailyLimitInput(user.dailyLimit ?? (tier === 'boss' || tier === 'pro' ? 999 : tier === 'plus' ? 10 : 3));
     setMaxDurationInput(user.maxDuration ?? (tier === 'boss' || tier === 'pro' ? 60 : tier === 'plus' ? 30 : 15));
     setRetentionOverrideInput(user.retentionOverride ? user.retentionOverride : '');
+    setRecordingLimitInput(user.recordingLimitOverride ? user.recordingLimitOverride : '');
+    setDurationDaysInput(30);
     setCustomPlanNameInput(user.customPlanName || '');
     setResetDailyCallsCheckbox(false);
   };
 
   const closePlanModal = () => {
     setPlanModalUser(null);
+  };
+
+  const handleApplyContestPreset = (preset: '1st' | '2nd' | '3rd' | 'vip') => {
+    if (preset === '1st') {
+      setPlanTier('boss');
+      setCustomPlanNameInput('🥇 Contest 1st Place (VIP)');
+      setDailyLimitInput(50);
+      setMaxDurationInput(90);
+      setRecordingLimitInput(15);
+      setRetentionOverrideInput(90);
+      setDurationDaysInput(60);
+      setResetDailyCallsCheckbox(true);
+    } else if (preset === '2nd') {
+      setPlanTier('pro');
+      setCustomPlanNameInput('🥈 Contest 2nd Place');
+      setDailyLimitInput(25);
+      setMaxDurationInput(60);
+      setRecordingLimitInput(7);
+      setRetentionOverrideInput(30);
+      setDurationDaysInput(30);
+      setResetDailyCallsCheckbox(true);
+    } else if (preset === '3rd') {
+      setPlanTier('plus');
+      setCustomPlanNameInput('🥉 Contest 3rd Place');
+      setDailyLimitInput(15);
+      setMaxDurationInput(30);
+      setRecordingLimitInput(5);
+      setRetentionOverrideInput(14);
+      setDurationDaysInput(14);
+      setResetDailyCallsCheckbox(true);
+    } else if (preset === 'vip') {
+      setPlanTier('boss');
+      setCustomPlanNameInput('🌟 PairTalk Ambassador');
+      setDailyLimitInput(999);
+      setMaxDurationInput(90);
+      setRecordingLimitInput(20);
+      setRetentionOverrideInput(90);
+      setDurationDaysInput(90);
+      setResetDailyCallsCheckbox(true);
+    }
   };
 
   const handlePlanTierChange = (newTier: 'free' | 'plus' | 'pro' | 'boss') => {
@@ -137,6 +181,8 @@ export function UserManagement() {
           dailyLimit: Number(dailyLimitInput),
           maxDuration: Number(maxDurationInput),
           retentionOverride: retentionOverrideInput !== '' ? Number(retentionOverrideInput) : null,
+          recordingLimit: recordingLimitInput !== '' ? Number(recordingLimitInput) : null,
+          durationDays: durationDaysInput !== '' ? Number(durationDaysInput) : 30,
           customPlanName: customPlanNameInput.trim() || null,
           resetDailyCalls: resetDailyCallsCheckbox,
         }),
@@ -509,10 +555,93 @@ export function UserManagement() {
               <strong style={{ color: '#f8fafc' }}>{planModalUser.alias}</strong> (ID: {planModalUser.telegramId})
             </p>
 
+            {/* Quick Contest / Winner Presets */}
+            <div style={{
+              marginBottom: '1.25rem',
+              padding: '0.85rem',
+              backgroundColor: '#0f172a',
+              borderRadius: '8px',
+              border: '1px solid #eab30840'
+            }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#eab308', marginBottom: '0.4rem', fontWeight: 700 }}>
+                🏆 Quick Contest Winner Presets
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
+                <button
+                  type="button"
+                  onClick={() => handleApplyContestPreset('1st')}
+                  style={{
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '6px',
+                    border: '1px solid #eab30860',
+                    backgroundColor: '#eab30815',
+                    color: '#fef08a',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  🥇 1st Place (60d VIP)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyContestPreset('2nd')}
+                  style={{
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '6px',
+                    border: '1px solid #94a3b860',
+                    backgroundColor: '#94a3b815',
+                    color: '#e2e8f0',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  🥈 2nd Place (30d)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyContestPreset('3rd')}
+                  style={{
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '6px',
+                    border: '1px solid #b4530960',
+                    backgroundColor: '#b4530915',
+                    color: '#fdba74',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  🥉 3rd Place (14d)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyContestPreset('vip')}
+                  style={{
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '6px',
+                    border: '1px solid #0284c760',
+                    backgroundColor: '#0284c715',
+                    color: '#7dd3fc',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  🌟 Ambassador (90d)
+                </button>
+              </div>
+            </div>
+
             {/* Plan Tier Selector */}
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.5rem', fontWeight: 600 }}>
-                Subscription Tier
+                Base Subscription Tier
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
                 {(['free', 'plus', 'pro', 'boss'] as const).map((tier) => (
@@ -538,10 +667,57 @@ export function UserManagement() {
               </div>
             </div>
 
-            {/* Daily Call Limit */}
+            {/* Plan Validity Length (Days) */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
+                Plan Validity Duration (Days from Now)
+              </label>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+                {[7, 14, 30, 60, 90, 180, 365].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDurationDaysInput(d)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '6px',
+                      border: durationDaysInput === d ? '2px solid #0284c7' : '1px solid #334155',
+                      backgroundColor: durationDaysInput === d ? '#0284c725' : '#0f172a',
+                      color: durationDaysInput === d ? '#38bdf8' : '#94a3b8',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {d}d
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="730"
+                value={durationDaysInput}
+                onChange={(e) => setDurationDaysInput(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+                placeholder="Custom days (e.g. 45)"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#f8fafc',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
+
+            {/* Monthly Call Limit */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
-                Daily Call Limit (Calls / Day)
+                Monthly Call Limit (Calls / Cycle)
               </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <input
@@ -579,7 +755,7 @@ export function UserManagement() {
                 </button>
               </div>
               <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                999 represents unlimited daily calls.
+                999 represents unlimited monthly calls.
               </span>
             </div>
 
@@ -608,6 +784,32 @@ export function UserManagement() {
               />
             </div>
 
+            {/* Recording Credits Limit */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
+                Recording Credits Limit (Optional Override)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={recordingLimitInput}
+                onChange={(e) => setRecordingLimitInput(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+                placeholder="Tier default if empty (e.g. 15)"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#f8fafc',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
+
             {/* Custom Plan Label */}
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
@@ -617,7 +819,7 @@ export function UserManagement() {
                 type="text"
                 value={customPlanNameInput}
                 onChange={(e) => setCustomPlanNameInput(e.target.value)}
-                placeholder="e.g. VIP Member, Scholarship, Partner"
+                placeholder="e.g. VIP Member, Scholarship, Contest Champion"
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
