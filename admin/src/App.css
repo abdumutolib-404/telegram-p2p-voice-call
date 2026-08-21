@@ -11,7 +11,7 @@
 .nav-tab-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   padding: 0.6rem 0.85rem;
   border-radius: 8px;
@@ -42,6 +42,7 @@
   color: var(--text-muted);
   transition: color 0.15s ease;
   flex-shrink: 0;
+  min-width: 18px;
 }
 
 .nav-tab-btn:hover .nav-icon {
