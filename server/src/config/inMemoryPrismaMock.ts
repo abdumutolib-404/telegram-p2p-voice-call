@@ -850,8 +850,8 @@ export class InMemoryPrismaMock {
         if (args?.where?.status && r.status !== args.where.status) return false;
         if (args?.where?.expiresAt && typeof args.where.expiresAt === 'object') {
           const filter = args.where.expiresAt as { gt?: Date; lte?: Date };
-          if (filter.gt && r.expiresAt.getTime() <= filter.gt.getTime()) return false;
-          if (filter.lte && r.expiresAt.getTime() > filter.lte.getTime()) return false;
+          if (filter.gt && (!r.expiresAt || r.expiresAt.getTime() <= filter.gt.getTime())) return false;
+          if (filter.lte && (!r.expiresAt || r.expiresAt.getTime() > filter.lte.getTime())) return false;
         }
         if (args?.where?.createdAt && typeof args.where.createdAt === 'object') {
           const filter = args.where.createdAt as { gte?: Date | string; lte?: Date | string };
@@ -861,7 +861,7 @@ export class InMemoryPrismaMock {
         return true;
       });
       if (args?.orderBy?.expiresAt === 'asc') {
-        list.sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
+        list.sort((a, b) => (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0));
       }
       return list[0] ? { ...list[0] } : null;
     },
@@ -872,8 +872,8 @@ export class InMemoryPrismaMock {
         if (args?.where?.status && r.status !== args.where.status) return false;
         if (args?.where?.expiresAt && typeof args.where.expiresAt === 'object') {
           const filter = args.where.expiresAt as { gt?: Date; lte?: Date };
-          if (filter.gt && r.expiresAt.getTime() <= filter.gt.getTime()) return false;
-          if (filter.lte && r.expiresAt.getTime() > filter.lte.getTime()) return false;
+          if (filter.gt && (!r.expiresAt || r.expiresAt.getTime() <= filter.gt.getTime())) return false;
+          if (filter.lte && (!r.expiresAt || r.expiresAt.getTime() > filter.lte.getTime())) return false;
         }
         if (args?.where?.createdAt && typeof args.where.createdAt === 'object') {
           const filter = args.where.createdAt as { gte?: Date | string; lte?: Date | string };
@@ -883,7 +883,7 @@ export class InMemoryPrismaMock {
         return true;
       });
       if (args?.orderBy?.expiresAt === 'asc') {
-        list.sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
+        list.sort((a, b) => (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0));
       } else if (args?.orderBy?.createdAt === 'desc') {
         list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       }
@@ -896,8 +896,8 @@ export class InMemoryPrismaMock {
         if (args?.where?.status && r.status !== args.where.status) return false;
         if (args?.where?.expiresAt && typeof args.where.expiresAt === 'object') {
           const filter = args.where.expiresAt as { gt?: Date; lte?: Date };
-          if (filter.gt && r.expiresAt.getTime() <= filter.gt.getTime()) return false;
-          if (filter.lte && r.expiresAt.getTime() > filter.lte.getTime()) return false;
+          if (filter.gt && (!r.expiresAt || r.expiresAt.getTime() <= filter.gt.getTime())) return false;
+          if (filter.lte && (!r.expiresAt || r.expiresAt.getTime() > filter.lte.getTime())) return false;
         }
         if (args?.where?.createdAt && typeof args.where.createdAt === 'object') {
           const filter = args.where.createdAt as { gte?: Date | string; lte?: Date | string };

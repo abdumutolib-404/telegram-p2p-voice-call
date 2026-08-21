@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod } from '../services/plan';
+import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration, calculateMixedPlanDuration } from '../services/plan';
 import { getActiveBonusCallsCount, consumeOldestBonusCall, onCallFinishedCheckReferralReward } from '../services/referralService';
 import { checkRateLimit } from '../services/rateLimitMatrix';
 import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
