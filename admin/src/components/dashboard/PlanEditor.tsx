@@ -122,7 +122,7 @@ export function PlanEditor() {
         setPlans(resolvedPlans);
         setInitialPlans(JSON.parse(JSON.stringify(resolvedPlans)));
       }
-      setSuccessMessage('Authoritative plan limits & prices updated and broadcasted across platform!');
+      setSuccessMessage('Authoritative plan limits & prices successfully updated!');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -151,25 +151,25 @@ export function PlanEditor() {
     if (!config) return null;
 
     return (
-      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '1rem', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ padding: '0.5rem', borderRadius: '10px', backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+      <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', backgroundColor: '#FFFFFF' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+            <div style={{ padding: '0.4rem', borderRadius: '8px', backgroundColor: 'var(--bg-surface-elevated)' }}>
               {icon}
             </div>
             <div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
-              <span style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>{subtitle}</span>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{subtitle}</span>
             </div>
           </div>
           <StatusBadge variant={badgeVariant} label={tierKey} size="sm" />
         </div>
 
         {/* Section 1: Usage & Limits */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              <Clock size={14} color="#38bdf8" /> Max Duration (Min / Call)
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Clock size={13} color="var(--primary)" /> Max Duration (Min / Call)
             </label>
             <input
               type="number"
@@ -183,8 +183,8 @@ export function PlanEditor() {
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              <Calendar size={14} color="#34d399" /> Monthly Calls Allowance (Calls / Month)
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Calendar size={13} color="var(--success)" /> Monthly Calls Allowance
             </label>
             <input
               type="number"
@@ -198,8 +198,8 @@ export function PlanEditor() {
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              <Sparkles size={14} color="#f472b6" /> Recording Credits (Recordings / Month)
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Sparkles size={13} color="var(--accent-blue)" /> Recording Credits (Monthly)
             </label>
             <input
               type="number"
@@ -213,8 +213,8 @@ export function PlanEditor() {
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              <Shield size={14} color="#a78bfa" /> Audio Retention Period
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Shield size={13} color="var(--text-muted)" /> Audio Retention Period
             </label>
             <select
               value={config.retentionDays}
@@ -236,10 +236,10 @@ export function PlanEditor() {
 
         {/* Section 2: Pricing */}
         {!isFree ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
             <div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                <Star size={14} color="#fbbf24" fill="#fbbf24" /> Stars Price (XTR)
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                <Star size={13} color="var(--gold)" fill="var(--gold)" /> Stars Price (XTR)
               </label>
               <input
                 type="number"
@@ -247,13 +247,13 @@ export function PlanEditor() {
                 value={config.starsPrice ?? 0}
                 onChange={(e) => handleTierChange(tierKey, 'starsPrice', parseInt(e.target.value) || 0)}
                 className="input-modern num-tabular"
-                style={{ width: '100%', boxSizing: 'border-box', color: '#fde047', fontWeight: 700 }}
+                style={{ width: '100%', boxSizing: 'border-box', fontWeight: 600 }}
               />
             </div>
 
             <div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                <CreditCard size={14} color="#34d399" /> Card Price (UZS)
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                <CreditCard size={13} color="var(--success)" /> Card Price (UZS)
               </label>
               <input
                 type="number"
@@ -262,13 +262,13 @@ export function PlanEditor() {
                 value={config.uzsPrice ?? 0}
                 onChange={(e) => handleTierChange(tierKey, 'uzsPrice', parseInt(e.target.value) || 0)}
                 className="input-modern num-tabular"
-                style={{ width: '100%', boxSizing: 'border-box', color: '#34d399', fontWeight: 700 }}
+                style={{ width: '100%', boxSizing: 'border-box', fontWeight: 600 }}
               />
             </div>
           </div>
         ) : (
           <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>
-            Free Default Tier ($0.00 / 0 Stars)
+            Free Default Tier (0 UZS / 0 Stars)
           </div>
         )}
       </div>
@@ -276,19 +276,19 @@ export function PlanEditor() {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Authoritative Plan Matrix"
-        description="Configure baseline duration allowances, monthly call volume, recording retention, and official Stars (XTR) & UZS card pricing"
+        description="Configure duration limits, monthly call allowances, audio retention, and official Stars (XTR) & UZS pricing"
         actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
             {hasUnsavedChanges && (
               <button
                 type="button"
                 onClick={handleReset}
                 disabled={isSaving}
                 className="btn-secondary"
-                style={{ padding: '0.55rem 1rem', fontSize: '0.825rem' }}
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.825rem' }}
               >
                 <RotateCcw size={14} /> Discard Changes
               </button>
@@ -297,10 +297,10 @@ export function PlanEditor() {
               type="submit"
               disabled={isSaving || !hasUnsavedChanges}
               className="btn-primary"
-              style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem' }}
+              style={{ padding: '0.45rem 1rem', fontSize: '0.825rem' }}
             >
-              <Save size={15} />
-              {isSaving ? 'Saving Configurations...' : 'Save Plan Matrix'}
+              <Save size={14} />
+              {isSaving ? 'Saving...' : 'Save Plan Matrix'}
             </button>
           </div>
         }
@@ -310,20 +310,20 @@ export function PlanEditor() {
       {hasUnsavedChanges && (
         <div
           style={{
-            padding: '0.875rem 1.25rem',
-            borderRadius: '10px',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
             backgroundColor: 'var(--warning-bg)',
             border: '1px solid var(--warning-border)',
-            color: '#fbbf24',
+            color: 'var(--warning-text)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             fontSize: '0.85rem',
-            fontWeight: 600,
+            fontWeight: 500,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <AlertTriangle size={18} />
+            <AlertTriangle size={16} />
             <span>You have unsaved changes in the plan configuration matrix.</span>
           </div>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Click 'Save Plan Matrix' to apply</span>
@@ -331,25 +331,49 @@ export function PlanEditor() {
       )}
 
       {error && (
-        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--danger-border)', backgroundColor: 'var(--danger-bg)', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <AlertCircle size={18} />
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger-text)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
 
       {successMessage && (
-        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--success-border)', backgroundColor: 'var(--success-bg)', color: '#6ee7b7', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <CheckCircle2 size={18} />
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: 'var(--success-bg)',
+            border: '1px solid var(--success-border)',
+            color: 'var(--success-text)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          <CheckCircle2 size={16} />
           <span>{successMessage}</span>
         </div>
       )}
 
       {/* 4-Column Grid for Plan Tiers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
-        {renderTierCard('FREE', 'FREE Plan', 'Default candidate starter tier', <Shield size={20} color="#94a3b8" />, 'neutral', true)}
-        {renderTierCard('PLUS', 'PLUS Plan', 'Essential speaking practice', <Zap size={20} color="#38bdf8" />, 'info')}
-        {renderTierCard('PRO', 'PRO Plan', 'Intensive candidate preparation', <Sparkles size={20} color="#c084fc" />, 'warning')}
-        {renderTierCard('BOSS', 'BOSS Plan', 'Unlimited candidate coaching', <Crown size={20} color="#fde047" />, 'gold')}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
+        {renderTierCard('FREE', 'FREE Tier', 'Default starter plan', <Shield size={16} color="var(--text-secondary)" />, 'neutral', true)}
+        {renderTierCard('PLUS', 'PLUS Tier', 'Essential speaking practice', <Zap size={16} color="var(--accent-blue)" />, 'info')}
+        {renderTierCard('PRO', 'PRO Tier', 'Intensive candidate preparation', <Sparkles size={16} color="var(--primary)" />, 'info')}
+        {renderTierCard('BOSS', 'BOSS Tier', 'Unlimited candidate coaching', <Crown size={16} color="var(--gold)" />, 'gold')}
       </div>
     </form>
   );

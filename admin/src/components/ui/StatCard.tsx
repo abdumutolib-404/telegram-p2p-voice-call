@@ -5,10 +5,7 @@ interface StatCardProps {
   value: string | number;
   subValue?: string | React.ReactNode;
   icon?: React.ReactNode;
-  iconBg?: string;
-  iconColor?: string;
   badge?: React.ReactNode;
-  glowColor?: string;
   onClick?: () => void;
   style?: React.CSSProperties;
 }
@@ -18,10 +15,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   value,
   subValue,
   icon,
-  iconBg = 'rgba(99, 102, 241, 0.12)',
-  iconColor = 'var(--primary-light)',
   badge,
-  glowColor,
   onClick,
   style = {},
 }) => {
@@ -31,45 +25,36 @@ export const StatCard: React.FC<StatCardProps> = ({
       onClick={onClick}
       style={{
         cursor: onClick ? 'pointer' : 'default',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        height: '100%',
+        minHeight: '120px',
         ...style,
       }}
     >
-      {glowColor && (
-        <div
-          className="metric-card-glow"
-          style={{ background: glowColor }}
-        />
-      )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {label}
-        </span>
-        {icon && (
-          <div
-            style={{
-              padding: '0.45rem',
-              borderRadius: '8px',
-              backgroundColor: iconBg,
-              color: iconColor,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {icon}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-          {value}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            {label}
+          </span>
+          {icon && (
+            <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+              {icon}
+            </div>
+          )}
         </div>
-        {badge && <div>{badge}</div>}
+
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+            {value}
+          </div>
+          {badge && <div>{badge}</div>}
+        </div>
       </div>
 
       {subValue && (
-        <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
           {subValue}
         </div>
       )}

@@ -46,7 +46,7 @@ export function UserManagement() {
   });
   const [isConfirmingAction, setIsConfirmingAction] = useState<boolean>(false);
 
-  // Plan & Limits Drawer/Modal State
+  // Plan & Limits Modal State
   const [planModalUser, setPlanModalUser] = useState<UserItem | null>(null);
   const [planTier, setPlanTier] = useState<'free' | 'plus' | 'pro' | 'boss'>('free');
   const [dailyLimitInput, setDailyLimitInput] = useState<number>(3);
@@ -70,11 +70,7 @@ export function UserManagement() {
       const data = await adminFetch<UserItem[]>(endpoint);
       setUsers(data || []);
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to fetch user list.');
-      }
+      setError(err instanceof Error ? err.message : 'Failed to fetch user list.');
     } finally {
       setIsLoading(false);
     }
@@ -100,15 +96,15 @@ export function UserManagement() {
 
     if (action === 'ban') {
       title = 'Permanently Ban Candidate';
-      message = `This will permanently revoke all platform and WebRTC access for ${user.alias} (TG: ${user.telegramId}). The candidate can only regain access via an unban appeal.`;
+      message = `This will permanently revoke access for ${user.alias} (TG: ${user.telegramId}). They can only regain access via an unban appeal.`;
       severity = 'danger';
     } else if (action === 'block') {
       title = 'Suspend Candidate (6 Hours)';
-      message = `This will temporarily suspend ${user.alias} for exactly 6 hours. Their access will restore automatically afterwards.`;
+      message = `This will temporarily suspend ${user.alias} for 6 hours. Their access will restore automatically afterwards.`;
       severity = 'warning';
     } else if (action === 'warn') {
       title = 'Issue Formal Warning';
-      message = `A formal violation warning will be recorded and dispatched directly to ${user.alias} via the Telegram Bot.`;
+      message = `A formal violation warning will be recorded and sent to ${user.alias} via the Telegram Bot.`;
       severity = 'warning';
     } else if (action === 'unblock' || action === 'unban') {
       title = 'Restore Candidate Access';
@@ -173,7 +169,7 @@ export function UserManagement() {
   const handleApplyContestPreset = (preset: '1st' | '2nd' | '3rd' | 'vip') => {
     if (preset === '1st') {
       setPlanTier('boss');
-      setCustomPlanNameInput('🥇 Contest 1st Place (VIP)');
+      setCustomPlanNameInput('Contest 1st Place (VIP)');
       setDailyLimitInput(50);
       setMaxDurationInput(90);
       setRecordingLimitInput(15);
@@ -182,7 +178,7 @@ export function UserManagement() {
       setResetDailyCallsCheckbox(true);
     } else if (preset === '2nd') {
       setPlanTier('pro');
-      setCustomPlanNameInput('🥈 Contest 2nd Place');
+      setCustomPlanNameInput('Contest 2nd Place');
       setDailyLimitInput(25);
       setMaxDurationInput(60);
       setRecordingLimitInput(7);
@@ -191,7 +187,7 @@ export function UserManagement() {
       setResetDailyCallsCheckbox(true);
     } else if (preset === '3rd') {
       setPlanTier('plus');
-      setCustomPlanNameInput('🥉 Contest 3rd Place');
+      setCustomPlanNameInput('Contest 3rd Place');
       setDailyLimitInput(15);
       setMaxDurationInput(30);
       setRecordingLimitInput(5);
@@ -200,7 +196,7 @@ export function UserManagement() {
       setResetDailyCallsCheckbox(true);
     } else if (preset === 'vip') {
       setPlanTier('boss');
-      setCustomPlanNameInput('🌟 PairTalk Ambassador');
+      setCustomPlanNameInput('PairTalk Ambassador');
       setDailyLimitInput(999);
       setMaxDurationInput(90);
       setRecordingLimitInput(20);
@@ -260,7 +256,7 @@ export function UserManagement() {
       case 'warned':
         return <StatusBadge variant="warning" label="Warned" size="sm" />;
       case 'blocked':
-        return <StatusBadge variant="danger" label="Blocked (6h)" size="sm" />;
+        return <StatusBadge variant="danger" label="Suspended" size="sm" />;
       case 'banned':
         return <StatusBadge variant="danger" label="Banned" size="sm" />;
       default:
@@ -270,70 +266,71 @@ export function UserManagement() {
 
   const getTierBadgeComponent = (user: UserItem) => {
     if (user.customPlanName) {
-      return <StatusBadge variant="gold" label={`👑 ${user.customPlanName}`} size="sm" />;
+      return <StatusBadge variant="gold" label={user.customPlanName} size="sm" />;
     }
     switch (user.planTier?.toLowerCase()) {
       case 'boss':
-        return <StatusBadge variant="gold" label="👑 BOSS" size="sm" />;
+        return <StatusBadge variant="gold" label="BOSS" size="sm" />;
       case 'pro':
-        return <StatusBadge variant="warning" label="⭐ PRO" size="sm" />;
+        return <StatusBadge variant="info" label="PRO" size="sm" />;
       case 'plus':
-        return <StatusBadge variant="info" label="⚡ PLUS" size="sm" />;
+        return <StatusBadge variant="info" label="PLUS" size="sm" />;
       default:
         return <StatusBadge variant="neutral" label="FREE" size="sm" />;
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
-        title="Candidate Roster & Plan Maker"
-        description="Search learners by alias or Telegram ID, inspect speaking metrics, adjust monthly limits, or apply moderation actions"
+        title="Candidate Roster"
+        description="Search learners by alias or Telegram ID, inspect speaking limits, and manage moderation standing"
         actions={
           <button
             onClick={fetchUsers}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.5rem 0.875rem' }}
+            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
-            <span>Refresh Roster</span>
+            <span>Refresh</span>
           </button>
         }
       />
 
-      {/* Filter and Search Bar */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-        {/* Search Input */}
-        <div style={{ position: 'relative', flex: 1, minWidth: '280px', maxWidth: '460px' }}>
-          <Search size={16} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+      {/* Search & Filter Bar */}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Search */}
+        <div style={{ position: 'relative', flex: 1, minWidth: '260px', maxWidth: '400px' }}>
+          <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search alias or Telegram ID... (e.g. P2P-8291)"
+            placeholder="Search alias or Telegram ID..."
             className="input-modern"
-            style={{ width: '100%', paddingLeft: '2.5rem', boxSizing: 'border-box' }}
+            style={{ width: '100%', paddingLeft: '2.25rem', boxSizing: 'border-box' }}
           />
         </div>
 
-        {/* Status Filter Tabs */}
-        <div style={{ display: 'inline-flex', backgroundColor: 'var(--bg-surface-elevated)', padding: '0.25rem', borderRadius: '10px', border: '1px solid var(--border-card)' }}>
+        {/* Filter Pills */}
+        <div style={{ display: 'inline-flex', backgroundColor: 'var(--bg-surface-elevated)', padding: '0.2rem', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
           {(['all', 'active', 'warned', 'blocked', 'banned'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setStatusFilter(tab)}
               style={{
-                padding: '0.4rem 0.85rem',
+                padding: '0.35rem 0.75rem',
                 border: 'none',
-                borderRadius: '8px',
-                backgroundColor: statusFilter === tab ? 'var(--primary)' : 'transparent',
-                color: statusFilter === tab ? '#ffffff' : 'var(--text-secondary)',
-                fontWeight: 600,
+                borderRadius: '6px',
+                backgroundColor: statusFilter === tab ? '#FFFFFF' : 'transparent',
+                color: statusFilter === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontWeight: statusFilter === tab ? 600 : 500,
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 textTransform: 'capitalize',
-                transition: 'all 0.15s ease',
+                boxShadow: statusFilter === tab ? 'var(--shadow-xs)' : 'none',
+                transition: 'all 0.12s ease',
               }}
             >
               {tab}
@@ -343,24 +340,36 @@ export function UserManagement() {
       </div>
 
       {error && (
-        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--danger-border)', backgroundColor: 'var(--danger-bg)', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <AlertTriangle size={18} />
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger-text)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          <AlertTriangle size={16} />
           <span>{error}</span>
         </div>
       )}
 
-      {/* Users Table */}
+      {/* Candidate Table */}
       {isLoading && users.length === 0 ? (
-        <LoadingSkeleton message="Searching candidate database..." rows={6} />
+        <LoadingSkeleton message="Searching candidate roster..." rows={6} />
       ) : users.length === 0 ? (
         <EmptyState
-          icon={<User size={36} />}
+          icon={<User size={32} color="var(--text-muted)" />}
           title="No candidates found"
-          description={searchQuery ? `No results matching "${searchQuery}". Try a different Telegram ID or alias.` : 'No candidates in this status filter.'}
+          description={searchQuery ? `No candidates matching "${searchQuery}".` : 'No candidates under the selected filter.'}
           action={
             searchQuery ? (
-              <button onClick={() => setSearchQuery('')} className="btn-secondary" style={{ fontSize: '0.825rem' }}>
-                Clear Search Filter
+              <button onClick={() => setSearchQuery('')} className="btn-secondary" style={{ fontSize: '0.8rem' }}>
+                Clear Search
               </button>
             ) : undefined
           }
@@ -370,9 +379,9 @@ export function UserManagement() {
           <table className="table-modern">
             <thead>
               <tr>
-                <th>Candidate Alias</th>
+                <th>Alias</th>
                 <th>Telegram ID</th>
-                <th>Plan Tier & Retention</th>
+                <th>Plan Tier</th>
                 <th>Monthly Calls Used / Limit</th>
                 <th>Status</th>
                 <th>Warnings</th>
@@ -384,50 +393,50 @@ export function UserManagement() {
               {users.map((user) => (
                 <tr key={user.id}>
                   <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <span>{user.alias}</span>
                       <button
                         onClick={() => copyToClipboard(user.alias, `alias-${user.id}`)}
                         title="Copy alias"
                         style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex' }}
                       >
-                        {copiedId === `alias-${user.id}` ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+                        {copiedId === `alias-${user.id}` ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
                       </button>
                     </div>
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <code style={{ color: 'var(--text-secondary)' }}>{user.telegramId}</code>
+                      <code style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{user.telegramId}</code>
                       <button
                         onClick={() => copyToClipboard(user.telegramId.toString(), `tg-${user.id}`)}
                         title="Copy Telegram ID"
                         style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex' }}
                       >
-                        {copiedId === `tg-${user.id}` ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+                        {copiedId === `tg-${user.id}` ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
                       </button>
                     </div>
                   </td>
                   <td>
                     {getTierBadgeComponent(user)}
-                    <div style={{ fontSize: '0.725rem', color: user.retentionOverride ? '#38bdf8' : 'var(--text-muted)', marginTop: '0.2rem' }}>
-                      {user.retentionOverride ? `Retention: ${user.retentionOverride}d (Custom)` : `Retention: ${user.planTier?.toLowerCase() === 'pro' ? 30 : user.planTier?.toLowerCase() === 'plus' ? 7 : 1}d`}
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                      {user.retentionOverride ? `Retention: ${user.retentionOverride}d` : `Retention: ${user.planTier?.toLowerCase() === 'pro' ? 30 : user.planTier?.toLowerCase() === 'plus' ? 7 : 1}d`}
                     </div>
                   </td>
                   <td>
                     <span className="num-tabular" style={{
-                      color: user.dailyLimit && user.dailyLimit >= 999 ? '#34d399' : (user.dailyCallsUsed ?? 0) >= (user.dailyLimit ?? 3) ? '#fb7185' : '#38bdf8',
-                      fontWeight: 700,
-                      fontSize: '0.875rem'
+                      color: user.dailyLimit && user.dailyLimit >= 999 ? 'var(--success-text)' : (user.dailyCallsUsed ?? 0) >= (user.dailyLimit ?? 3) ? 'var(--danger-text)' : 'var(--text-primary)',
+                      fontWeight: 600,
+                      fontSize: '0.85rem'
                     }}>
                       {user.dailyCallsUsed ?? 0} / {user.dailyLimit && user.dailyLimit >= 999 ? '∞' : (user.dailyLimit ?? 3)}
                     </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.35rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
                       ({user.maxDuration ?? (user.planTier?.toLowerCase() === 'pro' ? 60 : user.planTier?.toLowerCase() === 'plus' ? 30 : 15)}m)
                     </span>
                   </td>
                   <td>{getStatusBadgeComponent(user.status)}</td>
                   <td>
-                    <span style={{ color: (user.warningCount || 0) > 0 ? '#fbbf24' : 'var(--text-muted)', fontWeight: 600 }}>
+                    <span style={{ color: (user.warningCount || 0) > 0 ? 'var(--warning-text)' : 'var(--text-muted)', fontWeight: 600 }}>
                       {user.warningCount || 0}
                     </span>
                   </td>
@@ -437,57 +446,57 @@ export function UserManagement() {
                         FC:{user.subscores.fc} LR:{user.subscores.lr} GRA:{user.subscores.gra} P:{user.subscores.p}
                       </span>
                     ) : (
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>N/A</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                      {/* Harmless Plan & Limits Edit */}
+                    <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                      {/* Harmless Plan Edit */}
                       <button
-                        title="Manage Plan & Limits"
+                        title="Edit Plan & Limits"
                         onClick={() => openPlanModal(user)}
                         className="btn-secondary"
-                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: 'var(--primary-light)', borderColor: 'rgba(99, 102, 241, 0.3)' }}
+                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', color: 'var(--primary)' }}
                       >
-                        <Zap size={13} /> Plan / Limits
+                        <Zap size={12} /> Plan
                       </button>
 
-                      {/* Destructive Moderation Buttons */}
+                      {/* Moderation Actions */}
                       <button
                         title="Issue Warning"
                         onClick={() => triggerModerationConfirm(user, 'warn')}
                         className="btn-secondary"
-                        style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', color: '#fcd34d' }}
+                        style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem', color: 'var(--warning-text)' }}
                       >
-                        <AlertTriangle size={13} /> Warn
+                        Warn
                       </button>
 
                       {user.status === 'blocked' || user.status === 'banned' ? (
                         <button
-                          title="Unblock Access"
+                          title="Restore Access"
                           onClick={() => triggerModerationConfirm(user, 'unblock')}
                           className="btn-success"
-                          style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
                         >
-                          <ShieldCheck size={13} /> Restore
+                          <ShieldCheck size={12} /> Restore
                         </button>
                       ) : (
                         <>
                           <button
-                            title="Suspend User (6h)"
+                            title="Suspend (6h)"
                             onClick={() => triggerModerationConfirm(user, 'block')}
                             className="btn-secondary"
-                            style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', color: '#fdba74' }}
+                            style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem', color: 'var(--danger-text)' }}
                           >
-                            <UserX size={13} /> Suspend
+                            <UserX size={12} /> Suspend
                           </button>
                           <button
-                            title="Ban User Permanently"
+                            title="Ban Permanently"
                             onClick={() => triggerModerationConfirm(user, 'ban')}
                             className="btn-danger"
-                            style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem' }}
+                            style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem' }}
                           >
-                            <Ban size={13} /> Ban
+                            <Ban size={12} /> Ban
                           </button>
                         </>
                       )}
@@ -505,8 +514,8 @@ export function UserManagement() {
         <div style={{
           position: 'fixed',
           inset: 0,
-          backgroundColor: 'rgba(9, 13, 22, 0.85)',
-          backdropFilter: 'blur(12px)',
+          backgroundColor: 'rgba(16, 24, 40, 0.5)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -515,41 +524,43 @@ export function UserManagement() {
         }}>
           <div className="glass-panel" style={{
             width: '100%',
-            maxWidth: 'min(500px, 95vw)',
+            maxWidth: '480px',
             maxHeight: '90vh',
             overflowY: 'auto',
-            padding: '2rem',
+            padding: '1.5rem',
             boxSizing: 'border-box',
+            backgroundColor: '#FFFFFF',
+            boxShadow: 'var(--shadow-lg)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.5rem' }}>
-              <div style={{ padding: '0.4rem', borderRadius: '10px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary-light)' }}>
-                <Zap size={20} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <div style={{ padding: '0.35rem', borderRadius: '8px', backgroundColor: 'var(--primary-bg)', color: 'var(--primary)' }}>
+                <Zap size={18} />
               </div>
-              <h3 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                Custom Plan & Limits Maker
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                Configure Candidate Plan & Limits
               </h3>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1.5rem 0' }}>
-              Configure custom limits, duration, or grant contest prizes for <strong style={{ color: 'var(--text-primary)' }}>{planModalUser.alias}</strong> (<code>{planModalUser.telegramId}</code>)
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 1.25rem 0' }}>
+              Adjusting limits for <strong>{planModalUser.alias}</strong> (<code>{planModalUser.telegramId}</code>)
             </p>
 
-            {/* Quick Contest / Winner Presets */}
+            {/* Quick Contest Presets */}
             <div style={{
-              marginBottom: '1.25rem',
-              padding: '1rem',
-              backgroundColor: 'rgba(251, 191, 36, 0.06)',
-              borderRadius: '10px',
-              border: '1px solid rgba(251, 191, 36, 0.25)'
+              marginBottom: '1rem',
+              padding: '0.75rem',
+              backgroundColor: 'var(--bg-surface-elevated)',
+              borderRadius: '8px',
+              border: '1px solid var(--border-card)'
             }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#fde047', marginBottom: '0.5rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                🏆 Quick Contest Winner Presets
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Contest Winner Presets
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
                 <button
                   type="button"
                   onClick={() => handleApplyContestPreset('1st')}
                   className="btn-secondary"
-                  style={{ fontSize: '0.75rem', justifyContent: 'flex-start', borderColor: 'rgba(251, 191, 36, 0.3)', color: '#fde047' }}
+                  style={{ fontSize: '0.75rem', padding: '0.35rem 0.5rem', justifyContent: 'flex-start' }}
                 >
                   🥇 1st Place (60d VIP)
                 </button>
@@ -557,7 +568,7 @@ export function UserManagement() {
                   type="button"
                   onClick={() => handleApplyContestPreset('2nd')}
                   className="btn-secondary"
-                  style={{ fontSize: '0.75rem', justifyContent: 'flex-start' }}
+                  style={{ fontSize: '0.75rem', padding: '0.35rem 0.5rem', justifyContent: 'flex-start' }}
                 >
                   🥈 2nd Place (30d)
                 </button>
@@ -565,7 +576,7 @@ export function UserManagement() {
                   type="button"
                   onClick={() => handleApplyContestPreset('3rd')}
                   className="btn-secondary"
-                  style={{ fontSize: '0.75rem', justifyContent: 'flex-start' }}
+                  style={{ fontSize: '0.75rem', padding: '0.35rem 0.5rem', justifyContent: 'flex-start' }}
                 >
                   🥉 3rd Place (14d)
                 </button>
@@ -573,7 +584,7 @@ export function UserManagement() {
                   type="button"
                   onClick={() => handleApplyContestPreset('vip')}
                   className="btn-secondary"
-                  style={{ fontSize: '0.75rem', justifyContent: 'flex-start', color: '#38bdf8', borderColor: 'rgba(6, 182, 212, 0.3)' }}
+                  style={{ fontSize: '0.75rem', padding: '0.35rem 0.5rem', justifyContent: 'flex-start' }}
                 >
                   🌟 Ambassador (90d)
                 </button>
@@ -581,76 +592,55 @@ export function UserManagement() {
             </div>
 
             {/* Plan Tier Selector */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Base Subscription Tier
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Subscription Tier
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
                 {(['free', 'plus', 'pro', 'boss'] as const).map((tier) => (
                   <button
                     key={tier}
                     type="button"
                     onClick={() => handlePlanTierChange(tier)}
                     style={{
-                      padding: '0.625rem 0.25rem',
-                      borderRadius: '8px',
+                      padding: '0.5rem 0.25rem',
+                      borderRadius: '6px',
                       border: planTier === tier ? '2px solid var(--primary)' : '1px solid var(--border-card)',
-                      backgroundColor: planTier === tier ? 'rgba(99, 102, 241, 0.2)' : 'var(--bg-surface-elevated)',
-                      color: planTier === tier ? '#ffffff' : 'var(--text-secondary)',
-                      fontWeight: 700,
+                      backgroundColor: planTier === tier ? 'var(--primary-bg)' : '#FFFFFF',
+                      color: planTier === tier ? 'var(--primary)' : 'var(--text-secondary)',
+                      fontWeight: 600,
                       cursor: 'pointer',
                       textTransform: 'uppercase',
                       fontSize: '0.75rem',
-                      transition: 'all 0.15s ease',
+                      transition: 'all 0.12s ease',
                     }}
                   >
-                    {tier === 'boss' ? '👑 BOSS' : tier === 'pro' ? '⭐ PRO' : tier === 'plus' ? '⚡ PLUS' : 'FREE'}
+                    {tier}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Plan Validity Length (Days) */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Plan Validity Duration (Days from Now)
+            {/* Plan Validity Duration (Days) */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Validity Duration (Days)
               </label>
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
-                {[7, 14, 30, 60, 90, 180, 365].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setDurationDaysInput(d)}
-                    style={{
-                      padding: '0.3rem 0.6rem',
-                      borderRadius: '6px',
-                      border: durationDaysInput === d ? '2px solid var(--primary)' : '1px solid var(--border-card)',
-                      backgroundColor: durationDaysInput === d ? 'rgba(99, 102, 241, 0.2)' : 'var(--bg-surface-elevated)',
-                      color: durationDaysInput === d ? '#ffffff' : 'var(--text-secondary)',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {d}d
-                  </button>
-                ))}
-              </div>
               <input
                 type="number"
                 min="1"
                 max="730"
                 value={durationDaysInput}
                 onChange={(e) => setDurationDaysInput(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
-                placeholder="Custom days (e.g. 45)"
+                placeholder="Days (e.g. 30)"
                 className="input-modern num-tabular"
                 style={{ width: '100%', boxSizing: 'border-box' }}
               />
             </div>
 
             {/* Monthly Call Limit */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Monthly Call Limit (Calls / Cycle)
               </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -667,16 +657,16 @@ export function UserManagement() {
                   type="button"
                   onClick={() => setDailyLimitInput(999)}
                   className="btn-secondary"
-                  style={{ fontSize: '0.8rem', padding: '0.5rem 0.875rem' }}
+                  style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem' }}
                 >
-                  Set Unlimited (999)
+                  Unlimited (999)
                 </button>
               </div>
             </div>
 
-            {/* Max Call Duration */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+            {/* Max Duration */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Max Call Duration (Minutes)
               </label>
               <input
@@ -690,80 +680,46 @@ export function UserManagement() {
               />
             </div>
 
-            {/* Recording Credits Limit */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Recording Credits Limit (Optional Override)
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={recordingLimitInput}
-                onChange={(e) => setRecordingLimitInput(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
-                placeholder="Tier default if empty (e.g. 15)"
-                className="input-modern num-tabular"
-                style={{ width: '100%', boxSizing: 'border-box' }}
-              />
-            </div>
-
             {/* Custom Plan Label */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Custom Plan Title Label (Optional)
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Custom Plan Label (Optional)
               </label>
               <input
                 type="text"
                 value={customPlanNameInput}
                 onChange={(e) => setCustomPlanNameInput(e.target.value)}
-                placeholder="e.g. VIP Member, Scholarship, Contest Champion"
+                placeholder="e.g. VIP Member, Scholarship"
                 className="input-modern"
-                style={{ width: '100%', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            {/* Custom Recording Retention Override */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Recording Retention Override (Days)
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="365"
-                placeholder="Custom retention days (e.g. 60)"
-                value={retentionOverrideInput}
-                onChange={(e) => setRetentionOverrideInput(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
-                className="input-modern num-tabular"
                 style={{ width: '100%', boxSizing: 'border-box' }}
               />
             </div>
 
             {/* Reset Calls Checkbox */}
             <div style={{
-              marginBottom: '1.5rem',
-              padding: '0.875rem',
+              marginBottom: '1.25rem',
+              padding: '0.625rem 0.75rem',
               backgroundColor: 'var(--bg-surface-elevated)',
-              borderRadius: '8px',
+              borderRadius: '6px',
               border: '1px solid var(--border-card)',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.625rem'
+              gap: '0.5rem'
             }}>
               <input
                 type="checkbox"
                 id="resetCallsCheckbox"
                 checked={resetDailyCallsCheckbox}
                 onChange={(e) => setResetDailyCallsCheckbox(e.target.checked)}
-                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                style={{ width: '15px', height: '15px', cursor: 'pointer' }}
               />
-              <label htmlFor="resetCallsCheckbox" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <RotateCcw size={14} style={{ color: 'var(--primary-light)' }} /> Reset call usage for current cycle to <strong>0</strong>
+              <label htmlFor="resetCallsCheckbox" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <RotateCcw size={13} style={{ color: 'var(--primary)' }} /> Reset monthly calls used to <strong>0</strong>
               </label>
             </div>
 
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+            {/* Modal Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.625rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
               <button
                 type="button"
                 onClick={closePlanModal}
@@ -779,14 +735,14 @@ export function UserManagement() {
                 disabled={isSubmittingPlan}
                 className="btn-primary"
               >
-                {isSubmittingPlan ? 'Saving Changes...' : 'Save Plan & Limits'}
+                {isSubmittingPlan ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Destructive Action Confirm Dialog */}
+      {/* Destructive Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}

@@ -9,7 +9,6 @@ import {
   Users,
   CreditCard,
   Star,
-  ShieldCheck,
   RefreshCw,
   PhoneCall,
   Server,
@@ -19,7 +18,7 @@ import {
   AlertCircle,
   Clock,
   ArrowRight,
-  Award
+  ShieldAlert
 } from 'lucide-react';
 
 interface SystemHealthState {
@@ -61,7 +60,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
         setHealth({
           api: 'Healthy',
           database: 'Healthy',
-          signaling: statsData.activeCalls > 0 ? 'Healthy' : 'Healthy',
+          signaling: 'Healthy',
           bot: 'Healthy',
         });
       } else {
@@ -75,7 +74,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
         setPendingAppeals(appealsData.filter((a) => !a.status || a.status === 'PENDING' || a.status === 'pending'));
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch overview data');
       setHealth((prev) => ({ ...prev, api: 'Degraded' }));
     } finally {
       setIsLoading(false);
@@ -87,7 +86,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
   }, [fetchDashboardData]);
 
   if (isLoading && !stats) {
-    return <LoadingSkeleton message="Initializing Command Center telemetry..." minHeight="380px" />;
+    return <LoadingSkeleton message="Loading operations overview..." minHeight="320px" />;
   }
 
   const activeCalls = stats?.activeCalls ?? 0;
@@ -98,77 +97,80 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
   const uzsApproved = stats?.manualUzsRevenue?.approvedUzs ?? 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      {/* Top Header */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Header */}
       <PageHeader
-        title="Operations Command Center"
-        description="Live real-time view of platform vitals, user activity, voice call traffic, and pending administrative queues"
+        title="Operations Overview"
+        description="Real-time platform activity, infrastructure health, and pending operational tasks"
         actions={
           <button
             onClick={fetchDashboardData}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.5rem 0.875rem' }}
+            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
-            <span>Refresh Vitals</span>
+            <span>Refresh</span>
           </button>
         }
       />
 
       {error && (
-        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--danger-border)', backgroundColor: 'var(--danger-bg)', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <AlertCircle size={18} />
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger-text)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
 
-      {/* Primary KPI Tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+      {/* 5 KPI Cards (Equal Height, Mathematical Alignment) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
         <StatCard
-          label="Registered Candidates"
+          label="Registered Users"
           value={totalUsers.toLocaleString()}
           subValue={`${dau.toLocaleString()} active today (DAU)`}
-          icon={<Users size={18} />}
-          iconBg="rgba(99, 102, 241, 0.15)"
-          iconColor="var(--primary-light)"
+          icon={<Users size={16} />}
           onClick={() => onNavigateTab('users')}
         />
 
         <StatCard
-          label="Live Active Calls"
+          label="Active Calls"
           value={activeCalls}
           subValue={
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: activeCalls > 0 ? '#34d399' : 'var(--text-muted)' }}>
-              <span className={activeCalls > 0 ? 'dot-pulse' : ''} style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: activeCalls > 0 ? '#10b981' : '#64748b' }} />
-              {activeCalls > 0 ? 'Live WebRTC Rooms' : 'Standby / Idle'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: activeCalls > 0 ? 'var(--success-text)' : 'var(--text-muted)' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: activeCalls > 0 ? 'var(--success)' : 'var(--text-muted)' }} />
+              {activeCalls > 0 ? 'Live in WebRTC rooms' : 'Idle / Standby'}
             </span>
           }
-          icon={<Radio size={18} />}
-          iconBg="rgba(16, 185, 129, 0.15)"
-          iconColor="#34d399"
-          glowColor={activeCalls > 0 ? '#10b981' : undefined}
+          icon={<Radio size={16} />}
           onClick={() => onNavigateTab('analytics')}
         />
 
         <StatCard
-          label="Practice Sessions"
+          label="Completed Calls"
           value={totalCalls.toLocaleString()}
           subValue={`${stats?.totalMinutesSpoken ?? 0} total minutes spoken`}
-          icon={<PhoneCall size={18} />}
-          iconBg="rgba(139, 92, 246, 0.15)"
-          iconColor="#c084fc"
+          icon={<PhoneCall size={16} />}
           onClick={() => onNavigateTab('analytics')}
         />
 
         <StatCard
           label="Pending Payments"
           value={pendingPayments.length}
-          subValue={pendingPayments.length > 0 ? 'Requires verification' : 'All receipts verified'}
-          icon={<CreditCard size={18} />}
-          iconBg={pendingPayments.length > 0 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 255, 255, 0.05)'}
-          iconColor={pendingPayments.length > 0 ? '#fbbf24' : 'var(--text-muted)'}
-          badge={pendingPayments.length > 0 ? <StatusBadge variant="warning" label="ACTION REQ" size="sm" /> : undefined}
+          subValue={pendingPayments.length > 0 ? 'Needs administrative review' : 'All receipts verified'}
+          icon={<CreditCard size={16} />}
+          badge={pendingPayments.length > 0 ? <StatusBadge variant="warning" label="Needs Review" size="sm" /> : undefined}
           onClick={() => onNavigateTab('payments')}
         />
 
@@ -176,201 +178,160 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
           label="Realized Revenue"
           value={`⭐ ${starsTotal.toLocaleString()}`}
           subValue={`${uzsApproved.toLocaleString('en-US')} UZS approved`}
-          icon={<Star size={18} />}
-          iconBg="rgba(251, 191, 36, 0.15)"
-          iconColor="#fde047"
+          icon={<Star size={16} />}
           onClick={() => onNavigateTab('analytics')}
         />
       </div>
 
-      {/* 2-Column Grid: System Health & Action Queues */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
-        {/* System Health Panel */}
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+      {/* 2-Column Grid: Priority Operational Work & System Health */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem' }}>
+        {/* Priority Action Tasks Panel */}
+        <div className="glass-panel" style={{ padding: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Server size={18} color="var(--primary-light)" />
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+              <Clock size={16} color="var(--primary)" />
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                Pending Operational Work
+              </h3>
+            </div>
+            {pendingPayments.length + pendingAppeals.length > 0 ? (
+              <StatusBadge variant="warning" label={`${pendingPayments.length + pendingAppeals.length} Action Items`} size="sm" />
+            ) : (
+              <StatusBadge variant="success" label="All Clear" size="sm" />
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+            {/* Payment Queue Item */}
+            <div
+              onClick={() => onNavigateTab('payments')}
+              className="glass-card"
+              style={{
+                padding: '0.875rem 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                borderColor: pendingPayments.length > 0 ? 'var(--warning-border)' : 'var(--border-card)',
+                backgroundColor: pendingPayments.length > 0 ? 'var(--warning-bg)' : '#FFFFFF',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                <CreditCard size={16} color={pendingPayments.length > 0 ? 'var(--warning-text)' : 'var(--text-muted)'} />
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Manual Card Payments (UZS)
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {pendingPayments.length > 0 ? `${pendingPayments.length} receipts awaiting review` : 'All card receipts fulfilled'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <StatusBadge variant={pendingPayments.length > 0 ? 'warning' : 'neutral'} label={String(pendingPayments.length)} size="sm" />
+                <ArrowRight size={14} color="var(--text-muted)" />
+              </div>
+            </div>
+
+            {/* Appeals Queue Item */}
+            <div
+              onClick={() => onNavigateTab('appeals')}
+              className="glass-card"
+              style={{
+                padding: '0.875rem 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                borderColor: pendingAppeals.length > 0 ? 'var(--danger-border)' : 'var(--border-card)',
+                backgroundColor: pendingAppeals.length > 0 ? 'var(--danger-bg)' : '#FFFFFF',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                <ShieldAlert size={16} color={pendingAppeals.length > 0 ? 'var(--danger-text)' : 'var(--text-muted)'} />
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Candidate Ban Appeals
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {pendingAppeals.length > 0 ? `${pendingAppeals.length} unban appeals pending triage` : 'No open moderation appeals'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <StatusBadge variant={pendingAppeals.length > 0 ? 'danger' : 'neutral'} label={String(pendingAppeals.length)} size="sm" />
+                <ArrowRight size={14} color="var(--text-muted)" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* System Health Panel */}
+        <div className="glass-panel" style={{ padding: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Server size={16} color="var(--primary)" />
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                 System Infrastructure Health
               </h3>
             </div>
-            <StatusBadge variant="success" label="ALL SYSTEMS OPERATIONAL" size="sm" />
+            <StatusBadge variant="success" label="Operational" size="sm" />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.875rem' }}>
-            <div className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <Server size={16} color="#38bdf8" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.625rem' }}>
+            <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Server size={15} color="var(--primary)" />
                 <div>
-                  <div style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>API Gateway</div>
-                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Express Server</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>API Server</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Express REST</div>
                 </div>
               </div>
               <StatusBadge variant={health.api === 'Healthy' ? 'success' : 'warning'} label={health.api} size="sm" />
             </div>
 
-            <div className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <Database size={16} color="#34d399" />
+            <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Database size={15} color="var(--accent-blue)" />
                 <div>
-                  <div style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>Database</div>
-                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Prisma Postgres</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Database</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Postgres</div>
                 </div>
               </div>
               <StatusBadge variant={health.database === 'Healthy' ? 'success' : 'warning'} label={health.database} size="sm" />
             </div>
 
-            <div className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <Radio size={16} color="#c084fc" />
+            <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Radio size={15} color="var(--primary)" />
                 <div>
-                  <div style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>Signaling</div>
-                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Socket.IO & WebRTC</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Signaling</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>WebRTC Rooms</div>
                 </div>
               </div>
               <StatusBadge variant={health.signaling === 'Healthy' ? 'success' : 'warning'} label={health.signaling} size="sm" />
             </div>
 
-            <div className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <Bot size={16} color="#fde047" />
+            <div className="glass-card" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Bot size={15} color="var(--gold)" />
                 <div>
-                  <div style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>Telegram Bot</div>
-                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Grammy Dispatcher</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Telegram Bot</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Grammy Engine</div>
                 </div>
               </div>
               <StatusBadge variant={health.bot === 'Healthy' ? 'success' : 'warning'} label={health.bot} size="sm" />
             </div>
           </div>
 
-          <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '8px', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
-            <span>Audio Quality Score: <strong>{stats?.callQuality?.score ?? 98}/100</strong> ({stats?.callQuality?.statusMessage ?? 'Optimal'})</span>
+          <div style={{ marginTop: '0.875rem', padding: '0.625rem 0.75rem', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '6px', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            <span>Audio Quality Score: <strong style={{ color: 'var(--text-primary)' }}>{stats?.callQuality?.score ?? 98}/100</strong></span>
             <button
               onClick={() => onNavigateTab('analytics')}
-              style={{ background: 'none', border: 'none', color: 'var(--primary-light)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 600 }}
+              style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 600, fontSize: '0.75rem' }}
             >
-              View Telemetry <ArrowRight size={13} />
+              Telemetry <ArrowRight size={12} />
             </button>
-          </div>
-        </div>
-
-        {/* Priority Action Queues */}
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Clock size={18} color="#fbbf24" />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                  Pending Operational Work
-                </h3>
-              </div>
-              {(pendingPayments.length > 0 || pendingAppeals.length > 0) && (
-                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
-                  {pendingPayments.length + pendingAppeals.length} Items Pending
-                </span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {/* Payment Queue Item */}
-              <div
-                onClick={() => onNavigateTab('payments')}
-                className="glass-card"
-                style={{
-                  padding: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  borderColor: pendingPayments.length > 0 ? 'rgba(245, 158, 11, 0.3)' : 'var(--border-card)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <CreditCard size={18} color={pendingPayments.length > 0 ? '#fbbf24' : 'var(--text-muted)'} />
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Manual Payment Receipts (UZS)
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {pendingPayments.length > 0 ? `${pendingPayments.length} student orders awaiting bank receipt review` : 'All card receipts processed'}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {pendingPayments.length > 0 ? (
-                    <StatusBadge variant="warning" label={`${pendingPayments.length} PENDING`} size="sm" />
-                  ) : (
-                    <StatusBadge variant="neutral" label="0" size="sm" />
-                  )}
-                  <ArrowRight size={14} color="var(--text-muted)" />
-                </div>
-              </div>
-
-              {/* Appeals Queue Item */}
-              <div
-                onClick={() => onNavigateTab('appeals')}
-                className="glass-card"
-                style={{
-                  padding: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  borderColor: pendingAppeals.length > 0 ? 'rgba(244, 63, 94, 0.3)' : 'var(--border-card)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <ShieldCheck size={18} color={pendingAppeals.length > 0 ? '#fb7185' : 'var(--text-muted)'} />
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Student Unban Appeals Queue
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {pendingAppeals.length > 0 ? `${pendingAppeals.length} banned candidate statements to triage` : 'No open moderation appeals'}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {pendingAppeals.length > 0 ? (
-                    <StatusBadge variant="danger" label={`${pendingAppeals.length} OPEN`} size="sm" />
-                  ) : (
-                    <StatusBadge variant="neutral" label="0" size="sm" />
-                  )}
-                  <ArrowRight size={14} color="var(--text-muted)" />
-                </div>
-              </div>
-
-              {/* Referral Contest Item */}
-              <div
-                onClick={() => onNavigateTab('contest')}
-                className="glass-card"
-                style={{
-                  padding: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <Award size={18} color="#fde047" />
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Referral Championship & Leaderboard
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Configure rules, prizes, and monitor Top 10 candidate referrers
-                    </div>
-                  </div>
-                </div>
-                <ArrowRight size={14} color="var(--text-muted)" />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Session: Master 2FA Verified</span>
-            <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>v2.4 Production</span>
           </div>
         </div>
       </div>

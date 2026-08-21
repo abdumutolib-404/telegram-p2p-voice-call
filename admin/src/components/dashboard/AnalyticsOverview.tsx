@@ -39,7 +39,7 @@ export function AnalyticsOverview() {
   }, [fetchStats]);
 
   if (isLoading && !stats) {
-    return <LoadingSkeleton message="Calculating realized revenue & telemetry..." rows={5} />;
+    return <LoadingSkeleton message="Calculating analytics & telemetry..." rows={5} />;
   }
 
   const defaultStats: AdminStats = stats || {
@@ -77,87 +77,89 @@ export function AnalyticsOverview() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
-        title="Revenue & Platform Telemetry"
-        description="Authoritative financial metrics strictly separated by currency (Telegram Stars & Uzbek Som UZS), session completion, and WebRTC stability"
+        title="Revenue & Platform Analytics"
+        description="Realized financial metrics strictly separated by currency (Telegram Stars & Uzbek Som UZS) and WebRTC audio telemetry"
         actions={
           <button
             onClick={fetchStats}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.5rem 0.875rem' }}
+            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
-            <span>Refresh Analytics</span>
+            <span>Refresh</span>
           </button>
         }
       />
 
       {error && (
-        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--danger-border)', backgroundColor: 'var(--danger-bg)', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <AlertCircle size={18} />
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger-text)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
 
-      {/* Primary Financial & Growth Tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
-        {/* Telegram Stars Revenue */}
+      {/* Financial & Growth Tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+        {/* Telegram Stars */}
         <StatCard
           label="Stars Revenue (XTR)"
           value={`⭐ ${defaultStats.starsRevenue.totalStars.toLocaleString()}`}
           subValue={`$${defaultStats.starsRevenue.totalUsd.toLocaleString()} USD • ${defaultStats.starsRevenue.transactionCount ?? 0} orders`}
-          icon={<Star size={18} fill="#fde047" />}
-          iconBg="rgba(251, 191, 36, 0.15)"
-          iconColor="#fde047"
-          glowColor="#f59e0b"
+          icon={<Star size={16} />}
         />
 
-        {/* Manual UZS Revenue */}
+        {/* Manual UZS */}
         <StatCard
           label="Card Revenue (UZS)"
           value={`${manualUzs.approvedUzs.toLocaleString('en-US')} UZS`}
           subValue={`${manualUzs.transactionCount} verified • ${manualUzs.pendingCount} pending`}
-          icon={<CreditCard size={18} />}
-          iconBg="rgba(16, 185, 129, 0.15)"
-          iconColor="#34d399"
-          glowColor="#10b981"
+          icon={<CreditCard size={16} />}
         />
 
-        {/* Engagement / MAU */}
+        {/* MAU */}
         <StatCard
           label="Monthly Active (MAU)"
           value={defaultStats.mau.toLocaleString()}
           subValue={`${defaultStats.dau.toLocaleString()} daily active candidates`}
-          icon={<TrendingUp size={18} />}
-          iconBg="rgba(6, 182, 212, 0.15)"
-          iconColor="#38bdf8"
+          icon={<TrendingUp size={16} />}
         />
 
-        {/* Voice Practice Volume */}
+        {/* Total Calls */}
         <StatCard
-          label="Total Completed Calls"
+          label="Completed Calls"
           value={(defaultStats.totalCalls ?? 0).toLocaleString()}
           subValue={`${defaultStats.totalMinutesSpoken ?? 0} min total audio runtime`}
-          icon={<PhoneCall size={18} />}
-          iconBg="rgba(139, 92, 246, 0.15)"
-          iconColor="#c084fc"
+          icon={<PhoneCall size={16} />}
         />
       </div>
 
-      {/* Audio Quality & Session Telemetry */}
-      <div className="glass-panel" style={{ padding: '1.75rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+      {/* WebRTC Quality & Telemetry */}
+      <div className="glass-panel" style={{ padding: '1.25rem', backgroundColor: '#FFFFFF' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ShieldCheck size={20} color="var(--primary-light)" />
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+              <ShieldCheck size={18} color="var(--primary)" />
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                 Audio Quality & WebRTC Stability
               </h3>
             </div>
-            <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.825rem' }}>
-              Measurable reliability score derived from session completion, packet drop rates, and recording egress success
+            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+              Reliability metrics derived from room completion rates, audio continuity, and recording egress
             </p>
           </div>
 
@@ -165,82 +167,81 @@ export function AnalyticsOverview() {
             {defaultStats.callQuality?.score !== null && defaultStats.callQuality?.score !== undefined ? (
               <StatusBadge
                 variant={defaultStats.callQuality.score >= 90 ? 'success' : defaultStats.callQuality.score >= 75 ? 'warning' : 'danger'}
-                label={`⭐ ${defaultStats.callQuality.score}/100 — ${defaultStats.callQuality.statusMessage}`}
+                label={`${defaultStats.callQuality.score}/100 — ${defaultStats.callQuality.statusMessage}`}
               />
             ) : (
-              <StatusBadge variant="neutral" label={`ℹ️ Insufficient Sample (${defaultStats.callQuality?.sampleSize ?? 0} sessions)`} />
+              <StatusBadge variant="neutral" label={`Sample: ${defaultStats.callQuality?.sampleSize ?? 0} calls`} />
             )}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
-          <div className="glass-card" style={{ padding: '1.25rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>Completion Rate</span>
-            <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: 700, color: '#38bdf8', marginTop: '0.35rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.875rem' }}>
+          <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.03em' }}>Completion Rate</span>
+            <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality?.completionRate ?? 100}%
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Normal call conclusions</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Completed without drops</span>
           </div>
 
-          <div className="glass-card" style={{ padding: '1.25rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>Audio Stream Stability</span>
-            <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: 700, color: '#34d399', marginTop: '0.35rem' }}>
+          <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.03em' }}>Audio Stream Stability</span>
+            <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality?.audioReliability ?? 100}%
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Zero premature drops</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Smooth audio stream</span>
           </div>
 
-          <div className="glass-card" style={{ padding: '1.25rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>Recording Egress Success</span>
-            <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: 700, color: '#c084fc', marginTop: '0.35rem' }}>
+          <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.03em' }}>Recording Egress</span>
+            <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality?.recordingReliability ?? 100}%
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Storage files persisted & synced</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Egress files saved</span>
           </div>
 
-          <div className="glass-card" style={{ padding: '1.25rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>Pre-Call Abort Rate</span>
-            <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: 700, color: '#fb7185', marginTop: '0.35rem' }}>
+          <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.03em' }}>Pre-Call Abort Rate</span>
+            <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality?.cancellationRate ?? 0}%
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cancellations during queue</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cancellations in queue</span>
           </div>
         </div>
       </div>
 
       {/* Monthly Stars Revenue History */}
-      <div className="glass-panel" style={{ padding: '1.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-          <BarChart2 size={18} color="#fbbf24" />
-          <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+      <div className="glass-panel" style={{ padding: '1.25rem', backgroundColor: '#FFFFFF' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+          <BarChart2 size={16} color="var(--primary)" />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
             Monthly Telegram Stars (XTR) Revenue History
           </h3>
         </div>
 
         {monthlyHistory.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', fontStyle: 'italic' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic', margin: 0 }}>
             No monthly revenue history recorded yet.
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             {monthlyHistory.map((item, idx) => {
-              const barPercentage = Math.min(100, Math.max(6, (item.stars / maxMonthlyStars) * 100));
+              const barPercentage = Math.min(100, Math.max(4, (item.stars / maxMonthlyStars) * 100));
               return (
-                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
                     <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.month}</span>
-                    <span className="num-tabular" style={{ color: '#fde047', fontWeight: 700 }}>
+                    <span className="num-tabular" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
                       ⭐ {item.stars.toLocaleString()} Stars <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(${item.usd.toLocaleString()} USD)</span>
                     </span>
                   </div>
-                  <div style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.05)', height: '8px', borderRadius: '9999px', overflow: 'hidden' }}>
+                  <div style={{ width: '100%', backgroundColor: 'var(--bg-surface-elevated)', height: '6px', borderRadius: '4px', overflow: 'hidden' }}>
                     <div style={{
                       width: `${barPercentage}%`,
-                      background: 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                      backgroundColor: 'var(--primary)',
                       height: '100%',
-                      borderRadius: '9999px',
-                      boxShadow: '0 0 10px rgba(245, 158, 11, 0.3)',
-                      transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                      borderRadius: '4px',
+                      transition: 'width 0.3s ease',
                     }} />
                   </div>
                 </div>

@@ -31,11 +31,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const getIcon = () => {
     switch (severity) {
       case 'danger':
-        return <ShieldAlert size={22} color="#fb7185" />;
+        return <ShieldAlert size={20} color="#D92D20" />;
       case 'warning':
-        return <AlertTriangle size={22} color="#fbbf24" />;
+        return <AlertTriangle size={20} color="#B54708" />;
       default:
-        return <Info size={22} color="#38bdf8" />;
+        return <Info size={20} color="#175CD3" />;
     }
   };
 
@@ -55,8 +55,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(9, 13, 22, 0.85)',
-        backdropFilter: 'blur(12px)',
+        backgroundColor: 'rgba(16, 24, 40, 0.6)',
+        backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -69,16 +69,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         style={{
           width: '100%',
           maxWidth: '440px',
-          padding: '1.75rem',
+          padding: '1.5rem',
           boxSizing: 'border-box',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
+          boxShadow: 'var(--shadow-lg)',
+          backgroundColor: '#FFFFFF',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
           <div
             style={{
               padding: '0.5rem',
-              borderRadius: '10px',
+              borderRadius: '8px',
               backgroundColor: severity === 'danger' ? 'var(--danger-bg)' : severity === 'warning' ? 'var(--warning-bg)' : 'var(--info-bg)',
               border: `1px solid ${severity === 'danger' ? 'var(--danger-border)' : severity === 'warning' ? 'var(--warning-border)' : 'var(--info-border)'}`,
               display: 'flex',
@@ -88,7 +89,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           >
             {getIcon()}
           </div>
-          <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
             {title}
           </h3>
         </div>

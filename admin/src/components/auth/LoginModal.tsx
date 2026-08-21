@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { Lock, Key, Eye, EyeOff, ShieldAlert, ShieldCheck, ArrowRight, RefreshCw, Sparkles } from 'lucide-react';
+import { Lock, Key, Eye, EyeOff, ShieldAlert, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react';
 
 export function LoginModal() {
   const { requestOtp, verifyOtp } = useAuth();
@@ -29,7 +29,7 @@ export function LoginModal() {
       const res = await requestOtp(masterPassword);
       setChallengeId(res.challengeId);
       setStep('otp');
-      setSuccessMsg('6-digit code dispatched to Admin Telegram account!');
+      setSuccessMsg('6-digit verification code sent to Admin Telegram account.');
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -69,8 +69,8 @@ export function LoginModal() {
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(9, 13, 22, 0.88)',
-        backdropFilter: 'blur(16px)',
+        backgroundColor: 'rgba(16, 24, 40, 0.5)',
+        backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -80,58 +80,41 @@ export function LoginModal() {
     >
       <div
         style={{
-          backgroundColor: 'var(--bg-surface)',
+          backgroundColor: '#FFFFFF',
           border: '1px solid var(--border-card)',
-          borderRadius: '20px',
+          borderRadius: '16px',
           width: '100%',
-          maxWidth: '440px',
-          padding: '2.5rem 2rem',
-          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(99, 102, 241, 0.1)',
+          maxWidth: '420px',
+          padding: '2rem',
+          boxShadow: 'var(--shadow-lg)',
           color: 'var(--text-primary)',
           position: 'relative',
-          overflow: 'hidden',
         }}
       >
-        {/* Glow Accent */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '-60px',
-            right: '-60px',
-            width: '140px',
-            height: '140px',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%)',
-            filter: 'blur(20px)',
-            pointerEvents: 'none',
-          }}
-        />
-
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '58px',
-              height: '58px',
-              borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.3))',
-              color: '#818cf8',
-              marginBottom: '1.25rem',
-              border: '1px solid rgba(99, 102, 241, 0.35)',
-              boxShadow: '0 8px 24px -4px rgba(99, 102, 241, 0.3)',
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              backgroundColor: 'var(--primary-bg)',
+              color: 'var(--primary)',
+              marginBottom: '1rem',
+              border: '1px solid var(--primary-border)',
             }}
           >
-            {step === 'password' ? <Lock size={26} /> : <Key size={26} />}
+            {step === 'password' ? <Lock size={22} /> : <Key size={22} />}
           </div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: '0 0 0.5rem 0', letterSpacing: '-0.02em' }}>
-            PairTalk Admin Console
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.35rem 0', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+            PairTalk Operations Console
           </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
             {step === 'password'
               ? 'Enter Master Password to request Telegram 2FA OTP'
-              : 'Enter the 6-digit verification code sent to Telegram'}
+              : 'Enter the 6-digit code dispatched to Telegram'}
           </p>
         </div>
 
@@ -140,17 +123,17 @@ export function LoginModal() {
             style={{
               backgroundColor: 'var(--danger-bg)',
               border: '1px solid var(--danger-border)',
-              borderRadius: '10px',
-              padding: '0.75rem 1rem',
-              marginBottom: '1.5rem',
+              borderRadius: '8px',
+              padding: '0.625rem 0.875rem',
+              marginBottom: '1.25rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.75rem',
-              color: '#fca5a5',
+              gap: '0.625rem',
+              color: 'var(--danger-text)',
               fontSize: '0.85rem',
             }}
           >
-            <ShieldAlert size={18} style={{ flexShrink: 0 }} />
+            <ShieldAlert size={16} style={{ flexShrink: 0 }} />
             <span>{error}</span>
           </div>
         )}
@@ -160,41 +143,41 @@ export function LoginModal() {
             style={{
               backgroundColor: 'var(--success-bg)',
               border: '1px solid var(--success-border)',
-              borderRadius: '10px',
-              padding: '0.75rem 1rem',
-              marginBottom: '1.5rem',
+              borderRadius: '8px',
+              padding: '0.625rem 0.875rem',
+              marginBottom: '1.25rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.75rem',
-              color: '#6ee7b7',
+              gap: '0.625rem',
+              color: 'var(--success-text)',
               fontSize: '0.85rem',
             }}
           >
-            <ShieldCheck size={18} style={{ flexShrink: 0 }} />
+            <ShieldCheck size={16} style={{ flexShrink: 0 }} />
             <span>{successMsg}</span>
           </div>
         )}
 
         {step === 'password' ? (
-          <form onSubmit={handlePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form onSubmit={handlePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Master Password
               </label>
               <div style={{ position: 'relative' }}>
-                <Lock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={masterPassword}
                   onChange={(e) => setMasterPassword(e.target.value)}
-                  placeholder="••••••••••••••••"
+                  placeholder="Enter master password"
                   required
                   autoFocus
                   className="input-modern"
                   style={{
                     width: '100%',
-                    paddingLeft: '2.5rem',
-                    paddingRight: '2.5rem',
+                    paddingLeft: '2.25rem',
+                    paddingRight: '2.25rem',
                     boxSizing: 'border-box',
                   }}
                 />
@@ -203,7 +186,7 @@ export function LoginModal() {
                   onClick={() => setShowPassword(!showPassword)}
                   style={{
                     position: 'absolute',
-                    right: '12px',
+                    right: '10px',
                     top: '50%',
                     transform: 'translateY(-50%)',
                     background: 'none',
@@ -215,7 +198,7 @@ export function LoginModal() {
                     alignItems: 'center',
                   }}
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
@@ -224,28 +207,28 @@ export function LoginModal() {
               type="submit"
               disabled={isSubmitting}
               className="btn-primary"
-              style={{ width: '100%', padding: '0.85rem' }}
+              style={{ width: '100%', padding: '0.625rem', marginTop: '0.25rem' }}
             >
               {isSubmitting ? (
                 <>
-                  <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                  Verifying Password...
+                  <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                  Verifying...
                 </>
               ) : (
                 <>
-                  Request 2FA OTP <ArrowRight size={18} />
+                  Request 2FA OTP <ArrowRight size={15} />
                 </>
               )}
             </button>
           </form>
         ) : (
-          <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 6-Digit Verification Code
               </label>
               <div style={{ position: 'relative' }}>
-                <Key size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <Key size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
                   maxLength={6}
@@ -257,9 +240,9 @@ export function LoginModal() {
                   className="input-modern num-tabular"
                   style={{
                     width: '100%',
-                    paddingLeft: '2.5rem',
+                    paddingLeft: '2.25rem',
                     letterSpacing: '0.35em',
-                    fontSize: '1.25rem',
+                    fontSize: '1.2rem',
                     fontWeight: 700,
                     textAlign: 'center',
                     boxSizing: 'border-box',
@@ -272,17 +255,15 @@ export function LoginModal() {
               type="submit"
               disabled={isSubmitting}
               className="btn-primary"
-              style={{ width: '100%', padding: '0.85rem' }}
+              style={{ width: '100%', padding: '0.625rem' }}
             >
               {isSubmitting ? (
                 <>
-                  <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                  <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
                   Authenticating...
                 </>
               ) : (
-                <>
-                  <Sparkles size={18} /> Unlock Dashboard
-                </>
+                'Unlock Console'
               )}
             </button>
 
@@ -295,9 +276,9 @@ export function LoginModal() {
                 setSuccessMsg(null);
               }}
               className="btn-secondary"
-              style={{ width: '100%', padding: '0.75rem', fontSize: '0.825rem' }}
+              style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem' }}
             >
-              ← Back to Password Step
+              ← Back to Password
             </button>
           </form>
         )}

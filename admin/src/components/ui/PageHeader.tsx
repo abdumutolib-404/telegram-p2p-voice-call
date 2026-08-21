@@ -23,12 +23,12 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         alignItems: 'flex-start',
         flexWrap: 'wrap',
         gap: '1rem',
-        marginBottom: '0.5rem',
+        marginBottom: '0.25rem',
         ...style,
       }}
     >
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <h1
             style={{
               fontSize: '1.5rem',
@@ -45,7 +45,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         {description && (
           <p
             style={{
-              margin: '0.35rem 0 0 0',
+              margin: '0.25rem 0 0 0',
               color: 'var(--text-secondary)',
               fontSize: '0.875rem',
               lineHeight: 1.4,
@@ -57,7 +57,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       </div>
 
       {actions && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
           {actions}
         </div>
       )}

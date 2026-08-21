@@ -93,7 +93,7 @@ export function ContestManagement() {
       await fetchContest();
       setFeedback({
         type: 'success',
-        message: nextState ? '🏆 Hall of Fame championship is now LIVE!' : '⏸️ Hall of Fame contest has been paused.',
+        message: nextState ? 'Championship is now LIVE!' : 'Championship has been paused.',
       });
     } catch (err) {
       setFeedback({ type: 'error', message: 'Failed to update contest status.' });
@@ -116,7 +116,7 @@ export function ContestManagement() {
         }),
       });
       await fetchContest();
-      setFeedback({ type: 'success', message: '✅ Contest configuration saved successfully!' });
+      setFeedback({ type: 'success', message: 'Contest configuration saved successfully!' });
     } catch (err) {
       setFeedback({ type: 'error', message: 'Failed to save contest settings.' });
     } finally {
@@ -125,20 +125,20 @@ export function ContestManagement() {
   };
 
   if (isLoading && !data) {
-    return <LoadingSkeleton message="Retrieving Hall of Fame & Referral telemetry..." rows={4} />;
+    return <LoadingSkeleton message="Retrieving referral telemetry..." rows={4} />;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Hall of Fame & Contests"
-        description="Organize periodic referral championships, configure exclusive tier prizes, and track top candidate referrers"
+        description="Organize referral championships, configure tier prize rewards, and track top referrers"
         actions={
           <button
             onClick={fetchContest}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.5rem 0.875rem' }}
+            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
             <span>Refresh</span>
@@ -147,27 +147,25 @@ export function ContestManagement() {
       />
 
       {/* Top Banner & Quick Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
         {/* Active Contest Status Card */}
         <div
           className="metric-card"
           style={{
-            borderColor: data?.isActive ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-card)',
-            background: data?.isActive
-              ? 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(6, 78, 59, 0.25))'
-              : 'var(--bg-surface)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            borderColor: data?.isActive ? 'var(--success-border)' : 'var(--border-card)',
+            backgroundColor: data?.isActive ? 'var(--success-bg)' : '#FFFFFF',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Trophy size={18} color={data?.isActive ? '#fbbf24' : 'var(--text-muted)'} />
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Hall of Fame Standing
-                </span>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Championship Status
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: data?.isActive ? '#34d399' : '#fb7185', marginTop: '0.4rem', letterSpacing: '-0.01em' }}>
-                {data?.isActive ? 'ACTIVE & BROADCASTING' : 'OFFLINE / PAUSED'}
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: data?.isActive ? 'var(--success-text)' : 'var(--danger-text)', marginTop: '0.25rem' }}>
+                {data?.isActive ? 'ACTIVE' : 'PAUSED'}
               </div>
             </div>
             <button
@@ -175,78 +173,73 @@ export function ContestManagement() {
               onClick={handleToggleActive}
               disabled={isToggling}
               className={data?.isActive ? 'btn-danger' : 'btn-success'}
-              style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
             >
-              {data?.isActive ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Launch Live</>}
+              {data?.isActive ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Launch</>}
             </button>
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            {data?.isActive ? 'Candidates see leaderboard and prize pool in bot' : 'Leaderboard paused (permanent bonus calls continue automatically)'}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+            {data?.isActive ? 'Visible to all candidates in Telegram Bot' : 'Leaderboard paused'}
           </div>
         </div>
 
         {/* Total Qualifying Referrals */}
         <StatCard
-          label="Total Friends Bound"
+          label="Qualifying Referrals"
           value={(data?.totalReferrals ?? 0).toLocaleString()}
-          subValue="Unique candidate registrations via invite links"
-          icon={<Users size={18} />}
-          iconBg="rgba(6, 182, 212, 0.15)"
-          iconColor="#38bdf8"
+          subValue="Completed practice calls (≥30s)"
+          icon={<Users size={16} />}
         />
 
-        {/* Active Permanent Bonus Calls */}
+        {/* Active Bonus Calls */}
         <StatCard
-          label="Permanent Bonus Balance"
+          label="Bonus Balance"
           value={(data?.activeBonusCalls ?? 0).toLocaleString()}
           subValue="Active bonus credits in circulation"
-          icon={<Gift size={18} />}
-          iconBg="rgba(168, 85, 247, 0.15)"
-          iconColor="#c084fc"
+          icon={<Gift size={16} />}
         />
       </div>
 
       {feedback && (
         <div
           style={{
-            padding: '0.875rem 1.25rem',
-            borderRadius: '10px',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
             backgroundColor: feedback.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
             border: feedback.type === 'success' ? '1px solid var(--success-border)' : '1px solid var(--danger-border)',
-            color: feedback.type === 'success' ? '#6ee7b7' : '#fca5a5',
+            color: feedback.type === 'success' ? 'var(--success-text)' : 'var(--danger-text)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.625rem',
-            fontSize: '0.875rem',
-            fontWeight: 500,
+            gap: '0.5rem',
+            fontSize: '0.85rem',
           }}
         >
-          {feedback.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+          {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           <span>{feedback.message}</span>
         </div>
       )}
 
-      {/* Main 2-Column Grid: Left (Contest Settings), Right (Live Leaderboard) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
-        {/* Left Column: Contest Settings Form */}
-        <div className="glass-panel" style={{ padding: '1.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-            <Sparkles size={18} color="#fbbf24" />
-            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Championship Terms & Prizes
+      {/* 2-Column Grid: Form & Leaderboard */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem' }}>
+        {/* Left Column: Form */}
+        <div className="glass-panel" style={{ padding: '1.25rem', backgroundColor: '#FFFFFF' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <Sparkles size={16} color="var(--primary)" />
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Championship Configuration
             </h3>
           </div>
 
-          <form onSubmit={handleSaveDetails} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form onSubmit={handleSaveDetails} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Championship Title
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Title
               </label>
               <input
                 type="text"
                 value={titleInput}
                 onChange={(e) => setTitleInput(e.target.value)}
-                placeholder="e.g. Summer 2026 Referral Championship"
+                placeholder="e.g. Referral Championship"
                 required
                 className="input-modern"
                 style={{ width: '100%', boxSizing: 'border-box' }}
@@ -254,14 +247,14 @@ export function ContestManagement() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Short Description & Motivation
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Description
               </label>
               <textarea
                 value={descriptionInput}
                 onChange={(e) => setDescriptionInput(e.target.value)}
                 rows={3}
-                placeholder="Explain the rules and how candidates participate..."
+                placeholder="Instructions for participants..."
                 required
                 className="input-modern"
                 style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
@@ -269,17 +262,17 @@ export function ContestManagement() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Prizes Breakdown (Markdown / Emojis)
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Prizes Breakdown
               </label>
               <textarea
                 value={prizesInput}
                 onChange={(e) => setPrizesInput(e.target.value)}
-                rows={5}
+                rows={4}
                 placeholder="🥇 1st: 60-Day VIP Plan&#10;🥈 2nd: 30-Day BOSS Plan&#10;🥉 3rd: 14-Day PRO Plan"
                 required
                 className="input-modern"
-                style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'var(--mono)', fontSize: '0.825rem' }}
+                style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'var(--mono)', fontSize: '0.8rem' }}
               />
             </div>
 
@@ -287,19 +280,19 @@ export function ContestManagement() {
               type="submit"
               disabled={isSaving}
               className="btn-primary"
-              style={{ marginTop: '0.5rem', width: '100%' }}
+              style={{ marginTop: '0.25rem', width: '100%' }}
             >
-              <Save size={15} /> {isSaving ? 'Saving Changes...' : 'Save Championship Configuration'}
+              <Save size={14} /> {isSaving ? 'Saving...' : 'Save Configuration'}
             </button>
           </form>
         </div>
 
-        {/* Right Column: Live Leaderboard */}
-        <div className="glass-panel" style={{ padding: '1.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+        {/* Right Column: Leaderboard */}
+        <div className="glass-panel" style={{ padding: '1.25rem', backgroundColor: '#FFFFFF' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Flame size={18} color="#f59e0b" />
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              <Flame size={16} color="var(--primary)" />
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 Live Leaderboard (Top 10)
               </h3>
             </div>
@@ -307,18 +300,16 @@ export function ContestManagement() {
               type="button"
               onClick={fetchContest}
               className="btn-secondary"
-              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
             >
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
 
           {data?.leaderboard && data.leaderboard.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {data.leaderboard.map((entry) => {
-                const isGold = entry.rank === 1;
-                const isSilver = entry.rank === 2;
-                const isBronze = entry.rank === 3;
+                const isTop3 = entry.rank <= 3;
 
                 return (
                   <div
@@ -328,37 +319,31 @@ export function ContestManagement() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '0.85rem 1.125rem',
-                      borderColor: isGold ? 'rgba(251, 191, 36, 0.4)' : isSilver ? 'rgba(148, 163, 184, 0.4)' : isBronze ? 'rgba(217, 119, 6, 0.4)' : 'var(--border-card)',
-                      background: isGold
-                        ? 'linear-gradient(135deg, rgba(251, 191, 36, 0.1), var(--bg-surface-elevated))'
-                        : isSilver
-                        ? 'linear-gradient(135deg, rgba(148, 163, 184, 0.08), var(--bg-surface-elevated))'
-                        : isBronze
-                        ? 'linear-gradient(135deg, rgba(217, 119, 6, 0.08), var(--bg-surface-elevated))'
-                        : 'var(--bg-surface-elevated)',
+                      padding: '0.75rem 1rem',
+                      backgroundColor: isTop3 ? 'var(--primary-bg)' : '#FFFFFF',
+                      borderColor: isTop3 ? 'var(--primary-border)' : 'var(--border-card)',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-                      <span style={{ fontSize: '1.25rem', minWidth: '28px', textAlign: 'center', fontWeight: 700 }}>
-                        {isGold ? '🥇' : isSilver ? '🥈' : isBronze ? '🥉' : `#${entry.rank}`}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '1.1rem', minWidth: '24px', textAlign: 'center', fontWeight: 700 }}>
+                        {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`}
                       </span>
                       <div>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem' }}>
                           {entry.alias}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                           TG: <code>{entry.telegramId}</code>
                         </div>
                       </div>
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
-                      <span className="num-tabular" style={{ fontSize: '1.2rem', fontWeight: 700, color: '#38bdf8' }}>
+                      <span className="num-tabular" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                         {entry.invitesCount}
                       </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.35rem' }}>
-                        qualifying
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '0.25rem' }}>
+                        invites
                       </span>
                     </div>
                   </div>
@@ -367,9 +352,9 @@ export function ContestManagement() {
             </div>
           ) : (
             <EmptyState
-              icon={<Trophy size={36} color="#fbbf24" />}
+              icon={<Trophy size={32} color="var(--text-muted)" />}
               title="No qualifying referrals yet"
-              description="Candidates who invite friends with qualifying practice calls (≥30s) will appear on the live leaderboard automatically."
+              description="Candidates with verified practice calls (≥30s) will appear on the leaderboard automatically."
             />
           )}
         </div>

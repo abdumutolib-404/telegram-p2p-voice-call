@@ -92,26 +92,38 @@ export function AppealsQueue() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Moderation Appeals Queue"
-        description="Triage permanent ban unblock requests from candidates, review recorded offense history, and assess statements"
+        description="Triage permanent ban unblock requests, review recorded violation logs, and assess candidate statements"
         actions={
           <button
             onClick={fetchAppeals}
             disabled={isLoading}
             className="btn-secondary"
-            style={{ fontSize: '0.825rem', padding: '0.5rem 0.875rem' }}
+            style={{ fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
           >
             <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
-            <span>Refresh Queue</span>
+            <span>Refresh</span>
           </button>
         }
       />
 
       {error && (
-        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--danger-border)', backgroundColor: 'var(--danger-bg)', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <AlertTriangle size={18} />
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger-text)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          <AlertTriangle size={16} />
           <span>{error}</span>
         </div>
       )}
@@ -120,33 +132,33 @@ export function AppealsQueue() {
         <LoadingSkeleton message="Retrieving moderation appeals queue..." rows={4} />
       ) : appeals.length === 0 ? (
         <EmptyState
-          icon={<ShieldCheck size={40} color="#10b981" />}
+          icon={<ShieldCheck size={32} color="var(--success)" />}
           title="All moderation appeals resolved"
           description="There are currently no open unblock requests requiring administrative review."
         />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {appeals.map((appeal) => (
-            <div key={appeal.id} className="glass-panel" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              {/* User & Ban Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-                  <div style={{ padding: '0.625rem', borderRadius: '12px', backgroundColor: 'var(--danger-bg)', color: '#fb7185', border: '1px solid var(--danger-border)' }}>
-                    <User size={22} />
+            <div key={appeal.id} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', backgroundColor: '#FFFFFF' }}>
+              {/* User Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ padding: '0.5rem', borderRadius: '8px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger-text)', border: '1px solid var(--danger-border)' }}>
+                    <User size={18} />
                   </div>
                   <div>
-                    <h4 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                    <h4 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                       {appeal.alias}
                     </h4>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Telegram ID: <code>{appeal.telegramId}</code> • User ID: <code>{appeal.userId.slice(0, 8)}</code>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      TG: <code>{appeal.telegramId}</code> • ID: <code>{appeal.userId.slice(0, 8)}</code>
                     </span>
                   </div>
                 </div>
 
-                {/* Sub-scores Badges */}
+                {/* Sub-scores */}
                 {appeal.subscores && (
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                     <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>FC: {appeal.subscores.fc}</span>
                     <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>LR: {appeal.subscores.lr}</span>
                     <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>GRA: {appeal.subscores.gra}</span>
@@ -156,11 +168,11 @@ export function AppealsQueue() {
               </div>
 
               {/* Ban Reason */}
-              <div style={{ padding: '0.875rem 1rem', backgroundColor: 'rgba(244, 63, 94, 0.08)', borderRadius: '8px', borderLeft: '4px solid #f43f5e' }}>
-                <div style={{ fontSize: '0.725rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#fb7185', fontWeight: 700, marginBottom: '0.25rem' }}>
+              <div style={{ padding: '0.625rem 0.875rem', backgroundColor: 'var(--danger-bg)', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--danger-text)', fontWeight: 600, marginBottom: '0.15rem' }}>
                   Recorded Infraction
                 </div>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                   {appeal.banReason}
                 </div>
               </div>
@@ -168,10 +180,10 @@ export function AppealsQueue() {
               {/* Offense Logs */}
               {appeal.offenseLogs && appeal.offenseLogs.length > 0 && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
-                    <FileText size={14} /> Violation Audit Logs
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                    <FileText size={13} /> Violation Logs
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     {appeal.offenseLogs.map((log, idx) => (
                       <li key={idx}>{log}</li>
                     ))}
@@ -180,31 +192,31 @@ export function AppealsQueue() {
               )}
 
               {/* Appeal Statement */}
-              <div style={{ padding: '1rem 1.25rem', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '10px', border: '1px dashed var(--border-card)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: '#38bdf8', marginBottom: '0.4rem' }}>
-                  <MessageSquare size={14} /> Candidate Appeal Statement
+              <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>
+                  <MessageSquare size={13} /> Candidate Appeal Statement
                 </div>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: 1.5, fontStyle: 'italic' }}>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4, fontStyle: 'italic' }}>
                   "{appeal.appealText}"
                 </p>
               </div>
 
-              {/* Decision Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.875rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.625rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
                 <button
                   onClick={() => triggerDecisionConfirm(appeal, 'reject')}
                   className="btn-danger"
-                  style={{ padding: '0.45rem 1.125rem', fontSize: '0.825rem' }}
+                  style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}
                 >
-                  <X size={14} /> Reject Appeal
+                  <X size={13} /> Reject Appeal
                 </button>
 
                 <button
                   onClick={() => triggerDecisionConfirm(appeal, 'approve')}
                   className="btn-success"
-                  style={{ padding: '0.45rem 1.125rem', fontSize: '0.825rem' }}
+                  style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}
                 >
-                  <Check size={14} /> Approve & Restore Account
+                  <Check size={13} /> Approve & Restore
                 </button>
               </div>
             </div>
