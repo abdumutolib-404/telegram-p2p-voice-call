@@ -2,9 +2,27 @@ import { useState, useEffect, useCallback } from 'react';
 import type { FormEvent } from 'react';
 import type { PlansResponse, PlanTierConfig } from '../../types/index.ts';
 import { adminFetch } from '../../api/client.ts';
-import { Settings, Save, CheckCircle2, AlertCircle, Sparkles, Clock, Calendar, Star, Shield, CreditCard, Crown, Zap } from 'lucide-react';
+import { PageHeader } from '../ui/PageHeader.tsx';
+import { StatusBadge } from '../ui/StatusBadge.tsx';
+import { LoadingSkeleton } from '../ui/LoadingSkeleton.tsx';
+import {
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  Clock,
+  Calendar,
+  Star,
+  Shield,
+  CreditCard,
+  Crown,
+  Zap,
+  RotateCcw,
+  AlertTriangle
+} from 'lucide-react';
 
 export function PlanEditor() {
+  const [initialPlans, setInitialPlans] = useState<PlansResponse | null>(null);
   const [plans, setPlans] = useState<PlansResponse>({
     FREE: { maxDuration: 15, dailyLimit: 3, recordingLimit: 1, retentionDays: 1, starsPrice: 0, uzsPrice: 0 },
     PLUS: { maxDuration: 30, dailyLimit: 10, recordingLimit: 3, retentionDays: 7, starsPrice: 99, uzsPrice: 15000 },
@@ -22,6 +40,7 @@ export function PlanEditor() {
     try {
       const data = await adminFetch<PlansResponse>('/api/admin/plans');
       setPlans(data);
+      setInitialPlans(JSON.parse(JSON.stringify(data)));
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -37,6 +56,8 @@ export function PlanEditor() {
     fetchPlans();
   }, [fetchPlans]);
 
+  const hasUnsavedChanges = initialPlans && JSON.stringify(initialPlans) !== JSON.stringify(plans);
+
   const handleTierChange = (tier: keyof PlansResponse, field: keyof PlanTierConfig, value: number) => {
     setPlans((prev) => ({
       ...prev,
@@ -45,6 +66,13 @@ export function PlanEditor() {
         [field]: value,
       },
     }));
+  };
+
+  const handleReset = () => {
+    if (initialPlans) {
+      setPlans(JSON.parse(JSON.stringify(initialPlans)));
+      setError(null);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -60,7 +88,7 @@ export function PlanEditor() {
         return;
       }
       if (tier.dailyLimit <= 0) {
-        setError(`${tierName} tier call limit must be at least 1 call.`);
+        setError(`${tierName} tier monthly call limit must be at least 1 call.`);
         return;
       }
       if (tier.recordingLimit !== undefined && tier.recordingLimit <= 0) {
@@ -92,8 +120,9 @@ export function PlanEditor() {
       const resolvedPlans = (response && 'plans' in response && response.plans) ? response.plans : (response as PlansResponse);
       if (resolvedPlans && resolvedPlans.FREE) {
         setPlans(resolvedPlans);
+        setInitialPlans(JSON.parse(JSON.stringify(resolvedPlans)));
       }
-      setSuccessMessage('Authoritative plan configurations updated and broadcasted across platform!');
+      setSuccessMessage('Authoritative plan limits & prices updated and broadcasted across platform!');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -107,12 +136,7 @@ export function PlanEditor() {
   };
 
   if (isLoading && !plans) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '350px', color: 'var(--text-secondary)' }}>
-        <Settings size={24} style={{ animation: 'spin 1s linear infinite', marginRight: '0.75rem', color: 'var(--primary-light)' }} />
-        <span>Loading plan configurations...</span>
-      </div>
-    );
+    return <LoadingSkeleton message="Loading authoritative plan tiers..." rows={4} />;
   }
 
   const renderTierCard = (
@@ -120,7 +144,7 @@ export function PlanEditor() {
     title: string,
     subtitle: string,
     icon: React.ReactNode,
-    badgeClass: string,
+    badgeVariant: 'neutral' | 'info' | 'warning' | 'gold',
     isFree = false
   ) => {
     const config = plans[tierKey];
@@ -134,89 +158,88 @@ export function PlanEditor() {
               {icon}
             </div>
             <div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{subtitle}</span>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
+              <span style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>{subtitle}</span>
             </div>
           </div>
-          <span className={`badge ${badgeClass}`}>{tierKey}</span>
+          <StatusBadge variant={badgeVariant} label={tierKey} size="sm" />
         </div>
 
-        {/* Max Duration */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-            <Clock size={15} color="#38bdf8" /> Duration (Min / Call)
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="180"
-            value={config.maxDuration}
-            onChange={(e) => handleTierChange(tierKey, 'maxDuration', parseInt(e.target.value) || 0)}
-            className="input-modern num-tabular"
-            style={{ width: '100%', boxSizing: 'border-box' }}
-          />
+        {/* Section 1: Usage & Limits */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Clock size={14} color="#38bdf8" /> Max Duration (Min / Call)
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="180"
+              value={config.maxDuration}
+              onChange={(e) => handleTierChange(tierKey, 'maxDuration', parseInt(e.target.value) || 0)}
+              className="input-modern num-tabular"
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Calendar size={14} color="#34d399" /> Monthly Calls Allowance (Calls / Month)
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="9999"
+              value={config.dailyLimit}
+              onChange={(e) => handleTierChange(tierKey, 'dailyLimit', parseInt(e.target.value) || 0)}
+              className="input-modern num-tabular"
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Sparkles size={14} color="#f472b6" /> Recording Credits (Recordings / Month)
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={config.recordingLimit ?? (tierKey === 'FREE' ? 1 : tierKey === 'PLUS' ? 3 : tierKey === 'PRO' ? 7 : 15)}
+              onChange={(e) => handleTierChange(tierKey, 'recordingLimit', parseInt(e.target.value) || 1)}
+              className="input-modern num-tabular"
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <Shield size={14} color="#a78bfa" /> Audio Retention Period
+            </label>
+            <select
+              value={config.retentionDays}
+              onChange={(e) => handleTierChange(tierKey, 'retentionDays', parseInt(e.target.value) || 1)}
+              className="input-modern"
+              style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
+            >
+              <option value={1}>1 Day (Ephemeral)</option>
+              <option value={7}>7 Days (1 Week)</option>
+              <option value={14}>14 Days (2 Weeks)</option>
+              <option value={30}>30 Days (1 Month)</option>
+              <option value={60}>60 Days (2 Months)</option>
+              <option value={90}>90 Days (3 Months)</option>
+              <option value={180}>180 Days (6 Months)</option>
+              <option value={365}>365 Days (1 Year)</option>
+            </select>
+          </div>
         </div>
 
-        {/* Monthly Call Limit */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-            <Calendar size={15} color="#34d399" /> Calls Limit (Calls / Mo)
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="9999"
-            value={config.dailyLimit}
-            onChange={(e) => handleTierChange(tierKey, 'dailyLimit', parseInt(e.target.value) || 0)}
-            className="input-modern num-tabular"
-            style={{ width: '100%', boxSizing: 'border-box' }}
-          />
-        </div>
-
-        {/* Recording Limit */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-            <Sparkles size={15} color="#f472b6" /> Recordings (Rec / Mo)
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            value={config.recordingLimit ?? (tierKey === 'FREE' ? 1 : tierKey === 'PLUS' ? 3 : tierKey === 'PRO' ? 7 : 15)}
-            onChange={(e) => handleTierChange(tierKey, 'recordingLimit', parseInt(e.target.value) || 1)}
-            className="input-modern num-tabular"
-            style={{ width: '100%', boxSizing: 'border-box' }}
-          />
-        </div>
-
-        {/* Audio Retention */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-            <Shield size={15} color="#a78bfa" /> Audio Retention
-          </label>
-          <select
-            value={config.retentionDays}
-            onChange={(e) => handleTierChange(tierKey, 'retentionDays', parseInt(e.target.value) || 1)}
-            className="input-modern"
-            style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
-          >
-            <option value={1}>1 Day (Ephemeral)</option>
-            <option value={7}>7 Days (1 Week)</option>
-            <option value={14}>14 Days (2 Weeks)</option>
-            <option value={30}>30 Days (1 Month)</option>
-            <option value={60}>60 Days (2 Months)</option>
-            <option value={90}>90 Days (3 Months)</option>
-            <option value={180}>180 Days (6 Months)</option>
-            <option value={365}>365 Days (1 Year)</option>
-          </select>
-        </div>
-
-        {/* Price Section */}
+        {/* Section 2: Pricing */}
         {!isFree ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
             <div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                <Star size={15} color="#fbbf24" fill="#fbbf24" /> Stars Price (XTR)
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                <Star size={14} color="#fbbf24" fill="#fbbf24" /> Stars Price (XTR)
               </label>
               <input
                 type="number"
@@ -229,8 +252,8 @@ export function PlanEditor() {
             </div>
 
             <div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                <CreditCard size={15} color="#34d399" /> Card Price (UZS)
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                <CreditCard size={14} color="#34d399" /> Card Price (UZS)
               </label>
               <input
                 type="number"
@@ -244,7 +267,7 @@ export function PlanEditor() {
             </div>
           </div>
         ) : (
-          <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+          <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>
             Free Default Tier ($0.00 / 0 Stars)
           </div>
         )}
@@ -253,64 +276,69 @@ export function PlanEditor() {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      {/* Header bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h2 style={{ fontSize: '1.6rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            Authoritative Plan Configurations
-          </h2>
-          <p style={{ margin: '0.35rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Configure default duration limits, call allowances, recording retention, and official Stars & UZS pricing
-          </p>
-        </div>
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+      <PageHeader
+        title="Authoritative Plan Matrix"
+        description="Configure baseline duration allowances, monthly call volume, recording retention, and official Stars (XTR) & UZS card pricing"
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {hasUnsavedChanges && (
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={isSaving}
+                className="btn-secondary"
+                style={{ padding: '0.55rem 1rem', fontSize: '0.825rem' }}
+              >
+                <RotateCcw size={14} /> Discard Changes
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={isSaving || !hasUnsavedChanges}
+              className="btn-primary"
+              style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem' }}
+            >
+              <Save size={15} />
+              {isSaving ? 'Saving Configurations...' : 'Save Plan Matrix'}
+            </button>
+          </div>
+        }
+      />
 
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="btn-primary"
-          style={{ padding: '0.625rem 1.25rem' }}
-        >
-          <Save size={16} />
-          {isSaving ? 'Saving Configurations...' : 'Save All Plan Settings'}
-        </button>
-      </div>
-
-      {error && (
+      {/* Unsaved Changes Banner */}
+      {hasUnsavedChanges && (
         <div
           style={{
             padding: '0.875rem 1.25rem',
             borderRadius: '10px',
-            backgroundColor: 'var(--danger-bg)',
-            border: '1px solid var(--danger-border)',
-            color: '#fca5a5',
+            backgroundColor: 'var(--warning-bg)',
+            border: '1px solid var(--warning-border)',
+            color: '#fbbf24',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.625rem',
-            fontSize: '0.875rem',
-            fontWeight: 500,
+            justifyContent: 'space-between',
+            fontSize: '0.85rem',
+            fontWeight: 600,
           }}
         >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <AlertTriangle size={18} />
+            <span>You have unsaved changes in the plan configuration matrix.</span>
+          </div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Click 'Save Plan Matrix' to apply</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--danger-border)', backgroundColor: 'var(--danger-bg)', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <AlertCircle size={18} />
           <span>{error}</span>
         </div>
       )}
 
       {successMessage && (
-        <div
-          style={{
-            padding: '0.875rem 1.25rem',
-            borderRadius: '10px',
-            backgroundColor: 'var(--success-bg)',
-            border: '1px solid var(--success-border)',
-            color: '#6ee7b7',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.625rem',
-            fontSize: '0.875rem',
-            fontWeight: 500,
-          }}
-        >
+        <div className="glass-panel" style={{ padding: '1rem 1.25rem', borderColor: 'var(--success-border)', backgroundColor: 'var(--success-bg)', color: '#6ee7b7', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <CheckCircle2 size={18} />
           <span>{successMessage}</span>
         </div>
@@ -318,10 +346,10 @@ export function PlanEditor() {
 
       {/* 4-Column Grid for Plan Tiers */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
-        {renderTierCard('FREE', 'FREE Plan', 'Default student starter tier', <Shield size={22} color="#94a3b8" />, 'badge-neutral', true)}
-        {renderTierCard('PLUS', 'PLUS Plan', 'Essential speaking practice', <Zap size={22} color="#38bdf8" />, 'badge-info')}
-        {renderTierCard('PRO', 'PRO Plan', 'Intensive candidate preparation', <Sparkles size={22} color="#c084fc" />, 'badge-warning')}
-        {renderTierCard('BOSS', 'BOSS Plan', 'Unlimited candidate coaching', <Crown size={22} color="#fde047" />, 'badge-gold')}
+        {renderTierCard('FREE', 'FREE Plan', 'Default candidate starter tier', <Shield size={20} color="#94a3b8" />, 'neutral', true)}
+        {renderTierCard('PLUS', 'PLUS Plan', 'Essential speaking practice', <Zap size={20} color="#38bdf8" />, 'info')}
+        {renderTierCard('PRO', 'PRO Plan', 'Intensive candidate preparation', <Sparkles size={20} color="#c084fc" />, 'warning')}
+        {renderTierCard('BOSS', 'BOSS Plan', 'Unlimited candidate coaching', <Crown size={20} color="#fde047" />, 'gold')}
       </div>
     </form>
   );

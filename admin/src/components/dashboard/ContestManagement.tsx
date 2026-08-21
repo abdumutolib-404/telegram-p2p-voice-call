@@ -1,6 +1,23 @@
 import { useState, useEffect } from 'react';
-import { Trophy, Users, Gift, Play, Pause, Save, RefreshCw, Sparkles, CheckCircle2, AlertCircle, Flame } from 'lucide-react';
+import type { FormEvent } from 'react';
 import { adminFetch } from '../../api/client.ts';
+import { PageHeader } from '../ui/PageHeader.tsx';
+import { StatCard } from '../ui/StatCard.tsx';
+import { LoadingSkeleton } from '../ui/LoadingSkeleton.tsx';
+import { EmptyState } from '../ui/EmptyState.tsx';
+import {
+  Trophy,
+  Users,
+  Gift,
+  Play,
+  Pause,
+  Save,
+  RefreshCw,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  Flame
+} from 'lucide-react';
 
 interface ContestLeaderboardEntry {
   rank: number;
@@ -53,7 +70,6 @@ export function ContestManagement() {
         setPrizesInput('🥇 1st: 60-Day VIP Plan (90m Duration, 50 Calls)\n🥈 2nd: 30-Day BOSS Plan (90m Duration, 50 Calls)\n🥉 3rd: 14-Day PRO Plan (60m Duration, 25 Calls)');
       }
     } catch (err) {
-      console.error(err);
       setFeedback({ type: 'error', message: 'Failed to load contest data.' });
     } finally {
       setIsLoading(false);
@@ -80,14 +96,13 @@ export function ContestManagement() {
         message: nextState ? '🏆 Hall of Fame championship is now LIVE!' : '⏸️ Hall of Fame contest has been paused.',
       });
     } catch (err) {
-      console.error(err);
       setFeedback({ type: 'error', message: 'Failed to update contest status.' });
     } finally {
       setIsToggling(false);
     }
   };
 
-  const handleSaveDetails = async (e: React.FormEvent) => {
+  const handleSaveDetails = async (e: FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setFeedback(null);
@@ -101,9 +116,8 @@ export function ContestManagement() {
         }),
       });
       await fetchContest();
-      setFeedback({ type: 'success', message: '✅ Contest settings updated successfully!' });
+      setFeedback({ type: 'success', message: '✅ Contest configuration saved successfully!' });
     } catch (err) {
-      console.error(err);
       setFeedback({ type: 'error', message: 'Failed to save contest settings.' });
     } finally {
       setIsSaving(false);
@@ -111,16 +125,27 @@ export function ContestManagement() {
   };
 
   if (isLoading && !data) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '350px', color: 'var(--text-secondary)' }}>
-        <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginRight: '0.75rem', color: 'var(--primary-light)' }} />
-        <span>Loading Referral & Contest Engine...</span>
-      </div>
-    );
+    return <LoadingSkeleton message="Retrieving Hall of Fame & Referral telemetry..." rows={4} />;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+      <PageHeader
+        title="Hall of Fame & Contests"
+        description="Organize periodic referral championships, configure exclusive tier prizes, and track top candidate referrers"
+        actions={
+          <button
+            onClick={fetchContest}
+            disabled={isLoading}
+            className="btn-secondary"
+            style={{ fontSize: '0.825rem', padding: '0.5rem 0.875rem' }}
+          >
+            <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
+            <span>Refresh</span>
+          </button>
+        }
+      />
+
       {/* Top Banner & Quick Metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
         {/* Active Contest Status Card */}
@@ -136,13 +161,13 @@ export function ContestManagement() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Trophy size={20} color={data?.isActive ? '#fbbf24' : 'var(--text-muted)'} />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Hall of Fame
+                <Trophy size={18} color={data?.isActive ? '#fbbf24' : 'var(--text-muted)'} />
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Hall of Fame Standing
                 </span>
               </div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: data?.isActive ? '#34d399' : '#fb7185', marginTop: '0.4rem', letterSpacing: '-0.01em' }}>
-                {data?.isActive ? 'ACTIVE & LIVE' : 'OFFLINE / PAUSED'}
+              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: data?.isActive ? '#34d399' : '#fb7185', marginTop: '0.4rem', letterSpacing: '-0.01em' }}>
+                {data?.isActive ? 'ACTIVE & BROADCASTING' : 'OFFLINE / PAUSED'}
               </div>
             </div>
             <button
@@ -156,43 +181,29 @@ export function ContestManagement() {
             </button>
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            {data?.isActive ? 'Students see active leaderboard & prize pool' : 'Leaderboard paused (regular permanent bonus calls active)'}
+            {data?.isActive ? 'Candidates see leaderboard and prize pool in bot' : 'Leaderboard paused (permanent bonus calls continue automatically)'}
           </div>
         </div>
 
         {/* Total Qualifying Referrals */}
-        <div className="metric-card">
-          <div className="metric-card-glow" style={{ background: '#06b6d4' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Users size={18} color="#38bdf8" />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Total Friends Bound
-            </span>
-          </div>
-          <div className="num-tabular" style={{ fontSize: '1.875rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.4rem' }}>
-            {(data?.totalReferrals ?? 0).toLocaleString()}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            Unique referred student registrations
-          </div>
-        </div>
+        <StatCard
+          label="Total Friends Bound"
+          value={(data?.totalReferrals ?? 0).toLocaleString()}
+          subValue="Unique candidate registrations via invite links"
+          icon={<Users size={18} />}
+          iconBg="rgba(6, 182, 212, 0.15)"
+          iconColor="#38bdf8"
+        />
 
         {/* Active Permanent Bonus Calls */}
-        <div className="metric-card">
-          <div className="metric-card-glow" style={{ background: '#a855f7' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Gift size={18} color="#c084fc" />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Permanent Bonus Balance
-            </span>
-          </div>
-          <div className="num-tabular" style={{ fontSize: '1.875rem', fontWeight: 700, color: '#c084fc', marginTop: '0.4rem' }}>
-            {(data?.activeBonusCalls ?? 0).toLocaleString()}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            Active bonus credits in circulation
-          </div>
-        </div>
+        <StatCard
+          label="Permanent Bonus Balance"
+          value={(data?.activeBonusCalls ?? 0).toLocaleString()}
+          subValue="Active bonus credits in circulation"
+          icon={<Gift size={18} />}
+          iconBg="rgba(168, 85, 247, 0.15)"
+          iconColor="#c084fc"
+        />
       </div>
 
       {feedback && (
@@ -220,15 +231,15 @@ export function ContestManagement() {
         {/* Left Column: Contest Settings Form */}
         <div className="glass-panel" style={{ padding: '1.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-            <Sparkles size={20} color="#fbbf24" />
+            <Sparkles size={18} color="#fbbf24" />
             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Championship Rules & Prizes
+              Championship Terms & Prizes
             </h3>
           </div>
 
           <form onSubmit={handleSaveDetails} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Championship Title
               </label>
               <input
@@ -243,14 +254,14 @@ export function ContestManagement() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Short Description & Motivation
               </label>
               <textarea
                 value={descriptionInput}
                 onChange={(e) => setDescriptionInput(e.target.value)}
                 rows={3}
-                placeholder="Explain the rules and how students participate..."
+                placeholder="Explain the rules and how candidates participate..."
                 required
                 className="input-modern"
                 style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
@@ -258,7 +269,7 @@ export function ContestManagement() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Prizes Breakdown (Markdown / Emojis)
               </label>
               <textarea
@@ -278,7 +289,7 @@ export function ContestManagement() {
               className="btn-primary"
               style={{ marginTop: '0.5rem', width: '100%' }}
             >
-              <Save size={16} /> {isSaving ? 'Saving Changes...' : 'Save Championship Configuration'}
+              <Save size={15} /> {isSaving ? 'Saving Changes...' : 'Save Championship Configuration'}
             </button>
           </form>
         </div>
@@ -287,7 +298,7 @@ export function ContestManagement() {
         <div className="glass-panel" style={{ padding: '1.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Flame size={20} color="#f59e0b" />
+              <Flame size={18} color="#f59e0b" />
               <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 Live Leaderboard (Top 10)
               </h3>
@@ -355,13 +366,11 @@ export function ContestManagement() {
               })}
             </div>
           ) : (
-            <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              <Trophy size={36} style={{ margin: '0 auto 0.75rem auto', opacity: 0.3, color: '#fbbf24' }} />
-              <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>No qualifying referrals in this timeframe yet</div>
-              <div style={{ fontSize: '0.775rem', marginTop: '0.35rem', color: 'var(--text-muted)' }}>
-                Students who invite friends with qualifying calls (≥30s) will appear here in real-time.
-              </div>
-            </div>
+            <EmptyState
+              icon={<Trophy size={36} color="#fbbf24" />}
+              title="No qualifying referrals yet"
+              description="Candidates who invite friends with qualifying practice calls (≥30s) will appear on the live leaderboard automatically."
+            />
           )}
         </div>
       </div>

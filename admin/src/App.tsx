@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { LoginModal } from './components/auth/LoginModal.tsx';
+import { OverviewDashboard } from './components/dashboard/OverviewDashboard.tsx';
 import { AnalyticsOverview } from './components/dashboard/AnalyticsOverview.tsx';
 import { PlanEditor } from './components/dashboard/PlanEditor.tsx';
 import { ManualPaymentsQueue } from './components/dashboard/ManualPaymentsQueue.tsx';
@@ -8,6 +9,7 @@ import { AppealsQueue } from './components/dashboard/AppealsQueue.tsx';
 import { UserManagement } from './components/dashboard/UserManagement.tsx';
 import { ContestManagement } from './components/dashboard/ContestManagement.tsx';
 import {
+  LayoutDashboard,
   BarChart3,
   Settings,
   ShieldAlert,
@@ -20,55 +22,63 @@ import {
   Trophy,
 } from 'lucide-react';
 
-type NavigationTab = 'analytics' | 'users' | 'contest' | 'plans' | 'payments' | 'appeals';
+export type NavigationTab = 'overview' | 'users' | 'plans' | 'payments' | 'appeals' | 'analytics' | 'contest';
 
-const NAV_ITEMS: Array<{
+interface NavItemMeta {
   id: NavigationTab;
   label: string;
   description: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
-}> = [
+}
+
+const NAV_ITEMS: NavItemMeta[] = [
   {
-    id: 'analytics',
-    label: 'Analytics & Revenue',
-    description: 'Real-time metrics, active calls, Stars & UZS income',
-    icon: BarChart3,
+    id: 'overview',
+    label: 'Overview',
+    description: 'Real-time operations command center & infrastructure health',
+    icon: LayoutDashboard,
   },
   {
     id: 'users',
-    label: 'User Management',
+    label: 'Candidates',
     description: 'Inspect learners, band scores, plan limits & moderation',
     icon: Users,
   },
   {
-    id: 'contest',
-    label: 'Hall of Fame & Contests',
-    description: 'Toggle championships, track referral leaders & award winners',
-    icon: Trophy,
-  },
-  {
     id: 'plans',
-    label: 'Plan Editor',
-    description: 'Authoritative FREE, PLUS, PRO, BOSS limits & pricing',
+    label: 'Plans & Limits',
+    description: 'Authoritative FREE, PLUS, PRO, BOSS limits & pricing matrix',
     icon: Settings,
   },
   {
     id: 'payments',
-    label: 'Manual Payments',
-    description: 'Review offline UZS card transfers and verify receipts',
+    label: 'Payments (UZS)',
+    description: 'Review, approve, and track offline card payment receipts',
     icon: CreditCard,
   },
   {
     id: 'appeals',
     label: 'Appeals Queue',
-    description: 'Review permanent ban unblock requests from students',
+    description: 'Review permanent ban unblock requests from candidates',
     icon: ShieldAlert,
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics & Revenue',
+    description: 'Realized Stars & UZS revenue, call telemetry & quality metrics',
+    icon: BarChart3,
+  },
+  {
+    id: 'contest',
+    label: 'Hall of Fame',
+    description: 'Championship rules, prize allocation & live referral leaderboard',
+    icon: Trophy,
   },
 ];
 
 function MainDashboard() {
   const { isAuthenticated, isLoading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<NavigationTab>('analytics');
+  const [activeTab, setActiveTab] = useState<NavigationTab>('overview');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
 
   // Close mobile navigation drawer on resize to desktop (>= 1024px)
@@ -98,12 +108,12 @@ function MainDashboard() {
       <div
         style={{
           minHeight: '100vh',
-          backgroundColor: '#0f172a',
+          backgroundColor: 'var(--bg-canvas)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#94a3b8',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
+          color: 'var(--text-secondary)',
+          fontFamily: 'var(--sans)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -111,13 +121,13 @@ function MainDashboard() {
             style={{
               width: '18px',
               height: '18px',
-              border: '2px solid #0284c7',
+              border: '2px solid var(--primary-light)',
               borderTopColor: 'transparent',
               borderRadius: '50%',
               animation: 'spin 1s linear infinite',
             }}
           />
-          Initializing Admin Console...
+          <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>Initializing Enterprise Admin Console...</span>
         </div>
       </div>
     );
@@ -152,7 +162,7 @@ function MainDashboard() {
           width: '280px',
           minWidth: '280px',
           maxWidth: '280px',
-          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          backgroundColor: 'rgba(15, 23, 42, 0.96)',
           borderRight: '1px solid var(--border-card)',
           backdropFilter: 'blur(16px)',
           display: 'flex',
@@ -269,7 +279,7 @@ function MainDashboard() {
         </div>
       </aside>
 
-      {/* Main Layout Container (Offset by Sidebar on Desktop) */}
+      {/* Main Layout Container */}
       <div
         style={{
           flex: 1,
@@ -285,7 +295,7 @@ function MainDashboard() {
         <header
           style={{
             height: '68px',
-            backgroundColor: 'rgba(9, 13, 22, 0.8)',
+            backgroundColor: 'rgba(9, 13, 22, 0.85)',
             borderBottom: '1px solid var(--border-card)',
             backdropFilter: 'blur(16px)',
             padding: '0 2rem',
@@ -298,7 +308,7 @@ function MainDashboard() {
             gap: '1rem',
           }}
         >
-          {/* Header Left: Hamburger Toggle (Mobile) + Current View Info */}
+          {/* Header Left: Hamburger Toggle + Title */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
             <button
               onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
@@ -328,7 +338,7 @@ function MainDashboard() {
             </div>
           </div>
 
-          {/* Header Right: Quick Status & Actions */}
+          {/* Header Right: Status */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
             <div className="badge badge-success" style={{ padding: '0.35rem 0.75rem' }}>
               <ShieldCheck size={14} /> Stealth 2FA Guarded
@@ -348,12 +358,13 @@ function MainDashboard() {
             overflowX: 'hidden',
           }}
         >
-          {activeTab === 'analytics' && <AnalyticsOverview />}
+          {activeTab === 'overview' && <OverviewDashboard onNavigateTab={setActiveTab} />}
           {activeTab === 'users' && <UserManagement />}
-          {activeTab === 'contest' && <ContestManagement />}
           {activeTab === 'plans' && <PlanEditor />}
           {activeTab === 'payments' && <ManualPaymentsQueue />}
           {activeTab === 'appeals' && <AppealsQueue />}
+          {activeTab === 'analytics' && <AnalyticsOverview />}
+          {activeTab === 'contest' && <ContestManagement />}
         </main>
       </div>
     </div>
