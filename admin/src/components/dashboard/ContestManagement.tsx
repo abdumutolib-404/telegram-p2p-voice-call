@@ -180,7 +180,7 @@ export function ContestManagement() {
         <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Gift size={20} color="#a855f7" />
-            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#94a3b8' }}>Active Bonus Calls (7d)</h4>
+            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#94a3b8' }}>Active Bonus Calls (Permanent)</h4>
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.4rem' }}>
             {data?.activeBonusCalls ?? 0}

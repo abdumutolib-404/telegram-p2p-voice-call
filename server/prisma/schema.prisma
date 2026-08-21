@@ -162,15 +162,15 @@ model ReferralReward {
   userId           String       // Inviter user ID
   referredUserId   String       // Friend user ID
   qualifyingCallId String?      // Call ID that triggered reward
-  status           String       @default("AVAILABLE") // "AVAILABLE", "USED", "EXPIRED"
-  expiresAt        DateTime     // createdAt + 7 days
+  status           String       @default("AVAILABLE") // "AVAILABLE", "USED"
+  expiresAt        DateTime?    // Optional legacy timestamp
   usedAt           DateTime?
   createdAt        DateTime     @default(now())
 
   user             User         @relation("UserRewards", fields: [userId], references: [id])
   referredFriend   User         @relation("ReferredFriendRewards", fields: [referredUserId], references: [id])
 
-  @@index([userId, status, expiresAt])
+  @@index([userId, status])
 }
 
 model Contest {

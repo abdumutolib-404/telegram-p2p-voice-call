@@ -132,15 +132,13 @@ export async function onCallFinishedCheckReferralReward(
         continue;
       }
 
-      // Inviter receives 1 free bonus call valid for 7 days
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      // Inviter receives 1 free permanent bonus call (never expires)
       await prisma.referralReward.create({
         data: {
           userId: user.referredByUserId,
           referredUserId: user.id,
           qualifyingCallId: session.id,
           status: 'AVAILABLE',
-          expiresAt,
         },
       });
 
@@ -151,13 +149,11 @@ export async function onCallFinishedCheckReferralReward(
         });
 
         if (inviter && !inviter.dnd) {
-          const expiryStr = expiresAt.toISOString().slice(0, 10);
           const msg =
             `🎉 <b>Referral Bonus Earned!</b>\n\n` +
             `Your friend <b>${user.alias}</b> just completed their first speaking practice session (<code>${Math.floor(session.duration / 60)} min</code>)!\n\n` +
-            `🎁 <b>Reward Granted:</b> <code>1 Free Bonus Call</code>\n` +
-            `⏳ <b>Validity:</b> 7 Days (Valid until <b>${expiryStr}</b>)\n\n` +
-            `💡 <i>Your bonus calls are automatically used whenever your monthly plan limits run out.</i>`;
+            `🎁 <b>Reward Granted:</b> <code>1 Free Bonus Call</code> (Permanent / Never Expires)\n\n` +
+            `💡 <i>Your bonus calls are saved forever and automatically used whenever your monthly plan limits run out.</i>`;
 
           await bot.api.sendMessage(inviter.telegramId.toString(), msg, { parse_mode: 'HTML' })
             .catch((e: unknown) => console.warn('[Referral] Failed to deliver reward notice:', e));
@@ -170,16 +166,14 @@ export async function onCallFinishedCheckReferralReward(
 }
 
 /**
- * Returns the number of currently active, unexpired bonus calls available for the user.
+ * Returns the number of currently active permanent bonus calls available for the user.
  */
 export async function getActiveBonusCallsCount(userId: string): Promise<number> {
   try {
-    const now = new Date();
     const count = await prisma.referralReward.count({
       where: {
         userId,
         status: 'AVAILABLE',
-        expiresAt: { gt: now },
       },
     });
     return count;
@@ -189,7 +183,7 @@ export async function getActiveBonusCallsCount(userId: string): Promise<number> 
 }
 
 /**
- * Consumes 1 bonus call in strict FIFO order (expiring soonest is consumed first).
+ * Consumes 1 bonus call.
  * Returns true if a bonus call was successfully consumed, false if none available.
  */
 export async function consumeOldestBonusCall(userId: string): Promise<boolean> {
@@ -199,9 +193,8 @@ export async function consumeOldestBonusCall(userId: string): Promise<boolean> {
       where: {
         userId,
         status: 'AVAILABLE',
-        expiresAt: { gt: now },
       },
-      orderBy: { expiresAt: 'asc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     if (!oldestReward) {
@@ -227,15 +220,12 @@ export async function consumeOldestBonusCall(userId: string): Promise<boolean> {
  * Retrieves referral dashboard stats for a specific user.
  */
 export async function getReferralStats(userId: string): Promise<ReferralStats> {
-  const now = new Date();
-
   const [totalInvited, activeBonusCalls, rewardRows] = await Promise.all([
     prisma.user.count({ where: { referredByUserId: userId } }),
     prisma.referralReward.count({
       where: {
         userId,
         status: 'AVAILABLE',
-        expiresAt: { gt: now },
       },
     }),
     prisma.referralReward.findMany({
@@ -256,15 +246,11 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
   const friendMap = new Map(friendUsers.map((u) => [u.id, u.alias]));
 
   const rewards = rewardRows.map((r) => {
-    let effectiveStatus = r.status;
-    if (effectiveStatus === 'AVAILABLE' && r.expiresAt <= now) {
-      effectiveStatus = 'EXPIRED';
-    }
     return {
       id: r.id,
       referredAlias: friendMap.get(r.referredUserId) || 'Friend',
-      expiresAt: r.expiresAt,
-      status: effectiveStatus,
+      expiresAt: r.expiresAt || new Date(0),
+      status: r.status,
       createdAt: r.createdAt,
     };
   });

@@ -729,7 +729,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     await ctx.reply(
       `🔗 <b>Your Personal Invite Link:</b>\n\n` +
         `<code>${inviteLink}</code>\n\n` +
-        `🎁 Share this link with IELTS learners. For every friend who completes their 1st call (≥30s), you get <b>1 Free Bonus Call</b> (valid for 7 days)!`,
+        `🎁 Share this link with IELTS learners. For every friend who completes their 1st call (≥30s), you get <b>1 Free Bonus Call</b> (Permanent / Never Expires)!`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });

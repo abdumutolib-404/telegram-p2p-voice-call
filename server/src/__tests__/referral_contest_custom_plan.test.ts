@@ -98,7 +98,7 @@ describe('Referral Engine, Hall of Fame & Custom Plan Maker Test Suite', () => {
     });
   });
 
-  describe('2. Qualifying Call Rewards (Duration >= 30s) & Expiration', () => {
+  describe('2. Qualifying Call Rewards (Duration >= 30s) & Permanent Bonus', () => {
     it('2.1 Does not grant reward if call duration is under 30 seconds', async () => {
       const inviter = await prisma.user.create({
         data: { telegramId: 77777777n, alias: 'P2P-InviterShort', plan: 'FREE' },
@@ -121,7 +121,7 @@ describe('Referral Engine, Hall of Fame & Custom Plan Maker Test Suite', () => {
       expect(bonusCalls).toBe(0);
     });
 
-    it('2.2 Grants 1 bonus call valid for 7 days when duration is >= 30s', async () => {
+    it('2.2 Grants 1 permanent bonus call (never expires) when duration is >= 30s', async () => {
       const inviter = await prisma.user.create({
         data: { telegramId: 10101010n, alias: 'P2P-InviterValid', plan: 'FREE' },
       });
@@ -160,22 +160,19 @@ describe('Referral Engine, Hall of Fame & Custom Plan Maker Test Suite', () => {
     });
   });
 
-  describe('3. FIFO Bonus Calls Consumption', () => {
-    it('3.1 Consumes bonus calls in strict FIFO order (earliest expiration first)', async () => {
+  describe('3. Permanent Bonus Calls Consumption', () => {
+    it('3.1 Consumes bonus calls in FIFO order of creation', async () => {
       const user = await prisma.user.create({
         data: { telegramId: 40404040n, alias: 'P2P-BonusUser', plan: 'FREE' },
       });
 
       const now = new Date();
-      const earlierExp = new Date(now.getTime() + 2 * 86400000); // 2 days
-      const laterExp = new Date(now.getTime() + 6 * 86400000); // 6 days
-
       const r1 = await prisma.referralReward.create({
         data: {
           userId: user.id,
           referredUserId: 'dummy_friend_1',
           status: 'AVAILABLE',
-          expiresAt: laterExp,
+          createdAt: new Date(now.getTime() - 5000),
         },
       });
 
@@ -184,7 +181,7 @@ describe('Referral Engine, Hall of Fame & Custom Plan Maker Test Suite', () => {
           userId: user.id,
           referredUserId: 'dummy_friend_2',
           status: 'AVAILABLE',
-          expiresAt: earlierExp,
+          createdAt: now,
         },
       });
 
@@ -195,12 +192,12 @@ describe('Referral Engine, Hall of Fame & Custom Plan Maker Test Suite', () => {
       expect(consumed).toBe(true);
       expect(await getActiveBonusCallsCount(user.id)).toBe(1);
 
-      // Verify the earlier expiring one (r2) was marked USED
-      const checkR2 = await prisma.referralReward.findUnique({ where: { id: r2.id } });
+      // Verify the older one (r1) was marked USED
       const checkR1 = await prisma.referralReward.findUnique({ where: { id: r1.id } });
+      const checkR2 = await prisma.referralReward.findUnique({ where: { id: r2.id } });
 
-      expect(checkR2?.status).toBe('USED');
-      expect(checkR1?.status).toBe('AVAILABLE');
+      expect(checkR1?.status).toBe('USED');
+      expect(checkR2?.status).toBe('AVAILABLE');
     });
   });
 

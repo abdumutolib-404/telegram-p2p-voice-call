@@ -58,7 +58,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       .row()
       .text(user.dnd ? '🔔 Turn DND OFF' : '🔕 Turn DND ON', 'toggle_dnd');
 
-    const bonusCallsDisplay = activeBonusCalls > 0 ? ` + <b>${activeBonusCalls} Active Bonus (7d)</b>` : '';
+    const bonusCallsDisplay = activeBonusCalls > 0 ? ` + <b>${activeBonusCalls} Permanent Bonus Calls</b>` : '';
 
     await ctx.reply(
       `👤 <b>Your Student Profile</b>\n\n` +
@@ -119,12 +119,12 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `🎁 <b>How It Works:</b>\n` +
         `1. Send your link to friends.\n` +
         `2. Your friend joins and completes their 1st speaking session (≥30s).\n` +
-        `3. You instantly get <b>1 Free Bonus Call</b> (valid for 7 days)!\n\n` +
+        `3. You instantly get <b>1 Free Bonus Call</b> (Permanent / Never Expires)!\n\n` +
         `📊 <b>Your Referral Stats:</b>\n` +
         `• <b>Total Friends Invited</b>: <code>${stats.totalInvited}</code>\n` +
         `• <b>Qualifying Sessions Done</b>: <code>${stats.qualifyingCompleted}</code>\n` +
-        `• <b>Active Bonus Calls Available</b>: <code>${stats.activeBonusCalls}</code> (7-day validity)\n\n` +
-        `💡 <i>Bonus calls are automatically used once your monthly plan credits reach 0.</i>`,
+        `• <b>Active Bonus Calls Available</b>: <code>${stats.activeBonusCalls}</code> (Permanent)\n\n` +
+        `💡 <i>Bonus calls are saved forever and automatically used once your monthly plan credits reach 0.</i>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
@@ -137,7 +137,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       await ctx.reply(
         `🏆 <b>Hall of Fame — Referral Championship</b>\n\n` +
           `ℹ️ <i>There is no active championship at the moment.</i>\n\n` +
-          `Stay tuned for the next contest! In the meantime, you can still invite friends using <b>👥 Invite Friends</b> to earn free 7-day bonus calls.`,
+          `Stay tuned for the next contest! In the meantime, you can still invite friends using <b>👥 Invite Friends</b> to earn permanent free bonus calls.`,
         { parse_mode: 'HTML' }
       );
       return;

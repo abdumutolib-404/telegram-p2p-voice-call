@@ -72,7 +72,7 @@ interface ReferralRewardRow {
   referredUserId: string;
   qualifyingCallId: string | null;
   status: string;
-  expiresAt: Date;
+  expiresAt?: Date | null;
   usedAt: Date | null;
   createdAt: Date;
 }
@@ -825,7 +825,7 @@ export class InMemoryPrismaMock {
     create: async (args: { data: Record<string, unknown> }): Promise<ReferralRewardRow> => {
       const id = stringValue(args.data.id, crypto.randomUUID());
       const now = new Date();
-      const expiresAt = args.data.expiresAt ? dateValue(args.data.expiresAt, new Date(now.getTime() + 7 * 86400000)) : new Date(now.getTime() + 7 * 86400000);
+      const expiresAt = args.data.expiresAt ? dateValue(args.data.expiresAt, now) : null;
       const row: ReferralRewardRow = {
         id,
         userId: stringValue(args.data.userId),
