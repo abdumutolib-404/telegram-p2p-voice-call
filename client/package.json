@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "postbuild": "rm -f dist/_redirects public/_redirects",
+    "postbuild": "node -e \"const fs=require('fs'); ['dist/_redirects','public/_redirects'].forEach(f=>{try{fs.unlinkSync(f)}catch{}})\"",
     "lint": "oxlint",
     "preview": "vite preview"
   },
