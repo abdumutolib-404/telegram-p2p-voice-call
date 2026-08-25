@@ -53,8 +53,8 @@ const configuredOrigins = [
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true; // Same-origin, mobile apps, or server-to-server calls
   if (configuredOrigins.includes(origin)) return true;
-  // Support custom subdomains on railway, netlify, or vercel if matched
-  if (/^https?:\/\/(.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
+  // Support custom subdomains on pairtalk.online, railway, netlify, or vercel if matched
+  if (/^https?:\/\/(.*\.pairtalk\.online|pairtalk\.online|.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
     return true;
   }
   if (env.NODE_ENV !== 'production') {
