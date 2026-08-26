@@ -20,13 +20,16 @@ export function getS3Client(): S3Client {
       throw new Error('S3 credentials are not configured in environment.');
     }
 
+    const endpoint = env.S3_ENDPOINT?.replace(/\/+$/, '') || undefined;
+    const region = env.S3_REGION || (endpoint?.includes('r2.cloudflarestorage.com') ? 'auto' : 'us-east-1');
+
     s3ClientInstance = new S3Client({
-      region: env.S3_REGION || 'eu-north-1',
+      region,
       credentials: {
         accessKeyId: env.S3_KEY!,
         secretAccessKey: env.S3_SECRET!,
       },
-      endpoint: env.S3_ENDPOINT || undefined,
+      endpoint,
       forcePathStyle: env.S3_FORCE_PATH_STYLE ?? false,
     });
   }
@@ -50,7 +53,7 @@ export async function generatePresignedDownloadUrl(
 }
 
 /**
- * Checks whether an object exists in S3 and returns metadata.
+ * Checks whether an object exists in S3/R2 and returns metadata.
  */
 export async function checkS3ObjectExists(
   storageKey: string
@@ -68,23 +71,35 @@ export async function checkS3ObjectExists(
       contentType: res.ContentType,
     };
   } catch (err: any) {
-    if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
+    const httpStatus = err.$metadata?.httpStatusCode || err.statusCode || err.$response?.statusCode;
+    const errorName = err.name || err.code || 'UnknownError';
+    
+    // Normal 404 / NotFound conditions when file is still encoding or missing
+    if (
+      errorName === 'NotFound' ||
+      errorName === 'NoSuchKey' ||
+      httpStatus === 404 ||
+      err.message?.includes('NotFound') ||
+      err.message?.includes('404')
+    ) {
       return { exists: false };
     }
-    const errorName = err.name || 'UnknownError';
-    let diagnosis = 'General S3 error';
+
+    let diagnosis = 'General S3/R2 error';
     if (errorName === 'InvalidAccessKeyId') {
-      diagnosis = 'AWS Access Key ID does not exist in AWS IAM';
+      diagnosis = 'R2/S3 Access Key ID does not exist or is invalid';
     } else if (errorName === 'SignatureDoesNotMatch') {
-      diagnosis = 'AWS Secret Access Key is incorrect';
-    } else if (errorName === 'AccessDenied' || err.$metadata?.httpStatusCode === 403) {
-      diagnosis = 'IAM User lacks permission on S3 bucket';
+      diagnosis = 'R2/S3 Secret Access Key is incorrect';
+    } else if (errorName === 'AccessDenied' || httpStatus === 403) {
+      diagnosis = 'R2/S3 API Token lacks Read/Write permission on the bucket';
     } else if (errorName === 'NoSuchBucket') {
-      diagnosis = 'S3 Bucket does not exist in target region';
+      diagnosis = 'R2/S3 Bucket does not exist';
     }
+
     console.warn('[S3Storage] check_exists_failed:', {
       errorName,
-      statusCode: err.$metadata?.httpStatusCode,
+      message: err.message,
+      statusCode: httpStatus,
       diagnosis,
       key: storageKey,
     });
