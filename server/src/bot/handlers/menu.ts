@@ -357,7 +357,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
     }
 
     await ctx.reply(
-      `💬 <b>IELTS Speaking P2P Support</b>\n\n` +
+      `💬 <b>PairTalk Support</b>\n\n` +
         `Need help or have questions about partner matching, practice calls, or subscriptions?\n\n` +
         `• <b>FAQ</b>: Matchmaking pairs complementary sub-scores for targeted practice.\n` +
         `• <b>Audio</b>: Headphones are recommended for optimal clarity.\n` +

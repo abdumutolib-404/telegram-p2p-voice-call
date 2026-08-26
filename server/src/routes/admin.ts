@@ -799,7 +799,7 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
     if (adminBotInstance) {
       await adminBotInstance.api.sendMessage(
         appeal.telegramId.toString(),
-        '🎉 *Appeal Approved*\n\nYour unban appeal has been approved by the moderation team. Your account has been restored to active status. Welcome back to IELTS Speaking P2P!',
+        '🎉 *Appeal Approved*\n\nYour unban appeal has been approved by the moderation team. Your account has been restored to active status. Welcome back to PairTalk!',
         { parse_mode: 'Markdown' }
       ).catch((e: unknown) => console.warn('[Admin] Failed to send appeal approval notice:', e));
     }
@@ -1025,7 +1025,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       const retentionText = updated.retentionOverride ? `${updated.retentionOverride} days (Custom)` : `${getRetentionDaysForPlan(updated.plan)} days`;
       const msg =
         `⭐ *Account Plan Updated by Administrator*\n\n` +
-        `Your IELTS Speaking P2P limits have been updated:\n` +
+        `Your PairTalk limits have been updated:\n` +
         `• *Plan Tier*: *${planName}*\n` +
         `• *Monthly Call Limit*: ${limitText}\n` +
         `• *Max Call Duration*: ${durText}\n` +
@@ -1155,7 +1155,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
           bannedUntil: null,
           warningCount: 0,
         };
-        notificationText = `✅ *Account Restored*\n\nYour account restriction has been lifted by the administration. You can now use IELTS Speaking P2P again! Please ensure you adhere to our community guidelines.`;
+        notificationText = `✅ *Account Restored*\n\nYour account restriction has been lifted by the administration. You can now use PairTalk again! Please ensure you adhere to our community guidelines.`;
         break;
     }
 

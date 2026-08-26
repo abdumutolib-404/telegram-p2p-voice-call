@@ -21,32 +21,32 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
   const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'PairTalkBot').replace(/^@/, '');
   const botAppUrl = `https://t.me/${botUsername}?startapp=1`;
 
-  let badgeText = 'Browser Access Blocked';
-  let titleText = 'Launch via Telegram';
+  let badgeText = 'Telegram Mini App';
+  let titleText = 'Open in Telegram';
   let defaultMessage =
-    'This application can only be launched inside Telegram as a Mini App. Direct web browser access is restricted.';
-  let badgeColorClass = 'bg-amber-500/15 border-amber-500/30 text-amber-400';
-  let iconColorClass = 'text-amber-500';
+    'Please open PairTalk inside Telegram to start practicing speaking.';
+  let badgeColorClass = 'bg-sky-500/15 border-sky-500/30 text-sky-400';
+  let iconColorClass = 'text-sky-400';
 
   if (reason === 'telegram_no_initdata') {
-    badgeText = 'Mini App Context Missing';
-    titleText = 'Launch via Bot Menu';
+    badgeText = 'Launch via Bot';
+    titleText = 'Open via Bot Menu';
     defaultMessage =
-      'You are opening this page inside Telegram, but not as a Telegram Mini App. Please launch using the Bot Menu Button or WebApp button in Telegram.';
+      'Please launch PairTalk using the Menu Button inside @PairTalkBot.';
     badgeColorClass = 'bg-indigo-500/15 border-indigo-500/30 text-indigo-400';
     iconColorClass = 'text-indigo-400';
   } else if (reason === 'auth_rejected') {
-    badgeText = 'HTTP 403 Forbidden';
-    titleText = 'Authentication Rejected';
+    badgeText = 'Session Expired';
+    titleText = 'Authentication Expired';
     defaultMessage =
-      'Telegram authentication signature was rejected by the server. Please close and re-open the Mini App from Telegram.';
+      'Please close and reopen PairTalk from Telegram to refresh your session.';
     badgeColorClass = 'bg-red-500/15 border-red-500/30 text-red-400';
     iconColorClass = 'text-red-500';
   } else if (reason === 'server_unavailable') {
-    badgeText = 'Server Unavailable';
+    badgeText = 'Server Offline';
     titleText = 'Connection Error';
     defaultMessage =
-      'Unable to connect to the backend server. Please check your internet connection or try again.';
+      'Unable to connect to the server. Please check your connection and retry.';
     badgeColorClass = 'bg-amber-500/15 border-amber-500/30 text-amber-400';
     iconColorClass = 'text-amber-500';
   }
@@ -100,20 +100,12 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       )}
 
       <div className="w-full max-w-xs p-4 rounded-2xl bg-slate-900 border border-slate-800 text-left flex items-start gap-3">
-        <AlertOctagon className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+        <AlertOctagon className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
         <div className="text-xs text-slate-300">
-          <p className="font-semibold text-slate-200 mb-1">Access Instructions:</p>
+          <p className="font-semibold text-slate-200 mb-1">How to access:</p>
           <ol className="list-decimal list-inside space-y-1 text-slate-400">
-            <li>
-              Tap <strong>Open Telegram Mini App</strong> above.
-            </li>
-            <li>Open the IELTS Partner Bot.</li>
-            <li>
-              Press <code>/start</code> to complete profile.
-            </li>
-            <li>
-              Tap the <strong>📞 Find Partner</strong> menu button.
-            </li>
+            <li>Open <strong>@PairTalkBot</strong> in Telegram.</li>
+            <li>Tap the <strong>📞 Practice Speaking</strong> menu button.</li>
           </ol>
         </div>
       </div>

@@ -72,7 +72,7 @@ export function setupStartCommand(bot: Bot<MyContext>) {
     }
 
     await ctx.reply(
-      `🎯 <b>Welcome to IELTS Speaking P2P Partner Match!</b>\n\n` +
+      `🎯 <b>Welcome to PairTalk Speaking Partner Match!</b>\n\n` +
         `Let's evaluate your sub-scores to pair you with complementary partners.\n\n` +
         `<b>Step 1/4: Select your Fluency & Coherence (FC) score:</b>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
