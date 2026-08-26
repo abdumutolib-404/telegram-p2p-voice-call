@@ -126,15 +126,16 @@ export class MatchmakingService {
 
       const userPlan = (options?.plan || 'FREE').toUpperCase();
       const warningCount = options?.warningCount ?? 0;
-      const isPriorityUser = userPlan === 'PRO' || userPlan === 'PLUS';
+      const isPriorityUser = userPlan === 'BOSS' || userPlan === 'PRO' || userPlan === 'PLUS';
 
       // Progressive Search Priority Rings:
-      // 1. Pro / Plus priority candidate pools
+      // 1. Boss / Pro / Plus priority candidate pools
       // 2. Exact complementary skill match at same band (e.g. 7.0:P:FC)
       // 3. Same skill match at same band (e.g. 7.0:FC:P)
       // 4. Same band general pool
       // 5. Adjacent ±0.5 band general pools
       const candidateBuckets: string[] = [
+        this.getPriorityPoolKey('BOSS'),
         this.getPriorityPoolKey('PRO'),
         this.getPriorityPoolKey('PLUS'),
         this.getBucketKey(band, strongSkill, weakSkill),
@@ -167,6 +168,7 @@ export class MatchmakingService {
             // Clean up partner from auxiliary pools
             await Promise.allSettled([
               this.redis.srem(bandPoolKey, claimedPartner),
+              this.redis.srem(this.getPriorityPoolKey('BOSS'), claimedPartner),
               this.redis.srem(this.getPriorityPoolKey('PRO'), claimedPartner),
               this.redis.srem(this.getPriorityPoolKey('PLUS'), claimedPartner),
             ]);
@@ -252,6 +254,7 @@ export class MatchmakingService {
     const result = await this.redis.eval(CANCEL_QUEUE_SCRIPT, 1, pointerKey, userId);
     await Promise.allSettled([
       this.redis.srem(this.getGlobalPoolKey(), userId),
+      this.redis.srem(this.getPriorityPoolKey('BOSS'), userId),
       this.redis.srem(this.getPriorityPoolKey('PRO'), userId),
       this.redis.srem(this.getPriorityPoolKey('PLUS'), userId),
     ]);

@@ -94,25 +94,25 @@ describe('MatchmakingService - O(1) Redis Bucket Queue', () => {
     expect(res2.partnerId).toBe('default_user_1');
   });
 
-  it('prioritizes PRO and PLUS subscribers in matchmaking candidate pools', async () => {
-    const proUser = {
-      userId: 'pro_user_99',
-      band: 7.0,
-      skills: { subFC: 7.0, subLR: 7.0, subGRA: 7.0, subP: 7.0 },
+  it('prioritizes BOSS, PRO, and PLUS subscribers in matchmaking candidate pools', async () => {
+    const bossUser = {
+      userId: 'boss_user_88',
+      band: 7.5,
+      skills: { subFC: 7.5, subLR: 7.5, subGRA: 7.5, subP: 7.5 },
     };
 
-    const joinPro = await matchmakingService.joinQueue(proUser.userId, proUser.band, proUser.skills, { plan: 'PRO' });
-    expect(joinPro.matched).toBe(false);
+    const joinBoss = await matchmakingService.joinQueue(bossUser.userId, bossUser.band, bossUser.skills, { plan: 'BOSS' });
+    expect(joinBoss.matched).toBe(false);
 
     const matchingUser = {
-      userId: 'matching_user_100',
-      band: 7.0,
-      skills: { subFC: 7.0, subLR: 7.0, subGRA: 7.0, subP: 7.0 },
+      userId: 'matching_user_89',
+      band: 7.5,
+      skills: { subFC: 7.5, subLR: 7.5, subGRA: 7.5, subP: 7.5 },
     };
 
     const joinMatch = await matchmakingService.joinQueue(matchingUser.userId, matchingUser.band, matchingUser.skills);
     expect(joinMatch.matched).toBe(true);
-    expect(joinMatch.partnerId).toBe('pro_user_99');
+    expect(joinMatch.partnerId).toBe('boss_user_88');
   });
 
   it('matches partner across adjacent band brackets via progressive expansion', async () => {

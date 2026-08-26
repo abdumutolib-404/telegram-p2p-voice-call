@@ -1247,7 +1247,7 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
         data: {
           title: title || 'IELTS Speaking Referral Championship',
           description: description || 'Invite friends to practice speaking and win exclusive prizes!',
-          prizes: prizes || '🥇 1st: 60-Day VIP Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
+          prizes: prizes || '🥇 1st: 60-Day BOSS Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
           isActive: isActive !== undefined ? Boolean(isActive) : true,
           endsAt: endsAt ? new Date(endsAt) : null,
         },
@@ -1276,7 +1276,7 @@ router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
         data: {
           title: 'IELTS Speaking Referral Championship',
           description: 'Invite your friends to practice IELTS speaking! Top referrers win exclusive custom plans and prizes.',
-          prizes: '🥇 1st: 60-Day VIP Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
+          prizes: '🥇 1st: 60-Day BOSS Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
           isActive: targetState,
         },
       });

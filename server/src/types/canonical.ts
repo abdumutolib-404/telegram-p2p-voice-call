@@ -79,7 +79,7 @@ const DEFAULT_ERROR_MESSAGES: Record<CanonicalErrorCode, { message: string; retr
     retryable: false,
   },
   QUOTA_EXCEEDED: {
-    message: 'You have reached your daily practice limit. Upgrade your plan to practice more today.',
+    message: 'You have reached your monthly practice limit. Upgrade your plan or invite friends to practice more.',
     retryable: false,
   },
   SUSPENDED: {

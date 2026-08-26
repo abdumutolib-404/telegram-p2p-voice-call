@@ -938,7 +938,7 @@ export class InMemoryPrismaMock {
         id,
         title: stringValue(args.data.title, 'IELTS Speaking Referral Championship'),
         description: stringValue(args.data.description, 'Invite friends to win exclusive prizes!'),
-        prizes: stringValue(args.data.prizes, '🥇 1st: 60-Day VIP Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan'),
+        prizes: stringValue(args.data.prizes, '🥇 1st: 60-Day BOSS Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan'),
         isActive: booleanValue(args.data.isActive, false),
         startsAt: args.data.startsAt ? dateValue(args.data.startsAt, now) : now,
         endsAt: args.data.endsAt ? dateValue(args.data.endsAt, now) : null,
