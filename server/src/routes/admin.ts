@@ -1033,7 +1033,10 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
         (resetDailyCalls ? `• *Calls Used This Month*: Reset to 0\n` : '') +
         `\nEnjoy practicing!`;
       await adminBotInstance.api.sendMessage(updated.telegramId.toString(), msg, { parse_mode: 'Markdown' })
-        .catch((e: unknown) => console.warn('[Admin] Failed to send plan update notice:', e));
+        .catch((e: unknown) => {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          console.warn(`[Admin] User notification skipped for Telegram ID ${updated.telegramId}: ${errMsg}`);
+        });
     }
 
     const now = new Date();

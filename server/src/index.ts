@@ -220,6 +220,21 @@ app.get('/guidelines', (_req, res) => {
   res.send(html);
 });
 
+app.get('/robots.txt', (_req, res) => {
+  res.type('text/plain');
+  res.send("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nSitemap: https://pairtalk.online/sitemap.xml\n");
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+  res.type('application/xml');
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://pairtalk.online/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://pairtalk.online/privacy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://pairtalk.online/guidelines</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+</urlset>`);
+});
+
 app.use('/client', express.static(path.join(__dirname, '../public/client')));
 app.get('/client', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));
 app.get('/client/*', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));
