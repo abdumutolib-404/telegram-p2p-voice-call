@@ -5,15 +5,22 @@ import { prisma } from '../config/database';
 
 export const livekitWebhookRouter = Router();
 
-const webhookReceiver = new WebhookReceiver(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
+function getWebhookReceiver(): WebhookReceiver {
+  return new WebhookReceiver(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
+}
 
 livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization || (req.headers.authorize as string);
-  const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+  const rawBody = Buffer.isBuffer(req.body)
+    ? req.body.toString('utf-8')
+    : typeof req.body === 'string'
+    ? req.body
+    : JSON.stringify(req.body);
 
   let event: any;
   try {
-    event = await webhookReceiver.receive(rawBody, authHeader);
+    const receiver = getWebhookReceiver();
+    event = await receiver.receive(rawBody, authHeader);
   } catch (err: unknown) {
     console.warn('[LiveKit Webhook] auth_validation_failed:', err instanceof Error ? err.message : err);
     res.status(401).send('Unauthorized webhook signature');

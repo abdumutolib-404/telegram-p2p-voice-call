@@ -18,7 +18,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
   message,
   onRetry,
 }) => {
-  const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'badhbdhasbbot').replace(/^@/, '');
+  const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'PairTalkBot').replace(/^@/, '');
   const botAppUrl = `https://t.me/${botUsername}?startapp=1`;
 
   let badgeText = 'Browser Access Blocked';

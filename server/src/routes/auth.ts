@@ -87,7 +87,7 @@ router.post('/verify', authLimiter, async (req, res) => {
 
 router.get('/bot-info', (_req, res) => {
   res.json({
-    botUsername: 'badhbdhasbbot',
+    botUsername: 'PairTalkBot',
     appUrl: env.MINI_APP_URL,
     status: 'ok',
   });
