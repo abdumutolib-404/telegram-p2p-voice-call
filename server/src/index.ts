@@ -235,16 +235,28 @@ app.get('/sitemap.xml', (_req, res) => {
 </urlset>`);
 });
 
-app.use('/client', express.static(path.join(__dirname, '../public/client')));
-app.get('/client', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));
-app.get('/client/*', (_req, res) => res.sendFile(path.join(__dirname, '../public/client/index.html')));
+// Canonical Subdomain Redirection (Prevents raw static SPA access on api.pairtalk.online)
+app.get(['/client', '/client/*'], (_req, res) => {
+  res.redirect(301, env.MINI_APP_URL || 'https://app.pairtalk.online');
+});
 
-app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
-app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '../public/admin/index.html')));
-app.get('/admin/*', (_req, res) => res.sendFile(path.join(__dirname, '../public/admin/index.html')));
+app.get(['/admin', '/admin/*'], (_req, res) => {
+  res.redirect(301, env.ADMIN_PANEL_URL || 'https://admin.pairtalk.online');
+});
 
 app.get('/', (_req, res) => {
-  res.json({ status: 'ok', app: 'IELTS Speaking P2P Platform', endpoints: ['/client', '/admin', '/health'] });
+  res.json({
+    status: 'ok',
+    app: 'PairTalk API & WebRTC Signaling Backend',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      privacy: '/privacy',
+      guidelines: '/guidelines',
+      miniApp: env.MINI_APP_URL || 'https://app.pairtalk.online',
+      adminConsole: env.ADMIN_PANEL_URL || 'https://admin.pairtalk.online',
+    },
+  });
 });
 
 const io = new SocketIOServer(server, {
