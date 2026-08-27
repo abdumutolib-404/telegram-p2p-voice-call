@@ -19,13 +19,13 @@ import {
 } from '../services/plan';
 import { moderationService } from '../services/moderation';
 import { prisma } from '../config/database';
-import { createActionRateLimiter } from '../middleware/rateLimit';
+import { createActionRateLimiter, getClientIp } from '../middleware/rateLimit';
 import { getRedis } from '../config/redis';
 import type { MyContext } from '../bot/types';
 
 const router = Router();
-const adminAuthLimiter = createActionRateLimiter('ADMIN_LOGIN', (req) => req.ip || 'unknown');
-const otpVerifyLimiter = createActionRateLimiter('ADMIN_OTP', (req) => req.ip || 'unknown');
+const adminAuthLimiter = createActionRateLimiter('ADMIN_LOGIN', getClientIp);
+const otpVerifyLimiter = createActionRateLimiter('ADMIN_OTP', getClientIp);
 
 interface AdminOtpChallenge {
   challengeId: string;
