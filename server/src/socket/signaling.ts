@@ -561,15 +561,29 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               });
             }
 
-            const ownBucket = getUserBucket(user);
-            await matchmakingService.restoreQueue(user.id, ownBucket).catch((restoreError: unknown) => {
-              console.error('[Socket] own_restore_failed', {
-                userId: user.id,
-                error: restoreError instanceof Error ? restoreError.message : 'unknown_error',
+            const userStillConnected = getConnectedSocket(user.id);
+            if (userStillConnected) {
+              const ownBucket = getUserBucket(user);
+              await matchmakingService.restoreQueue(user.id, ownBucket).catch((restoreError: unknown) => {
+                console.error('[Socket] own_restore_failed', {
+                  userId: user.id,
+                  error: restoreError instanceof Error ? restoreError.message : 'unknown_error',
+                });
               });
-            });
+              userStillConnected.emit('queue_joined', { status: 'searching' });
+            }
 
-            socket.emit('queue_joined', { status: 'searching' });
+            const partnerStillConnected = getConnectedSocket(partner.id);
+            if (partnerStillConnected) {
+              const partnerBucket = getUserBucket(partner);
+              await matchmakingService.restoreQueue(partner.id, partnerBucket).catch((restoreError: unknown) => {
+                console.error('[Socket] partner_restore_failed', {
+                  userId: partner.id,
+                  error: restoreError instanceof Error ? restoreError.message : 'unknown_error',
+                });
+              });
+              partnerStillConnected.emit('queue_joined', { status: 'searching' });
+            }
           }
         });
       } catch (error: unknown) {
@@ -617,6 +631,15 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       const requesterId = socket.data.userId as string | undefined;
       if (!requesterId) {
         socket.emit('error', { message: 'Unauthenticated socket session.' });
+        return;
+      }
+
+      const rlResult = await checkRateLimit(payload.record ? 'RECORD_START' : 'RECORD_STOP', requesterId);
+      if (!rlResult.allowed) {
+        socket.emit('recording_error', {
+          code: 'RATE_LIMITED',
+          message: 'Too many recording requests. Please wait a moment.',
+        });
         return;
       }
 
@@ -731,6 +754,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       const requesterId = socket.data.userId as string | undefined;
       if (!requesterId) {
         socket.emit('error', { message: 'Unauthenticated socket session.' });
+        return;
+      }
+
+      const rlResult = await checkRateLimit('FINISH_CALL', requesterId);
+      if (!rlResult.allowed) {
+        socket.emit('error', { message: 'Too many requests. Please wait a moment.' });
         return;
       }
 

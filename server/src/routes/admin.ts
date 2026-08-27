@@ -242,7 +242,13 @@ function setAdminSessionCookie(res: any, token: string, expiresAt: Date): void {
 
 // POST /api/admin/auth/logout
 router.post('/auth/logout', (_req, res) => {
-  res.clearCookie('admin_session', { path: '/' });
+  const isProduction = env.NODE_ENV === 'production';
+  res.clearCookie('admin_session', {
+    path: '/',
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+  });
   res.json({ success: true, message: 'Logged out successfully.' });
 });
 
@@ -558,7 +564,7 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
 router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const { note } = req.body;
-  const adminId = (req as any).adminUser?.id || 'admin';
+  const adminId = (req as any).adminUser?.telegramId || 'admin';
 
   try {
     const result = await approveManualPaymentRequest({
@@ -604,7 +610,7 @@ router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res
 router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const { note } = req.body;
-  const adminId = (req as any).adminUser?.id || 'admin';
+  const adminId = (req as any).adminUser?.telegramId || 'admin';
 
   try {
     const result = await rejectManualPaymentRequest({
@@ -679,7 +685,7 @@ router.get('/payments/stars', adminAuthMiddleware, async (_req, res) => {
 router.post('/payments/stars/:id/refund', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
-  const adminId = (req as any).adminUser?.id || 'admin';
+  const adminId = (req as any).adminUser?.telegramId || 'admin';
 
   try {
     const result = await revokePlanOnRefund({

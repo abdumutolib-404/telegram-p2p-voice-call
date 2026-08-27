@@ -53,17 +53,33 @@ const configuredOrigins = [
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true; // Same-origin, mobile apps, or server-to-server calls
   if (configuredOrigins.includes(origin)) return true;
-  // Support custom subdomains on pairtalk.online, railway, netlify, or vercel if matched
-  if (/^https?:\/\/(.*\.pairtalk\.online|pairtalk\.online|.*\.netlify\.app|.*\.railway\.app|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$/i.test(origin)) {
+  // Support exact official subdomains on pairtalk.online
+  if (/^https?:\/\/(?:[a-zA-Z0-9-]+\.)*pairtalk\.online(:\d+)?$/i.test(origin)) {
     return true;
   }
   if (env.NODE_ENV !== 'production') {
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
       return true;
     }
+    if (/^https?:\/\/(?:[a-zA-Z0-9-]+\.)*(?:netlify\.app|railway\.app|up\.railway\.app|vercel\.app)(:\d+)?$/i.test(origin)) {
+      return true;
+    }
   }
   return false;
 };
+
+app.disable('x-powered-by');
+
+// Standard HTTP Security Headers Middleware (Telegram WebApp compatible)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-XSS-Protection', '0');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -79,12 +95,15 @@ app.use(cookieParser());
 app.use('/api/livekit/webhook', express.raw({ type: '*/*', limit: '1mb' }));
 app.use(express.json({ limit: '256kb' }));
 
-// Comprehensive Production Request & Response Logging Middleware
+// Comprehensive Production Request & Response Logging Middleware (Query-Sanitized)
 app.use((req, res, next) => {
   const start = Date.now();
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const rawCf = req.headers['cf-connecting-ip'];
+  const ip = typeof rawCf === 'string' && rawCf.trim()
+    ? rawCf.trim()
+    : req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   const method = req.method;
-  const path = req.originalUrl || req.url;
+  const path = (req.originalUrl || req.url || '').split('?')[0];
 
   res.on('finish', () => {
     const duration = Date.now() - start;

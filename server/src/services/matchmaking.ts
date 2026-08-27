@@ -252,7 +252,11 @@ export class MatchmakingService {
   private async cancelQueueUnlocked(userId: string): Promise<boolean> {
     const pointerKey = `${USER_QUEUE_PREFIX}${userId}`;
     const result = await this.redis.eval(CANCEL_QUEUE_SCRIPT, 1, pointerKey, userId);
+    const bandPoolRemovals = [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0].map((b) =>
+      this.redis.srem(this.getBandPoolKey(b), userId)
+    );
     await Promise.allSettled([
+      ...bandPoolRemovals,
       this.redis.srem(this.getGlobalPoolKey(), userId),
       this.redis.srem(this.getPriorityPoolKey('BOSS'), userId),
       this.redis.srem(this.getPriorityPoolKey('PRO'), userId),

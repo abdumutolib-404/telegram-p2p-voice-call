@@ -470,13 +470,24 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: decline_direct:<sessionId>
   bot.callbackQuery(/^decline_direct:(.+)$/, async (ctx) => {
     const sessionId = ctx.match[1];
+    const requesterTgId = BigInt(ctx.from?.id || 0);
     try {
       const session = await prisma.callSession.findUnique({
         where: { id: sessionId },
         include: { userA: true, userB: true },
       });
 
-      if (session && session.status === 'PENDING') {
+      if (!session) {
+        await ctx.answerCallbackQuery({ text: 'Call session not found.' });
+        return;
+      }
+
+      if (session.userA.telegramId !== requesterTgId && session.userB.telegramId !== requesterTgId) {
+        await ctx.answerCallbackQuery({ text: 'Unauthorized: You are not a participant in this call.', show_alert: true });
+        return;
+      }
+
+      if (session.status === 'PENDING') {
         await prisma.callSession.update({
           where: { id: session.id },
           data: { status: 'DECLINED' },
@@ -503,13 +514,24 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: cancel_direct:<sessionId>
   bot.callbackQuery(/^cancel_direct:(.+)$/, async (ctx) => {
     const sessionId = ctx.match[1];
+    const requesterTgId = BigInt(ctx.from?.id || 0);
     try {
       const session = await prisma.callSession.findUnique({
         where: { id: sessionId },
         include: { userA: true, userB: true },
       });
 
-      if (session && session.status === 'PENDING') {
+      if (!session) {
+        await ctx.answerCallbackQuery({ text: 'Call session not found.' });
+        return;
+      }
+
+      if (session.userA.telegramId !== requesterTgId && session.userB.telegramId !== requesterTgId) {
+        await ctx.answerCallbackQuery({ text: 'Unauthorized: You are not a participant in this call.', show_alert: true });
+        return;
+      }
+
+      if (session.status === 'PENDING') {
         await prisma.callSession.update({
           where: { id: session.id },
           data: { status: 'CANCELLED' },
