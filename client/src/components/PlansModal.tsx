@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, ShieldAlert, Sparkles, Clock, Phone, Mic, HardDrive, CheckCircle2, ChevronRight } from 'lucide-react';
+import { X, ShieldAlert, Sparkles, Clock, Phone, Mic, HardDrive, CheckCircle2, ChevronRight, Info } from 'lucide-react';
 import { PAID_PLANS } from '../constants/plans';
 
 export interface PlansModalProps {
@@ -55,12 +55,12 @@ export const PlansModal: React.FC<PlansModalProps> = ({
             CHOOSE YOUR PLAN
           </h2>
           <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto font-mono">
-            Unlock extended speaking time, priority matchmaking, and audio recordings with Telegram Stars.
+            Unlock extended speaking time, priority matchmaking, and audio recordings with Telegram Stars or Card.
           </p>
         </div>
 
         {/* Server Refund Policy Notice Banner */}
-        <div className="mb-5 p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs leading-relaxed flex items-start gap-3">
+        <div className="mb-3 p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs leading-relaxed flex items-start gap-3">
           <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
           <div className="space-y-1 text-[11px]">
             <p className="font-mono font-bold tracking-wider uppercase text-amber-400">
@@ -72,6 +72,14 @@ export const PlansModal: React.FC<PlansModalProps> = ({
               <span className="text-amber-300 font-semibold">(2) Less than 2 days (48h) have elapsed since purchase</span>.
             </p>
           </div>
+        </div>
+
+        {/* Tax & Currency Difference Warning Banner */}
+        <div className="mb-5 p-3 rounded-2xl bg-slate-900/90 border border-cyan-500/30 text-slate-300 text-xs leading-relaxed flex items-start gap-2.5">
+          <Info className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
+          <p className="font-mono text-[10.5px] text-slate-400">
+            <strong className="text-cyan-300 uppercase">Tax & Currency Notice:</strong> Prices in UZS (Card) and Stars (Telegram XTR) may slightly differ due to local VAT, currency conversions, and app store taxes.
+          </p>
         </div>
 
         {/* Purchasable Plans Cards Grid (FREE excluded) */}

@@ -36,10 +36,10 @@ describe('Final Pricing Migration & Admin Command Privacy Test Suite', () => {
       expect(config.retentionDays).toBe(1);
     });
 
-    it('1.2 PLUS tier has exact canonical limits and 15,000 UZS / 99 XTR price', () => {
+    it('1.2 PLUS tier has exact canonical limits and 15,000 UZS / 79 XTR price', () => {
       const config = getPlansConfig().PLUS;
       expect(config.uzsPrice).toBe(15000);
-      expect(config.starsPrice).toBe(99);
+      expect(config.starsPrice).toBe(79);
       expect(config.dailyLimit).toBe(10);
       expect(config.callsLimit).toBe(10);
       expect(config.maxDuration).toBe(30);
@@ -47,10 +47,10 @@ describe('Final Pricing Migration & Admin Command Privacy Test Suite', () => {
       expect(config.retentionDays).toBe(7);
     });
 
-    it('1.3 PRO tier has exact canonical limits and 55,000 UZS / 349 XTR price', () => {
+    it('1.3 PRO tier has exact canonical limits and 55,000 UZS / 255 XTR price', () => {
       const config = getPlansConfig().PRO;
       expect(config.uzsPrice).toBe(55000);
-      expect(config.starsPrice).toBe(349);
+      expect(config.starsPrice).toBe(255);
       expect(config.dailyLimit).toBe(25);
       expect(config.callsLimit).toBe(25);
       expect(config.maxDuration).toBe(60);
@@ -58,10 +58,10 @@ describe('Final Pricing Migration & Admin Command Privacy Test Suite', () => {
       expect(config.retentionDays).toBe(30);
     });
 
-    it('1.4 BOSS tier has exact canonical limits and 149,000 UZS / 899 XTR price', () => {
+    it('1.4 BOSS tier has exact canonical limits and 149,000 UZS / 679 XTR price', () => {
       const config = getPlansConfig().BOSS;
       expect(config.uzsPrice).toBe(149000);
-      expect(config.starsPrice).toBe(899);
+      expect(config.starsPrice).toBe(679);
       expect(config.dailyLimit).toBe(50);
       expect(config.callsLimit).toBe(50);
       expect(config.maxDuration).toBe(90);
@@ -70,9 +70,9 @@ describe('Final Pricing Migration & Admin Command Privacy Test Suite', () => {
     });
 
     it('1.5 Price display formatter generates accurate bilingual labels', () => {
-      expect(formatPriceDisplay('PLUS')).toBe('⭐ 99 Stars / 💳 15,000 UZS');
-      expect(formatPriceDisplay('PRO')).toBe('⭐ 349 Stars / 💳 55,000 UZS');
-      expect(formatPriceDisplay('BOSS')).toBe('⭐ 899 Stars / 💳 149,000 UZS');
+      expect(formatPriceDisplay('PLUS')).toBe('⭐ 79 Stars / 💳 15,000 UZS');
+      expect(formatPriceDisplay('PRO')).toBe('⭐ 255 Stars / 💳 55,000 UZS');
+      expect(formatPriceDisplay('BOSS')).toBe('⭐ 679 Stars / 💳 149,000 UZS');
     });
   });
 

@@ -25,9 +25,9 @@ export function PlanEditor() {
   const [initialPlans, setInitialPlans] = useState<PlansResponse | null>(null);
   const [plans, setPlans] = useState<PlansResponse>({
     FREE: { maxDuration: 15, dailyLimit: 3, recordingLimit: 1, retentionDays: 1, starsPrice: 0, uzsPrice: 0 },
-    PLUS: { maxDuration: 30, dailyLimit: 10, recordingLimit: 3, retentionDays: 7, starsPrice: 99, uzsPrice: 15000 },
-    PRO: { maxDuration: 60, dailyLimit: 25, recordingLimit: 7, retentionDays: 30, starsPrice: 349, uzsPrice: 55000 },
-    BOSS: { maxDuration: 90, dailyLimit: 50, recordingLimit: 15, retentionDays: 90, starsPrice: 899, uzsPrice: 149000 },
+    PLUS: { maxDuration: 30, dailyLimit: 10, recordingLimit: 3, retentionDays: 7, starsPrice: 79, uzsPrice: 15000 },
+    PRO: { maxDuration: 60, dailyLimit: 25, recordingLimit: 7, retentionDays: 30, starsPrice: 255, uzsPrice: 55000 },
+    BOSS: { maxDuration: 90, dailyLimit: 50, recordingLimit: 15, retentionDays: 90, starsPrice: 679, uzsPrice: 149000 },
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -279,7 +279,7 @@ export function PlanEditor() {
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Authoritative Plan Matrix"
-        description="Configure duration limits, monthly call allowances, audio retention, and official Stars (XTR) & UZS pricing"
+        description="Configure duration limits, monthly call allowances, audio retention, and official Stars (XTR) & UZS pricing. Prices in UZS and Stars may differ due to platform and local taxes."
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {hasUnsavedChanges && (

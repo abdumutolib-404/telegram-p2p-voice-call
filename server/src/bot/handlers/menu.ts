@@ -298,6 +298,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `• Monthly Calls: 50\n` +
         `• Monthly Recordings: 15\n` +
         `• Recording Retention: 90 days\n\n` +
+        `⚠️ <b>Note:</b> Prices in UZS and Stars may slightly differ due to platform & regional taxes.\n\n` +
         `🛡️ <b>Refund Policy:</b>\n` +
         `Refunds are eligible within 48 hours of purchase OR if less than 10% of monthly call credits have been utilized.\n\n` +
         (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose your payment method (Telegram Stars or Card):`),

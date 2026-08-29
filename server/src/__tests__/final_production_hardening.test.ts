@@ -39,7 +39,7 @@ describe('Final Production Hardening Suite', () => {
       expect(plans.BOSS.dailyLimit).toBe(50);
       expect(plans.BOSS.recordingLimit).toBe(15);
       expect(plans.BOSS.retentionDays).toBe(90);
-      expect(plans.BOSS.starsPrice).toBe(899);
+      expect(plans.BOSS.starsPrice).toBe(679);
       expect(plans.BOSS.uzsPrice).toBe(149000);
     });
 

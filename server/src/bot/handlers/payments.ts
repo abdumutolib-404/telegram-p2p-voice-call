@@ -68,6 +68,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         `• Max Call Duration: <b>${planConfig.maxDuration} mins</b>\n` +
         `• Monthly Calls: <b>${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/month`}</b>\n` +
         `• Recording Storage: <b>${planConfig.retentionDays} days</b>\n\n` +
+        `⚠️ <i>Note: Prices in UZS and Stars may slightly differ due to local and platform taxes.</i>\n\n` +
         `Choose your preferred payment method:`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
@@ -139,6 +140,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         `• Monthly Calls: 50\n` +
         `• Monthly Recordings: 15\n` +
         `• Recording Retention: 90 days\n\n` +
+        `⚠️ <b>Note:</b> Prices in UZS and Stars may slightly differ due to platform & regional taxes.\n\n` +
         (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );

@@ -42,7 +42,7 @@ describe('Final Production Readiness Campaign Test Suite', () => {
       expect(ent.recordingLimit).toBe(3);
       expect(ent.retentionDays).toBe(7);
       expect(ent.isUnlimited).toBe(false);
-      expect(ent.starsPrice).toBe(99);
+      expect(ent.starsPrice).toBe(79);
       expect(ent.uzsPrice).toBe(15000);
     });
 
@@ -55,7 +55,7 @@ describe('Final Production Readiness Campaign Test Suite', () => {
       expect(ent.recordingLimit).toBe(7);
       expect(ent.retentionDays).toBe(30);
       expect(ent.isUnlimited).toBe(false);
-      expect(ent.starsPrice).toBe(349);
+      expect(ent.starsPrice).toBe(255);
       expect(ent.uzsPrice).toBe(55000);
     });
 
@@ -68,7 +68,7 @@ describe('Final Production Readiness Campaign Test Suite', () => {
       expect(ent.recordingLimit).toBe(15);
       expect(ent.retentionDays).toBe(90);
       expect(ent.isUnlimited).toBe(false);
-      expect(ent.starsPrice).toBe(899);
+      expect(ent.starsPrice).toBe(679);
       expect(ent.uzsPrice).toBe(149000);
     });
 
