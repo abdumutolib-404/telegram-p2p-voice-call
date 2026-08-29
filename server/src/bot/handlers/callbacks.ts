@@ -13,15 +13,14 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     ctx.session.step = 'lr';
 
     const inlineKb = new InlineKeyboard();
-    for (let s = 4.0; s <= 9.0; s += 0.5) {
-      inlineKb.text(s.toFixed(1), `set_sub_lr:${s}`);
-      if (s === 6.0 || s === 8.0) inlineKb.row();
+    for (const s of [5, 6, 7, 8, 9]) {
+      inlineKb.text(String(s), `set_sub_lr:${s}`);
     }
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
       `🎯 <b>Step 2/4: Select your Lexical Resource (LR) score:</b>\n\n` +
-        `• FC: <b>${fc.toFixed(1)}</b>`,
+        `• FC: <b>${fc}</b>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
@@ -33,16 +32,15 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     ctx.session.step = 'gra';
 
     const inlineKb = new InlineKeyboard();
-    for (let s = 4.0; s <= 9.0; s += 0.5) {
-      inlineKb.text(s.toFixed(1), `set_sub_gra:${s}`);
-      if (s === 6.0 || s === 8.0) inlineKb.row();
+    for (const s of [5, 6, 7, 8, 9]) {
+      inlineKb.text(String(s), `set_sub_gra:${s}`);
     }
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
       `🎯 <b>Step 3/4: Select your Grammatical Range & Accuracy (GRA) score:</b>\n\n` +
-        `• FC: <b>${ctx.session.fc?.toFixed(1)}</b>\n` +
-        `• LR: <b>${lr.toFixed(1)}</b>`,
+        `• FC: <b>${ctx.session.fc}</b>\n` +
+        `• LR: <b>${lr}</b>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
@@ -54,17 +52,16 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     ctx.session.step = 'p';
 
     const inlineKb = new InlineKeyboard();
-    for (let s = 4.0; s <= 9.0; s += 0.5) {
-      inlineKb.text(s.toFixed(1), `set_sub_p:${s}`);
-      if (s === 6.0 || s === 8.0) inlineKb.row();
+    for (const s of [5, 6, 7, 8, 9]) {
+      inlineKb.text(String(s), `set_sub_p:${s}`);
     }
 
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
       `🎯 <b>Step 4/4: Select your Pronunciation (P) score:</b>\n\n` +
-        `• FC: <b>${ctx.session.fc?.toFixed(1)}</b>\n` +
-        `• LR: <b>${ctx.session.lr?.toFixed(1)}</b>\n` +
-        `• GRA: <b>${gra.toFixed(1)}</b>`,
+        `• FC: <b>${ctx.session.fc}</b>\n` +
+        `• LR: <b>${ctx.session.lr}</b>\n` +
+        `• GRA: <b>${gra}</b>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
   });
@@ -88,10 +85,10 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
       `📊 <b>Sub-scores Summary</b>\n\n` +
-        `• Fluency & Coherence (FC): <b>${fc.toFixed(1)}</b>\n` +
-        `• Lexical Resource (LR): <b>${lr.toFixed(1)}</b>\n` +
-        `• Grammatical Range (GRA): <b>${gra.toFixed(1)}</b>\n` +
-        `• Pronunciation (P): <b>${p.toFixed(1)}</b>\n\n` +
+        `• Fluency & Coherence (FC): <b>${fc}</b>\n` +
+        `• Lexical Resource (LR): <b>${lr}</b>\n` +
+        `• Grammatical Range (GRA): <b>${gra}</b>\n` +
+        `• Pronunciation (P): <b>${p}</b>\n\n` +
         `⭐ <b>Calculated Overall IELTS Band</b>: <b>${overallBand.toFixed(1)}</b>\n\n` +
         `Click <b>Save & Lock Profile</b> to finalize setup.`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
@@ -154,9 +151,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
   bot.callbackQuery('re_evaluate_subscores', async (ctx) => {
     ctx.session.step = 'fc';
     const inlineKb = new InlineKeyboard();
-    for (let s = 4.0; s <= 9.0; s += 0.5) {
-      inlineKb.text(s.toFixed(1), `set_sub_fc:${s}`);
-      if (s === 6.0 || s === 8.0) inlineKb.row();
+    for (const s of [5, 6, 7, 8, 9]) {
+      inlineKb.text(String(s), `set_sub_fc:${s}`);
     }
 
     await ctx.answerCallbackQuery();

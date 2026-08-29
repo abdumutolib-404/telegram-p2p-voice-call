@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { LoginModal } from './components/auth/LoginModal.tsx';
 import { OverviewDashboard } from './components/dashboard/OverviewDashboard.tsx';
@@ -8,18 +8,15 @@ import { ManualPaymentsQueue } from './components/dashboard/ManualPaymentsQueue.
 import { AppealsQueue } from './components/dashboard/AppealsQueue.tsx';
 import { UserManagement } from './components/dashboard/UserManagement.tsx';
 import { ContestManagement } from './components/dashboard/ContestManagement.tsx';
+import { adminFetch } from './api/client.ts';
+import type { ManualPaymentRequestItem, AppealItem } from './types/index.ts';
 import {
-  LayoutDashboard,
-  BarChart3,
-  Settings,
-  ShieldAlert,
-  Users,
   LogOut,
   ShieldCheck,
-  CreditCard,
   Menu,
   X,
-  Trophy,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
 export type NavigationTab = 'overview' | 'users' | 'plans' | 'payments' | 'appeals' | 'analytics' | 'contest';
@@ -27,59 +24,122 @@ export type NavigationTab = 'overview' | 'users' | 'plans' | 'payments' | 'appea
 interface NavItemMeta {
   id: NavigationTab;
   label: string;
+  shortLabel: string;
   description: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  badgeKey?: 'payments' | 'appeals';
 }
 
-const NAV_ITEMS: NavItemMeta[] = [
+interface NavGroup {
+  groupName: string;
+  items: NavItemMeta[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
   {
-    id: 'overview',
-    label: 'Overview',
-    description: 'System vitals, active traffic & pending operational tasks',
-    icon: LayoutDashboard,
+    groupName: 'Operations',
+    items: [
+      {
+        id: 'overview',
+        label: 'Overview',
+        shortLabel: 'OVR',
+        description: 'System telemetry, active traffic & operational vitals',
+      },
+      {
+        id: 'users',
+        label: 'Candidates',
+        shortLabel: 'CND',
+        description: 'Learners roster, speaking limits & moderation controls',
+      },
+      {
+        id: 'contest',
+        label: 'Hall of Fame',
+        shortLabel: 'HOF',
+        description: 'Championship rules, prize allocation & live leaderboard',
+      },
+    ],
   },
   {
-    id: 'users',
-    label: 'Candidates',
-    description: 'Learners roster, speaking limits & moderation controls',
-    icon: Users,
+    groupName: 'Finance',
+    items: [
+      {
+        id: 'plans',
+        label: 'Plans & Limits',
+        shortLabel: 'PLN',
+        description: 'Authoritative FREE, PLUS, PRO, BOSS limits & pricing',
+      },
+      {
+        id: 'payments',
+        label: 'Payments (UZS)',
+        shortLabel: 'PAY',
+        description: 'Offline card transfer verification & payment history',
+        badgeKey: 'payments',
+      },
+    ],
   },
   {
-    id: 'plans',
-    label: 'Plans & Limits',
-    description: 'Authoritative FREE, PLUS, PRO, BOSS limits & pricing',
-    icon: Settings,
-  },
-  {
-    id: 'payments',
-    label: 'Payments (UZS)',
-    description: 'Offline card transfer verification & payment history',
-    icon: CreditCard,
-  },
-  {
-    id: 'appeals',
-    label: 'Appeals Queue',
-    description: 'Review permanent ban unblock requests from candidates',
-    icon: ShieldAlert,
-  },
-  {
-    id: 'analytics',
-    label: 'Analytics & Revenue',
-    description: 'Stars & UZS revenue, WebRTC telemetry & quality metrics',
-    icon: BarChart3,
-  },
-  {
-    id: 'contest',
-    label: 'Hall of Fame',
-    description: 'Championship rules, prize allocation & live leaderboard',
-    icon: Trophy,
+    groupName: 'Governance & Telemetry',
+    items: [
+      {
+        id: 'appeals',
+        label: 'Appeals Queue',
+        shortLabel: 'APL',
+        description: 'Review permanent ban unblock requests from candidates',
+        badgeKey: 'appeals',
+      },
+      {
+        id: 'analytics',
+        label: 'Analytics & Revenue',
+        shortLabel: 'ANL',
+        description: 'Stars & UZS revenue, WebRTC telemetry & quality metrics',
+      },
+    ],
   },
 ];
+
+const ALL_NAV_ITEMS: NavItemMeta[] = NAV_GROUPS.flatMap((g) => g.items);
+
+function formatBadgeCount(count: number): string | null {
+  if (!count || count <= 0) return null;
+  return count > 99 ? '99+' : String(count);
+}
 
 function MainDashboard() {
   const { isAuthenticated, isLoading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<NavigationTab>('overview');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+
+  // Dynamic Pending Badge Counts
+  const [pendingPaymentsCount, setPendingPaymentsCount] = useState<number>(0);
+  const [pendingAppealsCount, setPendingAppealsCount] = useState<number>(0);
+
+  const fetchBadgeCounts = useCallback(async () => {
+    try {
+      const [payments, appeals] = await Promise.all([
+        adminFetch<ManualPaymentRequestItem[]>('/api/admin/payments/manual?tab=queue').catch(() => []),
+        adminFetch<AppealItem[]>('/api/admin/appeals').catch(() => []),
+      ]);
+
+      if (Array.isArray(payments)) {
+        const pending = payments.filter((p) => p.status === 'PENDING').length;
+        setPendingPaymentsCount(pending);
+      }
+      if (Array.isArray(appeals)) {
+        const pending = appeals.filter((a) => !a.status || a.status === 'PENDING' || a.status === 'pending').length;
+        setPendingAppealsCount(pending);
+      }
+    } catch {
+      // Non-blocking telemetry
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchBadgeCounts();
+      const interval = setInterval(fetchBadgeCounts, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, fetchBadgeCounts]);
 
   // Close mobile drawer on desktop resize (>= 1024px)
   useEffect(() => {
@@ -127,7 +187,7 @@ function MainDashboard() {
               animation: 'spin 1s linear infinite',
             }}
           />
-          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Initializing PairTalk Console...</span>
+          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Initializing PairTalk Console...</span>
         </div>
       </div>
     );
@@ -137,7 +197,26 @@ function MainDashboard() {
     return <LoginModal />;
   }
 
-  const currentTabMeta = NAV_ITEMS.find((item) => item.id === activeTab) || NAV_ITEMS[0];
+  const currentTabMeta = ALL_NAV_ITEMS.find((item) => item.id === activeTab) || ALL_NAV_ITEMS[0];
+
+  const getBadgeForTab = (badgeKey?: 'payments' | 'appeals') => {
+    if (!badgeKey) return null;
+    if (badgeKey === 'payments') {
+      return {
+        formatted: formatBadgeCount(pendingPaymentsCount),
+        variant: 'warning' as const,
+      };
+    }
+    if (badgeKey === 'appeals') {
+      return {
+        formatted: formatBadgeCount(pendingAppealsCount),
+        variant: 'danger' as const,
+      };
+    }
+    return null;
+  };
+
+  const sidebarWidth = isCollapsed ? 64 : 240;
 
   return (
     <div className="app-container">
@@ -148,7 +227,7 @@ function MainDashboard() {
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(7, 10, 18, 0.75)',
+            backgroundColor: 'rgba(7, 10, 18, 0.8)',
             backdropFilter: 'blur(6px)',
             zIndex: 40,
           }}
@@ -156,12 +235,12 @@ function MainDashboard() {
         />
       )}
 
-      {/* Left Sidebar */}
+      {/* Left Sidebar (Collapsible Rail ~64px vs Expanded ~240px) */}
       <aside
         style={{
-          width: '260px',
-          minWidth: '260px',
-          maxWidth: '260px',
+          width: `${sidebarWidth}px`,
+          minWidth: `${sidebarWidth}px`,
+          maxWidth: `${sidebarWidth}px`,
           backgroundColor: '#090D17',
           borderRight: '1px solid var(--border-card)',
           display: 'flex',
@@ -174,49 +253,92 @@ function MainDashboard() {
           zIndex: 50,
           boxShadow: 'var(--shadow-md)',
           transform: isMobileNavOpen ? 'translateX(0)' : window.innerWidth < 1024 ? 'translateX(-100%)' : 'translateX(0)',
-          transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        {/* Sidebar Brand Header */}
+        {/* Sidebar Header */}
         <div>
           <div
             style={{
-              padding: '1.25rem 1.25rem',
+              padding: isCollapsed ? '1rem 0.5rem' : '1.15rem 1.15rem',
               borderBottom: '1px solid var(--border-subtle)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              justifyContent: isCollapsed ? 'center' : 'space-between',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {!isCollapsed ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                <div
+                  style={{
+                    width: '30px',
+                    height: '30px',
+                    borderRadius: '6px',
+                    backgroundColor: 'var(--primary)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 10px rgba(124, 92, 252, 0.35)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <ShieldCheck size={16} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span>PairTalk</span>
+                    <span style={{ color: 'var(--primary-light)', fontSize: '0.65rem', fontWeight: 700, padding: '1px 4px', background: 'var(--primary-bg)', borderRadius: '4px', border: '1px solid var(--primary-border)' }}>OPS</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '0.1rem' }}>
+                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'var(--success)', display: 'inline-block' }} className="dot-pulse" />
+                    <span style={{ fontSize: '0.675rem', color: 'var(--success-text)', fontWeight: 600 }}>
+                      Live
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
               <div
+                title="PairTalk OPS Console"
                 style={{
-                  width: '34px',
-                  height: '34px',
-                  borderRadius: '8px',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '6px',
                   backgroundColor: 'var(--primary)',
                   color: '#ffffff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 0 12px rgba(124, 92, 252, 0.35)',
+                  fontWeight: 800,
+                  fontSize: '0.75rem',
+                  boxShadow: '0 0 10px rgba(124, 92, 252, 0.35)',
                 }}
               >
-                <ShieldCheck size={18} />
+                PT
               </div>
-              <div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>PairTalk</span>
-                  <span style={{ color: 'var(--primary-light)', fontSize: '0.7rem', fontWeight: 600, padding: '1px 5px', background: 'var(--primary-bg)', borderRadius: '4px', border: '1px solid var(--primary-border)' }}>OPS</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '0.15rem' }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--success)', display: 'inline-block' }} className="dot-pulse" />
-                  <span style={{ fontSize: '0.7rem', color: 'var(--success-text)', fontWeight: 600 }}>
-                    Operational
-                  </span>
-                </div>
-              </div>
-            </div>
+            )}
+
+            {/* Desktop Collapse Toggle */}
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              title={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+              style={{
+                display: window.innerWidth >= 1024 ? 'flex' : 'none',
+                background: 'transparent',
+                border: '1px solid var(--border-card)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                padding: '0.3rem',
+                borderRadius: '6px',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginLeft: isCollapsed ? '0' : '0.5rem',
+              }}
+              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+            </button>
 
             {/* Mobile Close Button */}
             <button
@@ -227,54 +349,106 @@ function MainDashboard() {
                 border: '1px solid var(--border-card)',
                 color: 'var(--text-secondary)',
                 cursor: 'pointer',
-                padding: '0.35rem',
+                padding: '0.3rem',
                 borderRadius: '6px',
               }}
               aria-label="Close navigation drawer"
             >
-              <X size={16} />
+              <X size={15} />
             </button>
           </div>
 
-          {/* Navigation Links */}
-          <nav style={{ padding: '1rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setIsMobileNavOpen(false);
-                  }}
-                  className={`nav-tab-btn ${isActive ? 'active' : ''}`}
-                >
-                  <Icon size={17} className="nav-icon" />
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                </button>
-              );
-            })}
+          {/* Navigation Links — Logical Groups separated by Hairline Dividers */}
+          <nav style={{ padding: isCollapsed ? '0.75rem 0.35rem' : '0.85rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+            {NAV_GROUPS.map((group, groupIdx) => (
+              <div key={group.groupName}>
+                {groupIdx > 0 && <div className="nav-group-divider" />}
+                {!isCollapsed && (
+                  <div className="nav-group-header">
+                    {group.groupName}
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {group.items.map((item) => {
+                    const isActive = activeTab === item.id;
+                    const badgeInfo = getBadgeForTab(item.badgeKey);
+
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setIsMobileNavOpen(false);
+                        }}
+                        title={item.label}
+                        className={`nav-tab-btn ${isActive ? 'active' : ''} ${isCollapsed ? 'rail' : ''}`}
+                        style={{
+                          position: 'relative',
+                        }}
+                      >
+                        {/* Pure text-only labels (zero icons or emojis) */}
+                        <span style={{ fontWeight: isActive ? 700 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {isCollapsed ? item.shortLabel : item.label}
+                        </span>
+
+                        {/* Dynamic 99+ Pending Badge */}
+                        {badgeInfo?.formatted && (
+                          <span
+                            className={`nav-badge-pill ${badgeInfo.variant}`}
+                            style={{
+                              marginLeft: isCollapsed ? 0 : 'auto',
+                              ...(isCollapsed
+                                ? {
+                                    position: 'absolute',
+                                    top: '2px',
+                                    right: '2px',
+                                    minWidth: '14px',
+                                    height: '14px',
+                                    fontSize: '0.55rem',
+                                    padding: '0 2px',
+                                  }
+                                : {}),
+                            }}
+                          >
+                            {badgeInfo.formatted}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
         </div>
 
         {/* Sidebar Footer */}
-        <div style={{ padding: '1.125rem 1.125rem', borderTop: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-secondary)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
-            <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>Admin Session</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--success-text)', marginTop: '0.1rem' }}>
-                ● 2FA Verified
+        <div style={{ padding: isCollapsed ? '0.75rem 0.4rem' : '1rem 1rem', borderTop: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-secondary)' }}>
+          {!isCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <div>
+                <div style={{ fontSize: '0.725rem', fontWeight: 700, color: 'var(--text-primary)' }}>Admin Session</div>
+                <div style={{ fontSize: '0.675rem', color: 'var(--success-text)', marginTop: '0.1rem', fontWeight: 600 }}>
+                  2FA Active
+                </div>
               </div>
+              <span className="badge badge-neutral" style={{ fontSize: '0.625rem', padding: '0.15rem 0.45rem' }}>v2.5</span>
             </div>
-            <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>v2.4</span>
-          </div>
+          )}
           <button
             onClick={logout}
+            title="Logout Session"
             className="btn-danger"
-            style={{ width: '100%', fontSize: '0.8rem' }}
+            style={{
+              width: '100%',
+              fontSize: '0.75rem',
+              height: '32px',
+              padding: isCollapsed ? '0' : '0 0.75rem',
+              justifyContent: 'center',
+            }}
           >
-            <LogOut size={14} /> Logout Session
+            <LogOut size={13} />
+            {!isCollapsed && <span>Logout</span>}
           </button>
         </div>
       </aside>
@@ -286,18 +460,19 @@ function MainDashboard() {
           display: 'flex',
           flexDirection: 'column',
           minWidth: 0,
-          marginLeft: window.innerWidth >= 1024 ? '260px' : 0,
-          width: window.innerWidth >= 1024 ? 'calc(100% - 260px)' : '100%',
+          marginLeft: window.innerWidth >= 1024 ? `${sidebarWidth}px` : 0,
+          width: window.innerWidth >= 1024 ? `calc(100% - ${sidebarWidth}px)` : '100%',
           overflowX: 'hidden',
+          transition: 'margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
         {/* Top Header */}
         <header
           style={{
-            height: '64px',
+            height: '60px',
             backgroundColor: '#090D17',
             borderBottom: '1px solid var(--border-card)',
-            padding: '0 2rem',
+            padding: '0 1.75rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -308,14 +483,14 @@ function MainDashboard() {
           }}
         >
           {/* Header Left */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
             <button
               onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
               style={{
                 display: window.innerWidth < 1024 ? 'flex' : 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '0.45rem',
+                padding: '0.4rem',
                 backgroundColor: 'var(--bg-surface)',
                 border: '1px solid var(--border-card)',
                 borderRadius: '6px',
@@ -328,10 +503,10 @@ function MainDashboard() {
             </button>
 
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '1.05rem', fontWeight: 650, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
                 {currentTabMeta.label}
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {currentTabMeta.description}
               </div>
             </div>
@@ -339,8 +514,8 @@ function MainDashboard() {
 
           {/* Header Right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexShrink: 0 }}>
-            <span className="badge badge-success" style={{ padding: '0.25rem 0.65rem' }}>
-              <ShieldCheck size={13} /> 2FA Active
+            <span className="badge badge-success" style={{ padding: '0.2rem 0.55rem', fontSize: '0.725rem', fontWeight: 600 }}>
+              <ShieldCheck size={12} /> 2FA Guard Active
             </span>
           </div>
         </header>
@@ -349,7 +524,7 @@ function MainDashboard() {
         <main
           style={{
             flex: 1,
-            padding: '2rem',
+            padding: '1.75rem',
             width: '100%',
             maxWidth: '100%',
             boxSizing: 'border-box',
@@ -377,3 +552,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+

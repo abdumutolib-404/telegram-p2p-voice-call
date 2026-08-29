@@ -9,6 +9,7 @@ import { adminAuthMiddleware } from '../middleware/adminAuth';
 import { getAdminAnalytics } from '../services/analytics';
 import {
   getPlansConfig,
+  getPurchasablePlansConfig,
   updatePlansConfig,
   getDailyLimitForPlan,
   getMaxDurationForPlan,
@@ -486,6 +487,11 @@ router.get('/plans', adminAuthMiddleware, async (req, res) => {
   res.json(getPlansConfig());
 });
 
+// GET /api/admin/plans/purchasable (Protected - Paid Tiers Only)
+router.get('/plans/purchasable', adminAuthMiddleware, async (req, res) => {
+  res.json(getPurchasablePlansConfig());
+});
+
 // PUT /api/admin/plans (Protected)
 router.put('/plans', adminAuthMiddleware, async (req, res) => {
   try {
@@ -924,12 +930,16 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
           lr: u.subLR,
           gra: u.subGRA,
           p: u.subP,
+          band: u.band,
         },
         dailyLimit: u.dailyLimit,
         dailyCallsUsed: u.dailyCallsUsed,
         maxDuration: u.maxDuration,
         retentionOverride: u.retentionOverride || null,
+        recordingLimitOverride: u.recordingLimitOverride || null,
         warningCount: u.warningCount,
+        isPermanentlyBanned: u.isPermanentlyBanned,
+        bannedUntil: u.bannedUntil ? u.bannedUntil.toISOString() : null,
         createdAt: u.createdAt.toISOString(),
       };
     });
@@ -1029,16 +1039,20 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       const limitText = updated.dailyLimit >= 999 ? 'Unlimited' : `${updated.dailyLimit} calls/month`;
       const durText = `${updated.maxDuration} minutes`;
       const retentionText = updated.retentionOverride ? `${updated.retentionOverride} days (Custom)` : `${getRetentionDaysForPlan(updated.plan)} days`;
+      const expiresLine = updated.subscriptionExpiresAt
+        ? `• <b>Valid Until</b>: ${updated.subscriptionExpiresAt.toISOString().replace('T', ' ').substring(0, 16)} UTC\n`
+        : '';
       const msg =
-        `⭐ *Account Plan Updated by Administrator*\n\n` +
+        `⭐ <b>Account Plan Updated by Administrator</b>\n\n` +
         `Your PairTalk limits have been updated:\n` +
-        `• *Plan Tier*: *${planName}*\n` +
-        `• *Monthly Call Limit*: ${limitText}\n` +
-        `• *Max Call Duration*: ${durText}\n` +
-        `• *Recording Retention*: ${retentionText}\n` +
-        (resetDailyCalls ? `• *Calls Used This Month*: Reset to 0\n` : '') +
+        `• <b>Plan Tier</b>: <b>${planName}</b>\n` +
+        `• <b>Monthly Call Limit</b>: ${limitText}\n` +
+        `• <b>Max Call Duration</b>: ${durText}\n` +
+        `• <b>Recording Retention</b>: ${retentionText}\n` +
+        expiresLine +
+        (resetDailyCalls ? `• <b>Calls Used This Month</b>: Reset to 0\n` : '') +
         `\nEnjoy practicing!`;
-      await adminBotInstance.api.sendMessage(updated.telegramId.toString(), msg, { parse_mode: 'Markdown' })
+      await adminBotInstance.api.sendMessage(updated.telegramId.toString(), msg, { parse_mode: 'HTML' })
         .catch((e: unknown) => {
           const errMsg = e instanceof Error ? e.message : String(e);
           console.warn(`[Admin] User notification skipped for Telegram ID ${updated.telegramId}: ${errMsg}`);
@@ -1229,10 +1243,14 @@ router.get('/contest', adminAuthMiddleware, async (_req, res) => {
   }
 });
 
-// POST /api/admin/contest (Protected - Create/Update Contest)
+// POST /api/admin/contest (Protected - Create/Launch/Update Contest 4-Step Flow)
 router.post('/contest', adminAuthMiddleware, async (req, res) => {
   try {
-    const { title, description, prizes, isActive, endsAt } = req.body;
+    const { title, description, prizes, isActive, endsAt, durationDays } = req.body;
+
+    const calculatedEndsAt = typeof durationDays === 'number' && durationDays > 0
+      ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000)
+      : (endsAt ? new Date(endsAt) : null);
 
     const existingActive = await prisma.contest.findFirst({
       where: { isActive: true },
@@ -1248,7 +1266,7 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
           description: description || existingActive.description,
           prizes: prizes || existingActive.prizes,
           isActive: isActive !== undefined ? Boolean(isActive) : existingActive.isActive,
-          endsAt: endsAt ? new Date(endsAt) : existingActive.endsAt,
+          endsAt: calculatedEndsAt || existingActive.endsAt,
         },
       });
     } else {
@@ -1258,9 +1276,34 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
           description: description || 'Invite friends to practice speaking and win exclusive prizes!',
           prizes: prizes || '🥇 1st: 60-Day BOSS Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
           isActive: isActive !== undefined ? Boolean(isActive) : true,
-          endsAt: endsAt ? new Date(endsAt) : null,
+          endsAt: calculatedEndsAt,
         },
       });
+    }
+
+    // Broadcast championship start announcement with Redis deduplication lock
+    if (contest.isActive && adminBotInstance) {
+      try {
+        const redis = getRedis();
+        const startLockKey = `champ:broadcast:start:${contest.id}`;
+        const acquired = await redis.set(startLockKey, '1', 'EX', 86400 * 30, 'NX');
+        if (acquired === 'OK') {
+          const { executeAnnouncementBroadcast } = await import('../services/announcement');
+          const startAnnouncement =
+            `🏆 <b>New Championship Launched!</b>\n\n` +
+            `<b>${contest.title}</b>\n\n` +
+            `📝 ${contest.description}\n\n` +
+            `🎁 <b>Prizes:</b>\n${contest.prizes}\n\n` +
+            `Invite your friends using <b>👥 Invite Friends</b> to practice speaking and climb the leaderboard! 🚀`;
+          executeAnnouncementBroadcast(
+            adminBotInstance.api,
+            { type: 'text', text: startAnnouncement },
+            'admin'
+          ).catch((e: unknown) => console.warn('[Admin] Contest start broadcast notice failed:', e));
+        }
+      } catch (e: unknown) {
+        console.warn('[Admin] Failed to trigger contest start broadcast:', e);
+      }
     }
 
     res.json({ success: true, contest });
@@ -1270,11 +1313,58 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/admin/contest/toggle (Protected - Toggle Contest Active State)
+// POST /api/admin/contest/conclude (Protected - Conclude & Distribute Prizes Idempotently)
+router.post('/contest/conclude', adminAuthMiddleware, async (req, res) => {
+  try {
+    const { contestId } = req.body;
+    const { concludeContestAndDistributePrizes } = await import('../services/referralService');
+    const distribution = await concludeContestAndDistributePrizes(contestId, adminBotInstance || undefined);
+
+    // Broadcast conclusion announcement with Redis deduplication lock
+    if (adminBotInstance && !distribution.alreadyAwarded) {
+      try {
+        const redis = getRedis();
+        const endLockKey = `champ:broadcast:end:${distribution.contestId}`;
+        const acquired = await redis.set(endLockKey, '1', 'EX', 86400 * 30, 'NX');
+        if (acquired === 'OK') {
+          const contest = await prisma.contest.findUnique({ where: { id: distribution.contestId } });
+          const { executeAnnouncementBroadcast } = await import('../services/announcement');
+          const endAnnouncement =
+            `🏁 <b>Championship Concluded!</b>\n\n` +
+            `The <b>${contest?.title || 'Referral Championship'}</b> has officially ended.\n\n` +
+            `Congratulations to all our winners! Winner plans and prizes have been automatically granted. Check the Hall of Fame in the bot menu! 🏆`;
+          executeAnnouncementBroadcast(
+            adminBotInstance.api,
+            { type: 'text', text: endAnnouncement },
+            'admin'
+          ).catch((e: unknown) => console.warn('[Admin] Contest end broadcast notice failed:', e));
+        }
+      } catch (e: unknown) {
+        console.warn('[Admin] Failed to trigger contest end broadcast:', e);
+      }
+    }
+
+    res.json({ ...distribution });
+  } catch (err: any) {
+    console.error('[Admin] Failed to conclude contest:', err);
+    res.status(400).json({ error: err.message || 'Failed to conclude contest.' });
+  }
+});
+
+// POST /api/admin/contest/toggle (Protected - 3-State Toggle: Activate or Conclude)
 router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
   try {
     const { isActive } = req.body;
     const targetState = Boolean(isActive);
+
+    if (!targetState) {
+      // Conclude contest and execute atomic idempotent prize distribution
+      const { concludeContestAndDistributePrizes } = await import('../services/referralService');
+      const distribution = await concludeContestAndDistributePrizes(undefined, adminBotInstance || undefined);
+      const contest = await prisma.contest.findUnique({ where: { id: distribution.contestId } });
+      res.json({ success: true, contest, distribution });
+      return;
+    }
 
     const latest = await prisma.contest.findFirst({
       orderBy: { createdAt: 'desc' },
@@ -1286,7 +1376,7 @@ router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
           title: 'IELTS Speaking Referral Championship',
           description: 'Invite your friends to practice IELTS speaking! Top referrers win exclusive custom plans and prizes.',
           prizes: '🥇 1st: 60-Day BOSS Plan\n🥈 2nd: 30-Day BOSS Plan\n🥉 3rd: 14-Day PRO Plan',
-          isActive: targetState,
+          isActive: true,
         },
       });
       res.json({ success: true, contest: created });
@@ -1295,14 +1385,15 @@ router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
 
     const updated = await prisma.contest.update({
       where: { id: latest.id },
-      data: { isActive: targetState },
+      data: { isActive: true },
     });
 
     res.json({ success: true, contest: updated });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Admin] Failed to toggle contest:', err);
-    res.status(500).json({ error: 'Failed to toggle contest.' });
+    res.status(400).json({ error: err.message || 'Failed to toggle contest.' });
   }
 });
 
 export default router;
+

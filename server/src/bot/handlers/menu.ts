@@ -282,11 +282,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
         pendingBanner +
-        `🆓 <b>FREE Plan</b> (0 UZS / 0 XTR)\n` +
-        `• Max Call Duration: 15 minutes\n` +
-        `• Monthly Calls: 3\n` +
-        `• Monthly Recordings: 1\n` +
-        `• Recording Retention: 1 day\n\n` +
+        `<b>Available Upgrade Plans:</b>\n\n` +
         `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
         `• Max Call Duration: 30 minutes\n` +
         `• Monthly Calls: 10\n` +
@@ -302,6 +298,8 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `• Monthly Calls: 50\n` +
         `• Monthly Recordings: 15\n` +
         `• Recording Retention: 90 days\n\n` +
+        `🛡️ <b>Refund Policy:</b>\n` +
+        `Refunds are eligible within 48 hours of purchase OR if less than 10% of monthly call credits have been utilized.\n\n` +
         (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose your payment method (Telegram Stars or Card):`),
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );

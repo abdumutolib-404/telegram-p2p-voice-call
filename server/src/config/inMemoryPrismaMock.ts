@@ -586,6 +586,7 @@ export class InMemoryPrismaMock {
           throw new Error('Unique constraint failed on the fields: (`telegramPaymentId`)');
         }
       }
+      const now = new Date();
       const row: StarsTransactionRow = {
         id,
         orderNumber: args.data.orderNumber ? stringValue(args.data.orderNumber) : null,
@@ -595,8 +596,8 @@ export class InMemoryPrismaMock {
         planTier: stringValue(args.data.planTier),
         status: stringValue(args.data.status, 'PAID'),
         refundReason: args.data.refundReason ? stringValue(args.data.refundReason) : null,
-        refundedAt: args.data.refundedAt ? dateValue(args.data.refundedAt, new Date()) : null,
-        createdAt: new Date(),
+        refundedAt: args.data.refundedAt ? dateValue(args.data.refundedAt, now) : null,
+        createdAt: args.data.createdAt ? dateValue(args.data.createdAt, now) : now,
       };
       this.starsTransactions.set(id, row);
       return { ...row };
@@ -745,6 +746,13 @@ export class InMemoryPrismaMock {
       };
       this.auditLogs.set(id, row);
       return { ...row };
+    },
+    findFirst: async (args?: { where?: { targetId?: string; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' } }): Promise<AuditLogRow | null> => {
+      let list = [...this.auditLogs.values()];
+      if (args?.where?.targetId) list = list.filter((l) => l.targetId === args.where!.targetId);
+      if (args?.where?.action) list = list.filter((l) => l.action === args.where!.action);
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return list[0] ? { ...list[0] } : null;
     },
     findMany: async (args?: { where?: { targetId?: string; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<AuditLogRow[]> => {
       let list = [...this.auditLogs.values()];
@@ -948,19 +956,33 @@ export class InMemoryPrismaMock {
       this.contests.set(id, row);
       return { ...row };
     },
-    findFirst: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> }): Promise<ContestRow | null> => {
-      const list = [...this.contests.values()].filter((c) => {
+    findFirst: async (args?: { where?: Record<string, unknown>; orderBy?: { createdAt?: 'asc' | 'desc' } }): Promise<ContestRow | null> => {
+      let list = [...this.contests.values()].filter((c) => {
         if (args?.where?.isActive !== undefined && c.isActive !== args.where.isActive) return false;
         return true;
       });
+      if (args?.orderBy?.createdAt === 'desc') {
+        list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      } else if (args?.orderBy?.createdAt === 'asc') {
+        list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      }
       return list[0] ? { ...list[0] } : null;
     },
     findUnique: async (args: { where: { id: string } }): Promise<ContestRow | null> => {
       const row = this.contests.get(args.where.id);
       return row ? { ...row } : null;
     },
-    findMany: async (): Promise<ContestRow[]> => {
-      return [...this.contests.values()].map((c) => ({ ...c }));
+    findMany: async (args?: { orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<ContestRow[]> => {
+      let list = [...this.contests.values()];
+      if (args?.orderBy?.createdAt === 'desc') {
+        list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      } else if (args?.orderBy?.createdAt === 'asc') {
+        list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      }
+      if (args?.take !== undefined) {
+        list = list.slice(0, args.take);
+      }
+      return list.map((c) => ({ ...c }));
     },
     update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<ContestRow> => {
       const existing = this.contests.get(args.where.id);
@@ -994,11 +1016,21 @@ export class InMemoryPrismaMock {
     if (typeof where.id === 'string' && user.id !== where.id) return false;
     if (typeof where.id === 'object' && !where.id.in.includes(user.id)) return false;
     if (where.telegramId !== undefined && user.telegramId !== BigInt(String(where.telegramId))) return false;
-    if (where.alias && user.alias !== where.alias) return false;
+    if (where.alias) {
+      if (typeof where.alias === 'string' && user.alias !== where.alias) return false;
+      if (typeof where.alias === 'object' && 'contains' in where.alias) {
+        const contains = String((where.alias as { contains: string }).contains).toLowerCase();
+        if (!user.alias.toLowerCase().includes(contains)) return false;
+      }
+    }
     if (where.plan) {
       if (typeof where.plan === 'string' && user.plan !== where.plan) return false;
       if (typeof where.plan === 'object' && 'not' in where.plan && user.plan === (where.plan as { not: string }).not) return false;
       if (typeof where.plan === 'object' && 'in' in where.plan && !((where.plan as { in: string[] }).in).includes(user.plan)) return false;
+      if (typeof where.plan === 'object' && 'contains' in where.plan) {
+        const contains = String((where.plan as { contains: string }).contains).toLowerCase();
+        if (!user.plan.toLowerCase().includes(contains)) return false;
+      }
     }
     if (where.subscriptionExpiresAt !== undefined) {
       if (where.subscriptionExpiresAt === null && user.subscriptionExpiresAt !== null) return false;

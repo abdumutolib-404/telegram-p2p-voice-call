@@ -15,7 +15,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   barCount = 24,
   height = 80,
   className = '',
-  barColor = '#6366f1',
+  barColor = '#06b6d4',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
@@ -24,6 +24,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 
     const updateDimensions = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -97,20 +101,23 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             ctx.fill();
           }
         } else {
-          phase += 0.05;
+          // Fallback or muted idle wave
+          if (!prefersReducedMotion) {
+            phase += 0.05;
+          }
           const gap = 3;
           const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
 
           for (let i = 0; i < barCount; i++) {
-            const sineVal = Math.sin(phase + i * 0.3);
+            const sineVal = prefersReducedMotion ? 0.3 : Math.sin(phase + i * 0.3);
             const normalized = (sineVal + 1) / 2;
-            const barHeight = 4 + normalized * 16;
+            const barHeight = 4 + normalized * 14;
 
             const x = i * (barWidth + gap);
             const y = (displayHeight - barHeight) / 2;
 
-            ctx.fillStyle = isMuted ? '#64748b' : '#818cf8';
-            ctx.globalAlpha = isMuted ? 0.3 : 0.5;
+            ctx.fillStyle = isMuted ? '#64748b' : barColor;
+            ctx.globalAlpha = isMuted ? 0.25 : 0.45;
 
             ctx.beginPath();
             if (typeof ctx.roundRect === 'function') {

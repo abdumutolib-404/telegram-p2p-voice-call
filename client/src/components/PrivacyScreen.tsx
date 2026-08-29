@@ -1,90 +1,154 @@
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Shield, ArrowLeft } from 'lucide-react';
 
-export const PrivacyScreen: React.FC = () => {
+export interface PrivacyScreenProps {
+  onBack?: () => void;
+}
+
+export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
+  const handleBack = useCallback(() => {
+    if (onBack) {
+      onBack();
+    } else if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.location.hash = '';
+    }
+  }, [onBack]);
+
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.BackButton) {
+      tg.BackButton.show();
+      const clickHandler = () => handleBack();
+      tg.BackButton.onClick(clickHandler);
+      return () => {
+        tg.BackButton.offClick(clickHandler);
+        tg.BackButton.hide();
+      };
+    }
+  }, [handleBack]);
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 selection:bg-indigo-500 selection:text-white">
-      <div className="max-w-3xl mx-auto">
+    <div className="min-h-screen bg-[#05070E] text-slate-100 p-5 md:p-10 font-sans selection:bg-cyan-500 selection:text-slate-950">
+      <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-            <Shield className="w-6 h-6" />
+        <div className="flex items-center justify-between border-b border-slate-800 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-950/50 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/10">
+              <Shield className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="inline-flex items-center gap-1 text-[10px] font-mono font-bold tracking-widest uppercase text-cyan-400">
+                <span>SECURITY & DATA HYGIENE</span>
+                <span>•</span>
+                <span>DOC-PRIVACY-V2</span>
+              </div>
+              <h1 className="text-xl md:text-2xl font-mono font-black tracking-tight text-white uppercase">
+                PRIVACY & DATA POLICY
+              </h1>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">PairTalk Privacy Policy</h1>
-            <p className="text-xs md:text-sm text-slate-400">Effective Date: August 16, 2026</p>
+
+          <button
+            type="button"
+            onClick={handleBack}
+            className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 font-mono text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>BACK</span>
+          </button>
+        </div>
+
+        {/* Intro */}
+        <p className="text-xs md:text-sm text-slate-300 leading-relaxed font-mono">
+          PairTalk prioritizes user anonymity and zero client trust. We collect only the minimum telemetry required to pair IELTS candidates and secure voice sessions.
+        </p>
+
+        {/* 1. Anonymity & Identifiers */}
+        <div className="p-5 rounded-2xl bg-[#090D18] border border-slate-800 space-y-3">
+          <div className="flex items-center gap-2 text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider">
+            <span className="px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30">SEC-01</span>
+            <span>ANONYMITY & IDENTIFIERS</span>
+          </div>
+          <div className="space-y-2 text-xs text-slate-300 font-mono leading-relaxed">
+            <p>
+              <strong className="text-white">• Permanent Locked Alias:</strong> Each student is identified exclusively by a synthetic pseudonym (e.g. <code>P2P-0284DB68</code>). Your real phone number, username, and identity are never revealed to speaking partners.
+            </p>
+            <p>
+              <strong className="text-white">• Zero Trust Authentication:</strong> All WebApp sessions are verified via HMAC-SHA256 signature validation on the backend server.
+            </p>
           </div>
         </div>
 
-        {/* Content */}
-        <div className="space-y-6 text-sm md:text-base leading-relaxed text-slate-300">
-          <p>
-            Welcome to <strong className="text-white">PairTalk</strong>, the real-time peer-to-peer IELTS Speaking practice platform. We are committed to protecting your personal data, ensuring privacy, and maintaining transparency about how our platform operates.
+        {/* 2. Voice Audio & Cloud Retention Policy Table */}
+        <div className="p-5 rounded-2xl bg-[#090D18] border border-slate-800 space-y-3">
+          <div className="flex items-center gap-2 text-purple-400 font-mono text-xs font-bold uppercase tracking-wider">
+            <span className="px-2 py-0.5 rounded bg-purple-950/60 border border-purple-500/30">RET-02</span>
+            <span>AUDIO RECORDINGS RETENTION SCHEDULE</span>
+          </div>
+          <p className="text-xs text-slate-400 font-mono">
+            Live audio is end-to-end encrypted via WebRTC SFU and never monitored. Cloud recordings are opt-in and stored in access-controlled storage with automated expiration:
           </p>
 
-          <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-            <h2 className="text-lg font-semibold text-white">1. Information We Collect</h2>
-            <div className="space-y-2 text-sm text-slate-300">
-              <p>
-                <strong className="text-slate-100">• Telegram Profile Data:</strong> Numeric Telegram User ID for account authentication; a permanent randomized alias (e.g. <code>P2P-0284DB68</code>) to guarantee 100% anonymity without exposing real phone numbers or usernames; and self-reported target IELTS band score and sub-scores.
-              </p>
-              <p>
-                <strong className="text-slate-100">• Voice Call Metadata:</strong> Unique session IDs, start/end timestamps, connected durations, and call completion outcomes.
-              </p>
-              <p>
-                <strong className="text-slate-100">• Payment Records:</strong> Telegram Stars transaction IDs and manual UZS transfer receipt metadata for administrative activation.
-              </p>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono border-collapse">
+              <thead>
+                <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase">
+                  <th className="py-2 px-3">Plan Tier</th>
+                  <th className="py-2 px-3">Recordings / Mo</th>
+                  <th className="py-2 px-3">Retention Window</th>
+                  <th className="py-2 px-3">Storage Purge</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                <tr>
+                  <td className="py-2.5 px-3 font-bold text-slate-400">FREE</td>
+                  <td className="py-2.5 px-3">1 Recording</td>
+                  <td className="py-2.5 px-3 text-cyan-400">1 Day (24h)</td>
+                  <td className="py-2.5 px-3 text-slate-500">Auto-Purged</td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-bold text-cyan-400">PLUS</td>
+                  <td className="py-2.5 px-3">3 Recordings</td>
+                  <td className="py-2.5 px-3 text-cyan-400">7 Days</td>
+                  <td className="py-2.5 px-3 text-slate-500">Auto-Purged</td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-bold text-purple-400">PRO</td>
+                  <td className="py-2.5 px-3">7 Recordings</td>
+                  <td className="py-2.5 px-3 text-purple-400">30 Days</td>
+                  <td className="py-2.5 px-3 text-slate-500">Auto-Purged</td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-bold text-amber-400">BOSS</td>
+                  <td className="py-2.5 px-3">15 Recordings</td>
+                  <td className="py-2.5 px-3 text-amber-400">90 Days</td>
+                  <td className="py-2.5 px-3 text-slate-500">Auto-Purged</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+          <p className="text-[10.5px] text-slate-500 font-mono">
+            * Once retention expires, recording files are irrevocably deleted by the automated daily storage cleanup task.
+          </p>
+        </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-            <h2 className="text-lg font-semibold text-white">2. Voice Audio & Recording Policy</h2>
-            <div className="space-y-2 text-sm text-slate-300">
-              <p>
-                <strong className="text-slate-100">• Real-Time Voice Calls:</strong> Active audio streams are routed through encrypted WebRTC Selective Forwarding Units (SFUs). Live audio is ephemeral and never listened to or monitored.
-              </p>
-              <p>
-                <strong className="text-slate-100">• Cloud Recordings:</strong> Opt-in session recordings are stored in access-controlled AWS S3 storage with strict expiration windows:
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-slate-400 pl-2 text-xs md:text-sm">
-                <li><strong className="text-slate-200">Free Plan:</strong> 1 day retention (1 recording/month)</li>
-                <li><strong className="text-slate-200">Plus Plan:</strong> 7 days retention (3 recordings/month)</li>
-                <li><strong className="text-slate-200">Pro Plan:</strong> 30 days retention (7 recordings/month)</li>
-                <li><strong className="text-slate-200">Boss Plan:</strong> 90 days retention (15 recordings/month)</li>
-              </ul>
-              <p className="text-xs text-slate-400">
-                Only authenticated participants may access their session recordings. Recordings are permanently purged when their retention window expires.
-              </p>
-            </div>
+        {/* 3. Data Protection & Deletion */}
+        <div className="p-5 rounded-2xl bg-[#090D18] border border-slate-800 space-y-3">
+          <div className="flex items-center gap-2 text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">
+            <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/30">DATA-03</span>
+            <span>DATA RIGHTS & RETENTION</span>
           </div>
-
-          <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-            <h2 className="text-lg font-semibold text-white">3. Security & Access Control</h2>
-            <p className="text-sm text-slate-300">
-              All WebRTC peer media connections use DTLS/SRTP encryption. Administrative endpoints require multi-factor one-time passwords and strict Telegram ID whitelisting. We never sell, rent, or trade personal data.
-            </p>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
-            <h2 className="text-lg font-semibold text-white">4. Contact & Support</h2>
-            <p className="text-sm text-slate-300">
-              For privacy inquiries, data deletion requests, or support:
-            </p>
-            <p className="text-sm font-medium text-indigo-400">
-              Telegram Support: @PairTalkSupport
-            </p>
-          </div>
+          <p className="text-xs text-slate-300 font-mono leading-relaxed">
+            We never sell, rent, or monetize your personal practice data. Candidates may request permanent deletion of their account telemetry and past recordings by contacting platform support at <span className="text-cyan-400">@PairTalkSupport</span>.
+          </p>
         </div>
 
         {/* Footer */}
-        <div className="mt-12 pt-6 border-t border-slate-800 flex justify-between items-center text-xs text-slate-500">
-          <span>PairTalk Platform</span>
-          <button
-            onClick={() => window.history.back()}
-            className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 font-medium"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back
-          </button>
+        <div className="pt-4 border-t border-slate-900 flex items-center justify-between text-[10px] font-mono text-slate-600">
+          <span>ENCRYPTION: DTLS / SRTP</span>
+          <span>COMPLIANCE: PRIVACY_V2</span>
         </div>
       </div>
     </div>

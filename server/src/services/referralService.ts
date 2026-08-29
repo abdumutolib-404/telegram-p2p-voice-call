@@ -23,7 +23,10 @@ export interface ContestLeaderboardEntry {
   invitesCount: number;
 }
 
+export type ContestLifecycleState = 'NO_ACTIVE' | 'ACTIVE' | 'ENDED';
+
 export interface ContestStatus {
+  status: ContestLifecycleState;
   isActive: boolean;
   contest: {
     id: string;
@@ -291,7 +294,7 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
 }
 
 /**
- * Retrieves active Hall of Fame Contest & Leaderboard data.
+ * Retrieves active Hall of Fame Contest & Leaderboard data with strict 3-state lifecycle.
  */
 export async function getContestStatus(): Promise<ContestStatus> {
   const contest = await prisma.contest.findFirst({
@@ -301,6 +304,18 @@ export async function getContestStatus(): Promise<ContestStatus> {
 
   if (!contest) {
     return {
+      status: 'NO_ACTIVE',
+      isActive: false,
+      contest: null,
+      leaderboard: [],
+    };
+  }
+
+  // Check if active contest has expired duration
+  const isExpired = contest.endsAt ? new Date(contest.endsAt).getTime() <= Date.now() : false;
+  if (isExpired) {
+    return {
+      status: 'ENDED',
       isActive: false,
       contest: null,
       leaderboard: [],
@@ -348,6 +363,7 @@ export async function getContestStatus(): Promise<ContestStatus> {
   });
 
   return {
+    status: 'ACTIVE',
     isActive: true,
     contest: {
       id: contest.id,
@@ -360,3 +376,192 @@ export async function getContestStatus(): Promise<ContestStatus> {
     leaderboard,
   };
 }
+
+/**
+ * Concludes a championship and executes atomic, idempotent automatic prize distribution for ranks 1, 2, and 3.
+ */
+export async function concludeContestAndDistributePrizes(
+  contestId?: string,
+  bot?: Bot<MyContext>
+): Promise<{
+  success: boolean;
+  alreadyAwarded: boolean;
+  contestId: string;
+  winners: Array<{ rank: number; userId: string; alias: string; prize: string }>;
+}> {
+  // 1. Locate target contest
+  let contest = contestId
+    ? await prisma.contest.findUnique({ where: { id: contestId } })
+    : await prisma.contest.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'desc' } });
+
+  if (!contest) {
+    contest = await prisma.contest.findFirst({ orderBy: { createdAt: 'desc' } });
+  }
+
+  if (!contest) {
+    throw new Error('No championship found to conclude.');
+  }
+
+  const targetContestId = contest.id;
+
+  // 2. Atomic & Idempotent Prize Distribution inside prisma.$transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Check if prize distribution was already recorded in AuditLog for idempotency
+    const existingAwardLog = await tx.auditLog.findFirst({
+      where: {
+        action: 'CONTEST_PRIZES_AWARDED',
+        targetId: targetContestId,
+      },
+    });
+
+    if (existingAwardLog) {
+      let parsedWinners: any[] = [];
+      try {
+        parsedWinners = JSON.parse(existingAwardLog.afterState || '[]')?.winners || [];
+      } catch {}
+      return {
+        alreadyAwarded: true,
+        winners: parsedWinners,
+      };
+    }
+
+    const concludedEndsAt = contest!.endsAt && contest!.endsAt <= new Date() ? contest!.endsAt : new Date();
+
+    // Mark contest ended
+    await tx.contest.update({
+      where: { id: targetContestId },
+      data: {
+        isActive: false,
+        endsAt: concludedEndsAt,
+      },
+    });
+
+    // Determine top 3 candidates
+    const rewards = await tx.referralReward.findMany({
+      where: {
+        createdAt: {
+          gte: contest!.startsAt,
+          lte: concludedEndsAt,
+        },
+      },
+      select: { userId: true },
+    });
+
+    const countByUser = new Map<string, number>();
+    for (const r of rewards) {
+      countByUser.set(r.userId, (countByUser.get(r.userId) || 0) + 1);
+    }
+
+    const sortedUserIds = [...countByUser.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    const winners: Array<{ rank: number; userId: string; alias: string; prize: string; telegramId?: string }> = [];
+
+    // Award 1st, 2nd, 3rd place prizes
+    for (let index = 0; index < sortedUserIds.length; index++) {
+      const [userId, count] = sortedUserIds[index];
+      const rank = index + 1;
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) continue;
+
+      let prizeName = '';
+      if (rank === 1) {
+        prizeName = '🥇 60-Day BOSS Plan';
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            plan: 'BOSS',
+            customPlanName: '🥇 Championship Winner (60-Day BOSS)',
+            dailyLimit: 50,
+            maxDuration: 90,
+            retentionOverride: 90,
+            recordingLimitOverride: 15,
+            subscriptionStatus: 'ACTIVE',
+            subscriptionExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+          },
+        });
+      } else if (rank === 2) {
+        prizeName = '🥈 30-Day BOSS Plan';
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            plan: 'BOSS',
+            customPlanName: '🥈 Championship Runner-Up (30-Day BOSS)',
+            dailyLimit: 50,
+            maxDuration: 90,
+            retentionOverride: 90,
+            recordingLimitOverride: 15,
+            subscriptionStatus: 'ACTIVE',
+            subscriptionExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+      } else if (rank === 3) {
+        prizeName = '🥉 14-Day PRO Plan';
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            plan: 'PRO',
+            customPlanName: '🥉 Championship 3rd Place (14-Day PRO)',
+            dailyLimit: 25,
+            maxDuration: 60,
+            retentionOverride: 30,
+            recordingLimitOverride: 7,
+            subscriptionStatus: 'ACTIVE',
+            subscriptionExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      winners.push({
+        rank,
+        userId: user.id,
+        alias: user.alias,
+        prize: prizeName,
+        telegramId: user.telegramId.toString(),
+      });
+    }
+
+    // Record idempotent distribution audit log
+    await tx.auditLog.create({
+      data: {
+        action: 'CONTEST_PRIZES_AWARDED',
+        targetId: targetContestId,
+        adminId: 'SYSTEM',
+        beforeState: JSON.stringify({ contestId: targetContestId, isActive: true }),
+        afterState: JSON.stringify({ contestId: targetContestId, winners }),
+        reason: `Automatic prize distribution for championship ${contest!.title}`,
+      },
+    });
+
+    return {
+      alreadyAwarded: false,
+      winners,
+    };
+  });
+
+  // 3. Deliver celebratory notifications to winners if bot instance is available
+  if (bot && result.winners && result.winners.length > 0 && !result.alreadyAwarded) {
+    for (const winner of result.winners) {
+      if (winner.telegramId) {
+        const medal = winner.rank === 1 ? '🥇' : winner.rank === 2 ? '🥈' : '🥉';
+        const msg =
+          `🏆 <b>Congratulations, Champion!</b>\n\n` +
+          `You took <b>${medal} Rank #${winner.rank}</b> in the <b>${contest.title}</b>!\n\n` +
+          `🎁 <b>Your Prize:</b> <code>${winner.prize}</code> has been activated on your account.\n\n` +
+          `Thank you for helping grow the PairTalk speaking community! 🚀`;
+
+        await bot.api.sendMessage(winner.telegramId, msg, { parse_mode: 'HTML' })
+          .catch((e: unknown) => console.warn('[Referral] Failed to deliver prize notification to winner:', winner.telegramId, e));
+      }
+    }
+  }
+
+  return {
+    success: true,
+    alreadyAwarded: result.alreadyAwarded,
+    contestId: targetContestId,
+    winners: result.winners,
+  };
+}
+

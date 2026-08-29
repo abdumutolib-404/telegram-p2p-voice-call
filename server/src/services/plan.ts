@@ -120,6 +120,11 @@ export function getPlansConfig(): SystemPlansConfig {
   return plansConfig;
 }
 
+export function getPurchasablePlansConfig(): Omit<SystemPlansConfig, 'FREE'> {
+  const { FREE, ...paidPlans } = plansConfig;
+  return paidPlans;
+}
+
 export function updatePlansConfig(newConfig: Partial<SystemPlansConfig>): SystemPlansConfig {
   plansConfig = {
     FREE: { ...plansConfig.FREE, ...(newConfig.FREE || {}) },
@@ -626,6 +631,24 @@ export async function revokePlanOnRefund(params: {
 
   if (!tx || tx.status === 'REFUNDED') {
     throw new Error('Transaction not found or already refunded.');
+  }
+
+  // Server-Enforced Refund Policy:
+  // Refunds are granted ONLY if callsUsed < callLimit * 0.10 OR (Date.now() - purchaseDate) < 48 * 3600 * 1000
+  const callsUsed = await getUserCallsUsedThisPeriod(tx.userId, tx.user);
+  const callLimit = getDailyLimitForPlan(tx.planTier) || 10;
+  const purchaseDate = new Date(tx.createdAt).getTime();
+  const now = Date.now();
+  const ageMs = now - purchaseDate;
+  const ageDays = (ageMs / (24 * 3600 * 1000)).toFixed(1);
+
+  const isUsageEligible = callsUsed < callLimit * 0.10;
+  const isTimeEligible = ageMs < 48 * 3600 * 1000;
+
+  if (!isUsageEligible && !isTimeEligible) {
+    throw new Error(
+      `Refund rejected: User has utilized ${callsUsed} of ${callLimit} calls (>=10%) and purchase was made ${ageDays} days ago (>2 days).`
+    );
   }
 
   const [updatedTx, updatedUser] = await prisma.$transaction([

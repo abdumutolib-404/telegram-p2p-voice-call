@@ -11,47 +11,85 @@
 .nav-tab-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
   width: 100%;
-  padding: 0.6rem 0.85rem;
-  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 6px;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.825rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
   text-align: left;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
   font-family: inherit;
 }
 
 .nav-tab-btn:hover {
   background-color: var(--bg-surface-elevated);
   color: var(--text-primary);
+  border-color: var(--border-subtle);
 }
 
 .nav-tab-btn.active {
   background-color: var(--primary-bg);
   color: #FFFFFF;
-  border: 1px solid var(--primary-border);
-  font-weight: 600;
+  border-color: var(--primary-border);
+  font-weight: 700;
 }
 
-.nav-tab-btn .nav-icon {
+.nav-tab-btn.rail {
+  padding: 0.55rem 0.25rem;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.725rem;
+  font-weight: 700;
+}
+
+/* Nav Group Header & Divider */
+.nav-group-header {
+  font-size: 0.65rem;
+  font-weight: 700;
   color: var(--text-muted);
-  transition: color 0.15s ease;
-  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.5rem 0.75rem 0.2rem;
+}
+
+.nav-group-divider {
+  height: 1px;
+  background-color: var(--border-subtle);
+  margin: 0.5rem 0.5rem;
+}
+
+/* Nav Notification Badge */
+.nav-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.675rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
-.nav-tab-btn:hover .nav-icon {
-  color: var(--text-primary);
+.nav-badge-pill.warning {
+  background-color: var(--warning);
+  color: #070A12;
 }
 
-.nav-tab-btn.active .nav-icon {
-  color: var(--primary-light);
+.nav-badge-pill.danger {
+  background-color: var(--danger);
+  color: #FFFFFF;
 }
+
 
 /* Standardized Buttons (Same height, radius, icon spacing) */
 .btn-primary {

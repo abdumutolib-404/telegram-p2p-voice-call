@@ -5,16 +5,55 @@ declare global {
     Telegram?: {
       WebApp: any;
     };
+    __APP_LOGS__?: unknown[];
+    __EXPORT_LOGS__?: () => string;
   }
 }
 
-export type AppState = 'lockdown' | 'ready' | 'radar' | 'connecting' | 'in_call' | 'ended' | 'idle';
+export type AppState =
+  | 'lockdown'
+  | 'ready'
+  | 'radar'
+  | 'connecting'
+  | 'in_call'
+  | 'ended'
+  | 'idle';
+
+export type LockdownReason =
+  | 'browser_direct'
+  | 'telegram_no_initdata'
+  | 'auth_rejected'
+  | 'server_unavailable'
+  | 'banned'
+  | 'suspended'
+  | 'rate_limited'
+  | 'exhausted_quota';
+
+export type IELTSCriterion = 'FC' | 'LR' | 'GRA' | 'P';
+export type WholeBand = 5 | 6 | 7 | 8 | 9;
 
 export interface UserMatchData {
   userId: string;
-  band: number;
-  weakSkill: string;
-  strongSkill: string;
+  telegramId?: number | string;
+  alias?: string;
+  band: number; // Target IELTS Band (whole band 5, 6, 7, 8, 9)
+  subFC?: number; // 5, 6, 7, 8, 9
+  subLR?: number; // 5, 6, 7, 8, 9
+  subGRA?: number; // 5, 6, 7, 8, 9
+  subP?: number; // 5, 6, 7, 8, 9
+  weakSkill: IELTSCriterion;
+  strongSkill: IELTSCriterion;
+  plan?: 'FREE' | 'PLUS' | 'PRO' | 'BOSS' | string;
+  planExpiresAt?: string | null;
+  callsRemaining?: number;
+  totalCallsLimit?: number;
+  maxCallDuration?: number; // minutes or seconds
+  recordingsRemaining?: number;
+  recordingsLimit?: number;
+  recordingRetentionDays?: number;
+  bannedUntil?: string | null;
+  isPermanentlyBanned?: boolean;
+  dnd?: boolean;
 }
 
 export interface MatchFoundPayload {
@@ -24,7 +63,7 @@ export interface MatchFoundPayload {
   livekitUrl?: string;
   partnerAlias: string;
   partnerBand: number;
-  callDurationLimit?: number;
+  callDurationLimit?: number; // seconds
   maxDurationSeconds?: number;
 }
 
@@ -54,4 +93,23 @@ export interface TelegramUserData {
   username?: string;
   language_code?: string;
   is_premium?: boolean;
+}
+
+export interface PaidPlanInfo {
+  id: 'PLUS' | 'PRO' | 'BOSS';
+  name: string;
+  badge: string;
+  starsPrice: number;
+  uzsPrice: string;
+  validityDays: number;
+  callLimit: number;
+  maxDurationMinutes: number;
+  recordingsLimit: number;
+  retentionDays: number;
+  queuePriority: string;
+  accentColor: string;
+  borderColor: string;
+  bgGlow: string;
+  description: string;
+  features: string[];
 }

@@ -1,42 +1,99 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import type { AppState, MatchFoundPayload, UserMatchData } from './types';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import type { AppState, MatchFoundPayload, UserMatchData, LockdownReason } from './types';
 import { socketService } from './services/socket';
 import { useLiveKit } from './hooks/useLiveKit';
-import { LockdownScreen, type LockdownReason } from './components/LockdownScreen';
+import { LockdownScreen } from './components/LockdownScreen';
 import { RadarScreen } from './components/RadarScreen';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
-import { logger } from './services/logger';
-import { Loader2, PhoneOff, RefreshCw, AlertTriangle } from 'lucide-react';
+import { PlansModal } from './components/PlansModal';
+import { ProfileModal } from './components/ProfileModal';
 import { PrivacyScreen } from './components/PrivacyScreen';
 import { GuidelinesScreen } from './components/GuidelinesScreen';
+import { logger } from './services/logger';
+import {
+  Loader2,
+  PhoneOff,
+  RefreshCw,
+  AlertTriangle,
+  Radio,
+  User,
+  ShieldCheck,
+  Sparkles,
+  BookOpen,
+  Shield,
+  PhoneCall,
+} from 'lucide-react';
+
+type ActiveView = 'main' | 'privacy' | 'guidelines';
 
 export const App: React.FC = () => {
-  const currentPath = typeof window !== 'undefined' ? (window.location.pathname + window.location.hash).toLowerCase() : '';
-  if (currentPath.includes('privacy')) {
-    return <PrivacyScreen />;
-  }
-  if (currentPath.includes('guidelines')) {
-    return <GuidelinesScreen />;
-  }
+  // 1. Navigation & Modal State (unconditional)
+  const [activeView, setActiveView] = useState<ActiveView>(() => {
+    if (typeof window === 'undefined') return 'main';
+    const path = (window.location.pathname + window.location.hash).toLowerCase();
+    if (path.includes('privacy')) return 'privacy';
+    if (path.includes('guidelines')) return 'guidelines';
+    return 'main';
+  });
 
+  const [isPlansModalOpen, setIsPlansModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // 2. Application Core State Machine (unconditional)
   const [appState, setAppState] = useState<AppState>('idle');
   const [lockdownReason, setLockdownReason] = useState<LockdownReason>('browser_direct');
+  const [lockdownBannedUntil, setLockdownBannedUntil] = useState<string | null>(null);
+  const [lockdownRetrySeconds, setLockdownRetrySeconds] = useState<number>(30);
   const [initData, setInitData] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Whole band defaults (5, 6, 7, 8, 9) - strictly whole-band
   const [userData, setUserData] = useState<UserMatchData>({
     userId: '',
-    band: 6.5,
+    band: 7,
+    subFC: 7,
+    subLR: 7,
+    subGRA: 7,
+    subP: 7,
     weakSkill: 'P',
     strongSkill: 'FC',
+    plan: 'FREE',
+    callsRemaining: 3,
+    totalCallsLimit: 3,
   });
+
   const [matchData, setMatchData] = useState<MatchFoundPayload | null>(null);
 
-  const appStateRef = React.useRef<AppState>(appState);
-  const hasJoinedQueueRef = React.useRef(false);
+  // 3. Refs (unconditional)
+  const appStateRef = useRef<AppState>(appState);
+  const hasJoinedQueueRef = useRef(false);
+
   useEffect(() => {
     appStateRef.current = appState;
   }, [appState]);
 
+  // Sync hash routing for guidelines and privacy views
+  useEffect(() => {
+    const handleHashChange = () => {
+      const path = (window.location.pathname + window.location.hash).toLowerCase();
+      if (path.includes('privacy')) {
+        setActiveView('privacy');
+      } else if (path.includes('guidelines')) {
+        setActiveView('guidelines');
+      } else {
+        setActiveView('main');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handleHashChange);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('popstate', handleHashChange);
+    };
+  }, []);
+
+  // 4. LiveKit SFU Audio Hook (unconditional)
   const {
     connect: connectLiveKit,
     disconnect: disconnectLiveKit,
@@ -50,6 +107,7 @@ export const App: React.FC = () => {
     analyserNode,
   } = useLiveKit();
 
+  // 5. Match Found Callback (unconditional)
   const handleMatchFound = useCallback(
     async (data: MatchFoundPayload, isReconnection = false) => {
       if (!isReconnection && (appStateRef.current === 'ended' || appStateRef.current === 'idle')) {
@@ -91,9 +149,9 @@ export const App: React.FC = () => {
     [connectLiveKit, disconnectLiveKit]
   );
 
-  // Telegram WebApp Initialization & Auth Verification
+  // 6. Telegram WebApp Initialization & Deterministic Access-Control Verification (unconditional)
   const initAuth = useCallback(async () => {
-    logger.info('BOOT', 'APP_BOOT: Initializing authentication check');
+    logger.info('BOOT', 'APP_BOOT: Initializing deterministic access control check');
 
     const tgPresent = Boolean(window.Telegram);
     const webAppPresent = Boolean(window.Telegram?.WebApp);
@@ -138,6 +196,7 @@ export const App: React.FC = () => {
       }
     }
 
+    // Gate 1: Non-Telegram or Missing InitData Check
     if (!rawInitData || rawInitData.trim() === '') {
       logger.warn('TELEGRAM', 'TELEGRAM_INIT_DATA_MISSING');
       const isTelegramWebview = webAppPresent || /Telegram/i.test(navigator.userAgent);
@@ -145,8 +204,8 @@ export const App: React.FC = () => {
       setLockdownReason(reason);
       setErrorMessage(
         isTelegramWebview
-          ? 'You are opening this page inside Telegram, but not as a Telegram Mini App. Please launch using the Bot Menu Button or WebApp button in Telegram.'
-          : 'This application can only be launched inside Telegram as a Mini App. Direct web browser access is restricted.'
+          ? 'You are opening this page inside Telegram, but not as a Telegram Mini App. Please launch using the Bot Menu Button.'
+          : 'This application operates exclusively within Telegram as an authenticated Mini App. External browser access is restricted.'
       );
       logger.warn('STATE', `APP_LOCKDOWN: ${reason}`);
       setAppState('lockdown');
@@ -162,7 +221,7 @@ export const App: React.FC = () => {
       tg.expand();
     }
 
-    // Verify initData with server to get DB user profile (UUID)
+    // Gate 2-5: Verify initData with server to evaluate rate-limits, account moderation, and quota
     try {
       const serverUrl = (import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
       logger.info('AUTH', `AUTH_REQUEST_STARTED: Calling /api/auth/verify on ${serverUrl || 'same-origin'}`);
@@ -180,15 +239,36 @@ export const App: React.FC = () => {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        if (res.status === 403) {
+        
+        // Deterministic Error Gate Classification
+        if (res.status === 429 || errData.code === 'RATE_LIMITED') {
+          logger.warn('AUTH', 'RATE_LIMITED: Client rate limit threshold reached');
+          setLockdownReason('rate_limited');
+          setLockdownRetrySeconds(errData.retryAfterSeconds || 30);
+          setErrorMessage(errData.message || 'Request threshold exceeded. System cooldown engaged.');
+        } else if (errData.code === 'BANNED' || errData.isPermanentlyBanned) {
+          logger.error('AUTH', 'BANNED: Permanent account lock');
+          setLockdownReason('banned');
+          setErrorMessage(errData.message || 'Your account has been permanently restricted due to guideline violations.');
+        } else if (errData.code === 'SUSPENDED' || errData.bannedUntil) {
+          logger.warn('AUTH', 'SUSPENDED: Temporary suspension active');
+          setLockdownReason('suspended');
+          setLockdownBannedUntil(errData.bannedUntil || null);
+          setErrorMessage(errData.message || 'Your account is under temporary moderation suspension.');
+        } else if (errData.code === 'QUOTA_EXHAUSTED') {
+          logger.warn('AUTH', 'QUOTA_EXHAUSTED: Monthly practice calls depleted');
+          setLockdownReason('exhausted_quota');
+          setErrorMessage(errData.message || 'You have exhausted your monthly call limit.');
+        } else if (res.status === 403 || errData.code === 'AUTH_REJECTED') {
           logger.error('AUTH', 'AUTH_REJECTED: Server rejected initData signature');
           setLockdownReason('auth_rejected');
+          setErrorMessage(errData.error || errData.message || 'Authentication failed or session expired.');
         } else {
           logger.error('AUTH', `AUTH_FAILED: Server returned HTTP ${res.status}`);
           setLockdownReason('server_unavailable');
+          setErrorMessage(errData.error || errData.message || 'Unable to establish secure telemetry with backend cluster.');
         }
-        setErrorMessage(errData.error || 'Authentication failed. Please start the Telegram Bot first.');
-        logger.warn('STATE', 'APP_LOCKDOWN: Auth failed');
+
         setAppState('lockdown');
         return;
       }
@@ -196,11 +276,38 @@ export const App: React.FC = () => {
       const data = await res.json();
       if (data.success && data.user) {
         logger.info('AUTH', 'AUTH_SUCCESS: Profile verified');
+
+        // Check if user has depleted calls quota
+        const callsRem = data.user.callsRemaining ?? 3;
+        if (callsRem <= 0 && data.user.plan === 'FREE') {
+          setLockdownReason('exhausted_quota');
+          setErrorMessage('You have exhausted your free monthly practice quota. Upgrade to PLUS, PRO, or BOSS to continue.');
+          setAppState('lockdown');
+          return;
+        }
+
+        // Set verified user state using whole-band defaults (5, 6, 7, 8, 9)
+        const wholeBand = Math.max(5, Math.min(9, Math.round(data.user.band || 7)));
         setUserData({
-          userId: data.user.id, // Verified DB UUID
-          band: data.user.band || 6.5,
+          userId: data.user.id,
+          telegramId: data.user.telegramId,
+          alias: data.user.alias,
+          band: wholeBand,
+          subFC: data.user.subFC ? Math.round(data.user.subFC) : wholeBand,
+          subLR: data.user.subLR ? Math.round(data.user.subLR) : wholeBand,
+          subGRA: data.user.subGRA ? Math.round(data.user.subGRA) : wholeBand,
+          subP: data.user.subP ? Math.round(data.user.subP) : wholeBand,
           weakSkill: data.user.weakSkill || 'P',
           strongSkill: data.user.strongSkill || 'FC',
+          plan: data.user.plan || 'FREE',
+          planExpiresAt: data.user.planExpiresAt || null,
+          callsRemaining: data.user.callsRemaining ?? 3,
+          totalCallsLimit: data.user.totalCallsLimit ?? (data.user.plan === 'BOSS' ? 50 : data.user.plan === 'PRO' ? 25 : data.user.plan === 'PLUS' ? 10 : 3),
+          maxCallDuration: data.user.maxCallDuration ?? (data.user.plan === 'BOSS' ? 90 : data.user.plan === 'PRO' ? 60 : data.user.plan === 'PLUS' ? 30 : 15),
+          recordingsRemaining: data.user.recordingsRemaining ?? 1,
+          recordingsLimit: data.user.recordingsLimit ?? (data.user.plan === 'BOSS' ? 15 : data.user.plan === 'PRO' ? 7 : data.user.plan === 'PLUS' ? 3 : 1),
+          recordingRetentionDays: data.user.recordingRetentionDays ?? (data.user.plan === 'BOSS' ? 90 : data.user.plan === 'PRO' ? 30 : data.user.plan === 'PLUS' ? 7 : 1),
+          dnd: data.user.dnd ?? false,
         });
 
         // Check if there is an active call session (e.g. direct call accepted or reconnect)
@@ -211,13 +318,16 @@ export const App: React.FC = () => {
           if (activeRes.ok) {
             const activeData = await activeRes.json();
             if (activeData.hasActiveCall) {
-              handleMatchFound({
-                roomName: activeData.roomName,
-                livekitToken: activeData.livekitToken,
-                partnerAlias: activeData.partnerAlias,
-                partnerBand: activeData.partnerBand,
-                callDurationLimit: activeData.callDurationLimit,
-              }, true);
+              handleMatchFound(
+                {
+                  roomName: activeData.roomName,
+                  livekitToken: activeData.livekitToken,
+                  partnerAlias: activeData.partnerAlias,
+                  partnerBand: activeData.partnerBand,
+                  callDurationLimit: activeData.callDurationLimit,
+                },
+                true
+              );
               return;
             }
           }
@@ -236,21 +346,23 @@ export const App: React.FC = () => {
       const errorMsg = err instanceof Error ? err.message : String(err);
       logger.error('AUTH', `AUTH_NETWORK_ERROR: ${errorMsg}`);
       setLockdownReason('server_unavailable');
-      setErrorMessage('Network error connecting to backend server.');
+      setErrorMessage('Network error connecting to backend server cluster.');
       setAppState('lockdown');
     }
   }, [handleMatchFound]);
 
+  // 7. Trigger Init Auth on Mount (unconditional)
   useEffect(() => {
     initAuth();
   }, [initAuth]);
 
+  // 8. Call Ended Handler (unconditional)
   const handleCallEnded = useCallback(() => {
     disconnectLiveKit();
     setAppState('ended');
   }, [disconnectLiveKit]);
 
-  // Socket Connection & Event Listeners
+  // 9. Socket Connection & Event Listeners (unconditional)
   useEffect(() => {
     if (!initData || !userData.userId || appState === 'lockdown') {
       hasJoinedQueueRef.current = false;
@@ -281,6 +393,7 @@ export const App: React.FC = () => {
       setErrorMessage(msg);
       setAppState('ended');
     };
+
     socket.on('match_found', onMatch);
     socket.on('call_finished', handleCallEnded);
     socket.on('error', onSocketError);
@@ -308,6 +421,7 @@ export const App: React.FC = () => {
     };
   }, [initData, appState, userData, handleMatchFound, handleCallEnded]);
 
+  // Action handlers
   const handleCancelMatchmaking = () => {
     if (userData.userId) {
       socketService.cancelQueue(userData.userId);
@@ -333,71 +447,216 @@ export const App: React.FC = () => {
     setAppState('radar');
   };
 
-  // Handler for the "Start Searching" button — captures user gesture for autoplay policy
   const handleStartSearching = () => {
     startAudio().catch(() => {});
     setAppState('radar');
   };
 
+  const handleToggleDnd = (nextDnd: boolean) => {
+    setUserData((prev) => ({ ...prev, dnd: nextDnd }));
+  };
+
+  // =========================================================================
+  // VIEW ROUTING DISPATCHER (Clean JSX returns AFTER all hooks executed)
+  // =========================================================================
+
+  if (activeView === 'privacy') {
+    return <PrivacyScreen onBack={() => setActiveView('main')} />;
+  }
+
+  if (activeView === 'guidelines') {
+    return <GuidelinesScreen onBack={() => setActiveView('main')} />;
+  }
+
+  // 1. Idle Booting Screen
   if (appState === 'idle') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6">
-        <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-      </div>
-    );
-  }
-
-  if (appState === 'lockdown') {
-    return <LockdownScreen reason={lockdownReason} message={errorMessage} onRetry={initAuth} />;
-  }
-
-  if (appState === 'ready') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6 text-center">
-        <div className="w-20 h-20 rounded-full bg-indigo-500/10 border-2 border-indigo-500/40 flex items-center justify-center mb-6 shadow-lg shadow-indigo-500/20">
-          <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#05070E] text-white p-6 font-sans">
+        <div className="w-16 h-16 rounded-3xl bg-[#090D18] border border-slate-800 flex items-center justify-center mb-4 shadow-2xl">
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin motion-reduce:animate-none" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Ready to Practice?</h1>
-        <p className="text-sm text-slate-400 max-w-xs mb-8 leading-relaxed">
-          Tap the button below to start searching for an IELTS speaking practice partner.
-        </p>
-        <button
-          onClick={handleStartSearching}
-          className="py-3.5 px-8 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-600/30 text-lg"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Start Searching
-        </button>
+        <div className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400">
+          INITIALIZING GATEWAY...
+        </div>
       </div>
     );
   }
 
+  // 2. Deterministic Access-Control Lockdown Screen
+  if (appState === 'lockdown') {
+    return (
+      <>
+        <LockdownScreen
+          reason={lockdownReason}
+          message={errorMessage}
+          bannedUntil={lockdownBannedUntil}
+          retryAfterSeconds={lockdownRetrySeconds}
+          onRetry={initAuth}
+          onOpenPlans={() => setIsPlansModalOpen(true)}
+        />
+        <PlansModal
+          isOpen={isPlansModalOpen}
+          onClose={() => setIsPlansModalOpen(false)}
+          currentPlan={userData.plan}
+        />
+      </>
+    );
+  }
+
+  // 3. Ready Screen (Cyberpunk Hero & Matchmaking Launcher)
+  if (appState === 'ready') {
+    const alias = userData.alias || (userData.telegramId ? `P2P-${String(userData.telegramId).slice(-8).toUpperCase()}` : 'P2P-CANDIDATE');
+    return (
+      <div className="flex flex-col justify-between min-h-screen p-5 md:p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-cyan-500">
+        {/* Top Navbar */}
+        <div className="w-full max-w-md mx-auto flex items-center justify-between pt-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-500/10">
+              <Radio className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-[9px] font-mono font-bold uppercase tracking-wider text-cyan-400">PAIRIAL P2P</div>
+              <div className="text-xs font-mono font-bold text-white tracking-tight">{alias}</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPlansModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/40 font-mono text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{userData.plan || 'PLANS'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsProfileModalOpen(true)}
+              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition-colors cursor-pointer"
+              aria-label="Open profile modal"
+            >
+              <User className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Center Hero Card */}
+        <div className="w-full max-w-md mx-auto my-auto py-6 text-center">
+          <div className="relative w-24 h-24 mx-auto mb-5 rounded-3xl bg-gradient-to-tr from-cyan-600 via-indigo-600 to-purple-600 p-0.5 shadow-2xl shadow-cyan-500/20 flex items-center justify-center">
+            <div className="w-full h-full bg-[#090D18] rounded-3xl flex items-center justify-center border border-cyan-500/30">
+              <PhoneCall className="w-10 h-10 text-cyan-400" />
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase border border-cyan-500/40 text-cyan-400 bg-cyan-950/40 mb-3">
+            <ShieldCheck className="w-3 h-3" />
+            <span>AUTHENTICATED IELTS RADAR</span>
+          </div>
+
+          <h1 className="text-2xl font-mono font-black tracking-tight text-white uppercase mb-2">
+            READY TO PRACTICE?
+          </h1>
+
+          <p className="text-xs text-slate-400 max-w-xs mx-auto mb-6 leading-relaxed font-mono">
+            Autonomous matchmaking pairs you with a peer having complementary skill strengths for focused IELTS Speaking sessions.
+          </p>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-3 gap-2 p-3 mb-6 rounded-2xl bg-[#090D18] border border-slate-800 text-center font-mono">
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase">Target Band</div>
+              <div className="text-sm font-black text-cyan-400">{(userData.band || 7).toFixed(1)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase">Calls Left</div>
+              <div className="text-sm font-black text-white">{userData.callsRemaining ?? 3}</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase">Max Time</div>
+              <div className="text-sm font-black text-purple-400">{userData.maxCallDuration ?? 15}m</div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleStartSearching}
+            className="w-full py-4 px-8 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 text-slate-950 rounded-2xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-transform active:scale-95 shadow-xl shadow-cyan-500/25 cursor-pointer"
+          >
+            <Radio className="w-5 h-5 animate-pulse motion-reduce:animate-none" />
+            <span>START SEARCHING</span>
+          </button>
+        </div>
+
+        {/* Bottom Legal & Community Links */}
+        <div className="w-full max-w-md mx-auto pt-4 border-t border-slate-900 flex items-center justify-between text-[11px] font-mono text-slate-500">
+          <button
+            type="button"
+            onClick={() => setActiveView('guidelines')}
+            className="hover:text-cyan-400 flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Guidelines</span>
+          </button>
+
+          <span>PAIRIAL V2.0</span>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('privacy')}
+            className="hover:text-cyan-400 flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>Privacy</span>
+          </button>
+        </div>
+
+        {/* Modals */}
+        <PlansModal
+          isOpen={isPlansModalOpen}
+          onClose={() => setIsPlansModalOpen(false)}
+          currentPlan={userData.plan}
+        />
+
+        <ProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          userData={userData}
+          onOpenPlans={() => {
+            setIsProfileModalOpen(false);
+            setIsPlansModalOpen(true);
+          }}
+          onToggleDnd={handleToggleDnd}
+        />
+      </div>
+    );
+  }
+
+  // 4. Searching Radar Screen
   if (appState === 'radar') {
     return (
       <RadarScreen
+        userAlias={userData.alias}
         targetBand={userData.band}
         onCancel={handleCancelMatchmaking}
       />
     );
   }
 
+  // 5. Connecting Call Screen
   if (appState === 'connecting') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6">
-        <div className="w-16 h-16 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mb-4">
-          <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#05070E] text-white p-6 font-sans">
+        <div className="w-16 h-16 rounded-3xl bg-[#090D18] border border-cyan-500/40 flex items-center justify-center mb-4 shadow-xl shadow-cyan-500/20">
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin motion-reduce:animate-none" />
         </div>
-        <h2 className="text-xl font-bold text-slate-100 mb-1">Partner Matched!</h2>
-        <p className="text-sm text-slate-400">Connecting to encrypted voice channel...</p>
+        <h2 className="text-lg font-mono font-bold text-white mb-1 uppercase">PARTNER MATCHED</h2>
+        <p className="text-xs font-mono text-slate-400">Establishing encrypted SFU voice channel...</p>
       </div>
     );
   }
 
+  // 6. Active Voice Call Screen
   if (appState === 'in_call' && matchData) {
     return (
       <ActiveCallScreen
@@ -419,34 +678,66 @@ export const App: React.FC = () => {
     );
   }
 
+  // 7. Ended / Cancelled Screen
   const isCancelled = !errorMessage && !matchData;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6 text-center">
-      <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-inner">
-        {errorMessage ? (
-          <AlertTriangle className="w-10 h-10 text-amber-400" />
-        ) : (
-          <PhoneOff className="w-10 h-10 text-slate-400" />
-        )}
+    <div className="flex flex-col justify-between min-h-screen p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-cyan-500">
+      <div className="w-full max-w-sm mx-auto my-auto flex flex-col items-center text-center">
+        <div className="w-20 h-20 rounded-3xl bg-[#090D18] border border-slate-800 flex items-center justify-center mb-5 shadow-2xl">
+          {errorMessage ? (
+            <AlertTriangle className="w-10 h-10 text-amber-400" />
+          ) : (
+            <PhoneOff className="w-10 h-10 text-slate-400" />
+          )}
+        </div>
+
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase border border-slate-800 text-slate-400 bg-slate-950 mb-3">
+          <span>{errorMessage ? 'SESSION ALERT' : isCancelled ? 'SEARCH CANCELLED' : 'SESSION COMPLETE'}</span>
+        </div>
+
+        <h1 className="text-xl font-mono font-black tracking-tight text-white uppercase mb-2">
+          {errorMessage ? 'CONNECTION ISSUE' : isCancelled ? 'SEARCH CANCELLED' : 'CALL CONCLUDED'}
+        </h1>
+
+        <p className="text-xs text-slate-400 max-w-xs mb-6 leading-relaxed font-mono">
+          {errorMessage ||
+            (isCancelled
+              ? 'Matchmaking search was cancelled. Tap below when you are ready to begin searching again.'
+              : 'Thank you for practicing! Check your Telegram chat for partner ratings and session recordings.')}
+        </p>
+
+        <button
+          type="button"
+          onClick={handleRestart}
+          className="w-full py-3.5 px-6 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-cyan-600/25 cursor-pointer"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>{isCancelled ? 'Try Again' : 'Find Next Partner'}</span>
+        </button>
       </div>
 
-      <h1 className="text-2xl font-bold text-slate-100 mb-2">
-        {errorMessage ? 'Call Connection Issue' : isCancelled ? 'Search Cancelled' : 'Call Session Ended'}
-      </h1>
-      <p className="text-sm text-slate-400 max-w-xs mb-8 leading-relaxed">
-        {errorMessage || (isCancelled 
-          ? 'You have cancelled the matchmaking search. Tap the button below when you are ready to try again.'
-          : 'Thank you for practicing! Check your Telegram chat for post-call partner evaluation and recording access.')}
-      </p>
+      <div className="w-full max-w-sm mx-auto pt-4 border-t border-slate-900 flex items-center justify-between text-[10px] font-mono text-slate-600">
+        <span>STATUS: IDLE</span>
+        <span>PAIRIAL V2</span>
+      </div>
 
-      <button
-        onClick={handleRestart}
-        className="py-3.5 px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-600/30"
-      >
-        <RefreshCw className="w-5 h-5" />
-        <span>{isCancelled ? 'Try Again' : 'Find Next Partner'}</span>
-      </button>
+      <PlansModal
+        isOpen={isPlansModalOpen}
+        onClose={() => setIsPlansModalOpen(false)}
+        currentPlan={userData.plan}
+      />
+
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        userData={userData}
+        onOpenPlans={() => {
+          setIsProfileModalOpen(false);
+          setIsPlansModalOpen(true);
+        }}
+        onToggleDnd={handleToggleDnd}
+      />
     </div>
   );
 };

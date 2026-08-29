@@ -576,7 +576,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       if (combined.length === 0) {
         historyText += '<i>No payment transactions recorded for this account.</i>\n';
       } else {
-        combined.slice(0, 15).forEach((tx) => {
+        combined.slice(0, 5).forEach((tx) => {
           const dateStr = tx.createdAt.toISOString().slice(0, 16).replace('T', ' ');
           const statusIcon = tx.status === 'APPROVED' || tx.status === 'SUCCESS' ? '✅' : tx.status === 'PENDING' ? '⏳' : '❌';
           const orderPrefix = tx.orderNumber ? `[#${tx.orderNumber}] ` : '';

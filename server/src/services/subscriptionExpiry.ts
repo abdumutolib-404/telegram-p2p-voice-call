@@ -34,7 +34,7 @@ export async function checkAndProcessSubscriptionExpirations(
     });
 
     for (const user of expiredUsers) {
-      const prevPlan = user.plan;
+      const prevPlan = user.customPlanName || user.plan;
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -87,12 +87,13 @@ export async function checkAndProcessSubscriptionExpirations(
         warnedCount++;
         if (bot && user.telegramId) {
           const dateStr = user.subscriptionExpiresAt.toISOString().replace('T', ' ').substring(0, 16) + ' UTC';
+          const planDisplayName = user.customPlanName || user.plan;
           const inlineKb = new InlineKeyboard().text('⭐ Renew Plan', 'show_plans');
           await notificationQueue.enqueue(
             bot,
             user.telegramId.toString(),
             `⏳ <b>Subscription Expiring in 24 Hours!</b>\n\n` +
-              `Your <b>${user.plan} Plan</b> subscription will expire on <b>${dateStr}</b>.\n\n` +
+              `Your <b>${planDisplayName} Plan</b> subscription will expire on <b>${dateStr}</b>.\n\n` +
               `Renew your plan now to ensure your monthly call allowances and recording storage remain active without interruption!`,
             { parse_mode: 'HTML', reply_markup: inlineKb }
           );

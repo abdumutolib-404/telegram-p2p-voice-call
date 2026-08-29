@@ -66,9 +66,8 @@ export function setupStartCommand(bot: Bot<MyContext>) {
     // Start Onboarding Step 1: FC
     ctx.session.step = 'fc';
     const inlineKb = new InlineKeyboard();
-    for (let s = 4.0; s <= 9.0; s += 0.5) {
-      inlineKb.text(s.toFixed(1), `set_sub_fc:${s}`);
-      if (s === 6.0 || s === 8.0) inlineKb.row();
+    for (const s of [5, 6, 7, 8, 9]) {
+      inlineKb.text(String(s), `set_sub_fc:${s}`);
     }
 
     await ctx.reply(
