@@ -1,11 +1,26 @@
-import { Bot, InlineKeyboard } from 'grammy';
+import { Bot, InlineKeyboard, InputFile } from 'grammy';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../../services/plan';
 import { getReferralStats, getContestStatus, getActiveBonusCallsCount } from '../../services/referralService';
 import { getRedis } from '../../config/redis';
+
+function getPlansImagePath(): string | null {
+  const candidatePaths = [
+    path.resolve(__dirname, '../../../assets/plans_pricing.jpg'),
+    path.resolve(__dirname, '../../assets/plans_pricing.jpg'),
+    path.resolve(process.cwd(), 'assets/plans_pricing.jpg'),
+    path.resolve(process.cwd(), 'server/assets/plans_pricing.jpg'),
+  ];
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
   const lockKey = `appeal_lock:${userId}`;
@@ -241,7 +256,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
   });
 
   // ⭐ Subscription / Upgrade Plans
-  bot.hears(/⭐ (?:Upgrade|Subscription|Plans)/i, async (ctx) => {
+  const sendPlansOverview = async (ctx: MyContext) => {
     const telegramId = BigInt(ctx.from?.id || 0);
     const user = await prisma.user.findUnique({ where: { telegramId } });
     const profile = user ? getPaidUserProfile(user) : getPaidUserProfile({ plan: 'FREE' });
@@ -277,34 +292,53 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `<i>You cannot submit another payment request until this one is approved, rejected, or cancelled.</i>\n\n`;
     }
 
-    await ctx.reply(
+    const caption =
       `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
-        `Current Plan: <b>${profile.planDisplayName}</b>\n` +
-        (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
-        pendingBanner +
-        `<b>Available Upgrade Plans:</b>\n\n` +
-        `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
-        `• Max Call Duration: 30 minutes\n` +
-        `• Monthly Calls: 10\n` +
-        `• Monthly Recordings: 3\n` +
-        `• Recording Retention: 7 days\n\n` +
-        `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
-        `• Max Call Duration: 60 minutes\n` +
-        `• Monthly Calls: 25\n` +
-        `• Monthly Recordings: 7\n` +
-        `• Recording Retention: 30 days\n\n` +
-        `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
-        `• Max Call Duration: 90 minutes\n` +
-        `• Monthly Calls: 50\n` +
-        `• Monthly Recordings: 15\n` +
-        `• Recording Retention: 90 days\n\n` +
-        `⚠️ <b>Note:</b> Prices in UZS and Stars may slightly differ due to platform & regional taxes.\n\n` +
-        `🛡️ <b>Refund Policy:</b>\n` +
-        `Refunds are eligible within 48 hours of purchase OR if less than 10% of monthly call credits have been utilized.\n\n` +
-        (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose your payment method (Telegram Stars or Card):`),
-      { parse_mode: 'HTML', reply_markup: inlineKb }
-    );
-  });
+      `Current Plan: <b>${profile.planDisplayName}</b>\n` +
+      (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
+      pendingBanner +
+      `<b>Available Upgrade Plans:</b>\n\n` +
+      `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
+      `• Max Call Duration: 30 minutes\n` +
+      `• Monthly Calls: 10\n` +
+      `• Monthly Recordings: 3\n` +
+      `• Recording Retention: 7 days\n\n` +
+      `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
+      `• Max Call Duration: 60 minutes\n` +
+      `• Monthly Calls: 25\n` +
+      `• Monthly Recordings: 7\n` +
+      `• Recording Retention: 30 days\n\n` +
+      `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
+      `• Max Call Duration: 90 minutes\n` +
+      `• Monthly Calls: 50\n` +
+      `• Monthly Recordings: 15\n` +
+      `• Recording Retention: 90 days\n\n` +
+      `🛡️ <b>Refund Policy:</b>\n` +
+      `Refunds are eligible within 48 hours of purchase OR if less than 10% of monthly call credits have been utilized.\n\n` +
+      `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
+      (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose your payment method (Telegram Stars or Card):`);
+
+    const imagePath = getPlansImagePath();
+    if (imagePath && typeof ctx.replyWithPhoto === 'function') {
+      try {
+        await ctx.replyWithPhoto(new InputFile(imagePath), {
+          caption,
+          parse_mode: 'HTML',
+          reply_markup: inlineKb,
+        });
+        return;
+      } catch (err) {
+        console.warn('[Bot] Failed to send plans photo, falling back to text:', err);
+      }
+    }
+
+    await ctx.reply(caption, { parse_mode: 'HTML', reply_markup: inlineKb });
+  };
+
+  bot.hears(/⭐ (?:Upgrade|Subscription|Plans)/i, sendPlansOverview);
+  if (typeof (bot as any).command === 'function') {
+    (bot as any).command('plans', sendPlansOverview);
+  }
 
   // 📞 Direct Call / 👥 Favorites
   bot.hears(['📞 Direct Call', '👥 Favorites'], async (ctx) => {

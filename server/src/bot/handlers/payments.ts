@@ -140,7 +140,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         `• Monthly Calls: 50\n` +
         `• Monthly Recordings: 15\n` +
         `• Recording Retention: 90 days\n\n` +
-        `⚠️ <b>Note:</b> Prices in UZS and Stars may slightly differ due to platform & regional taxes.\n\n` +
+        `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
         (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
@@ -592,11 +592,12 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       await ctx.reply(
         `🛡️ <b>Payment & Billing Support</b>\n\n` +
           `${historyText}\n` +
-          `📌 <b>Refund & Dispute Information</b>:\n` +
-          `• <b>Telegram Stars</b>: In-app digital Stars refunds can be requested within 48 hours for service disruptions.\n` +
-          `• <b>Card Payments (UZS)</b>: Verified manual card refunds are processed by admin review.\n` +
-          `• <b>Revocation</b>: Processing a refund automatically reverts account entitlements to the FREE tier.\n\n` +
-          `For billing inquiries or disputes, contact Admin: ${adminContact}`,
+          `🛡️ <b>Refund Eligibility Policy</b>:\n` +
+          `• <b>Eligibility Criteria</b>: A full refund is eligible if requested within <b>48 hours (2 days)</b> of purchase <b>OR</b> if less than <b>10% of monthly call allowance</b> has been used (0 calls on PLUS, ≤ 2 calls on PRO, ≤ 4 calls on BOSS).\n` +
+          `• <b>Telegram Stars (XTR)</b>: In-app digital Stars refund requests are verified server-side.\n` +
+          `• <b>Card Payments (UZS)</b>: Verified card refunds are executed by the administration upon review.\n` +
+          `• <b>Entitlement Reversion</b>: Processing a refund automatically reverts account limits to the Free tier.\n\n` +
+          `For billing inquiries, receipt verification, or refund requests, contact Admin: ${adminContact}`,
         { parse_mode: 'HTML', reply_markup: inlineKb }
       );
     });
