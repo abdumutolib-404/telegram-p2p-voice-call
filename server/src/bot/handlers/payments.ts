@@ -187,7 +187,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         `• Monthly Recordings: 15 (90-day retention)\n` +
         `• Matchmaking: VIP Top-Priority Queue\n\n` +
         `🛡️ <b>Refund Policy:</b>\n` +
-        `Eligible within 48 hours OR if <10% of monthly calls used.\n\n` +
+        `Eligible within 48 hours of purchase OR if less than 10% of monthly call allowance has been used.\n\n` +
         `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
         (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
       { reply_markup: inlineKb }

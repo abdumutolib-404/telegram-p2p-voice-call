@@ -151,15 +151,12 @@ async function verifyOtpChallengeAtomic(
           remainingAttempts: result.remaining,
         };
       }
-      return { success: false, error: 'Invalid or consumed login challenge.' };
     }
   } catch (err) {
-    if (env.NODE_ENV === 'production') {
-      throw err;
-    }
+    console.warn('[AdminAuth] Redis OTP eval error, checking memory fallback:', err);
   }
 
-  // Memory fallback for test harness
+  // Memory fallback (if Redis was unavailable or key not found)
   const challenge = adminOtpChallengesFallback.get(challengeId);
   if (!challenge || challenge.consumed) {
     return { success: false, error: 'Invalid or consumed login challenge.' };
