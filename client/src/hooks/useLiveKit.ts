@@ -146,8 +146,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           dynacast: true,
           audioCaptureDefaults: {
             echoCancellation: true,
-            noiseSuppression: false,
-            autoGainControl: false,
+            noiseSuppression: true,
+            autoGainControl: true,
           },
           publishDefaults: {
             dtx: true,
@@ -167,10 +167,18 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
 
           const el = remoteAudioTrack.attach();
           el.autoplay = true;
+          el.volume = 1.0;
+          el.muted = false;
           el.setAttribute('playsinline', 'true');
           el.setAttribute('webkit-playsinline', 'true');
+          // In-DOM persistent footprint to prevent iOS WebKit power-saver throttling
+          el.style.cssText = 'position: fixed; bottom: 0; left: 0; width: 2px; height: 2px; opacity: 0.01; pointer-events: none; z-index: -10;';
           document.body.appendChild(el);
           attachedElementsRef.current.set(trackSid, el);
+
+          if (livekitRoom) {
+            livekitRoom.startAudio().catch(() => {});
+          }
 
           el.play()
             .then(() => {
@@ -213,6 +221,32 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           }
         );
 
+        // Track publication event (ensure auto-subscribe and immediate attach)
+        livekitRoom.on(
+          RoomEvent.TrackPublished,
+          (publication: RemoteTrackPublication, _participant: RemoteParticipant) => {
+            if (publication.kind === Track.Kind.Audio) {
+              publication.setSubscribed(true);
+              if (publication.track) {
+                attachAudioTrack(publication.track as RemoteAudioTrack);
+              }
+            }
+          }
+        );
+
+        // Remote participant joined room
+        livekitRoom.on(
+          RoomEvent.ParticipantConnected,
+          (participant: RemoteParticipant) => {
+            for (const pub of participant.audioTrackPublications.values()) {
+              pub.setSubscribed(true);
+              if (pub.track && pub.track.kind === Track.Kind.Audio) {
+                attachAudioTrack(pub.track as RemoteAudioTrack);
+              }
+            }
+          }
+        );
+
         // Track unsubscription event
         livekitRoom.on(
           RoomEvent.TrackUnsubscribed,
@@ -249,6 +283,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         // Attach any audio tracks already published by participants currently in the room
         for (const participant of livekitRoom.remoteParticipants.values()) {
           for (const publication of participant.audioTrackPublications.values()) {
+            publication.setSubscribed(true);
             if (publication.track && publication.track.kind === Track.Kind.Audio) {
               attachAudioTrack(publication.track as RemoteAudioTrack);
             }

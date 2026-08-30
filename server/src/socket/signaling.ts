@@ -531,6 +531,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               roomName,
               token: tokenUser,
               livekitToken: tokenUser,
+              livekitUrl: env.LIVEKIT_HOST,
               callDurationLimit: callDurationLimitSeconds,
               maxDurationSeconds: callDurationLimitSeconds,
             });
@@ -542,6 +543,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               roomName,
               token: tokenPartner,
               livekitToken: tokenPartner,
+              livekitUrl: env.LIVEKIT_HOST,
               callDurationLimit: callDurationLimitSeconds,
               maxDurationSeconds: callDurationLimitSeconds,
             });

@@ -139,6 +139,7 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
       hasActiveCall: true,
       roomName: session.roomName,
       livekitToken,
+      livekitUrl: env.LIVEKIT_HOST,
       partnerAlias: partner.alias,
       partnerBand: partner.band,
       callDurationLimit: remainingSeconds,

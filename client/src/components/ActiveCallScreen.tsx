@@ -63,9 +63,12 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Automatically unlock browser audio playback on any initial user touch or click gesture
+  // Automatically unlock browser audio playback on mount and on any user touch/click gesture
   useEffect(() => {
     if (!onUnlockAudio) return;
+
+    // Immediate attempt on call screen entry
+    onUnlockAudio().catch(() => {});
 
     const unlockOnGesture = () => {
       onUnlockAudio().catch(() => {});
