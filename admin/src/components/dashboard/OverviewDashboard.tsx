@@ -40,6 +40,19 @@ interface GrowthPoint {
   cumulative: number;
 }
 
+function formatCompactNumber(num: number): string {
+  if (num >= 1_000_000_000) {
+    return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'B';
+  }
+  if (num >= 1_000_000) {
+    return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  }
+  if (num >= 10_000) {
+    return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
+  }
+  return num.toLocaleString();
+}
+
 export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -100,7 +113,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  // Compute registration timeline based on actual user createdAt timestamps
+  // R3: Deterministic User Registration / Growth Trajectory Data from Timestamps
   const chartPoints = useMemo<GrowthPoint[]>(() => {
     const days = chartRange === '14d' ? 14 : 30;
     const now = new Date();
@@ -167,13 +180,13 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
   const mau = stats?.mau ?? 0;
   const dau = stats?.dau ?? 0;
 
-  // SVG Chart Geometry
-  const svgWidth = 700;
+  // Scalable SVG Chart Geometry
+  const svgWidth = 720;
   const svgHeight = 220;
   const padTop = 25;
   const padBottom = 35;
-  const padLeft = 45;
-  const padRight = 25;
+  const padLeft = 56;
+  const padRight = 20;
 
   const chartW = svgWidth - padLeft - padRight;
   const chartH = svgHeight - padTop - padBottom;
@@ -190,6 +203,9 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
   const areaD = pathCoordinates.length > 0
     ? `M ${getX(0)},${padTop + chartH} L ${pathCoordinates.join(' L ')} L ${getX(chartPoints.length - 1)},${padTop + chartH} Z`
     : '';
+
+  // Adaptive X-axis tick interval to prevent label overlapping
+  const xTickInterval = Math.max(1, Math.ceil(chartPoints.length / 7));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -233,15 +249,15 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
         <StatCard
           label="Total Users"
-          value={totalUsers.toLocaleString()}
-          subValue={`${dau.toLocaleString()} active today (DAU)`}
+          value={formatCompactNumber(totalUsers)}
+          subValue={`${formatCompactNumber(dau)} active today (DAU)`}
           icon={<Users size={18} />}
           onClick={() => onNavigateTab('users')}
         />
 
         <StatCard
           label="MAU (Monthly Active Users)"
-          value={mau.toLocaleString()}
+          value={formatCompactNumber(mau)}
           subValue="Active practice candidates in last 30d"
           icon={<Activity size={18} />}
           onClick={() => onNavigateTab('users')}
@@ -249,7 +265,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
 
         <StatCard
           label="All-time Users"
-          value={totalUsers.toLocaleString()}
+          value={formatCompactNumber(totalUsers)}
           subValue="100% verified Telegram learners"
           icon={<TrendingUp size={18} />}
           onClick={() => onNavigateTab('users')}
@@ -346,7 +362,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
                     fontFamily="var(--mono)"
                     className="num-tabular"
                   >
-                    {countVal}
+                    {formatCompactNumber(countVal)}
                   </text>
                 </g>
               );
@@ -373,6 +389,7 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
               const cx = getX(idx);
               const cy = getY(pt.cumulative);
               const isHovered = hoveredPoint?.date === pt.date;
+              const shouldShowLabel = idx % xTickInterval === 0 || idx === chartPoints.length - 1;
 
               return (
                 <g key={pt.date}>
@@ -398,8 +415,8 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
                     style={{ transition: 'all 0.15s ease', pointerEvents: 'none' }}
                   />
 
-                  {/* X-Axis Date Labels (skip every other label on dense view) */}
-                  {(chartPoints.length <= 15 || idx % 2 === 0 || idx === chartPoints.length - 1) && (
+                  {/* X-Axis Date Labels (adaptively distributed) */}
+                  {shouldShowLabel && (
                     <text
                       x={cx}
                       y={padTop + chartH + 20}
@@ -420,12 +437,12 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
             {hoveredPoint && (
               <g
                 transform={`translate(${Math.min(
-                  svgWidth - 140,
-                  Math.max(padLeft, getX(chartPoints.findIndex((p) => p.date === hoveredPoint.date)) - 60)
+                  svgWidth - 145,
+                  Math.max(padLeft, getX(chartPoints.findIndex((p) => p.date === hoveredPoint.date)) - 65)
                 )}, ${Math.max(10, getY(hoveredPoint.cumulative) - 48)})`}
               >
                 <rect
-                  width="120"
+                  width="130"
                   height="40"
                   rx="6"
                   fill="#0B1220"
@@ -433,11 +450,11 @@ export function OverviewDashboard({ onNavigateTab }: OverviewDashboardProps) {
                   strokeWidth="1"
                   filter="drop-shadow(0 4px 10px rgba(0,0,0,0.5))"
                 />
-                <text x="60" y="16" textAnchor="middle" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
+                <text x="65" y="16" textAnchor="middle" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
                   {hoveredPoint.label}
                 </text>
-                <text x="60" y="32" textAnchor="middle" fill="#FFFFFF" fontSize="11" fontWeight="700" className="num-tabular">
-                  {hoveredPoint.cumulative} Total (+{hoveredPoint.count})
+                <text x="65" y="32" textAnchor="middle" fill="#FFFFFF" fontSize="11" fontWeight="700" className="num-tabular">
+                  {formatCompactNumber(hoveredPoint.cumulative)} Total (+{hoveredPoint.count})
                 </text>
               </g>
             )}

@@ -117,21 +117,24 @@ model StarsTransaction {
 }
 
 model ManualPaymentRequest {
-  id           String    @id @default(uuid())
-  orderNumber  String    @default("A0")
-  userId       String
-  telegramId   BigInt
-  alias        String
-  plan         String    // "PLUS", "PRO", "BOSS"
-  uzsAmount    Int
-  paymentProof String?
-  status       String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
-  adminNote    String?
-  reviewedBy   String?
-  reviewedAt   DateTime?
-  createdAt    DateTime  @default(now())
+  id               String    @id @default(uuid())
+  orderNumber      String    @default("A0")
+  userId           String
+  telegramId       BigInt
+  alias            String
+  plan             String    // "PLUS", "PRO", "BOSS"
+  uzsAmount        Int
+  paymentProof     String?
+  status           String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED", "REFUND_PENDING", "REFUNDED"
+  refundCardNumber String?
+  refundProof      String?
+  refundReason     String?
+  adminNote        String?
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  createdAt        DateTime  @default(now())
 
-  user         User      @relation(fields: [userId], references: [id])
+  user             User      @relation(fields: [userId], references: [id])
 }
 
 model AuditLog {

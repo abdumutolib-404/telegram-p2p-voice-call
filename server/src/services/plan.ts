@@ -622,8 +622,13 @@ export async function rejectManualPaymentRequest(params: {
 export async function refundManualPaymentRequest(params: {
   requestId: string;
   adminId: string;
+  refundProof: string;
   note?: string;
 }) {
+  if (!params.refundProof || !params.refundProof.trim()) {
+    throw new Error('Bank transfer bill / proof is strictly required to approve a refund.');
+  }
+
   const req = await prisma.manualPaymentRequest.findUnique({
     where: { id: params.requestId },
     include: { user: true },
@@ -638,7 +643,8 @@ export async function refundManualPaymentRequest(params: {
       where: { id: req.id },
       data: {
         status: 'REFUNDED',
-        adminNote: params.note || 'UZS Payment refund approved by admin',
+        refundProof: params.refundProof.trim(),
+        adminNote: params.note || 'UZS Payment refund approved with transfer bill attached',
         reviewedBy: params.adminId,
         reviewedAt: new Date(),
       },
@@ -661,7 +667,7 @@ export async function refundManualPaymentRequest(params: {
         adminId: params.adminId,
         beforeState: JSON.stringify({ plan: req.plan, status: req.status }),
         afterState: JSON.stringify({ plan: 'FREE', status: 'REFUNDED' }),
-        reason: params.note || 'Manual payment refund approved',
+        reason: params.note || 'Manual payment refund approved with transfer proof',
       },
     });
 
@@ -674,8 +680,14 @@ export async function refundManualPaymentRequest(params: {
 export async function rejectManualPaymentRefund(params: {
   requestId: string;
   adminId: string;
+  reason: string;
   note?: string;
 }) {
+  const reasonText = params.reason?.trim() || params.note?.trim();
+  if (!reasonText) {
+    throw new Error('Rejection reason is strictly required to reject a refund request.');
+  }
+
   const req = await prisma.manualPaymentRequest.findUnique({
     where: { id: params.requestId },
     include: { user: true },
@@ -690,7 +702,8 @@ export async function rejectManualPaymentRefund(params: {
       where: { id: req.id },
       data: {
         status: 'APPROVED',
-        adminNote: params.note ? `[Refund Rejected]: ${params.note}` : 'Refund request rejected by admin',
+        refundReason: reasonText,
+        adminNote: `[Refund Rejected]: ${reasonText}`,
         reviewedBy: params.adminId,
         reviewedAt: new Date(),
       },
@@ -703,7 +716,7 @@ export async function rejectManualPaymentRefund(params: {
         adminId: params.adminId,
         beforeState: JSON.stringify({ status: req.status }),
         afterState: JSON.stringify({ status: 'APPROVED' }),
-        reason: params.note || 'Refund request rejected',
+        reason: reasonText,
       },
     });
 

@@ -16,7 +16,9 @@ import {
   FileText,
   Eye,
   AlertCircle,
-  Copy
+  Copy,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export function ManualPaymentsQueue() {
@@ -28,7 +30,7 @@ export function ManualPaymentsQueue() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Receipt Preview Modal
-  const [inspectReceiptUrl, setInspectReceiptUrl] = useState<{ url: string; order: string; user: string } | null>(null);
+  const [inspectReceiptUrl, setInspectReceiptUrl] = useState<{ url: string; order: string; user: string; title?: string } | null>(null);
 
   // Approve / Reject / Refund Action Modal
   const [selectedAction, setSelectedAction] = useState<{
@@ -36,6 +38,8 @@ export function ManualPaymentsQueue() {
     item: ManualPaymentRequestItem;
   } | null>(null);
   const [actionNote, setActionNote] = useState<string>('');
+  const [refundBillProof, setRefundBillProof] = useState<string>('');
+  const [rejectionReason, setRejectionReason] = useState<string>('');
   const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
 
   const fetchRequests = useCallback(async () => {
@@ -72,15 +76,47 @@ export function ManualPaymentsQueue() {
 
   const handleOpenActionModal = (type: 'approve' | 'reject' | 'refund' | 'reject_refund', item: ManualPaymentRequestItem) => {
     setSelectedAction({ type, item });
+    setRefundBillProof('');
+    setRejectionReason('');
     if (type === 'approve') setActionNote('Verified card transfer');
     else if (type === 'reject') setActionNote('Receipt unverified');
-    else if (type === 'refund') setActionNote('UZS Refund approved and returned to card');
-    else if (type === 'reject_refund') setActionNote('Refund criteria not satisfied');
+    else if (type === 'refund') setActionNote('UZS Refund approved and money transferred');
+    else if (type === 'reject_refund') setActionNote('Refund request rejected by administration');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File is too large. Please select an image under 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const result = uploadEvent.target?.result;
+      if (typeof result === 'string') {
+        setRefundBillProof(result);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleExecuteAction = async () => {
     if (!selectedAction) return;
     const { type, item } = selectedAction;
+
+    if (type === 'refund' && !refundBillProof.trim()) {
+      alert('You must attach the bank transfer bill proof before approving a refund.');
+      return;
+    }
+
+    if (type === 'reject_refund' && !rejectionReason.trim()) {
+      alert('You must provide a rejection reason to notify the student.');
+      return;
+    }
+
     setIsProcessingAction(true);
 
     try {
@@ -97,12 +133,18 @@ export function ManualPaymentsQueue() {
       } else if (type === 'refund') {
         await adminFetch(`/api/admin/payments/manual/${item.id}/refund`, {
           method: 'POST',
-          body: JSON.stringify({ note: actionNote.trim() || 'Refund approved' }),
+          body: JSON.stringify({
+            refundProof: refundBillProof.trim(),
+            note: actionNote.trim() || undefined,
+          }),
         });
       } else if (type === 'reject_refund') {
         await adminFetch(`/api/admin/payments/manual/${item.id}/reject-refund`, {
           method: 'POST',
-          body: JSON.stringify({ note: actionNote.trim() || 'Refund rejected' }),
+          body: JSON.stringify({
+            reason: rejectionReason.trim(),
+            note: rejectionReason.trim(),
+          }),
         });
       }
 
@@ -304,114 +346,226 @@ export function ManualPaymentsQueue() {
               <tr>
                 <th>Order #</th>
                 <th>Candidate & Telegram ID</th>
-                <th>Requested Plan</th>
-                <th>Amount (UZS)</th>
-                <th>Status</th>
-                <th>Receipt Proof</th>
-                <th>Date & Reviewer</th>
+                <th>Plan & Amount</th>
+                {activeTab === 'refunds' ? (
+                  <>
+                    <th>Purchase Date</th>
+                    <th>Used Limits</th>
+                    <th>Receiving Card Number</th>
+                    <th>Original Receipt</th>
+                  </>
+                ) : (
+                  <>
+                    <th>Receipt Proof</th>
+                    <th>Created / Date</th>
+                  </>
+                )}
+                <th>Status & Details</th>
                 {(activeTab === 'queue' || activeTab === 'refunds') && <th style={{ textAlign: 'right' }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {requests.map((req) => (
-                <tr key={req.id}>
-                  <td style={{ fontWeight: 600, color: 'var(--primary-light)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <code>{req.orderNumber || `A${req.id.slice(0, 4)}`}</code>
-                      <button
-                        onClick={() => copyToClipboard(req.orderNumber || req.id.slice(0, 4), `order-${req.id}`)}
-                        title="Copy Order #"
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex' }}
-                      >
-                        {copiedId === `order-${req.id}` ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
-                      </button>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{req.alias}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      TG: <code>{req.telegramId}</code>
-                    </div>
-                  </td>
-                  <td>{getPlanBadgeComponent(req.planTier)}</td>
-                  <td className="num-tabular" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {req.amountUzs.toLocaleString('en-US')} UZS
-                  </td>
-                  <td>
-                    {getStatusBadgeComponent(req.status)}
-                    {req.adminNote && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                        Note: {req.adminNote}
+              {requests.map((req) => {
+                const orderDisplay = req.orderNumber || `A${req.id.slice(0, 4)}`;
+                const callsUsed = req.user?.dailyCallsUsed ?? 0;
+                const callLimit = req.user?.dailyLimit ?? (req.planTier === 'PRO' ? 25 : req.planTier === 'BOSS' ? 50 : 10);
+
+                return (
+                  <tr key={req.id}>
+                    {/* Order # */}
+                    <td style={{ fontWeight: 600, color: 'var(--primary-light)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <code>{orderDisplay}</code>
+                        <button
+                          onClick={() => copyToClipboard(orderDisplay, `order-${req.id}`)}
+                          title="Copy Order #"
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex' }}
+                        >
+                          {copiedId === `order-${req.id}` ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
+                        </button>
                       </div>
-                    )}
-                  </td>
-                  <td>
-                    {req.paymentProof ? (
-                      <button
-                        onClick={() => setInspectReceiptUrl({ url: req.paymentProof!, order: req.orderNumber || req.id.slice(0, 4), user: req.alias })}
-                        className="btn-secondary"
-                        style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
-                      >
-                        <Eye size={12} /> View Receipt
-                      </button>
+                    </td>
+
+                    {/* Candidate */}
+                    <td>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{req.alias}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        TG: <code>{req.telegramId}</code>
+                      </div>
+                    </td>
+
+                    {/* Plan & Amount */}
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.2rem' }}>
+                        {getPlanBadgeComponent(req.planTier)}
+                      </div>
+                      <div className="num-tabular" style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.825rem' }}>
+                        {req.amountUzs.toLocaleString('en-US')} UZS
+                      </div>
+                    </td>
+
+                    {/* REFUND SPECIFIC COLUMNS */}
+                    {activeTab === 'refunds' ? (
+                      <>
+                        {/* Purchase Date */}
+                        <td style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                          <div>{new Date(req.createdAt).toLocaleDateString()}</div>
+                          <div style={{ color: 'var(--text-muted)' }}>{new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        </td>
+
+                        {/* Used Limits */}
+                        <td>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: callsUsed > 0 ? 'var(--warning)' : 'var(--success)' }}>
+                            {callsUsed} / {callLimit} calls
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                            {callsUsed < callLimit * 0.1 ? 'Eligible (<10%)' : 'Check Policy'}
+                          </div>
+                        </td>
+
+                        {/* Card to Send Money */}
+                        <td>
+                          {req.refundCardNumber ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: 'var(--bg-surface-elevated)', padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid var(--border-card)' }}>
+                              <code style={{ fontSize: '0.8rem', color: 'var(--primary-light)', fontWeight: 600 }}>{req.refundCardNumber}</code>
+                              <button
+                                onClick={() => copyToClipboard(req.refundCardNumber!.replace(/\s/g, ''), `card-${req.id}`)}
+                                title="Copy Card Number"
+                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex' }}
+                              >
+                                {copiedId === `card-${req.id}` ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Not specified</span>
+                          )}
+                        </td>
+
+                        {/* Original Receipt */}
+                        <td>
+                          {req.paymentProof ? (
+                            <button
+                              onClick={() => setInspectReceiptUrl({ url: req.paymentProof!, order: orderDisplay, user: req.alias, title: 'Original Purchase Receipt' })}
+                              className="btn-secondary"
+                              style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
+                            >
+                              <Eye size={12} /> View Receipt
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>
+                          )}
+                        </td>
+                      </>
                     ) : (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>
+                      <>
+                        {/* Receipt Proof */}
+                        <td>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {req.paymentProof && (
+                              <button
+                                onClick={() => setInspectReceiptUrl({ url: req.paymentProof!, order: orderDisplay, user: req.alias, title: 'Payment Receipt' })}
+                                className="btn-secondary"
+                                style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
+                              >
+                                <Eye size={12} /> Receipt
+                              </button>
+                            )}
+                            {req.refundProof && (
+                              <button
+                                onClick={() => setInspectReceiptUrl({ url: req.refundProof!, order: orderDisplay, user: req.alias, title: 'Refund Transfer Bill' })}
+                                className="btn-secondary"
+                                style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--success)' }}
+                              >
+                                <FileText size={12} /> Refund Bill
+                              </button>
+                            )}
+                            {!req.paymentProof && !req.refundProof && (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>None</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Created / Date */}
+                        <td style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                          <div>{new Date(req.createdAt).toLocaleDateString()} {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                          {req.reviewedAt && (
+                            <div style={{ color: 'var(--success-text)', marginTop: '0.1rem' }}>
+                              by {req.reviewedBy || 'Admin'}
+                            </div>
+                          )}
+                        </td>
+                      </>
                     )}
-                  </td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
-                    <div>{new Date(req.createdAt).toLocaleDateString()} {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                    {req.reviewedAt && (
-                      <div style={{ color: 'var(--success-text)', marginTop: '0.1rem' }}>
-                        by {req.reviewedBy || 'Admin'}
-                      </div>
-                    )}
-                  </td>
-                  {activeTab === 'queue' && (
-                    <td style={{ textAlign: 'right' }}>
-                      {req.status === 'PENDING' && (
-                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                          <button
-                            onClick={() => handleOpenActionModal('approve', req)}
-                            className="btn-success"
-                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
-                          >
-                            <Check size={12} /> Approve
-                          </button>
-                          <button
-                            onClick={() => handleOpenActionModal('reject', req)}
-                            className="btn-danger"
-                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
-                          >
-                            <X size={12} /> Reject
-                          </button>
+
+                    {/* Status & Details */}
+                    <td>
+                      {getStatusBadgeComponent(req.status)}
+                      {req.refundCardNumber && activeTab !== 'refunds' && (
+                        <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                          Card: <code>{req.refundCardNumber}</code>
+                        </div>
+                      )}
+                      {req.refundReason && (
+                        <div style={{ fontSize: '0.725rem', color: 'var(--danger)', marginTop: '0.2rem' }}>
+                          Reason: {req.refundReason}
+                        </div>
+                      )}
+                      {req.adminNote && !req.refundReason && (
+                        <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                          Note: {req.adminNote}
                         </div>
                       )}
                     </td>
-                  )}
-                  {activeTab === 'refunds' && (
-                    <td style={{ textAlign: 'right' }}>
-                      {req.status === 'REFUND_PENDING' && (
-                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                          <button
-                            onClick={() => handleOpenActionModal('refund', req)}
-                            className="btn-success"
-                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
-                          >
-                            <Check size={12} /> Approve Refund
-                          </button>
-                          <button
-                            onClick={() => handleOpenActionModal('reject_refund', req)}
-                            className="btn-danger"
-                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
-                          >
-                            <X size={12} /> Reject Refund
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
+
+                    {/* Actions */}
+                    {activeTab === 'queue' && (
+                      <td style={{ textAlign: 'right' }}>
+                        {req.status === 'PENDING' && (
+                          <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                            <button
+                              onClick={() => handleOpenActionModal('approve', req)}
+                              className="btn-success"
+                              style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
+                            >
+                              <Check size={12} /> Approve
+                            </button>
+                            <button
+                              onClick={() => handleOpenActionModal('reject', req)}
+                              className="btn-danger"
+                              style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
+                            >
+                              <X size={12} /> Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
+
+                    {activeTab === 'refunds' && (
+                      <td style={{ textAlign: 'right' }}>
+                        {req.status === 'REFUND_PENDING' && (
+                          <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                            <button
+                              onClick={() => handleOpenActionModal('refund', req)}
+                              className="btn-success"
+                              style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
+                            >
+                              <Check size={12} /> Approve Refund
+                            </button>
+                            <button
+                              onClick={() => handleOpenActionModal('reject_refund', req)}
+                              className="btn-danger"
+                              style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
+                            >
+                              <X size={12} /> Reject Refund
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -496,7 +650,7 @@ export function ManualPaymentsQueue() {
         </div>
       )}
 
-      {/* Approve / Reject / Refund Dialog */}
+      {/* Action Dialog: Approve Payment / Reject Payment / Approve Refund / Reject Refund */}
       {selectedAction && (
         <div
           style={{
@@ -515,7 +669,7 @@ export function ManualPaymentsQueue() {
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '460px',
+              maxWidth: '480px',
               padding: '1.75rem',
               boxSizing: 'border-box',
               backgroundColor: 'var(--bg-surface)',
@@ -529,35 +683,135 @@ export function ManualPaymentsQueue() {
                 : selectedAction.type === 'reject'
                 ? 'Reject Payment Request'
                 : selectedAction.type === 'refund'
-                ? 'Approve UZS Refund & Downgrade User'
+                ? 'Approve Refund & Attach Transfer Bill'
                 : 'Reject Refund Request'}
             </h3>
+
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1.25rem 0' }}>
               Order <code style={{ color: 'var(--text-primary)' }}>#{selectedAction.item.orderNumber || selectedAction.item.id.slice(0, 4)}</code> for{' '}
               <strong>{selectedAction.item.alias}</strong> ({selectedAction.item.amountUzs.toLocaleString()} UZS for {selectedAction.item.planTier})
             </p>
 
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                {selectedAction.type === 'approve' || selectedAction.type === 'refund'
-                  ? 'Audit Note (Optional)'
-                  : 'Rejection Reason (Sent to Student)'}
-              </label>
-              <input
-                type="text"
-                value={actionNote}
-                onChange={(e) => setActionNote(e.target.value)}
-                placeholder={
-                  selectedAction.type === 'approve'
-                    ? 'Verified card transfer'
-                    : selectedAction.type === 'refund'
-                    ? 'Refund approved and returned to card'
-                    : 'Reason for rejection'
-                }
-                className="input-modern"
-                style={{ width: '100%', boxSizing: 'border-box' }}
-              />
-            </div>
+            {/* Target Card Highlight for Refunds */}
+            {selectedAction.type === 'refund' && selectedAction.item.refundCardNumber && (
+              <div style={{ backgroundColor: 'var(--bg-surface-elevated)', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid var(--border-card)', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>
+                  Send refund ({selectedAction.item.amountUzs.toLocaleString()} UZS) to card:
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <code style={{ fontSize: '1rem', color: 'var(--primary-light)', fontWeight: 700 }}>
+                    {selectedAction.item.refundCardNumber}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(selectedAction.item.refundCardNumber!.replace(/\s/g, ''), 'modal-card')}
+                    className="btn-secondary"
+                    style={{ padding: '0 0.5rem', height: '26px', fontSize: '0.75rem' }}
+                  >
+                    {copiedId === 'modal-card' ? <Check size={12} color="var(--success)" /> : <Copy size={12} />} Copy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* REFUND APPROVAL: Enforce Bank Transfer Bill Upload */}
+            {selectedAction.type === 'refund' && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  Bank Transfer Bill / Proof Image <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label
+                    className="btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      padding: '0.6rem 1rem',
+                      border: '1px dashed var(--primary-light)',
+                      backgroundColor: 'var(--bg-surface-elevated)',
+                    }}
+                  >
+                    <Upload size={15} />
+                    <span>{refundBillProof ? 'Replace Bill Image' : 'Upload Bank Transfer Bill Image'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Or enter Image URL:</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={refundBillProof.startsWith('data:') ? 'Image uploaded (base64)' : refundBillProof}
+                    onChange={(e) => setRefundBillProof(e.target.value)}
+                    placeholder="https://... or upload image above"
+                    disabled={refundBillProof.startsWith('data:')}
+                    className="input-modern"
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: '0.8rem' }}
+                  />
+
+                  {refundBillProof && (
+                    <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <ImageIcon size={14} color="var(--success)" />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>Transfer bill attached & ready to send</span>
+                      <button
+                        onClick={() => setRefundBillProof('')}
+                        style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* REJECT REFUND: Enforce Mandatory Rejection Reason */}
+            {selectedAction.type === 'reject_refund' && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  Rejection Reason (Sent to Student on Telegram) <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="e.g. Limits exceeded (>10% used) or invalid transaction"
+                  className="input-modern"
+                  style={{ width: '100%', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
+
+            {/* Optional Audit Note for other actions */}
+            {(selectedAction.type === 'approve' || selectedAction.type === 'reject' || selectedAction.type === 'refund') && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  {selectedAction.type === 'reject' ? 'Rejection Reason (Sent to Student)' : 'Audit Note (Optional)'}
+                </label>
+                <input
+                  type="text"
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder={
+                    selectedAction.type === 'approve'
+                      ? 'Verified card transfer'
+                      : selectedAction.type === 'refund'
+                      ? 'Payment refund approved and returned to card'
+                      : 'Receipt unverified'
+                  }
+                  className="input-modern"
+                  style={{ width: '100%', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
               <button
@@ -569,7 +823,11 @@ export function ManualPaymentsQueue() {
               </button>
               <button
                 onClick={handleExecuteAction}
-                disabled={isProcessingAction}
+                disabled={
+                  isProcessingAction ||
+                  (selectedAction.type === 'refund' && !refundBillProof.trim()) ||
+                  (selectedAction.type === 'reject_refund' && !rejectionReason.trim())
+                }
                 className={selectedAction.type === 'approve' || selectedAction.type === 'refund' ? 'btn-success' : 'btn-danger'}
               >
                 {isProcessingAction
@@ -577,7 +835,7 @@ export function ManualPaymentsQueue() {
                   : selectedAction.type === 'approve'
                   ? 'Confirm Approval'
                   : selectedAction.type === 'refund'
-                  ? 'Execute Refund'
+                  ? 'Approve & Send Bill'
                   : 'Confirm Rejection'}
               </button>
             </div>

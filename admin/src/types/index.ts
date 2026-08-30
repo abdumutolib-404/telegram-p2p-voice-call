@@ -128,6 +128,9 @@ export interface ManualPaymentRequestItem {
   amountUzs: number;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REFUND_PENDING' | 'REFUNDED';
   paymentProof?: string | null;
+  refundCardNumber?: string | null;
+  refundProof?: string | null;
+  refundReason?: string | null;
   adminNote?: string | null;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
@@ -136,6 +139,8 @@ export interface ManualPaymentRequestItem {
     band: number;
     currentPlan: string;
     isBanned: boolean;
+    dailyCallsUsed?: number;
+    dailyLimit?: number;
   };
 }
 

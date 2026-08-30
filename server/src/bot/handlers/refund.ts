@@ -233,7 +233,7 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
     }
   });
 
-  // Submit UZS Refund Request to Admin
+  // Submit UZS Refund Request to Admin - Step 1: Prompt for receiving card number
   bot.callbackQuery(/^submit_uzs_refund:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => undefined);
     const manualReqId = ctx.match[1];
@@ -249,153 +249,104 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      // 1. Mark request as REFUND_PENDING
-      const updatedReq = await prisma.manualPaymentRequest.update({
+      ctx.session.step = 'awaiting_refund_card';
+      ctx.session.pendingRefundManualReqId = req.id;
+
+      const orderNum = req.orderNumber || `A${req.id.slice(0, 4)}`;
+      const inlineKb = new InlineKeyboard().text('✖️ Cancel Refund', 'cancel_refund');
+
+      await ctx.reply(
+        `💳 <b>Enter Refund Receiving Card</b>\n\n` +
+          `• <b>Order #</b>: <code>${orderNum}</code>\n` +
+          `• <b>Refund Amount</b>: <b>${req.uzsAmount.toLocaleString()} UZS</b>\n\n` +
+          `Please send your <b>16-digit card number</b> (Uzcard, Humo, or Visa/MasterCard) where you want to receive the funds:\n\n` +
+          `⚠️ <i>Once refund is approved, the money will be sent to this card number. If user enters a wrong card number, administration is not responsible for the money sent to it.</i>`,
+        { parse_mode: 'HTML', reply_markup: inlineKb }
+      );
+    } catch (err) {
+      console.error('[Refund] UZS refund init failed:', err);
+      await ctx.reply('⚠️ Failed to initiate refund. Please contact @PairTalkSupport.');
+    }
+  });
+
+  // Step 2: Handle receiving card text input from student
+  bot.on('message:text', async (ctx, next) => {
+    if (ctx.session.step !== 'awaiting_refund_card' || !ctx.session.pendingRefundManualReqId) {
+      return next();
+    }
+
+    const text = ctx.message.text.trim();
+    const digitsOnly = text.replace(/\D/g, '');
+
+    if (digitsOnly.length < 16 || digitsOnly.length > 19) {
+      const inlineKb = new InlineKeyboard().text('✖️ Cancel Refund', 'cancel_refund');
+      await ctx.reply(
+        `⚠️ <b>Invalid Card Number</b>\n\n` +
+          `Please enter a valid 16-digit card number (e.g. <code>8600 1234 5678 9012</code>):\n\n` +
+          `⚠️ <i>Once refund is approved, the money will be sent to this card number. If user enters a wrong card number, administration is not responsible for the money sent to it.</i>`,
+        { parse_mode: 'HTML', reply_markup: inlineKb }
+      );
+      return;
+    }
+
+    const formattedCard = digitsOnly.length === 16
+      ? `${digitsOnly.slice(0, 4)} ${digitsOnly.slice(4, 8)} ${digitsOnly.slice(8, 12)} ${digitsOnly.slice(12, 16)}`
+      : digitsOnly;
+
+    const manualReqId = ctx.session.pendingRefundManualReqId;
+
+    try {
+      const req = await prisma.manualPaymentRequest.findUnique({
+        where: { id: manualReqId },
+        include: { user: true },
+      });
+
+      if (!req) {
+        ctx.session.step = 'idle';
+        ctx.session.pendingRefundManualReqId = undefined;
+        await ctx.reply('⚠️ Payment record not found.');
+        return;
+      }
+
+      // Mark request as REFUND_PENDING with receiving card stored
+      await prisma.manualPaymentRequest.update({
         where: { id: req.id },
         data: {
           status: 'REFUND_PENDING',
-          adminNote: `[REFUND_REQUESTED] User submitted refund request via Bot on ${new Date().toISOString()}`,
+          refundCardNumber: formattedCard,
+          adminNote: `[REFUND_REQUESTED] User submitted refund request for card: ${formattedCard} on ${new Date().toISOString()}`,
         },
       });
 
+      ctx.session.step = 'idle';
+      ctx.session.pendingRefundManualReqId = undefined;
+
       const orderNum = req.orderNumber || `A${req.id.slice(0, 4)}`;
       const supportUser = (env.MANUAL_PAYMENT_ADMIN_USERNAME || 'PairTalkSupport').replace(/^@/, '');
-
-      // 2. Dispatch interactive alert to all ADMIN_TELEGRAM_IDS
-      if (env.ADMIN_TELEGRAM_IDS && env.ADMIN_TELEGRAM_IDS.length > 0) {
-        const adminInlineKb = new InlineKeyboard()
-          .text('✅ Approve Refund', `adm_approve_refund:${req.id}`)
-          .text('❌ Reject Refund', `adm_reject_refund:${req.id}`);
-
-        const callsUsed = req.user ? await getUserCallsUsedThisPeriod(req.userId, req.user) : 0;
-        const callLimit = getDailyLimitForPlan(req.plan) || 10;
-
-        for (const adminId of env.ADMIN_TELEGRAM_IDS) {
-          await ctx.api.sendMessage(
-            adminId,
-            `💸 <b>New UZS Refund Request</b>\n\n` +
-              `• <b>Order #</b>: <code>${orderNum}</code>\n` +
-              `• <b>Candidate</b>: <code>${req.alias}</code> (ID: <code>${req.telegramId}</code>)\n` +
-              `• <b>Plan Tier</b>: <b>${req.plan}</b>\n` +
-              `• <b>Amount</b>: <b>${req.uzsAmount.toLocaleString()} UZS</b>\n` +
-              `• <b>Usage</b>: <code>${callsUsed} / ${callLimit} calls used</code>\n` +
-              `• <b>Purchase Date</b>: <code>${new Date(req.createdAt).toISOString().slice(0, 16).replace('T', ' ')}</code>\n\n` +
-              `<i>Review and process this request below or in the Admin Panel:</i>`,
-            { parse_mode: 'HTML', reply_markup: adminInlineKb }
-          ).catch((e: unknown) => {
-            console.warn(`[Refund] Failed to send admin alert to ${adminId}:`, e);
-          });
-        }
-      }
 
       await ctx.reply(
         `✅ <b>Refund Request Forwarded to Administration</b>\n\n` +
           `• <b>Order #</b>: <code>${orderNum}</code>\n` +
           `• <b>Plan</b>: <b>${req.plan}</b>\n` +
-          `• <b>Amount</b>: <b>${req.uzsAmount.toLocaleString()} UZS</b>\n\n` +
-          `Our billing team will review and process the reversal to your originating payment card within <b>1–3 business days</b>.\n\n` +
+          `• <b>Amount</b>: <b>${req.uzsAmount.toLocaleString()} UZS</b>\n` +
+          `• <b>Receiving Card</b>: <code>${formattedCard}</code>\n\n` +
+          `Our billing team will review your request in the Admin Panel and process the bank transfer within <b>1–3 business days</b>.\n` +
+          `Once completed, you will receive the official bank transfer bill proof here.\n\n` +
           `If you have any questions, you can message @${supportUser}.`,
         { parse_mode: 'HTML' }
       );
     } catch (err) {
-      console.error('[Refund] UZS refund request failed:', err);
+      console.error('[Refund] Failed to record refund card:', err);
+      ctx.session.step = 'idle';
+      ctx.session.pendingRefundManualReqId = undefined;
       await ctx.reply('⚠️ Failed to submit refund request. Please contact @PairTalkSupport.');
-    }
-  });
-
-  // Admin In-Bot Action: Approve UZS Refund
-  bot.callbackQuery(/^adm_approve_refund:(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => undefined);
-    const adminIdStr = String(ctx.from?.id);
-    if (!env.ADMIN_TELEGRAM_IDS.includes(adminIdStr)) {
-      await ctx.reply('⛔ Unauthorized: You are not in ADMIN_TELEGRAM_IDS.');
-      return;
-    }
-
-    const requestId = ctx.match[1];
-    try {
-      const result = await refundManualPaymentRequest({
-        requestId,
-        adminId: `tg_admin_${adminIdStr}`,
-        note: 'Approved via Telegram Admin Alert',
-      });
-
-      const orderNum = result.request.orderNumber || `A${result.request.id.slice(0, 4)}`;
-
-      // Notify candidate
-      if (result.user?.telegramId) {
-        await ctx.api.sendMessage(
-          result.user.telegramId.toString(),
-          `🎉 <b>Refund Approved & Processed!</b>\n\n` +
-            `Your refund of <b>${result.request.uzsAmount.toLocaleString()} UZS</b> for Order #<code>${orderNum}</code> has been approved.\n` +
-            `The amount will appear on your payment card in 1–3 business days.\n` +
-            `Your account has been reverted to the <b>FREE Plan</b>.`,
-          { parse_mode: 'HTML' }
-        ).catch(() => undefined);
-      }
-
-      await ctx.editMessageText(
-        `✅ <b>Refund Approved by Admin</b>\n\n` +
-          `• <b>Order #</b>: <code>${orderNum}</code>\n` +
-          `• <b>Candidate</b>: <code>${result.request.alias}</code>\n` +
-          `• <b>Amount</b>: <b>${result.request.uzsAmount.toLocaleString()} UZS</b>\n` +
-          `• <b>Status</b>: <code>REFUNDED</code> (Plan downgraded to FREE)\n` +
-          `• <b>Processed By</b>: <code>${adminIdStr}</code>`,
-        { parse_mode: 'HTML' }
-      );
-    } catch (err: any) {
-      console.error('[Admin Refund Error]', err);
-      await ctx.reply(`⚠️ Failed to approve refund: ${err.message}`);
-    }
-  });
-
-  // Admin In-Bot Action: Reject UZS Refund
-  bot.callbackQuery(/^adm_reject_refund:(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => undefined);
-    const adminIdStr = String(ctx.from?.id);
-    if (!env.ADMIN_TELEGRAM_IDS.includes(adminIdStr)) {
-      await ctx.reply('⛔ Unauthorized: You are not in ADMIN_TELEGRAM_IDS.');
-      return;
-    }
-
-    const requestId = ctx.match[1];
-    try {
-      const result = await rejectManualPaymentRefund({
-        requestId,
-        adminId: `tg_admin_${adminIdStr}`,
-        note: 'Rejected via Telegram Admin Alert',
-      });
-
-      const orderNum = result.request.orderNumber || `A${result.request.id.slice(0, 4)}`;
-
-      // Notify candidate
-      if (result.user?.telegramId) {
-        await ctx.api.sendMessage(
-          result.user.telegramId.toString(),
-          `ℹ️ <b>Refund Request Decision</b>\n\n` +
-            `Your refund request for Order #<code>${orderNum}</code> was reviewed and not approved by administration.\n` +
-            `Your <b>${result.request.plan} Plan</b> remains active.\n\n` +
-            `For inquiries, contact @${(env.MANUAL_PAYMENT_ADMIN_USERNAME || 'PairTalkSupport').replace(/^@/, '')}.`,
-          { parse_mode: 'HTML' }
-        ).catch(() => undefined);
-      }
-
-      await ctx.editMessageText(
-        `❌ <b>Refund Rejected by Admin</b>\n\n` +
-          `• <b>Order #</b>: <code>${orderNum}</code>\n` +
-          `• <b>Candidate</b>: <code>${result.request.alias}</code>\n` +
-          `• <b>Plan</b>: <b>${result.request.plan}</b> (Remains ACTIVE)\n` +
-          `• <b>Processed By</b>: <code>${adminIdStr}</code>`,
-        { parse_mode: 'HTML' }
-      );
-    } catch (err: any) {
-      console.error('[Admin Refund Error]', err);
-      await ctx.reply(`⚠️ Failed to reject refund: ${err.message}`);
     }
   });
 
   // Cancel refund prompt
   bot.callbackQuery('cancel_refund', async (ctx) => {
+    ctx.session.step = 'idle';
+    ctx.session.pendingRefundManualReqId = undefined;
     await ctx.answerCallbackQuery({ text: 'Refund cancelled. Your plan remains active.' }).catch(() => undefined);
     await ctx.reply('👍 Refund cancelled. Your subscription plan remains active.');
   });

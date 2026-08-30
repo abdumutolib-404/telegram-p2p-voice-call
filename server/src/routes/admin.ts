@@ -538,6 +538,9 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
       amountUzs: r.uzsAmount,
       status: r.status,
       paymentProof: r.paymentProof,
+      refundCardNumber: r.refundCardNumber,
+      refundProof: r.refundProof,
+      refundReason: r.refundReason,
       adminNote: r.adminNote,
       reviewedBy: r.reviewedBy,
       reviewedAt: r.reviewedAt ? new Date(r.reviewedAt).toISOString() : null,
@@ -547,6 +550,8 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
             band: r.user.band,
             currentPlan: r.user.plan,
             isBanned: r.user.isBanned || r.user.isPermanentlyBanned,
+            dailyCallsUsed: r.user.dailyCallsUsed,
+            dailyLimit: r.user.dailyLimit,
           }
         : undefined,
     }));
@@ -558,6 +563,7 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
           item.alias.toLowerCase().includes(search) ||
           item.telegramId.toLowerCase().includes(search) ||
           item.planTier.toLowerCase().includes(search) ||
+          (item.refundCardNumber && item.refundCardNumber.toLowerCase().includes(search)) ||
           (item.adminNote && item.adminNote.toLowerCase().includes(search))
         );
       });
@@ -662,34 +668,61 @@ router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res)
   }
 });
 
-// POST /api/admin/payments/manual/:id/refund (Protected - Process UZS Refund)
+// POST /api/admin/payments/manual/:id/refund (Protected - Process UZS Refund with Transfer Bill)
 router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { note } = req.body;
+  const { refundProof, note } = req.body;
   const adminId = (req as any).adminUser?.telegramId || 'admin';
+
+  if (!refundProof || typeof refundProof !== 'string' || !refundProof.trim()) {
+    res.status(400).json({ error: 'Bank transfer bill / proof image is strictly required to approve a refund.' });
+    return;
+  }
 
   try {
     const result = await refundManualPaymentRequest({
       requestId: id,
       adminId,
+      refundProof: refundProof.trim(),
       note,
     });
 
     if (adminBotInstance && result.user?.telegramId) {
       const orderNum = result.request.orderNumber || `A${result.request.id.slice(0, 4)}`;
-      await adminBotInstance.api.sendMessage(
-        result.user.telegramId.toString(),
-        `🎉 <b>Refund Approved & Processed!</b>\n\n` +
-          `Your refund of <b>${result.request.uzsAmount.toLocaleString()} UZS</b> for Order #<code>${orderNum}</code> has been approved.\n` +
-          `The amount will appear on your payment card in 1–3 business days.\n` +
-          `Your account has been reverted to the <b>FREE Plan</b>.`,
-        { parse_mode: 'HTML' }
-      ).catch(() => undefined);
+      const cardDisplay = result.request.refundCardNumber || 'your registered card';
+      const caption =
+        `🎉 <b>Refund Approved & Money Sent!</b>\n\n` +
+        `Your refund of <b>${result.request.uzsAmount.toLocaleString()} UZS</b> for Order #<code>${orderNum}</code> has been transferred to your card:\n` +
+        `💳 <code>${cardDisplay}</code>\n\n` +
+        `📎 <i>The official bank transfer bill is attached above.</i>\n\n` +
+        `Your account has been reverted to the <b>FREE Plan</b>. Thank you for using PairTalk!`;
+
+      // Try sending with photo if refundProof is a valid URL or data URI
+      let sent = false;
+      if (refundProof.startsWith('http://') || refundProof.startsWith('https://')) {
+        try {
+          await adminBotInstance.api.sendPhoto(result.user.telegramId.toString(), refundProof, {
+            caption,
+            parse_mode: 'HTML',
+          });
+          sent = true;
+        } catch {
+          sent = false;
+        }
+      }
+
+      if (!sent) {
+        await adminBotInstance.api.sendMessage(
+          result.user.telegramId.toString(),
+          caption,
+          { parse_mode: 'HTML' }
+        ).catch(() => undefined);
+      }
     }
 
     res.json({
       success: true,
-      message: 'Payment refund approved and plan revoked.',
+      message: 'Payment refund approved and bill dispatched.',
       request: {
         ...result.request,
         telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
@@ -701,17 +734,24 @@ router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res)
   }
 });
 
-// POST /api/admin/payments/manual/:id/reject-refund (Protected - Reject UZS Refund)
+// POST /api/admin/payments/manual/:id/reject-refund (Protected - Reject UZS Refund with Mandatory Reason)
 router.post('/payments/manual/:id/reject-refund', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { note } = req.body;
+  const { reason, note } = req.body;
   const adminId = (req as any).adminUser?.telegramId || 'admin';
+  const rejectionReason = (typeof reason === 'string' && reason.trim()) || (typeof note === 'string' && note.trim());
+
+  if (!rejectionReason) {
+    res.status(400).json({ error: 'Rejection reason is strictly required to reject a refund request.' });
+    return;
+  }
 
   try {
     const result = await rejectManualPaymentRefund({
       requestId: id,
       adminId,
-      note,
+      reason: rejectionReason,
+      note: rejectionReason,
     });
 
     if (adminBotInstance && result.request?.telegramId) {
@@ -719,11 +759,11 @@ router.post('/payments/manual/:id/reject-refund', adminAuthMiddleware, async (re
       const supportContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
       await adminBotInstance.api.sendMessage(
         result.request.telegramId.toString(),
-        `ℹ️ <b>Refund Request Decision</b>\n\n` +
-          `Your refund request for Order #<code>${orderNum}</code> was reviewed and not approved by administration.\n` +
-          (note ? `<b>Reason:</b> ${note}\n\n` : '') +
+        `❌ <b>Refund Request Rejected</b>\n\n` +
+          `Your refund request for Order #<code>${orderNum}</code> was reviewed by administration and not approved.\n\n` +
+          `<b>Reason:</b>\n${rejectionReason}\n\n` +
           `Your <b>${result.request.plan} Plan</b> remains active.\n\n` +
-          `Contact ${supportContact} if you need assistance.`,
+          `If you have questions, please contact ${supportContact}.`,
         { parse_mode: 'HTML' }
       ).catch(() => undefined);
     }
