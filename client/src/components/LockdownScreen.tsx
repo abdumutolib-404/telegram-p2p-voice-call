@@ -101,11 +101,12 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       iconColor: 'text-amber-400',
     },
     exhausted_quota: {
-      badge: 'QUOTA EXHAUSTED',
+      badge: 'LIMIT REACHED',
       badgeColor: 'border-purple-500/40 text-purple-400 bg-purple-950/40',
-      title: 'MONTHLY CALL CREDITS DEPLETED',
+      title: 'PLAN LIMIT REACHED',
       description:
-        'You have utilized all call credits allocated for your current billing cycle. Upgrade your plan to continue practicing speaking sessions.',
+        message ||
+        'You have reached your practice call allowance. Upgrade your plan via @PairTalkBot or wait until your next monthly renewal date.',
       icon: CreditCard,
       iconColor: 'text-purple-400',
     },

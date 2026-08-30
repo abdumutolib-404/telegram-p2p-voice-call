@@ -5,8 +5,6 @@ import { useLiveKit } from './hooks/useLiveKit';
 import { LockdownScreen } from './components/LockdownScreen';
 import { RadarScreen } from './components/RadarScreen';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
-import { PlansModal } from './components/PlansModal';
-import { ProfileModal } from './components/ProfileModal';
 import { PrivacyScreen } from './components/PrivacyScreen';
 import { GuidelinesScreen } from './components/GuidelinesScreen';
 import { logger } from './services/logger';
@@ -16,9 +14,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Radio,
-  User,
   ShieldCheck,
-  Sparkles,
   BookOpen,
   Shield,
   PhoneCall,
@@ -27,7 +23,7 @@ import {
 type ActiveView = 'main' | 'privacy' | 'guidelines';
 
 export const App: React.FC = () => {
-  // 1. Navigation & Modal State (unconditional)
+  // 1. Navigation State (unconditional)
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     if (typeof window === 'undefined') return 'main';
     const path = (window.location.pathname + window.location.hash).toLowerCase();
@@ -35,9 +31,6 @@ export const App: React.FC = () => {
     if (path.includes('guidelines')) return 'guidelines';
     return 'main';
   });
-
-  const [isPlansModalOpen, setIsPlansModalOpen] = useState(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // 2. Application Core State Machine (unconditional)
   const [appState, setAppState] = useState<AppState>('idle');
@@ -452,10 +445,6 @@ export const App: React.FC = () => {
     setAppState('radar');
   };
 
-  const handleToggleDnd = (nextDnd: boolean) => {
-    setUserData((prev) => ({ ...prev, dnd: nextDnd }));
-  };
-
   // =========================================================================
   // VIEW ROUTING DISPATCHER (Clean JSX returns AFTER all hooks executed)
   // =========================================================================
@@ -485,30 +474,22 @@ export const App: React.FC = () => {
   // 2. Deterministic Access-Control Lockdown Screen
   if (appState === 'lockdown') {
     return (
-      <>
-        <LockdownScreen
-          reason={lockdownReason}
-          message={errorMessage}
-          bannedUntil={lockdownBannedUntil}
-          retryAfterSeconds={lockdownRetrySeconds}
-          onRetry={initAuth}
-          onOpenPlans={() => setIsPlansModalOpen(true)}
-        />
-        <PlansModal
-          isOpen={isPlansModalOpen}
-          onClose={() => setIsPlansModalOpen(false)}
-          currentPlan={userData.plan}
-        />
-      </>
+      <LockdownScreen
+        reason={lockdownReason}
+        message={errorMessage}
+        bannedUntil={lockdownBannedUntil}
+        retryAfterSeconds={lockdownRetrySeconds}
+        onRetry={initAuth}
+      />
     );
   }
 
-  // 3. Ready Screen (Cyberpunk Hero & Matchmaking Launcher)
+  // 3. Ready Screen (Clean Cyberpunk Matchmaking Launcher)
   if (appState === 'ready') {
     const alias = userData.alias || (userData.telegramId ? `P2P-${String(userData.telegramId).slice(-8).toUpperCase()}` : 'P2P-CANDIDATE');
     return (
       <div className="flex flex-col justify-between min-h-screen p-5 md:p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-cyan-500">
-        {/* Top Navbar */}
+        {/* Top Minimal Bar */}
         <div className="w-full max-w-md mx-auto flex items-center justify-between pt-2">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-500/10">
@@ -520,24 +501,9 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsPlansModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/40 font-mono text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{userData.plan || 'PLANS'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsProfileModalOpen(true)}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition-colors cursor-pointer"
-              aria-label="Open profile modal"
-            >
-              <User className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300">
+            <span className="text-[10px] text-slate-500 uppercase">BAND</span>
+            <span className="font-bold text-cyan-400">{(userData.band || 7).toFixed(1)}</span>
           </div>
         </div>
 
@@ -551,32 +517,16 @@ export const App: React.FC = () => {
 
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase border border-cyan-500/40 text-cyan-400 bg-cyan-950/40 mb-3">
             <ShieldCheck className="w-3 h-3" />
-            <span>AUTHENTICATED IELTS RADAR</span>
+            <span>IELTS SPEAKING RADAR</span>
           </div>
 
           <h1 className="text-2xl font-mono font-black tracking-tight text-white uppercase mb-2">
             READY TO PRACTICE?
           </h1>
 
-          <p className="text-xs text-slate-400 max-w-xs mx-auto mb-6 leading-relaxed font-mono">
-            Autonomous matchmaking pairs you with a peer having complementary skill strengths for focused IELTS Speaking sessions.
+          <p className="text-xs text-slate-400 max-w-xs mx-auto mb-8 leading-relaxed font-mono">
+            Autonomous matchmaking pairs you with a fellow candidate at your target band for focused IELTS Speaking practice.
           </p>
-
-          {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-3 gap-2 p-3 mb-6 rounded-2xl bg-[#090D18] border border-slate-800 text-center font-mono">
-            <div>
-              <div className="text-[9px] text-slate-500 uppercase">Target Band</div>
-              <div className="text-sm font-black text-cyan-400">{(userData.band || 7).toFixed(1)}</div>
-            </div>
-            <div>
-              <div className="text-[9px] text-slate-500 uppercase">Calls Left</div>
-              <div className="text-sm font-black text-white">{userData.callsRemaining ?? 3}</div>
-            </div>
-            <div>
-              <div className="text-[9px] text-slate-500 uppercase">Max Time</div>
-              <div className="text-sm font-black text-purple-400">{userData.maxCallDuration ?? 15}m</div>
-            </div>
-          </div>
 
           <button
             type="button"
@@ -584,11 +534,11 @@ export const App: React.FC = () => {
             className="w-full py-4 px-8 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 text-slate-950 rounded-2xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-transform active:scale-95 shadow-xl shadow-cyan-500/25 cursor-pointer"
           >
             <Radio className="w-5 h-5 animate-pulse motion-reduce:animate-none" />
-            <span>START SEARCHING</span>
+            <span>START SPEAKING PRACTICE</span>
           </button>
         </div>
 
-        {/* Bottom Legal & Community Links */}
+        {/* Bottom Policy Links */}
         <div className="w-full max-w-md mx-auto pt-4 border-t border-slate-900 flex items-center justify-between text-[11px] font-mono text-slate-500">
           <button
             type="button"
@@ -607,27 +557,9 @@ export const App: React.FC = () => {
             className="hover:text-cyan-400 flex items-center gap-1 transition-colors cursor-pointer"
           >
             <Shield className="w-3.5 h-3.5" />
-            <span>Privacy</span>
+            <span>Privacy & Refunds</span>
           </button>
         </div>
-
-        {/* Modals */}
-        <PlansModal
-          isOpen={isPlansModalOpen}
-          onClose={() => setIsPlansModalOpen(false)}
-          currentPlan={userData.plan}
-        />
-
-        <ProfileModal
-          isOpen={isProfileModalOpen}
-          onClose={() => setIsProfileModalOpen(false)}
-          userData={userData}
-          onOpenPlans={() => {
-            setIsProfileModalOpen(false);
-            setIsPlansModalOpen(true);
-          }}
-          onToggleDnd={handleToggleDnd}
-        />
       </div>
     );
   }
@@ -721,23 +653,6 @@ export const App: React.FC = () => {
         <span>STATUS: IDLE</span>
         <span>PAIRIAL V2</span>
       </div>
-
-      <PlansModal
-        isOpen={isPlansModalOpen}
-        onClose={() => setIsPlansModalOpen(false)}
-        currentPlan={userData.plan}
-      />
-
-      <ProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        userData={userData}
-        onOpenPlans={() => {
-          setIsProfileModalOpen(false);
-          setIsPlansModalOpen(true);
-        }}
-        onToggleDnd={handleToggleDnd}
-      />
     </div>
   );
 };

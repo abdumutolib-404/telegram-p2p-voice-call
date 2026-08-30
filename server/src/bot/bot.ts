@@ -4,6 +4,7 @@ import { setupStartCommand } from './commands/start';
 import { setupAdminCommand } from './commands/admin';
 import { setupMenuHandlers } from './handlers/menu';
 import { setupPaymentHandlers } from './handlers/payments';
+import { setupRefundHandlers } from './handlers/refund';
 import { setupCallbackHandlers } from './handlers/callbacks';
 import { setupPostCallCallbackHandlers } from './handlers/postCall';
 import { prisma } from '../config/database';
@@ -134,6 +135,7 @@ export function createBot(token: string): Bot<MyContext> {
   setupAdminCommand(bot);
   setupMenuHandlers(bot);
   setupPaymentHandlers(bot);
+  setupRefundHandlers(bot);
   setupCallbackHandlers(bot);
   setupPostCallCallbackHandlers(bot);
 
