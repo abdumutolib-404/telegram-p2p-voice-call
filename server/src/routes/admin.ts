@@ -1125,8 +1125,8 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const { action, reason } = req.body;
 
-  if (!action || !['warn', 'block', 'ban', 'unblock'].includes(action)) {
-    return res.status(400).json({ error: 'Invalid moderation action. Must be warn, block, ban, or unblock.' });
+  if (!action || !['warn', 'block', 'ban', 'unblock', 'reset-calls', 'reset-score'].includes(action)) {
+    return res.status(400).json({ error: 'Invalid moderation action. Must be warn, block, ban, unblock, reset-calls, or reset-score.' });
   }
 
   try {
@@ -1177,6 +1177,23 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
         };
         notificationText = `✅ *Account Restored*\n\nYour account restriction has been lifted by the administration. You can now use PairTalk again! Please ensure you adhere to our community guidelines.`;
         break;
+      case 'reset-calls':
+        updateData = {
+          dailyCallsUsed: 0,
+          lastCallDate: new Date().toISOString().slice(0, 7),
+        };
+        notificationText = `🔄 *Monthly Practice Calls Counter Reset*\n\nYour used calls counter has been reset to 0 by an administrator. You can now enjoy full practice calling allowances!`;
+        break;
+      case 'reset-score':
+        updateData = {
+          subFC: 6,
+          subLR: 6,
+          subGRA: 6,
+          subP: 6,
+          band: 6.0,
+        };
+        notificationText = `📊 *Band Score Recalibrated*\n\nYour IELTS band scores have been recalibrated to baseline by an administrator.`;
+        break;
     }
 
     const updated = await prisma.user.update({
@@ -1200,14 +1217,22 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       telegramId: updated.telegramId.toString(),
       alias: updated.alias,
       planTier: updated.plan.toLowerCase(),
+      customPlanName: updated.customPlanName || null,
       status,
       subscores: {
         fc: updated.subFC,
         lr: updated.subLR,
         gra: updated.subGRA,
         p: updated.subP,
+        band: updated.band,
       },
+      dailyLimit: updated.dailyLimit,
+      dailyCallsUsed: updated.dailyCallsUsed,
+      maxDuration: updated.maxDuration,
+      retentionOverride: updated.retentionOverride || null,
       warningCount: updated.warningCount,
+      isPermanentlyBanned: updated.isPermanentlyBanned,
+      bannedUntil: updated.bannedUntil ? updated.bannedUntil.toISOString() : null,
       createdAt: updated.createdAt.toISOString(),
     });
   } catch (err) {
