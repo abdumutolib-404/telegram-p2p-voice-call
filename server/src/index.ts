@@ -151,18 +151,39 @@ const io = new SocketIOServer(server, {
 });
 
 let bot: Bot<MyContext> | null = null;
+
+async function startBotWithRetry(botInstance: Bot<MyContext>): Promise<void> {
+  let isRunning = true;
+  const stopHandler = () => {
+    isRunning = false;
+  };
+  process.once('SIGINT', stopHandler);
+  process.once('SIGTERM', stopHandler);
+
+  while (isRunning) {
+    try {
+      console.log('[Grammy Bot] Starting bot polling...');
+      await botInstance.start({
+        onStart: (botInfo: UserFromGetMe) => {
+          console.log(`[Grammy Bot] Bot @${botInfo.username} launched and listening for updates.`);
+        },
+        drop_pending_updates: false,
+      });
+      break;
+    } catch (error: any) {
+      if (!isRunning) break;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`[Grammy Bot] Polling interrupted (${errMsg}). Re-attempting in 3 seconds...`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+}
+
 if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
   try {
     bot = createBot(env.BOT_TOKEN);
-    bot.start({
-      onStart: (botInfo: UserFromGetMe) => {
-        console.log(`[Grammy Bot] Bot @${botInfo.username} launched successfully.`);
-      },
-    }).catch((error: unknown) => {
-      console.error('[Grammy Bot] polling_failed', {
-        error: error instanceof Error ? error.message : 'unknown_error',
-      });
-    });
+    setAdminBot(bot);
+    void startBotWithRetry(bot);
   } catch (error: unknown) {
     console.error('[Grammy Bot] startup_failed', {
       error: error instanceof Error ? error.message : 'unknown_error',

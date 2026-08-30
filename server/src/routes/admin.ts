@@ -298,19 +298,28 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
 
     // Dispatch OTP via Telegram bot
     let sentCount = 0;
-    if (adminBotInstance && env.ADMIN_TELEGRAM_IDS.length > 0) {
+    const botToUse = adminBotInstance || (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token' ? new Bot<MyContext>(env.BOT_TOKEN) : null);
+
+    if (botToUse && env.ADMIN_TELEGRAM_IDS.length > 0) {
       for (const adminIdStr of env.ADMIN_TELEGRAM_IDS) {
         try {
-          await adminBotInstance.api.sendMessage(
+          console.log('[AdminAuth] Dispatching OTP to Telegram ID:', adminIdStr);
+          await botToUse.api.sendMessage(
             adminIdStr,
             `🔐 *Admin Login Verification*\n\nYour 6-digit OTP code is:\n\`${otp}\`\n\nExpires in 5 minutes. Do not share this code.`,
             { parse_mode: 'Markdown' }
           );
           sentCount += 1;
+          console.log('[AdminAuth] OTP successfully dispatched to:', adminIdStr);
         } catch (err: unknown) {
           console.error('[AdminAuth] Failed to dispatch OTP to Telegram ID', adminIdStr, err instanceof Error ? err.message : err);
         }
       }
+    } else {
+      console.warn('[AdminAuth] No active bot instance or empty ADMIN_TELEGRAM_IDS:', {
+        hasBot: Boolean(botToUse),
+        adminCount: env.ADMIN_TELEGRAM_IDS.length,
+      });
     }
 
     if (sentCount === 0 && env.NODE_ENV === 'production') {

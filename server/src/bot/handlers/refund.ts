@@ -271,14 +271,17 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
 
   // Step 2: Handle receiving card text input from student
   bot.on('message:text', async (ctx, next) => {
-    if (ctx.session.step !== 'awaiting_refund_card' || !ctx.session.pendingRefundManualReqId) {
+    const text = ctx.message.text.trim();
+    const digitsOnly = text.replace(/\D/g, '');
+    const isCardFormat = digitsOnly.length >= 16 && digitsOnly.length <= 19;
+
+    const inAwaitingStep = ctx.session.step === 'awaiting_refund_card' && ctx.session.pendingRefundManualReqId;
+
+    if (!inAwaitingStep && !isCardFormat) {
       return next();
     }
 
-    const text = ctx.message.text.trim();
-    const digitsOnly = text.replace(/\D/g, '');
-
-    if (digitsOnly.length < 16 || digitsOnly.length > 19) {
+    if (inAwaitingStep && !isCardFormat) {
       const inlineKb = new InlineKeyboard().text('✖️ Cancel Refund', 'cancel_refund');
       await ctx.reply(
         `⚠️ <b>Invalid Card Number</b>\n\n` +
@@ -293,19 +296,31 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
       ? `${digitsOnly.slice(0, 4)} ${digitsOnly.slice(4, 8)} ${digitsOnly.slice(8, 12)} ${digitsOnly.slice(12, 16)}`
       : digitsOnly;
 
-    const manualReqId = ctx.session.pendingRefundManualReqId;
+    const telegramId = BigInt(ctx.from.id);
 
     try {
-      const req = await prisma.manualPaymentRequest.findUnique({
-        where: { id: manualReqId },
-        include: { user: true },
-      });
+      let req = null;
+      if (ctx.session.pendingRefundManualReqId) {
+        req = await prisma.manualPaymentRequest.findUnique({
+          where: { id: ctx.session.pendingRefundManualReqId },
+          include: { user: true },
+        });
+      }
 
       if (!req) {
-        ctx.session.step = 'idle';
-        ctx.session.pendingRefundManualReqId = undefined;
-        await ctx.reply('⚠️ Payment record not found.');
-        return;
+        // Fallback: look for the most recent active or refund-pending request for this user
+        req = await prisma.manualPaymentRequest.findFirst({
+          where: {
+            telegramId,
+            status: { in: ['APPROVED', 'REFUND_PENDING', 'PENDING'] },
+          },
+          orderBy: { createdAt: 'desc' },
+          include: { user: true },
+        });
+      }
+
+      if (!req) {
+        return next();
       }
 
       // Mark request as REFUND_PENDING with receiving card stored

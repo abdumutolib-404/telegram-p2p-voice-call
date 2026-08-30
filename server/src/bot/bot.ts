@@ -9,6 +9,45 @@ import { setupCallbackHandlers } from './handlers/callbacks';
 import { setupPostCallCallbackHandlers } from './handlers/postCall';
 import { prisma } from '../config/database';
 import { checkRateLimit } from '../services/rateLimitMatrix';
+import { getRedis } from '../config/redis';
+import { env } from '../config/env';
+
+const memorySessions = new Map<string, SessionData>();
+
+function createRedisSessionStorage() {
+  return {
+    async read(key: string): Promise<SessionData | undefined> {
+      try {
+        const redis = getRedis();
+        const data = await redis.get(`bot:session:${key}`);
+        if (data) {
+          return JSON.parse(data);
+        }
+      } catch {
+        // Fallback to memory
+      }
+      return memorySessions.get(key);
+    },
+    async write(key: string, value: SessionData): Promise<void> {
+      memorySessions.set(key, value);
+      try {
+        const redis = getRedis();
+        await redis.set(`bot:session:${key}`, JSON.stringify(value), 'EX', 86400 * 7); // 7 days
+      } catch {
+        // Fallback to memory
+      }
+    },
+    async delete(key: string): Promise<void> {
+      memorySessions.delete(key);
+      try {
+        const redis = getRedis();
+        await redis.del(`bot:session:${key}`);
+      } catch {
+        // Fallback to memory
+      }
+    },
+  };
+}
 
 export function createBot(token: string): Bot<MyContext> {
   const bot = new Bot<MyContext>(token);
@@ -32,10 +71,11 @@ export function createBot(token: string): Bot<MyContext> {
     return prev(method, payload, signal);
   });
 
-  // Session middleware
+  // Persistent Redis Session middleware (persists across container restarts)
   bot.use(
     session({
       initial: (): SessionData => ({ step: 'idle' }),
+      storage: createRedisSessionStorage(),
     })
   );
 
@@ -43,6 +83,16 @@ export function createBot(token: string): Bot<MyContext> {
   bot.use(async (ctx, next) => {
     const fromId = ctx.from?.id;
     if (!fromId) return next();
+
+    // Admins are strictly exempt from rate limiting
+    if (env.ADMIN_TELEGRAM_IDS.includes(String(fromId))) {
+      return next();
+    }
+
+    // Active multi-step inputs (e.g. entering card number, appeal text, receipt upload) are exempt from command rate limiting
+    if (ctx.session?.step && ctx.session.step !== 'idle') {
+      return next();
+    }
 
     const action = ctx.callbackQuery ? 'BOT_BUTTON' : 'BOT_COMMAND';
     const rl = await checkRateLimit(action, String(fromId));
