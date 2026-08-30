@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
-import { Bot } from 'grammy';
+import { Prisma } from '@prisma/client';
+import { Bot, InputFile } from 'grammy';
 import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
 import { env } from '../config/env';
 import { adminAuthMiddleware } from '../middleware/adminAuth';
@@ -703,23 +703,46 @@ router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res)
         `📎 <i>The official bank transfer bill is attached above.</i>\n\n` +
         `Your account has been reverted to the <b>FREE Plan</b>. Thank you for using PairTalk!`;
 
-      // Try sending with photo if refundProof is a valid URL or data URI
+      // Try sending with photo if refundProof is a valid base64 data URI or HTTP/HTTPS URL
       let sent = false;
-      if (refundProof.startsWith('http://') || refundProof.startsWith('https://')) {
+      const targetTgId = result.user.telegramId.toString();
+
+      if (refundProof.startsWith('data:')) {
         try {
-          await adminBotInstance.api.sendPhoto(result.user.telegramId.toString(), refundProof, {
+          const match = refundProof.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+          const base64Data = match ? match[2] : refundProof.split(',')[1];
+          const mime = match ? match[1] : 'image/jpeg';
+          const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+
+          if (base64Data) {
+            const buffer = Buffer.from(base64Data, 'base64');
+            const file = new InputFile(buffer, `refund_bill_${orderNum}.${ext}`);
+            await adminBotInstance.api.sendPhoto(targetTgId, file, {
+              caption,
+              parse_mode: 'HTML',
+            });
+            sent = true;
+            console.log('[Admin] Refund bill photo successfully dispatched via base64 buffer to Telegram ID:', targetTgId);
+          }
+        } catch (photoErr) {
+          console.warn('[Admin] Failed to dispatch base64 refund photo, attempting fallback:', photoErr);
+        }
+      } else if (refundProof.startsWith('http://') || refundProof.startsWith('https://')) {
+        try {
+          await adminBotInstance.api.sendPhoto(targetTgId, refundProof, {
             caption,
             parse_mode: 'HTML',
           });
           sent = true;
-        } catch {
-          sent = false;
+          console.log('[Admin] Refund bill photo successfully dispatched via URL to Telegram ID:', targetTgId);
+        } catch (photoUrlErr) {
+          console.warn('[Admin] Failed to dispatch URL refund photo, attempting fallback:', photoUrlErr);
         }
       }
 
       if (!sent) {
         await adminBotInstance.api.sendMessage(
-          result.user.telegramId.toString(),
+          targetTgId,
           caption,
           { parse_mode: 'HTML' }
         ).catch(() => undefined);

@@ -279,7 +279,7 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
     }
 
     const digitsOnly = text.replace(/\D/g, '');
-    const isCardFormat = digitsOnly.length >= 16 && digitsOnly.length <= 19;
+    const isCardFormat = digitsOnly.length === 16;
 
     const inAwaitingStep = ctx.session?.step === 'awaiting_refund_card' && Boolean(ctx.session?.pendingRefundManualReqId);
 
@@ -289,18 +289,18 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
 
     if (inAwaitingStep && !isCardFormat) {
       const inlineKb = new InlineKeyboard().text('✖️ Cancel Refund', 'cancel_refund');
+      const countMsg = digitsOnly.length > 0 ? ` (you entered <b>${digitsOnly.length} digits</b>)` : '';
       await ctx.reply(
         `⚠️ <b>Invalid Card Number</b>\n\n` +
-          `Please enter a valid 16-digit card number (e.g. <code>8600 1234 5678 9012</code>):\n\n` +
+          `A card number must contain <b>exactly 16 digits</b>${countMsg}.\n` +
+          `Example: <code>8600 1234 5678 9012</code>\n\n` +
           `⚠️ <i>Once refund is approved, the money will be sent to this card number. If user enters a wrong card number, administration is not responsible for the money sent to it.</i>`,
         { parse_mode: 'HTML', reply_markup: inlineKb }
       );
       return;
     }
 
-    const formattedCard = digitsOnly.length === 16
-      ? `${digitsOnly.slice(0, 4)} ${digitsOnly.slice(4, 8)} ${digitsOnly.slice(8, 12)} ${digitsOnly.slice(12, 16)}`
-      : digitsOnly;
+    const formattedCard = `${digitsOnly.slice(0, 4)} ${digitsOnly.slice(4, 8)} ${digitsOnly.slice(8, 12)} ${digitsOnly.slice(12, 16)}`;
 
     const fromId = ctx.from?.id;
     if (!fromId) return next();
