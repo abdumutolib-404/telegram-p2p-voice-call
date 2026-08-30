@@ -121,7 +121,7 @@ export const App: React.FC = () => {
       setAppState('connecting');
 
       const livekitUrl =
-        data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://p2p-clcf9vzd.livekit.cloud';
+        data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://pairtalk-d4a5d9pm.livekit.cloud';
 
       try {
         await connectLiveKit(livekitUrl, livekitToken);
