@@ -37,8 +37,14 @@ export function generateUniqueAlias(): string {
 
 export function setupStartCommand(bot: Bot<MyContext>) {
   bot.command('start', async (ctx) => {
-    const telegramId = BigInt(ctx.from?.id || 0);
-    if (!telegramId) return;
+    const fromId = ctx.from?.id;
+    if (!fromId) return;
+    const telegramId = BigInt(fromId);
+
+    // Always reset any in-progress form/session state on /start
+    ctx.session.step = 'idle';
+    ctx.session.pendingPaymentPlan = undefined;
+    ctx.session.pendingRefundManualReqId = undefined;
 
     const startPayload = typeof ctx.match === 'string' ? ctx.match.trim() : '';
     if (startPayload.startsWith('ref_')) {

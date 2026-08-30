@@ -271,11 +271,17 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
 
   // Step 2: Handle receiving card text input from student
   bot.on('message:text', async (ctx, next) => {
-    const text = ctx.message.text.trim();
+    const text = ctx.message?.text?.trim() || '';
+
+    // If it's a command like /start, /refund, /admin, /announce, /cancel, NEVER intercept here!
+    if (!text || text.startsWith('/')) {
+      return next();
+    }
+
     const digitsOnly = text.replace(/\D/g, '');
     const isCardFormat = digitsOnly.length >= 16 && digitsOnly.length <= 19;
 
-    const inAwaitingStep = ctx.session.step === 'awaiting_refund_card' && ctx.session.pendingRefundManualReqId;
+    const inAwaitingStep = ctx.session?.step === 'awaiting_refund_card' && Boolean(ctx.session?.pendingRefundManualReqId);
 
     if (!inAwaitingStep && !isCardFormat) {
       return next();
@@ -296,7 +302,9 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
       ? `${digitsOnly.slice(0, 4)} ${digitsOnly.slice(4, 8)} ${digitsOnly.slice(8, 12)} ${digitsOnly.slice(12, 16)}`
       : digitsOnly;
 
-    const telegramId = BigInt(ctx.from.id);
+    const fromId = ctx.from?.id;
+    if (!fromId) return next();
+    const telegramId = BigInt(fromId);
 
     try {
       let req = null;
