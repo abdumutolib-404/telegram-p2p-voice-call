@@ -15,6 +15,50 @@ import { env } from '../../config/env';
 import { sendAdminPaymentNotification, downloadTelegramReceiptFile } from '../paymentsBot';
 import { validateReceipt } from '../receiptValidator';
 
+async function editMessageOrCaption(ctx: MyContext, text: string, other?: any) {
+  const isPhotoMessage = Boolean(ctx.callbackQuery?.message && 'photo' in ctx.callbackQuery.message);
+
+  if (isPhotoMessage) {
+    try {
+      return await ctx.editMessageCaption({
+        caption: text,
+        parse_mode: 'HTML',
+        ...other,
+      });
+    } catch (captionErr: any) {
+      if (captionErr?.description?.includes('message is not modified')) {
+        return;
+      }
+      try {
+        await ctx.deleteMessage().catch(() => {});
+        return await ctx.reply(text, { parse_mode: 'HTML', ...other });
+      } catch {
+        return await ctx.reply(text, { parse_mode: 'HTML', ...other });
+      }
+    }
+  }
+
+  try {
+    return await ctx.editMessageText(text, { parse_mode: 'HTML', ...other });
+  } catch (textErr: any) {
+    if (textErr?.description?.includes('message is not modified')) {
+      return;
+    }
+    if (textErr?.description?.includes('there is no text in the message to edit')) {
+      try {
+        return await ctx.editMessageCaption({
+          caption: text,
+          parse_mode: 'HTML',
+          ...other,
+        });
+      } catch {
+        return await ctx.reply(text, { parse_mode: 'HTML', ...other });
+      }
+    }
+    throw textErr;
+  }
+}
+
 export function setupPaymentHandlers(bot: Bot<MyContext>) {
   // Callback: select_plan:PLUS, PRO, or BOSS
   bot.callbackQuery(/^select_plan:(PLUS|PRO|BOSS)$/, async (ctx) => {
@@ -63,14 +107,15 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       .text('⬅️ Back to Plans', 'show_plans');
 
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(
+    await editMessageOrCaption(
+      ctx,
       `💎 <b>Upgrade to ${tier} Plan</b>\n\n` +
         `• Max Call Duration: <b>${planConfig.maxDuration} mins</b>\n` +
         `• Monthly Calls: <b>${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/month`}</b>\n` +
         `• Recording Storage: <b>${planConfig.retentionDays} days</b>\n\n` +
         `⚠️ <i>Note: Prices in UZS and Stars may slightly differ due to local and platform taxes.</i>\n\n` +
         `Choose your preferred payment method:`,
-      { parse_mode: 'HTML', reply_markup: inlineKb }
+      { reply_markup: inlineKb }
     );
   });
 
@@ -115,7 +160,8 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     }
 
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(
+    await editMessageOrCaption(
+      ctx,
       `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
@@ -144,7 +190,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         `Eligible within 48 hours OR if <10% of monthly calls used.\n\n` +
         `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
         (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
-      { parse_mode: 'HTML', reply_markup: inlineKb }
+      { reply_markup: inlineKb }
     );
   });
 
@@ -313,7 +359,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       }
 
       await ctx.answerCallbackQuery({ text: 'Payment request cancelled.' });
-      await ctx.editMessageText('❌ Your manual payment request has been cancelled.');
+      await editMessageOrCaption(ctx, '❌ Your manual payment request has been cancelled.');
     } catch {
       await ctx.answerCallbackQuery({ text: 'Unable to cancel this request.', show_alert: true });
     }
