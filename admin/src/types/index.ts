@@ -71,6 +71,7 @@ export interface Subscores {
   lr: number;
   gra: number;
   p: number;
+  band?: number;
 }
 
 export interface AppealItem {

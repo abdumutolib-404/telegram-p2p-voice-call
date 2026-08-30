@@ -329,12 +329,16 @@ export function UserManagement() {
     }
   };
 
-  // Compute overall band score
+  // Compute overall band score using official IELTS half-band rounding
   const getOverallBand = (user: UserItem) => {
+    if (user.subscores?.band !== undefined && user.subscores?.band !== null) {
+      return Number(user.subscores.band).toFixed(1);
+    }
     if (!user.subscores) return null;
     const { fc, lr, gra, p } = user.subscores;
     const avg = (fc + lr + gra + p) / 4;
-    return avg.toFixed(1);
+    const rounded = Math.round(avg * 2) / 2;
+    return rounded.toFixed(1);
   };
 
   const getStatusBadgeComponent = (status: UserItem['status']) => {
@@ -582,22 +586,40 @@ export function UserManagement() {
                         </div>
 
                         {/* Direct Panel Action Triggers */}
-                        <div style={{ display: 'inline-flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                           <button
                             title="Speaking Limits Panel"
                             onClick={() => openCandidatePanel(user, 'limits')}
                             className="btn-secondary"
-                            style={{ height: '26px', padding: '0 0.5rem', fontSize: '0.725rem', fontWeight: 600 }}
+                            style={{
+                              height: '28px',
+                              padding: '0 0.65rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                              borderColor: 'rgba(6, 182, 212, 0.4)',
+                              color: '#38BDF8',
+                              cursor: 'pointer',
+                            }}
                           >
-                            <Sliders size={11} /> Limits
+                            <Sliders size={12} /> Limits
                           </button>
                           <button
                             title="Subscription Plan Panel"
                             onClick={() => openCandidatePanel(user, 'plan')}
                             className="btn-secondary"
-                            style={{ height: '26px', padding: '0 0.5rem', fontSize: '0.725rem', fontWeight: 600, color: 'var(--primary-light)' }}
+                            style={{
+                              height: '28px',
+                              padding: '0 0.65rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                              borderColor: 'rgba(168, 85, 247, 0.4)',
+                              color: '#C084FC',
+                              cursor: 'pointer',
+                            }}
                           >
-                            <Zap size={11} /> Plan
+                            <Zap size={12} /> Plan
                           </button>
                           <button
                             title="Moderation Status Panel"

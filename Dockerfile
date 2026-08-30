@@ -36,8 +36,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Copy compiled backend
+# Copy compiled backend & assets
 COPY --from=server-builder /app/server/dist ./server/dist
+COPY --from=server-builder /app/server/assets ./server/assets
 COPY --from=server-builder /app/server/package*.json ./server/
 COPY --from=server-builder /app/server/prisma ./server/prisma
 COPY --from=server-builder /app/server/node_modules ./server/node_modules

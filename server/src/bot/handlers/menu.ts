@@ -13,8 +13,12 @@ function getPlansImagePath(): string | null {
   const candidatePaths = [
     path.resolve(__dirname, '../../../assets/plans_pricing.jpg'),
     path.resolve(__dirname, '../../assets/plans_pricing.jpg'),
+    path.resolve(__dirname, '../assets/plans_pricing.jpg'),
+    path.resolve(__dirname, './assets/plans_pricing.jpg'),
     path.resolve(process.cwd(), 'assets/plans_pricing.jpg'),
     path.resolve(process.cwd(), 'server/assets/plans_pricing.jpg'),
+    path.resolve('/app/server/assets/plans_pricing.jpg'),
+    path.resolve('/app/assets/plans_pricing.jpg'),
   ];
   for (const p of candidatePaths) {
     if (fs.existsSync(p)) return p;
