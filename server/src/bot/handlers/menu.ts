@@ -305,18 +305,18 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
       `• Max Call Duration: 30 minutes\n` +
       `• Monthly Calls: 10\n` +
-      `• Monthly Recordings: 3\n` +
-      `• Recording Retention: 7 days\n\n` +
+      `• Monthly Recordings: 3 (7-day retention)\n` +
+      `• Matchmaking: Priority Queue\n\n` +
       `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
       `• Max Call Duration: 60 minutes\n` +
       `• Monthly Calls: 25\n` +
-      `• Monthly Recordings: 7\n` +
-      `• Recording Retention: 30 days\n\n` +
+      `• Monthly Recordings: 7 (30-day retention)\n` +
+      `• Matchmaking: Fast-Track High Priority\n\n` +
       `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
       `• Max Call Duration: 90 minutes\n` +
       `• Monthly Calls: 50\n` +
-      `• Monthly Recordings: 15\n` +
-      `• Recording Retention: 90 days\n\n` +
+      `• Monthly Recordings: 15 (90-day retention)\n` +
+      `• Matchmaking: VIP Top-Priority Queue\n\n` +
       `🛡️ <b>Refund Policy:</b>\n` +
       `Refunds are eligible within 48 hours of purchase OR if less than 10% of monthly call credits have been utilized.\n\n` +
       `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +

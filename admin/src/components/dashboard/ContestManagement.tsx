@@ -418,7 +418,32 @@ export function ContestManagement() {
                   </div>
                 </div>
 
-                <div style={{ paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+                <div style={{ paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => {
+                      if (data?.contest) {
+                        const existingPrizes = data.contest.prizes.split('\n');
+                        const p1 = existingPrizes[0]?.replace(/^🥇\s*(?:1st:)?\s*/i, '').trim() || wizardForm.prize1st;
+                        const p2 = existingPrizes[1]?.replace(/^🥈\s*(?:2nd:)?\s*/i, '').trim() || wizardForm.prize2nd;
+                        const p3 = existingPrizes[2]?.replace(/^🥉\s*(?:3rd:)?\s*/i, '').trim() || wizardForm.prize3rd;
+                        setWizardForm({
+                          title: data.contest.title,
+                          description: data.contest.description,
+                          prize1st: p1,
+                          prize2nd: p2,
+                          prize3rd: p3,
+                          durationDays: 14,
+                        });
+                        setWizardStep(3);
+                        setIsWizardOpen(true);
+                      }
+                    }}
+                    className="btn-secondary"
+                    style={{ width: '100%', fontSize: '0.825rem', color: 'var(--primary-light)', borderColor: 'var(--primary-border)' }}
+                  >
+                    <Sparkles size={14} /> Customize Rules & Prize Pool
+                  </button>
+
                   <button
                     onClick={() => setIsConcludeDialogOpen(true)}
                     className="btn-danger"
@@ -760,6 +785,57 @@ export function ContestManagement() {
             {/* STEP 3: PRIZE POOL FOR 1ST, 2ND, 3RD PLACE */}
             {wizardStep === 3 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Quick Prize Packages:</span>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWizardForm((prev) => ({
+                          ...prev,
+                          prize1st: '60-Day VIP Plan (90m Duration, 50 Calls)',
+                          prize2nd: '30-Day BOSS Plan (90m Duration, 50 Calls)',
+                          prize3rd: '14-Day PRO Plan (60m Duration, 25 Calls)',
+                        }))
+                      }
+                      className="btn-secondary"
+                      style={{ fontSize: '0.725rem', height: '26px', padding: '0 0.5rem' }}
+                    >
+                      👑 Standard Tier
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWizardForm((prev) => ({
+                          ...prev,
+                          prize1st: '90-Day VIP Plan (90m Duration, 50 Calls)',
+                          prize2nd: '60-Day BOSS Plan (90m Duration, 50 Calls)',
+                          prize3rd: '30-Day PRO Plan (60m Duration, 25 Calls)',
+                        }))
+                      }
+                      className="btn-secondary"
+                      style={{ fontSize: '0.725rem', height: '26px', padding: '0 0.5rem' }}
+                    >
+                      🏆 Grand Tier
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWizardForm((prev) => ({
+                          ...prev,
+                          prize1st: '30-Day BOSS Plan (90m Duration, 50 Calls)',
+                          prize2nd: '14-Day PRO Plan (60m Duration, 25 Calls)',
+                          prize3rd: '7-Day PLUS Plan (30m Duration, 10 Calls)',
+                        }))
+                      }
+                      className="btn-secondary"
+                      style={{ fontSize: '0.725rem', height: '26px', padding: '0 0.5rem' }}
+                    >
+                      ⚡ Sprint Tier
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gold-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     1st Place Award
