@@ -619,6 +619,100 @@ export async function rejectManualPaymentRequest(params: {
   return result;
 }
 
+export async function refundManualPaymentRequest(params: {
+  requestId: string;
+  adminId: string;
+  note?: string;
+}) {
+  const req = await prisma.manualPaymentRequest.findUnique({
+    where: { id: params.requestId },
+    include: { user: true },
+  });
+
+  if (!req || req.status === 'REFUNDED') {
+    throw new Error('Payment request not found or already refunded.');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedReq = await tx.manualPaymentRequest.update({
+      where: { id: req.id },
+      data: {
+        status: 'REFUNDED',
+        adminNote: params.note || 'UZS Payment refund approved by admin',
+        reviewedBy: params.adminId,
+        reviewedAt: new Date(),
+      },
+    });
+
+    const updatedUser = await tx.user.update({
+      where: { id: req.userId },
+      data: {
+        plan: 'FREE',
+        subscriptionStatus: 'REFUNDED',
+        maxDuration: plansConfig.FREE.maxDuration,
+        dailyLimit: plansConfig.FREE.dailyLimit,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        action: 'MANUAL_PAYMENT_REFUND',
+        targetId: req.userId,
+        adminId: params.adminId,
+        beforeState: JSON.stringify({ plan: req.plan, status: req.status }),
+        afterState: JSON.stringify({ plan: 'FREE', status: 'REFUNDED' }),
+        reason: params.note || 'Manual payment refund approved',
+      },
+    });
+
+    return { request: updatedReq, user: updatedUser };
+  });
+
+  return result;
+}
+
+export async function rejectManualPaymentRefund(params: {
+  requestId: string;
+  adminId: string;
+  note?: string;
+}) {
+  const req = await prisma.manualPaymentRequest.findUnique({
+    where: { id: params.requestId },
+    include: { user: true },
+  });
+
+  if (!req) {
+    throw new Error('Payment request not found.');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedReq = await tx.manualPaymentRequest.update({
+      where: { id: req.id },
+      data: {
+        status: 'APPROVED',
+        adminNote: params.note ? `[Refund Rejected]: ${params.note}` : 'Refund request rejected by admin',
+        reviewedBy: params.adminId,
+        reviewedAt: new Date(),
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        action: 'MANUAL_PAYMENT_REFUND_REJECT',
+        targetId: req.userId,
+        adminId: params.adminId,
+        beforeState: JSON.stringify({ status: req.status }),
+        afterState: JSON.stringify({ status: 'APPROVED' }),
+        reason: params.note || 'Refund request rejected',
+      },
+    });
+
+    return { request: updatedReq, user: req.user };
+  });
+
+  return result;
+}
+
 export async function revokePlanOnRefund(params: {
   transactionId: string;
   adminId: string;

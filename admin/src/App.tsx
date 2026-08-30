@@ -115,15 +115,16 @@ function MainDashboard() {
 
   const fetchBadgeCounts = useCallback(async () => {
     try {
-      const [payments, appeals] = await Promise.all([
+      const [payments, refunds, appeals] = await Promise.all([
         adminFetch<ManualPaymentRequestItem[]>('/api/admin/payments/manual?tab=queue').catch(() => []),
+        adminFetch<ManualPaymentRequestItem[]>('/api/admin/payments/manual?tab=refunds').catch(() => []),
         adminFetch<AppealItem[]>('/api/admin/appeals').catch(() => []),
       ]);
 
-      if (Array.isArray(payments)) {
-        const pending = payments.filter((p) => p.status === 'PENDING').length;
-        setPendingPaymentsCount(pending);
-      }
+      const pendingPay = Array.isArray(payments) ? payments.filter((p) => p.status === 'PENDING').length : 0;
+      const pendingRefunds = Array.isArray(refunds) ? refunds.filter((p) => p.status === 'REFUND_PENDING').length : 0;
+      setPendingPaymentsCount(pendingPay + pendingRefunds);
+
       if (Array.isArray(appeals)) {
         const pending = appeals.filter((a) => !a.status || a.status === 'PENDING' || a.status === 'pending').length;
         setPendingAppealsCount(pending);

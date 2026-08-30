@@ -21,7 +21,7 @@ import {
 
 export function ManualPaymentsQueue() {
   const [requests, setRequests] = useState<ManualPaymentRequestItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'queue' | 'history'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'refunds' | 'history'>('queue');
   const [search, setSearch] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +30,9 @@ export function ManualPaymentsQueue() {
   // Receipt Preview Modal
   const [inspectReceiptUrl, setInspectReceiptUrl] = useState<{ url: string; order: string; user: string } | null>(null);
 
-  // Approve / Reject Action Modal
+  // Approve / Reject / Refund Action Modal
   const [selectedAction, setSelectedAction] = useState<{
-    type: 'approve' | 'reject';
+    type: 'approve' | 'reject' | 'refund' | 'reject_refund';
     item: ManualPaymentRequestItem;
   } | null>(null);
   const [actionNote, setActionNote] = useState<string>('');
@@ -70,9 +70,12 @@ export function ManualPaymentsQueue() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleOpenActionModal = (type: 'approve' | 'reject', item: ManualPaymentRequestItem) => {
+  const handleOpenActionModal = (type: 'approve' | 'reject' | 'refund' | 'reject_refund', item: ManualPaymentRequestItem) => {
     setSelectedAction({ type, item });
-    setActionNote(type === 'approve' ? 'Verified card transfer' : 'Receipt unverified');
+    if (type === 'approve') setActionNote('Verified card transfer');
+    else if (type === 'reject') setActionNote('Receipt unverified');
+    else if (type === 'refund') setActionNote('UZS Refund approved and returned to card');
+    else if (type === 'reject_refund') setActionNote('Refund criteria not satisfied');
   };
 
   const handleExecuteAction = async () => {
@@ -86,10 +89,20 @@ export function ManualPaymentsQueue() {
           method: 'POST',
           body: JSON.stringify({ note: actionNote.trim() || undefined }),
         });
-      } else {
+      } else if (type === 'reject') {
         await adminFetch(`/api/admin/payments/manual/${item.id}/reject`, {
           method: 'POST',
           body: JSON.stringify({ note: actionNote.trim() || 'Receipt unverified' }),
+        });
+      } else if (type === 'refund') {
+        await adminFetch(`/api/admin/payments/manual/${item.id}/refund`, {
+          method: 'POST',
+          body: JSON.stringify({ note: actionNote.trim() || 'Refund approved' }),
+        });
+      } else if (type === 'reject_refund') {
+        await adminFetch(`/api/admin/payments/manual/${item.id}/reject-refund`, {
+          method: 'POST',
+          body: JSON.stringify({ note: actionNote.trim() || 'Refund rejected' }),
         });
       }
 
@@ -108,6 +121,8 @@ export function ManualPaymentsQueue() {
         return <StatusBadge variant="success" label="Approved" size="sm" />;
       case 'REJECTED':
         return <StatusBadge variant="danger" label="Rejected" size="sm" />;
+      case 'REFUND_PENDING':
+        return <StatusBadge variant="warning" label="Refund Requested" size="sm" />;
       case 'REFUNDED':
         return <StatusBadge variant="info" label="Refunded" size="sm" />;
       default:
@@ -129,6 +144,7 @@ export function ManualPaymentsQueue() {
   };
 
   const pendingCount = activeTab === 'queue' ? requests.filter((r) => r.status === 'PENDING').length : 0;
+  const refundCount = activeTab === 'refunds' ? requests.filter((r) => r.status === 'REFUND_PENDING').length : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -157,13 +173,40 @@ export function ManualPaymentsQueue() {
                 }}
               >
                 <Inbox size={14} />
-                <span>Pending Queue</span>
+                <span>Pending Receipts</span>
                 {pendingCount > 0 && (
                   <span style={{ padding: '0.1rem 0.45rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--warning)', color: '#FFFFFF', fontWeight: 600 }}>
                     {pendingCount}
                   </span>
                 )}
               </button>
+
+              <button
+                onClick={() => setActiveTab('refunds')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: activeTab === 'refunds' ? 'var(--primary-bg)' : 'transparent',
+                  color: activeTab === 'refunds' ? '#FFFFFF' : 'var(--text-secondary)',
+                  fontWeight: activeTab === 'refunds' ? 600 : 500,
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.12s ease',
+                }}
+              >
+                <RefreshCw size={14} />
+                <span>Refund Requests</span>
+                {refundCount > 0 && (
+                  <span style={{ padding: '0.1rem 0.45rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--danger)', color: '#FFFFFF', fontWeight: 600 }}>
+                    {refundCount}
+                  </span>
+                )}
+              </button>
+
               <button
                 onClick={() => setActiveTab('history')}
                 style={{
@@ -237,13 +280,21 @@ export function ManualPaymentsQueue() {
       ) : requests.length === 0 ? (
         <EmptyState
           icon={<CreditCard size={32} color="var(--text-muted)" />}
-          title={activeTab === 'queue' ? 'No pending manual payment receipts' : 'No payment history found'}
+          title={
+            activeTab === 'queue'
+              ? 'No pending manual payment receipts'
+              : activeTab === 'refunds'
+              ? 'No pending refund requests'
+              : 'No payment history found'
+          }
           description={
             activeTab === 'queue'
               ? 'All offline card payments have been processed and fulfilled.'
+              : activeTab === 'refunds'
+              ? 'There are no active UZS refund requests awaiting administrative review.'
               : search
               ? `No transactions matching "${search}".`
-              : 'Approved and rejected transactions will appear here.'
+              : 'Approved, rejected, and refunded transactions will appear here.'
           }
         />
       ) : (
@@ -258,7 +309,7 @@ export function ManualPaymentsQueue() {
                 <th>Status</th>
                 <th>Receipt Proof</th>
                 <th>Date & Reviewer</th>
-                {activeTab === 'queue' && <th style={{ textAlign: 'right' }}>Actions</th>}
+                {(activeTab === 'queue' || activeTab === 'refunds') && <th style={{ textAlign: 'right' }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -332,6 +383,28 @@ export function ManualPaymentsQueue() {
                             style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
                           >
                             <X size={12} /> Reject
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {activeTab === 'refunds' && (
+                    <td style={{ textAlign: 'right' }}>
+                      {req.status === 'REFUND_PENDING' && (
+                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                          <button
+                            onClick={() => handleOpenActionModal('refund', req)}
+                            className="btn-success"
+                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
+                          >
+                            <Check size={12} /> Approve Refund
+                          </button>
+                          <button
+                            onClick={() => handleOpenActionModal('reject_refund', req)}
+                            className="btn-danger"
+                            style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
+                          >
+                            <X size={12} /> Reject Refund
                           </button>
                         </div>
                       )}
@@ -423,7 +496,7 @@ export function ManualPaymentsQueue() {
         </div>
       )}
 
-      {/* Approve / Reject Dialog */}
+      {/* Approve / Reject / Refund Dialog */}
       {selectedAction && (
         <div
           style={{
@@ -451,7 +524,13 @@ export function ManualPaymentsQueue() {
             }}
           >
             <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: '0 0 0.35rem 0', color: 'var(--text-primary)' }}>
-              {selectedAction.type === 'approve' ? 'Approve Payment & Fulfill Plan' : 'Reject Payment Request'}
+              {selectedAction.type === 'approve'
+                ? 'Approve Payment & Fulfill Plan'
+                : selectedAction.type === 'reject'
+                ? 'Reject Payment Request'
+                : selectedAction.type === 'refund'
+                ? 'Approve UZS Refund & Downgrade User'
+                : 'Reject Refund Request'}
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1.25rem 0' }}>
               Order <code style={{ color: 'var(--text-primary)' }}>#{selectedAction.item.orderNumber || selectedAction.item.id.slice(0, 4)}</code> for{' '}
@@ -460,13 +539,21 @@ export function ManualPaymentsQueue() {
 
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                {selectedAction.type === 'approve' ? 'Audit Note (Optional)' : 'Rejection Reason (Sent to Student)'}
+                {selectedAction.type === 'approve' || selectedAction.type === 'refund'
+                  ? 'Audit Note (Optional)'
+                  : 'Rejection Reason (Sent to Student)'}
               </label>
               <input
                 type="text"
                 value={actionNote}
                 onChange={(e) => setActionNote(e.target.value)}
-                placeholder={selectedAction.type === 'approve' ? 'Verified card transfer' : 'Receipt unverified or mismatch'}
+                placeholder={
+                  selectedAction.type === 'approve'
+                    ? 'Verified card transfer'
+                    : selectedAction.type === 'refund'
+                    ? 'Refund approved and returned to card'
+                    : 'Reason for rejection'
+                }
                 className="input-modern"
                 style={{ width: '100%', boxSizing: 'border-box' }}
               />
@@ -483,9 +570,15 @@ export function ManualPaymentsQueue() {
               <button
                 onClick={handleExecuteAction}
                 disabled={isProcessingAction}
-                className={selectedAction.type === 'approve' ? 'btn-success' : 'btn-danger'}
+                className={selectedAction.type === 'approve' || selectedAction.type === 'refund' ? 'btn-success' : 'btn-danger'}
               >
-                {isProcessingAction ? 'Processing...' : selectedAction.type === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+                {isProcessingAction
+                  ? 'Processing...'
+                  : selectedAction.type === 'approve'
+                  ? 'Confirm Approval'
+                  : selectedAction.type === 'refund'
+                  ? 'Execute Refund'
+                  : 'Confirm Rejection'}
               </button>
             </div>
           </div>

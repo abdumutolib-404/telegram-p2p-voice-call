@@ -126,7 +126,7 @@ export interface ManualPaymentRequestItem {
   telegramId: string;
   planTier: string;
   amountUzs: number;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REFUND_PENDING' | 'REFUNDED';
   paymentProof?: string | null;
   adminNote?: string | null;
   reviewedBy?: string | null;

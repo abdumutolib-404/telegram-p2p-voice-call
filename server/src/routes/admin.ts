@@ -16,6 +16,8 @@ import {
   getRetentionDaysForPlan,
   approveManualPaymentRequest,
   rejectManualPaymentRequest,
+  refundManualPaymentRequest,
+  rejectManualPaymentRefund,
   revokePlanOnRefund,
 } from '../services/plan';
 import { moderationService } from '../services/moderation';
@@ -512,6 +514,8 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
     let whereClause: any = {};
     if (tab === 'queue' || statusQuery === 'PENDING') {
       whereClause.status = 'PENDING';
+    } else if (tab === 'refunds' || statusQuery === 'REFUND_PENDING') {
+      whereClause.status = 'REFUND_PENDING';
     } else if (tab === 'history') {
       whereClause.status = { in: ['APPROVED', 'REJECTED', 'REFUNDED'] };
     } else if (statusQuery) {
@@ -655,6 +659,86 @@ router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res)
   } catch (err: any) {
     console.error('[Admin] Failed to reject manual payment:', err);
     res.status(400).json({ error: err.message || 'Failed to reject payment.' });
+  }
+});
+
+// POST /api/admin/payments/manual/:id/refund (Protected - Process UZS Refund)
+router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body;
+  const adminId = (req as any).adminUser?.telegramId || 'admin';
+
+  try {
+    const result = await refundManualPaymentRequest({
+      requestId: id,
+      adminId,
+      note,
+    });
+
+    if (adminBotInstance && result.user?.telegramId) {
+      const orderNum = result.request.orderNumber || `A${result.request.id.slice(0, 4)}`;
+      await adminBotInstance.api.sendMessage(
+        result.user.telegramId.toString(),
+        `🎉 <b>Refund Approved & Processed!</b>\n\n` +
+          `Your refund of <b>${result.request.uzsAmount.toLocaleString()} UZS</b> for Order #<code>${orderNum}</code> has been approved.\n` +
+          `The amount will appear on your payment card in 1–3 business days.\n` +
+          `Your account has been reverted to the <b>FREE Plan</b>.`,
+        { parse_mode: 'HTML' }
+      ).catch(() => undefined);
+    }
+
+    res.json({
+      success: true,
+      message: 'Payment refund approved and plan revoked.',
+      request: {
+        ...result.request,
+        telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
+      },
+    });
+  } catch (err: any) {
+    console.error('[Admin] Failed to refund manual payment:', err);
+    res.status(400).json({ error: err.message || 'Failed to refund payment.' });
+  }
+});
+
+// POST /api/admin/payments/manual/:id/reject-refund (Protected - Reject UZS Refund)
+router.post('/payments/manual/:id/reject-refund', adminAuthMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body;
+  const adminId = (req as any).adminUser?.telegramId || 'admin';
+
+  try {
+    const result = await rejectManualPaymentRefund({
+      requestId: id,
+      adminId,
+      note,
+    });
+
+    if (adminBotInstance && result.request?.telegramId) {
+      const orderNum = result.request.orderNumber || `A${result.request.id.slice(0, 4)}`;
+      const supportContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
+      await adminBotInstance.api.sendMessage(
+        result.request.telegramId.toString(),
+        `ℹ️ <b>Refund Request Decision</b>\n\n` +
+          `Your refund request for Order #<code>${orderNum}</code> was reviewed and not approved by administration.\n` +
+          (note ? `<b>Reason:</b> ${note}\n\n` : '') +
+          `Your <b>${result.request.plan} Plan</b> remains active.\n\n` +
+          `Contact ${supportContact} if you need assistance.`,
+        { parse_mode: 'HTML' }
+      ).catch(() => undefined);
+    }
+
+    res.json({
+      success: true,
+      message: 'Refund request rejected.',
+      request: {
+        ...result.request,
+        telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
+      },
+    });
+  } catch (err: any) {
+    console.error('[Admin] Failed to reject refund:', err);
+    res.status(400).json({ error: err.message || 'Failed to reject refund.' });
   }
 });
 
