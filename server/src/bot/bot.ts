@@ -52,7 +52,7 @@ function createRedisSessionStorage() {
 export function createBot(token: string): Bot<MyContext> {
   const bot = new Bot<MyContext>(token);
 
-  // Global API 429 auto-retry transformer for all outgoing Telegram Bot API requests
+  // Global API transformer for retry on 429 and graceful handling of benign idempotency responses
   bot.api.config.use(async (prev, method, payload, signal) => {
     const maxRetries = 3;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -64,6 +64,15 @@ export function createBot(token: string): Bot<MyContext> {
           console.warn(`[Telegram API 429] Method ${method} rate limited. Retrying in ${retryAfter}ms (attempt ${attempt + 1}/${maxRetries})`);
           await new Promise((resolve) => setTimeout(resolve, retryAfter));
           continue;
+        }
+        // Benign Telegram idempotency / duplicate tap responses (e.g. double clicking inline buttons)
+        const desc = error?.description || error?.message || '';
+        if (
+          desc.includes('message is not modified') ||
+          desc.includes('query is too old') ||
+          desc.includes('message to edit not found')
+        ) {
+          return true as any;
         }
         throw error;
       }
@@ -177,6 +186,14 @@ export function createBot(token: string): Bot<MyContext> {
 
   // Catch errors to prevent bot crash
   bot.catch((err) => {
+    const errorMsg = String((err.error as any)?.message || (err.error as any)?.description || err.error || '');
+    if (
+      errorMsg.includes('message is not modified') ||
+      errorMsg.includes('query is too old') ||
+      errorMsg.includes('message to edit not found')
+    ) {
+      return; // Ignore benign duplicate button clicks
+    }
     console.error(`[Grammy Bot Error] Update ${err.ctx.update.update_id} failed:`, err.error);
   });
 
