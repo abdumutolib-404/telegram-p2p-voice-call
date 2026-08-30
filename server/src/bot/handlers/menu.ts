@@ -517,7 +517,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         `• <b>100% Anonymous</b>: Randomized aliases; real phone numbers or profiles are never shared.\n` +
         `• <b>Encrypted Voice Calls</b>: Practice calls are private and never recorded without consent.\n` +
         `• <b>Automated Purge</b>: Cloud audio is deleted automatically once your tier retention window expires.\n` +
-        `• <b>100% Refund Guarantee</b>: Eligible within 48 hours and <10% call usage.\n\n` +
+        `• <b>100% Refund Guarantee</b>: Eligible within 48 hours and less than 10% call usage.\n\n` +
         `Tap the button below to read the complete policy directly inside Telegram:`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
