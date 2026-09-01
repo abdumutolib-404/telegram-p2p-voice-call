@@ -1,0 +1,172 @@
+﻿import { Request, Response, NextFunction } from 'express';
+import { getRedis } from '../config/redis';
+
+// In-memory fallback cache for jailed IPs when Redis is disconnected
+const memoryJailedIps = new Map<string, number>();
+
+// Consecutive 404 tracking for heuristic anomaly banishment
+const anomaly404Tracker = new Map<string, { count: number; firstAt: number }>();
+
+const PROBE_PATTERNS = [
+  // Env and configuration leaks
+  /\.env(?:\.|$|\/|~)/i,
+  /\.git(?:\.|$|\/)/i,
+  /\.aws(?:\.|$|\/)/i,
+  /\.docker(?:\.|$|\/)/i,
+  /\.terraform(?:\.|$|\/)/i,
+  /\.s3cfg/i,
+  /\.gitlab-ci/i,
+  /\.boto/i,
+  /\.netrc/i,
+  /\.git-credentials/i,
+  // PHP / Legacy / CGI exploit probes
+  /phpinfo/i,
+  /\.php(?:\?|$)/i,
+  /\.cgi(?:\?|$)/i,
+  /\.asp(?:x)?(?:\?|$)/i,
+  /\.jsp(?:\?|$)/i,
+  // Known CMS / WordPress scanners
+  /\/wp-json/i,
+  /\/wp-content/i,
+  /\/wp-admin/i,
+  /\/xmlrpc\.php/i,
+  /\/wordpress/i,
+  // Infrastructure configs & credentials
+  /docker-compose/i,
+  /serverless\.y(?:a)?ml/i,
+  /amplify\.y(?:a)?ml/i,
+  /appsettings(?:\..+)?\.json/i,
+  /terraform\.tfstate/i,
+  /s3\.(?:secret|key|yaml|yml|properties)/i,
+  /aws_credentials/i,
+  /aws_s3_/i,
+  /stripe-credentials/i,
+  /stripe-keys/i,
+  // Server debuggers and profilers
+  /\/_profiler/i,
+  /\/actuator/i,
+  /\/cgi-bin/i,
+  /\/webmin/i,
+  /\/etc\/passwd/i,
+  /\/etc\/apache2/i,
+  /\/var\/www/i,
+  /\/var\/task/i,
+  /\[\.\.\.catchall\]/i,
+  /\[tenant\]/i,
+  /\[workspace\]/i,
+  /\[locale\]/i,
+  /\[slug\]/i,
+];
+
+function decodeSafely(uri: string): string {
+  try {
+    return decodeURIComponent(uri);
+  } catch {
+    return uri;
+  }
+}
+
+export function getClientIp(req: Request): string {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf.trim()) {
+    return cf.trim();
+  }
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.trim()) {
+    return xff.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
+
+export async function isIpJailed(ip: string): Promise<boolean> {
+  if (!ip || ip === 'unknown' || ip === '127.0.0.1' || ip === '::1') {
+    return false;
+  }
+
+  const now = Date.now();
+  const memExp = memoryJailedIps.get(ip);
+  if (memExp && memExp > now) {
+    return true;
+  }
+
+  try {
+    const redis = getRedis();
+    const exists = await redis.exists(`shield:jail:${ip}`);
+    if (exists) {
+      memoryJailedIps.set(ip, now + 3600 * 1000);
+      return true;
+    }
+  } catch {
+    // Redis offline, fallback to memory
+  }
+
+  return false;
+}
+
+export async function jailIp(ip: string, reason: string, path: string): Promise<void> {
+  if (!ip || ip === 'unknown' || ip === '127.0.0.1' || ip === '::1') {
+    return;
+  }
+
+  const durationSec = 86400; // 24-hour banishment
+  memoryJailedIps.set(ip, Date.now() + durationSec * 1000);
+
+  try {
+    const redis = getRedis();
+    await redis.set(`shield:jail:${ip}`, reason, 'EX', durationSec);
+  } catch {
+    // Memory fallback preserved
+  }
+
+  console.warn(`[Shield 🛡️ Bot Banned] IP: ${ip} jailed for 24h. Reason: ${reason} (Path: ${path.slice(0, 100)})`);
+}
+
+export function isExploitProbe(path: string): boolean {
+  return PROBE_PATTERNS.some((pattern) => pattern.test(path));
+}
+
+/**
+ * Pre-Routing Scanner Shield Middleware
+ * Drops jailed IPs and instantly bans automated vulnerability scanners
+ */
+export async function scannerShieldMiddleware(req: Request, res: Response, next: NextFunction) {
+  const ip = getClientIp(req);
+
+  // 1. Fast reject jailed IPs
+  if (await isIpJailed(ip)) {
+    res.status(403).setHeader('Connection', 'close').end();
+    return;
+  }
+
+  const rawUrl = req.originalUrl || req.url || '';
+  const decoded = decodeSafely(rawUrl);
+
+  // 2. Exploit Probe Detection
+  if (isExploitProbe(decoded)) {
+    await jailIp(ip, 'Malicious Scanner Probe', decoded);
+    res.status(403).setHeader('Connection', 'close').end();
+    return;
+  }
+
+  // 3. Track 404s after response finish for heuristic brute-force banishment
+  res.on('finish', () => {
+    if (res.statusCode === 404) {
+      const now = Date.now();
+      const current = anomaly404Tracker.get(ip) || { count: 0, firstAt: now };
+      if (now - current.firstAt > 30000) {
+        // Reset window every 30s
+        anomaly404Tracker.set(ip, { count: 1, firstAt: now });
+      } else {
+        current.count += 1;
+        anomaly404Tracker.set(ip, current);
+        if (current.count >= 15) {
+          // Banish aggressive 404 crawlers
+          anomaly404Tracker.delete(ip);
+          jailIp(ip, 'Excessive 404 Anomaly (>15 in 30s)', decoded).catch(() => {});
+        }
+      }
+    }
+  });
+
+  next();
+}

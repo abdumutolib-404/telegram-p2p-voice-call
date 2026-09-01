@@ -16,6 +16,7 @@ import { setupSocketSignaling } from './socket/signaling';
 import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
 import { startSubscriptionExpiryCron } from './services/subscriptionExpiry';
+import { scannerShieldMiddleware } from './middleware/scannerShield';
 import type { MyContext } from './bot/types';
 
 // Global BigInt JSON serialization guard
@@ -69,6 +70,9 @@ const isAllowedOrigin = (origin: string | undefined): boolean => {
 };
 
 app.disable('x-powered-by');
+
+// 🛡️ Automated Bot Banishment & Exploit Scanner Shield (Pre-Routing Filter)
+app.use(scannerShieldMiddleware);
 
 // Standard HTTP Security Headers Middleware (Telegram WebApp compatible)
 app.use((_req, res, next) => {
@@ -137,6 +141,11 @@ app.get('/health', async (_req, res) => {
 app.get('/robots.txt', (_req, res) => {
   res.type('text/plain');
   res.send('User-agent: *\nDisallow: /\n');
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+  res.type('application/xml');
+  res.send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
 });
 
 app.get('/', (_req, res) => {
