@@ -716,6 +716,10 @@ void bootstrap().catch((error: unknown) => {
 });
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof URIError || (err as any).status === 400 || (err as any).statusCode === 400) {
+    if (!res.headersSent) res.status(400).json({ error: 'Bad request: malformed URI sequence.' });
+    return;
+  }
   console.error('[Express Error]', err.message);
   if (!res.headersSent) res.status(500).json({ error: 'Internal server error.' });
 });
