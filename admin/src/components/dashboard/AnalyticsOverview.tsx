@@ -117,8 +117,8 @@ export function AnalyticsOverview() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
         {/* Telegram Stars */}
         <StatCard
-          label="Stars Revenue (XTR)"
-          value={`${defaultStats.starsRevenue.totalStars.toLocaleString()} XTR`}
+          label="Telegram Stars Revenue"
+          value={`${defaultStats.starsRevenue.totalStars.toLocaleString()} Stars`}
           subValue={`$${defaultStats.starsRevenue.totalUsd.toLocaleString()} USD • ${defaultStats.starsRevenue.transactionCount ?? 0} orders`}
           icon={<Star size={16} />}
         />
@@ -215,7 +215,7 @@ export function AnalyticsOverview() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <BarChart2 size={16} color="var(--primary-light)" />
           <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-            Monthly Telegram Stars (XTR) Revenue History
+            Monthly Telegram Stars Revenue History
           </h3>
         </div>
 
@@ -232,7 +232,7 @@ export function AnalyticsOverview() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
                     <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.month}</span>
                     <span className="num-tabular" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                      {item.stars.toLocaleString()} XTR <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(${item.usd.toLocaleString()} USD)</span>
+                      {item.stars.toLocaleString()} Stars <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(${item.usd.toLocaleString()} USD)</span>
                     </span>
                   </div>
                   <div style={{ width: '100%', backgroundColor: 'var(--bg-secondary)', height: '6px', borderRadius: '4px', overflow: 'hidden' }}>

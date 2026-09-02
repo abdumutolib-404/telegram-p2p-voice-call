@@ -239,7 +239,7 @@ export function PlanEditor() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
             <div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                <Star size={13} color="var(--gold-text)" fill="var(--gold-text)" /> Stars Price (XTR)
+                <Star size={13} color="var(--gold-text)" fill="var(--gold-text)" /> Stars Price
               </label>
               <input
                 type="number"
@@ -279,7 +279,7 @@ export function PlanEditor() {
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Authoritative Plan Matrix"
-        description="Configure duration limits, monthly call allowances, audio retention, and official Stars (XTR) & UZS pricing. Prices in UZS and Stars may differ due to platform and local taxes."
+        description="Configure duration limits, monthly call allowances, audio retention, and official Stars & UZS pricing. Prices in UZS and Stars may differ due to platform and local taxes."
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {hasUnsavedChanges && (

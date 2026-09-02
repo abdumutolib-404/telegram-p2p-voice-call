@@ -78,7 +78,7 @@ export const PlansModal: React.FC<PlansModalProps> = ({
         <div className="mb-5 p-3 rounded-2xl bg-slate-900/90 border border-cyan-500/30 text-slate-300 text-xs leading-relaxed flex items-start gap-2.5">
           <Info className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
           <p className="font-mono text-[10.5px] text-slate-400">
-            <strong className="text-cyan-300 uppercase">Tax & Currency Notice:</strong> Prices in UZS (Card) and Stars (Telegram XTR) may slightly differ due to local VAT, currency conversions, and app store taxes.
+            <strong className="text-cyan-300 uppercase">Tax & Currency Notice:</strong> Prices in UZS (Card) and Stars (Telegram Stars) may slightly differ due to local VAT, currency conversions, and app store taxes.
           </p>
         </div>
 
@@ -110,7 +110,7 @@ export const PlansModal: React.FC<PlansModalProps> = ({
                     <div className="text-base font-mono font-black text-white flex items-center justify-end gap-1">
                       <span>⭐</span>
                       <span>{plan.starsPrice}</span>
-                      <span className="text-[10px] text-slate-400 font-normal">XTR</span>
+                      <span className="text-[10px] text-amber-400 font-bold">Stars</span>
                     </div>
                     <div className="text-[10px] font-mono text-slate-400">{plan.uzsPrice}</div>
                   </div>
@@ -180,7 +180,7 @@ export const PlansModal: React.FC<PlansModalProps> = ({
         {/* Footer Meta */}
         <div className="mt-5 pt-3 border-t border-slate-900 flex items-center justify-between text-[10px] font-mono text-slate-600">
           <span>VALIDITY: 30 DAYS FROM PURCHASE</span>
-          <span>CURRENCY: TELEGRAM STARS (XTR)</span>
+          <span>PAYMENT: TELEGRAM STARS (⭐) / UZS</span>
         </div>
       </div>
     </div>

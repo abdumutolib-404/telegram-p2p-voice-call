@@ -588,7 +588,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="p-6 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 flex flex-col justify-between">
               <div>
                 <div className="text-xs font-mono text-zinc-400 font-bold uppercase tracking-wider mb-2">FREE</div>
-                <div className="text-3xl font-extrabold text-white font-mono mb-1">0 XTR</div>
+                <div className="text-3xl font-extrabold text-white font-mono mb-1">0 Stars</div>
                 <div className="text-xs text-zinc-500 mb-6">Free Forever • 0 UZS</div>
                 <ul className="space-y-3 text-xs text-zinc-300 mb-6">
                   <li className="flex items-center gap-2">
@@ -623,7 +623,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="p-6 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 flex flex-col justify-between">
               <div>
                 <div className="text-xs font-mono text-cyan-400 font-bold uppercase tracking-wider mb-2">PLUS</div>
-                <div className="text-3xl font-extrabold text-white font-mono mb-1">79 XTR</div>
+                <div className="text-3xl font-extrabold text-white font-mono mb-1">⭐ 79 Stars</div>
                 <div className="text-xs text-zinc-500 mb-6">~$1.58 • 15,000 UZS / mo</div>
                 <ul className="space-y-3 text-xs text-zinc-300 mb-6">
                   <li className="flex items-center gap-2">
@@ -661,7 +661,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
               <div>
                 <div className="text-xs font-mono text-cyan-400 font-bold uppercase tracking-wider mb-2">PRO</div>
-                <div className="text-3xl font-extrabold text-white font-mono mb-1">255 XTR</div>
+                <div className="text-3xl font-extrabold text-white font-mono mb-1">⭐ 255 Stars</div>
                 <div className="text-xs text-zinc-400 mb-6">~$5.10 • 55,000 UZS / mo</div>
                 <ul className="space-y-3 text-xs text-zinc-200 mb-6">
                   <li className="flex items-center gap-2">
@@ -696,7 +696,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="p-6 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 flex flex-col justify-between">
               <div>
                 <div className="text-xs font-mono text-amber-400 font-bold uppercase tracking-wider mb-2">BOSS</div>
-                <div className="text-3xl font-extrabold text-white font-mono mb-1">679 XTR</div>
+                <div className="text-3xl font-extrabold text-white font-mono mb-1">⭐ 679 Stars</div>
                 <div className="text-xs text-zinc-500 mb-6">~$13.58 • 149,000 UZS / mo</div>
                 <ul className="space-y-3 text-xs text-zinc-300 mb-6">
                   <li className="flex items-center gap-2">

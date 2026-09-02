@@ -152,7 +152,7 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
         `💸 <b>Telegram Stars Refund Eligible</b>\n\n` +
           `Your account qualifies for a 100% refund of your recent Stars payment:\n\n` +
           `• <b>Plan</b>: <b>${planTier}</b>\n` +
-          `• <b>Refund Amount</b>: ⭐ <b>${starsAmount} Stars (XTR)</b>\n` +
+          `• <b>Refund Amount</b>: ⭐ <b>${starsAmount} Stars</b>\n` +
           `• <b>Usage Verification</b>: <code>${callsUsed} / ${callLimit} calls used</code> (Eligible)\n\n` +
           `⚠️ <i>Confirming will automatically return ${starsAmount} Stars back to your Telegram balance and revert your account to the FREE plan.</i>`,
         { parse_mode: 'HTML', reply_markup: inlineKb }

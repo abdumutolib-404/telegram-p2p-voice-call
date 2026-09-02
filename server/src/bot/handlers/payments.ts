@@ -100,7 +100,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     const formattedUzs = planConfig.uzsPrice.toLocaleString('en-US');
 
     const inlineKb = new InlineKeyboard()
-      .text(`⭐ Telegram Stars (${planConfig.starsPrice} XTR)`, `buy_plan:${tier}`)
+      .text(`⭐ Telegram Stars (${planConfig.starsPrice} Stars)`, `buy_plan:${tier}`)
       .row()
       .text(`💳 Pay with Card (${formattedUzs} UZS)`, `manual_pay:${tier}`)
       .row()
@@ -166,7 +166,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         `Current Plan: <b>${profile.planDisplayName}</b>\n` +
         (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
         pendingBanner +
-        `🆓 <b>FREE Plan</b> (0 UZS / 0 XTR)\n` +
+        `🆓 <b>FREE Plan</b> (0 UZS / 0 Stars)\n` +
         `• Max Call Duration: 15 minutes\n` +
         `• Monthly Calls: 3\n` +
         `• Monthly Recordings: 1\n` +
@@ -377,7 +377,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       }
 
       if (query.currency !== 'XTR') {
-        await ctx.answerPreCheckoutQuery(false, { error_message: 'Invalid currency. Only Telegram Stars (XTR) are supported.' });
+        await ctx.answerPreCheckoutQuery(false, { error_message: 'Invalid currency. Only Telegram Stars are supported.' });
         return;
       }
 
@@ -607,7 +607,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           orderNumber: tx.orderNumber || undefined,
           type: 'STARS' as const,
           plan: tx.planTier,
-          amountStr: `⭐ ${tx.starsAmount} XTR`,
+          amountStr: `⭐ ${tx.starsAmount} Stars`,
           status: tx.status,
           createdAt: tx.createdAt,
         })),
@@ -648,7 +648,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           `${historyText}\n` +
           `🛡️ <b>100% Refund Eligibility Policy</b>:\n` +
           `• <b>Eligibility Criteria</b>: A full refund is eligible if requested within <b>48 hours (2 days)</b> of purchase <b>AND</b> if less than <b>10% of monthly call allowance</b> has been used (0 calls on PLUS, ≤ 2 calls on PRO, ≤ 4 calls on BOSS).\n` +
-          `• <b>Telegram Stars (XTR)</b>: Instant automatic refund executed via <code>/refund</code> in the bot.\n` +
+          `• <b>Telegram Stars</b>: Instant automatic refund executed via <code>/refund</code> in the bot.\n` +
           `• <b>Card Payments (UZS)</b>: Verified card refunds are submitted via <code>/refund</code> and processed to your card in 1–3 business days.\n` +
           `• <b>Entitlement Reversion</b>: Processing a refund automatically reverts account limits to the Free tier.\n\n` +
           `For billing inquiries, receipt verification, or manual support: ${adminContact}`,
