@@ -7,6 +7,7 @@ import { RadarScreen } from './components/RadarScreen';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { PrivacyScreen } from './components/PrivacyScreen';
 import { GuidelinesScreen } from './components/GuidelinesScreen';
+import { LandingPage } from './components/LandingPage';
 import { logger } from './services/logger';
 import {
   Loader2,
@@ -450,11 +451,25 @@ export const App: React.FC = () => {
   // =========================================================================
 
   if (activeView === 'privacy') {
-    return <PrivacyScreen onBack={() => setActiveView('main')} />;
+    return (
+      <PrivacyScreen
+        onBack={() => {
+          window.location.hash = '';
+          setActiveView('main');
+        }}
+      />
+    );
   }
 
   if (activeView === 'guidelines') {
-    return <GuidelinesScreen onBack={() => setActiveView('main')} />;
+    return (
+      <GuidelinesScreen
+        onBack={() => {
+          window.location.hash = '';
+          setActiveView('main');
+        }}
+      />
+    );
   }
 
   // 1. Idle Booting Screen
@@ -471,8 +486,12 @@ export const App: React.FC = () => {
     );
   }
 
-  // 2. Deterministic Access-Control Lockdown Screen
+  // 2. Deterministic Access-Control Lockdown Screen / Public Landing Page
   if (appState === 'lockdown') {
+    if (lockdownReason === 'browser_direct') {
+      return <LandingPage />;
+    }
+
     return (
       <LockdownScreen
         reason={lockdownReason}
