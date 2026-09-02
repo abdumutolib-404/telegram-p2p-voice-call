@@ -59,26 +59,31 @@ async function editMessageOrCaption(ctx: MyContext, text: string, other?: any) {
   }
 }
 
-export function setupPaymentHandlers(bot: Bot<MyContext>) {
-  // Callback: select_plan:PLUS, PRO, or BOSS
-  bot.callbackQuery(/^select_plan:(PLUS|PRO|BOSS)$/, async (ctx) => {
-    const tier = ctx.match[1] as 'PLUS' | 'PRO' | 'BOSS';
-    const plans = getPlansConfig();
-    const planConfig = plans[tier];
-    if (!planConfig) {
+export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' | 'BOSS') {
+  const plans = getPlansConfig();
+  const planConfig = plans[tier];
+  if (!planConfig) {
+    if (ctx.callbackQuery) {
       await ctx.answerCallbackQuery({ text: 'Unknown plan selected.' });
-      return;
+    } else {
+      await ctx.reply('Unknown plan selected. Type /plans to view available tiers.');
     }
+    return;
+  }
 
-    const telegramId = BigInt(ctx.from.id);
+  const fromId = ctx.from?.id;
+  if (fromId) {
+    const telegramId = BigInt(fromId);
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (user) {
       const profile = getPaidUserProfile(user);
       if (profile.isActivePaid) {
-        await ctx.answerCallbackQuery({
-          text: `You have an active paid plan — ${profile.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`,
-          show_alert: true,
-        });
+        const msg = `You have an active paid plan — ${profile.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`;
+        if (ctx.callbackQuery) {
+          await ctx.answerCallbackQuery({ text: msg, show_alert: true });
+        } else {
+          await ctx.reply(`⚠️ <b>Active Subscription</b>\n\n${msg}`, { parse_mode: 'HTML' });
+        }
         return;
       }
 
@@ -89,109 +94,130 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
       if (pendingRequest) {
         const orderNum = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
-        await ctx.answerCallbackQuery({
-          text: `⏳ You already have a pending request for ${pendingRequest.plan} Plan (Order #${orderNum}) awaiting verification. Please wait for approval or cancel it before requesting another.`,
-          show_alert: true,
-        });
+        const msg = `⏳ You already have a pending request for ${pendingRequest.plan} Plan (Order #${orderNum}) awaiting verification. Please wait for approval or cancel it before requesting another.`;
+        if (ctx.callbackQuery) {
+          await ctx.answerCallbackQuery({ text: msg, show_alert: true });
+        } else {
+          await ctx.reply(msg, { parse_mode: 'HTML' });
+        }
         return;
       }
     }
+  }
 
-    const formattedUzs = planConfig.uzsPrice.toLocaleString('en-US');
+  const formattedUzs = planConfig.uzsPrice.toLocaleString('en-US');
 
-    const inlineKb = new InlineKeyboard()
-      .text(`⭐ Telegram Stars (${planConfig.starsPrice} Stars)`, `buy_plan:${tier}`)
+  const inlineKb = new InlineKeyboard()
+    .text(`⭐ Telegram Stars (${planConfig.starsPrice} Stars)`, `buy_plan:${tier}`)
+    .row()
+    .text(`💳 Pay with Card (${formattedUzs} UZS)`, `manual_pay:${tier}`)
+    .row()
+    .text('⬅️ Back to Plans', 'show_plans');
+
+  if (ctx.callbackQuery) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+  }
+
+  const text =
+    `💎 <b>Upgrade to ${tier} Plan</b>\n\n` +
+    `• Max Call Duration: <b>${planConfig.maxDuration} mins</b>\n` +
+    `• Monthly Calls: <b>${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/month`}</b>\n` +
+    `• Recording Storage: <b>${planConfig.retentionDays} days</b>\n\n` +
+    `⚠️ <i>Note: Prices in UZS and Stars may slightly differ due to local and platform taxes.</i>\n\n` +
+    `Choose your preferred payment method:`;
+
+  await editMessageOrCaption(ctx, text, { reply_markup: inlineKb });
+}
+
+export async function renderPlansOverview(ctx: MyContext) {
+  ctx.session.pendingPaymentPlan = undefined;
+  ctx.session.step = 'idle';
+
+  const telegramId = ctx.from?.id ? BigInt(ctx.from.id) : null;
+  const user = telegramId ? await prisma.user.findUnique({ where: { telegramId } }) : null;
+  const profile = user ? getPaidUserProfile(user) : getPaidUserProfile({ plan: 'FREE' });
+
+  const pendingRequest = telegramId
+    ? await prisma.manualPaymentRequest.findFirst({
+        where: { telegramId, status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+      })
+    : null;
+
+  const inlineKb = new InlineKeyboard();
+
+  if (pendingRequest) {
+    inlineKb
+      .text('✖️ Cancel Pending Request', `cancel_manual_pay:${pendingRequest.id}`)
+      .row();
+  } else {
+    inlineKb
+      .text(`⚡ PLUS (${formatPriceDisplay('PLUS')})`, 'select_plan:PLUS')
       .row()
-      .text(`💳 Pay with Card (${formattedUzs} UZS)`, `manual_pay:${tier}`)
+      .text(`🚀 PRO (${formatPriceDisplay('PRO')})`, 'select_plan:PRO')
       .row()
-      .text('⬅️ Back to Plans', 'show_plans');
+      .text(`👑 BOSS (${formatPriceDisplay('BOSS')})`, 'select_plan:BOSS');
+  }
 
-    await ctx.answerCallbackQuery();
-    await editMessageOrCaption(
-      ctx,
-      `💎 <b>Upgrade to ${tier} Plan</b>\n\n` +
-        `• Max Call Duration: <b>${planConfig.maxDuration} mins</b>\n` +
-        `• Monthly Calls: <b>${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/month`}</b>\n` +
-        `• Recording Storage: <b>${planConfig.retentionDays} days</b>\n\n` +
-        `⚠️ <i>Note: Prices in UZS and Stars may slightly differ due to local and platform taxes.</i>\n\n` +
-        `Choose your preferred payment method:`,
-      { reply_markup: inlineKb }
-    );
+  let pendingBanner = '';
+  if (pendingRequest) {
+    const orderNum = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
+    pendingBanner =
+      `⏳ <b>Active Pending Request:</b>\n` +
+      `• <b>Plan</b>: ${pendingRequest.plan}\n` +
+      `• <b>Order</b>: <code>#${orderNum}</code>\n` +
+      `• <b>Status</b>: <i>Under Review by Administrators</i>\n` +
+      `<i>You cannot submit another payment request until this one is approved, rejected, or cancelled.</i>\n\n`;
+  }
+
+  if (ctx.callbackQuery) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+  }
+
+  await editMessageOrCaption(
+    ctx,
+    `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
+      `Current Plan: <b>${profile.planDisplayName}</b>\n` +
+      (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
+      pendingBanner +
+      `🆓 <b>FREE Plan</b> (0 UZS / 0 Stars)\n` +
+      `• Max Call Duration: 15 minutes\n` +
+      `• Monthly Calls: 3\n` +
+      `• Monthly Recordings: 1\n` +
+      `• Recording Retention: 1 day\n\n` +
+      `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
+      `• Max Call Duration: 30 minutes\n` +
+      `• Monthly Calls: 10\n` +
+      `• Monthly Recordings: 3 (7-day retention)\n` +
+      `• Matchmaking: Priority Queue\n\n` +
+      `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
+      `• Max Call Duration: 60 minutes\n` +
+      `• Monthly Calls: 25\n` +
+      `• Monthly Recordings: 7 (30-day retention)\n` +
+      `• Matchmaking: Fast-Track High Priority\n\n` +
+      `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
+      `• Max Call Duration: 90 minutes\n` +
+      `• Monthly Calls: 50\n` +
+      `• Monthly Recordings: 15 (90-day retention)\n` +
+      `• Matchmaking: VIP Top-Priority Queue\n\n` +
+      `🛡️ <b>Refund Policy:</b>\n` +
+      `Eligible within 48 hours of purchase OR if less than 10% of monthly call allowance has been used.\n\n` +
+      `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
+      (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
+    { reply_markup: inlineKb }
+  );
+}
+
+export function setupPaymentHandlers(bot: Bot<MyContext>) {
+  // Callback: select_plan:PLUS, PRO, or BOSS
+  bot.callbackQuery(/^select_plan:(PLUS|PRO|BOSS)$/, async (ctx) => {
+    const tier = ctx.match[1] as 'PLUS' | 'PRO' | 'BOSS';
+    await renderPlanSelection(ctx, tier);
   });
 
   // Callback: show_plans (overview)
   bot.callbackQuery('show_plans', async (ctx) => {
-    ctx.session.pendingPaymentPlan = undefined;
-    ctx.session.step = 'idle';
-
-    const telegramId = BigInt(ctx.from.id);
-    const user = await prisma.user.findUnique({ where: { telegramId } });
-    const profile = user ? getPaidUserProfile(user) : getPaidUserProfile({ plan: 'FREE' });
-
-    const pendingRequest = await prisma.manualPaymentRequest.findFirst({
-      where: { telegramId, status: 'PENDING' },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const inlineKb = new InlineKeyboard();
-
-    if (pendingRequest) {
-      inlineKb
-        .text('✖️ Cancel Pending Request', `cancel_manual_pay:${pendingRequest.id}`)
-        .row();
-    } else {
-      inlineKb
-        .text(`⚡ PLUS (${formatPriceDisplay('PLUS')})`, 'select_plan:PLUS')
-        .row()
-        .text(`🚀 PRO (${formatPriceDisplay('PRO')})`, 'select_plan:PRO')
-        .row()
-        .text(`👑 BOSS (${formatPriceDisplay('BOSS')})`, 'select_plan:BOSS');
-    }
-
-    let pendingBanner = '';
-    if (pendingRequest) {
-      const orderNum = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
-      pendingBanner =
-        `⏳ <b>Active Pending Request:</b>\n` +
-        `• <b>Plan</b>: ${pendingRequest.plan}\n` +
-        `• <b>Order</b>: <code>#${orderNum}</code>\n` +
-        `• <b>Status</b>: <i>Under Review by Administrators</i>\n` +
-        `<i>You cannot submit another payment request until this one is approved, rejected, or cancelled.</i>\n\n`;
-    }
-
-    await ctx.answerCallbackQuery();
-    await editMessageOrCaption(
-      ctx,
-      `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
-        `Current Plan: <b>${profile.planDisplayName}</b>\n` +
-        (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
-        pendingBanner +
-        `🆓 <b>FREE Plan</b> (0 UZS / 0 Stars)\n` +
-        `• Max Call Duration: 15 minutes\n` +
-        `• Monthly Calls: 3\n` +
-        `• Monthly Recordings: 1\n` +
-        `• Recording Retention: 1 day\n\n` +
-        `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
-        `• Max Call Duration: 30 minutes\n` +
-        `• Monthly Calls: 10\n` +
-        `• Monthly Recordings: 3 (7-day retention)\n` +
-        `• Matchmaking: Priority Queue\n\n` +
-        `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
-        `• Max Call Duration: 60 minutes\n` +
-        `• Monthly Calls: 25\n` +
-        `• Monthly Recordings: 7 (30-day retention)\n` +
-        `• Matchmaking: Fast-Track High Priority\n\n` +
-        `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
-        `• Max Call Duration: 90 minutes\n` +
-        `• Monthly Calls: 50\n` +
-        `• Monthly Recordings: 15 (90-day retention)\n` +
-        `• Matchmaking: VIP Top-Priority Queue\n\n` +
-        `🛡️ <b>Refund Policy:</b>\n` +
-        `Eligible within 48 hours of purchase OR if less than 10% of monthly call allowance has been used.\n\n` +
-        `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
-        (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
-      { reply_markup: inlineKb }
-    );
+    await renderPlansOverview(ctx);
   });
 
   // Callback: buy_plan:PLUS, PRO, or BOSS (Telegram Stars)

@@ -5,6 +5,8 @@ import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { getPaidUserProfile } from '../../services/plan';
 import { bindReferral } from '../../services/referralService';
+import { renderPlanSelection, renderPlansOverview } from '../handlers/payments';
+import { handleRefundRequest } from '../handlers/refund';
 
 export const getMainMenuKeyboard = () => {
   return new Keyboard()
@@ -57,6 +59,27 @@ export function setupStartCommand(bot: Bot<MyContext>) {
     });
 
     if (user && user.onboarded) {
+      // 1. Deep Link: Plan Upgrade from Mini App (e.g. /start upgrade_plus)
+      if (startPayload.startsWith('upgrade_')) {
+        const tier = startPayload.replace('upgrade_', '').toUpperCase();
+        if (tier === 'PLUS' || tier === 'PRO' || tier === 'BOSS') {
+          await renderPlanSelection(ctx, tier as 'PLUS' | 'PRO' | 'BOSS');
+          return;
+        }
+      }
+
+      // 2. Deep Link: Direct Refund Request (e.g. /start refund)
+      if (startPayload === 'refund') {
+        await handleRefundRequest(ctx);
+        return;
+      }
+
+      // 3. Deep Link: Plans Matrix Overview (e.g. /start plans)
+      if (startPayload === 'plans') {
+        await renderPlansOverview(ctx);
+        return;
+      }
+
       const keyboard = getMainMenuKeyboard();
       await ctx.reply(
         `👋 <b>Welcome to PairTalk!</b>\n\n` +

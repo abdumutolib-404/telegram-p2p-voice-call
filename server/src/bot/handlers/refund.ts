@@ -10,24 +10,23 @@ import {
   rejectManualPaymentRefund,
 } from '../../services/plan';
 
-export function setupRefundHandlers(bot: Bot<MyContext>) {
-  const getPolicyUrl = () => {
-    const baseUrl = env.MINI_APP_URL || 'https://pairtalk.online';
-    return `${baseUrl}/privacy`;
-  };
+const getPolicyUrl = () => {
+  const baseUrl = env.MINI_APP_URL || 'https://pairtalk.online';
+  return `${baseUrl}/privacy`;
+};
 
-  const handleRefundRequest = async (ctx: MyContext) => {
-    const telegramIdNum = ctx.from?.id;
-    if (!telegramIdNum) return;
-    const telegramId = BigInt(telegramIdNum);
+export const handleRefundRequest = async (ctx: MyContext) => {
+  const telegramIdNum = ctx.from?.id;
+  if (!telegramIdNum) return;
+  const telegramId = BigInt(telegramIdNum);
 
-    const user = await prisma.user.findUnique({ where: { telegramId } });
-    if (!user) {
-      await ctx.reply('Please register with /start first.');
-      return;
-    }
+  const user = await prisma.user.findUnique({ where: { telegramId } });
+  if (!user) {
+    await ctx.reply('Please register with /start first.');
+    return;
+  }
 
-    const policyUrl = getPolicyUrl();
+  const policyUrl = getPolicyUrl();
 
     // 1. Locate most recent successful payment transaction
     const latestStarsTx = await prisma.starsTransaction.findFirst({
@@ -177,6 +176,7 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
     }
   };
 
+export function setupRefundHandlers(bot: Bot<MyContext>) {
   // Command: /refund
   bot.command('refund', handleRefundRequest);
 
