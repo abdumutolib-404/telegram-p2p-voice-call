@@ -122,6 +122,22 @@ app.use((req, res, next) => {
 });
 
 // --- Static Path Resolvers & Pre-Rendered SEO HTML ---
+const getLandingDistPath = (): string | null => {
+  const candidates = [
+    path.resolve(__dirname, '../public/landing'),
+    path.resolve(__dirname, '../../landing/dist'),
+    path.resolve(process.cwd(), 'public/landing'),
+    path.resolve(process.cwd(), '../landing/dist'),
+    path.resolve(process.cwd(), 'landing/dist'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.existsSync(path.join(c, 'index.html'))) {
+      return c;
+    }
+  }
+  return null;
+};
+
 const getClientDistPath = (): string | null => {
   const candidates = [
     path.resolve(__dirname, '../public/client'),
@@ -399,6 +415,21 @@ const STATIC_SEO_FALLBACK_HTML = `<!doctype html>
 </html>`;
 
 const getSeoPreRenderedHtml = (): string => {
+  const landingDist = getLandingDistPath();
+  if (landingDist) {
+    try {
+      const distIndex = path.join(landingDist, 'index.html');
+      if (fs.existsSync(distIndex)) {
+        const content = fs.readFileSync(distIndex, 'utf-8');
+        if (content && content.length > 50) {
+          return content;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
   const clientDist = getClientDistPath();
   if (clientDist) {
     try {
@@ -411,6 +442,18 @@ const getSeoPreRenderedHtml = (): string => {
       }
     } catch {
       // Fallback to static SEO HTML
+    }
+  }
+
+  const landingSrcIndex = path.resolve(__dirname, '../../landing/index.html');
+  if (fs.existsSync(landingSrcIndex)) {
+    try {
+      const content = fs.readFileSync(landingSrcIndex, 'utf-8');
+      if (content && content.includes('Partner ghosted you again?')) {
+        return content;
+      }
+    } catch {
+      // Fallback
     }
   }
 
@@ -505,6 +548,10 @@ app.get('/health', async (_req, res) => {
 });
 
 // --- Static Asset Serving ---
+const landingDist = getLandingDistPath();
+if (landingDist) {
+  app.use(express.static(landingDist, { index: false }));
+}
 const clientDist = getClientDistPath();
 if (clientDist) {
   app.use(express.static(clientDist, { index: false }));
@@ -604,6 +651,10 @@ app.get('/sitemap.xml', (_req, res) => {
 
 // --- Root GET / & Pre-rendered SEO Landing Page ---
 app.get('/', (_req, res) => {
+  const lDist = getLandingDistPath();
+  if (lDist && fs.existsSync(path.join(lDist, 'index.html'))) {
+    return res.sendFile(path.join(lDist, 'index.html'));
+  }
   const cDist = getClientDistPath();
   if (cDist && fs.existsSync(path.join(cDist, 'index.html'))) {
     return res.sendFile(path.join(cDist, 'index.html'));
@@ -624,6 +675,10 @@ app.get('*', (req, res, next) => {
       if (aDist && fs.existsSync(path.join(aDist, 'index.html'))) {
         return res.sendFile(path.join(aDist, 'index.html'));
       }
+    }
+    const lDist = getLandingDistPath();
+    if (lDist && fs.existsSync(path.join(lDist, 'index.html'))) {
+      return res.sendFile(path.join(lDist, 'index.html'));
     }
     const cDist = getClientDistPath();
     if (cDist && fs.existsSync(path.join(cDist, 'index.html'))) {

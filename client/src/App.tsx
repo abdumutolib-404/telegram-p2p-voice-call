@@ -489,6 +489,10 @@ export const App: React.FC = () => {
   // 2. Deterministic Access-Control Lockdown Screen / Public Landing Page
   if (appState === 'lockdown') {
     if (lockdownReason === 'browser_direct') {
+      if (typeof window !== 'undefined' && (window.location.hostname === 'app.pairtalk.online' || window.location.hostname.startsWith('app.'))) {
+        window.location.replace('https://pairtalk.online');
+        return null;
+      }
       return <LandingPage />;
     }
 
