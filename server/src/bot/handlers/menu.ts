@@ -109,8 +109,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
-    const botInfo = await ctx.api.getMe().catch(() => ({ username: 'PairTalkBot' }));
-    const botUsername = botInfo.username || 'PairTalkBot';
+    const botUsername = ctx.me?.username || bot.botInfo?.username || 'PairTalkBot';
     const inviteLink = `https://t.me/${botUsername}?start=ref_${user.telegramId}`;
 
     const stats = await getReferralStats(user.id);

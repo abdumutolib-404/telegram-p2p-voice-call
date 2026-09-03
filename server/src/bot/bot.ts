@@ -1,4 +1,5 @@
 import { Bot, session } from 'grammy';
+import { sequentialize } from '@grammyjs/runner';
 import { MyContext, SessionData } from './types';
 import { setupStartCommand } from './commands/start';
 import { setupAdminCommand } from './commands/admin';
@@ -52,6 +53,9 @@ function createRedisSessionStorage() {
 
 export function createBot(token: string): Bot<MyContext> {
   const bot = new Bot<MyContext>(token);
+
+  // Guarantee sequential processing of updates per chat while running across different chats in parallel
+  bot.use(sequentialize((ctx) => ctx.chat?.id.toString()));
 
   // Global API transformer for retry on 429 and graceful handling of benign idempotency responses
   bot.api.config.use(async (prev, method, payload, signal) => {
@@ -153,6 +157,40 @@ export function createBot(token: string): Bot<MyContext> {
       return next();
     }
 
+    const redis = getRedis();
+    const cacheKey = `bot:ban_check:${telegramIdNum}`;
+
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached === 'CLEAN') {
+        return next();
+      }
+      if (cached && cached !== 'CLEAN') {
+        try {
+          const banInfo = JSON.parse(cached);
+          const banTimeStr = banInfo.banTimeStr || 'temporarily';
+          if (ctx.callbackQuery) {
+            await ctx.answerCallbackQuery({
+              text: `🚫 Account suspended ${banTimeStr}. You can only use Support / Appeals.`,
+              show_alert: true,
+            });
+          } else {
+            await ctx.reply(
+              `🚫 <b>Account Suspended (${banTimeStr})</b>\n\n` +
+                `Your account is currently restricted from matchmaking and practicing.\n\n` +
+                `To submit an appeal to our moderation team, please type:\n<code>/appeal &lt;your reason or explanation&gt;</code> or tap <b>💬 Support</b>.`,
+              { parse_mode: 'HTML' }
+            );
+          }
+          return;
+        } catch {
+          // parse error, fallback to DB
+        }
+      }
+    } catch {
+      // Redis error, fallback to DB
+    }
+
     try {
       const user = await prisma.user.findUnique({
         where: { telegramId: BigInt(telegramIdNum) },
@@ -168,6 +206,8 @@ export function createBot(token: string): Bot<MyContext> {
           const banTimeStr = user.bannedUntil
             ? `until ${new Date(user.bannedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC`
             : 'permanently';
+
+          await redis.set(cacheKey, JSON.stringify({ isSuspended: true, banTimeStr }), 'EX', 60).catch(() => undefined);
 
           if (ctx.callbackQuery) {
             await ctx.answerCallbackQuery({
@@ -185,6 +225,9 @@ export function createBot(token: string): Bot<MyContext> {
           return;
         }
       }
+
+      // User is clean: cache for 60s
+      await redis.set(cacheKey, 'CLEAN', 'EX', 60).catch(() => undefined);
     } catch (err) {
       logger.error('Bot auth suspension check failed', {
         service: 'bot',

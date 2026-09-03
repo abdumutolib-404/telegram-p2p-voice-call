@@ -51,6 +51,9 @@ model User {
   manualPayments      ManualPaymentRequest[]
   favorites           FavoritePartner[]      @relation("UserFavorites")
   favoritedBy         FavoritePartner[]      @relation("PartnerFavorites")
+
+  @@index([subscriptionExpiresAt])
+  @@index([isBanned])
 }
 
 model CallSession {
@@ -70,6 +73,12 @@ model CallSession {
   endedAt            DateTime?
 
   ratings            CallRating[]
+
+  @@index([userAId, status, createdAt])
+  @@index([userBId, status, createdAt])
+  @@index([egressId])
+  @@index([status])
+  @@index([recordingExpiresAt])
 }
 
 model CallRating {
@@ -85,6 +94,9 @@ model CallRating {
   call       CallSession @relation(fields: [callId], references: [id])
   rater      User        @relation("RatingsGiven", fields: [raterId], references: [id])
   rated      User        @relation("RatingsReceived", fields: [ratedId], references: [id])
+
+  @@index([ratedId])
+  @@index([callId])
 }
 
 model UnblockAppeal {
@@ -114,6 +126,8 @@ model StarsTransaction {
   createdAt         DateTime  @default(now())
 
   user              User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
 }
 
 model ManualPaymentRequest {
@@ -135,6 +149,8 @@ model ManualPaymentRequest {
   createdAt        DateTime  @default(now())
 
   user             User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
 }
 
 model AuditLog {
