@@ -4,6 +4,7 @@ import { prisma } from '../config/database';
 import { IeltsPart } from '@prisma/client';
 import { generateQuestionFingerprint } from '../services/crawler/fingerprint';
 import { questionIngestionService } from '../services/crawler/ingestionService';
+import { questionFilterService } from '../services/crawler/questionFilterService';
 import { topicNotificationService } from '../services/topicNotificationService';
 import { getAdminBot } from './admin';
 import { logger } from '../utils/logger';
@@ -382,6 +383,18 @@ router.post('/crawler/run', async (req: AdminAuthenticatedRequest, res: Response
   } catch (err: unknown) {
     logger.error('Admin trigger crawler failed', { service: 'admin_ielts' }, err);
     res.status(500).json({ error: 'Internal server error triggering crawler' });
+  }
+});
+
+// POST /api/admin/ielts/crawler/filter-run
+router.post('/crawler/filter-run', async (_req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    logger.info('Admin triggered manual daily question filter cycle', { service: 'admin_ielts' });
+    const result = await questionFilterService.runFilterCycle({ force: true });
+    res.json({ success: true, result });
+  } catch (err: unknown) {
+    logger.error('Admin trigger question filter failed', { service: 'admin_ielts' }, err);
+    res.status(500).json({ error: 'Internal server error triggering question filter' });
   }
 });
 

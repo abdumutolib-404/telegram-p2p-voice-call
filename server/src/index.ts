@@ -25,6 +25,7 @@ import { startStoragePurgeCron } from './services/storage';
 import { startSubscriptionExpiryCron } from './services/subscriptionExpiry';
 import { botLeaderLock } from './services/leaderLock';
 import { questionIngestionService } from './services/crawler/ingestionService';
+import { startCrawlerLifecycleCron } from './services/crawler/crawlerScheduler';
 import { topicNotificationService } from './services/topicNotificationService';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
 import { requestIdMiddleware } from './middleware/requestId';
@@ -1046,13 +1047,8 @@ async function bootstrap(): Promise<void> {
       },
     }).catch(() => undefined);
 
-    setInterval(() => {
-      void questionIngestionService.runIngestion({
-        onNewTopics: async (newCount, topics) => {
-          if (bot) await topicNotificationService.broadcastNewTopics(newCount, topics, bot);
-        },
-      }).catch(() => undefined);
-    }, 24 * 60 * 60 * 1000).unref();
+    // Start Two-Tier Scheduled Lifecycle (Weekly Searcher & Daily Filter)
+    startCrawlerLifecycleCron(() => bot);
 
     if (env.NODE_ENV !== 'test') {
       await new Promise<void>((resolve, reject) => {

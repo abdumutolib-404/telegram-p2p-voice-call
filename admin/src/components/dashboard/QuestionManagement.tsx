@@ -100,6 +100,8 @@ export const QuestionManagement: React.FC = () => {
   const [customCrawlUrl, setCustomCrawlUrl] = useState('');
   const [deepCrawlEnabled, setDeepCrawlEnabled] = useState(false);
   const [crawlMessage, setCrawlMessage] = useState<string | null>(null);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [filterMessage, setFilterMessage] = useState<string | null>(null);
 
   // Bulk import state
   const [bulkImportJson, setBulkImportJson] = useState('');
@@ -174,6 +176,31 @@ export const QuestionManagement: React.FC = () => {
     void fetchQuestions();
     void fetchCrawlerStatus();
   }, [fetchTopics, fetchQuestions, fetchCrawlerStatus]);
+
+  const handleRunFilter = async () => {
+    setIsFiltering(true);
+    setFilterMessage(null);
+    try {
+      const res = await adminFetch<{ success: boolean; result: any }>('/api/admin/ielts/crawler/filter-run', {
+        method: 'POST',
+      });
+      if (res.success) {
+        const r = res.result;
+        setFilterMessage(
+          `✅ Daily Filter completed: ${r.totalReviewed} questions reviewed, ${r.reclassifiedCount} re-classified to correct topics, ${r.duplicatesPrunedCount} semantic duplicates pruned in ${r.durationMs}ms.`
+        );
+      } else {
+        setFilterMessage('❌ Filter cycle failed.');
+      }
+      void fetchQuestions();
+      void fetchTopics();
+      void fetchCrawlerStatus();
+    } catch (err: any) {
+      setFilterMessage(`❌ Error: ${err?.message || 'Filter failed'}`);
+    } finally {
+      setIsFiltering(false);
+    }
+  };
 
   const handleRunCrawl = async (customUrl?: string) => {
     setIsCrawling(true);
@@ -1052,25 +1079,31 @@ export const QuestionManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Actions: Trigger + Custom URL */}
+          {/* Actions: Weekly Searcher + Daily Filter + Custom URL */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
-            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles size={16} style={{ color: 'var(--info)' }} />
-                <span>Run Ingestion Cycle</span>
-              </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                Ingests the official 2026 forecast bank (120+ verified questions) and synchronizes all topic categories.
-              </p>
+            {/* 1. Weekly Searcher Engine */}
+            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={16} style={{ color: 'var(--info)' }} />
+                    <span>Weekly Searcher Crawler</span>
+                  </div>
+                  <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Every Sun 03:00 UTC</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  Autonomous deep web crawler that searches IELTS exam repositories, extracts questions, and initial seeds into the system.
+                </p>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={deepCrawlEnabled}
-                  onChange={(e) => setDeepCrawlEnabled(e.target.checked)}
-                />
-                <span>Include Deep Live Web Crawl (IELTS Liz, IELTS Material, Advantage)</span>
-              </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer', marginTop: '0.85rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={deepCrawlEnabled}
+                    onChange={(e) => setDeepCrawlEnabled(e.target.checked)}
+                  />
+                  <span>Include Deep Live Web Crawl (External Sites)</span>
+                </label>
+              </div>
 
               <button
                 type="button"
@@ -1080,7 +1113,40 @@ export const QuestionManagement: React.FC = () => {
                 style={{ width: '100%', height: '40px' }}
               >
                 <RefreshCw size={15} style={{ animation: isCrawling ? 'spin 1s linear infinite' : 'none' }} />
-                <span>{isCrawling ? 'Ingesting Questions...' : 'Trigger Full Ingestion Now'}</span>
+                <span>{isCrawling ? 'Searcher Crawling...' : 'Trigger Weekly Searcher Now'}</span>
+              </button>
+            </div>
+
+            {/* 2. Daily Filter & Janitor */}
+            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem', borderLeft: '4px solid var(--primary)' }}>
+              <div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Layers size={16} style={{ color: '#9B82FD' }} />
+                    <span>Daily Filter &amp; Janitor</span>
+                  </div>
+                  <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>Every 24 Hours</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  Scans all active questions in PostgreSQL: re-classifies misfiled topics (e.g. news to Media), prunes semantic duplicates, and cleans formatting.
+                </p>
+
+                {filterMessage && (
+                  <div style={{ marginTop: '0.75rem', padding: '0.65rem', borderRadius: '8px', background: 'rgba(124, 92, 252, 0.12)', border: '1px solid rgba(124, 92, 252, 0.3)', color: '#D8B4FE', fontSize: '0.75rem' }}>
+                    {filterMessage}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={isFiltering}
+                onClick={() => handleRunFilter()}
+                className="btn-secondary"
+                style={{ width: '100%', height: '40px', background: 'linear-gradient(135deg, rgba(124, 92, 252, 0.25) 0%, rgba(79, 140, 255, 0.25) 100%)', borderColor: 'rgba(124, 92, 252, 0.4)' }}
+              >
+                <RefreshCw size={15} style={{ animation: isFiltering ? 'spin 1s linear infinite' : 'none' }} />
+                <span>{isFiltering ? 'Filtering & Pruning...' : 'Run Daily Filter & Janitor Now'}</span>
               </button>
             </div>
 
