@@ -77,12 +77,12 @@ PairTalk is an autonomous peer-to-peer IELTS Speaking preparation platform opera
 
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Technical SEO & Domain Isolation (R1 + R2) | `landing/index.html`, `landing/public/robots.txt`, `landing/public/sitemap.xml`, `client/index.html`, `admin/index.html`, `server/src/index.ts`, `server/src/config/env.ts` | None | PLANNED |
-| M2 | Public Docs & Knowledge Architecture (R3) | `docs/*.md`, `landing/src/App.tsx`, `landing/src/components/*.tsx` | M1 | PLANNED |
-| M3 | Security Remediation & Whole-Band Scoring (R4 + R5) | `server/src/middleware/`, `server/src/services/matchmaking.ts`, `server/src/bot/`, `server/src/routes/admin.ts`, `admin/src/components/dashboard/UserManagement.tsx`, `server/prisma/schema.prisma` | None | PLANNED |
-| M4 | Structured Observability & Correlation (R6) | `server/src/utils/logger.ts`, `server/src/middleware/requestId.ts`, `server/src/socket/signaling.ts`, `server/src/routes/`, `server/src/index.ts` | None | PLANNED |
-| M5 | Operations Control Plane & Admin Telemetry (R7) | `server/src/routes/adminTelemetry.ts`, `server/src/routes/admin.ts`, `admin/src/components/dashboard/AuditLogViewer.tsx`, `admin/src/components/dashboard/OverviewDashboard.tsx`, `admin/src/App.tsx` | M3, M4 | PLANNED |
-| M6 | Final Verification & Adversarial Hardening | Full 32 Vitest test suites (307+ tests), 4 package builds compilation, Tier 1-5 E2E & adversarial stress testing | M1, M2, M3, M4, M5 | PLANNED |
+| M1 | Technical SEO & Domain Isolation (R1 + R2) | `landing/index.html`, `landing/public/robots.txt`, `landing/public/sitemap.xml`, `client/index.html`, `admin/index.html`, `server/src/index.ts`, `server/src/config/env.ts` | None | DONE |
+| M2 | Public Docs & Knowledge Architecture (R3) | `docs/*.md`, `landing/src/App.tsx`, `landing/src/components/*.tsx` | M1 | DONE |
+| M3 | Security Remediation & Whole-Band Scoring (R4 + R5) | `server/src/middleware/`, `server/src/services/matchmaking.ts`, `server/src/bot/`, `server/src/routes/admin.ts`, `admin/src/components/dashboard/UserManagement.tsx`, `server/prisma/schema.prisma` | None | DONE |
+| M4 | Structured Observability & Correlation (R6) | `server/src/utils/logger.ts`, `server/src/middleware/requestId.ts`, `server/src/socket/signaling.ts`, `server/src/routes/`, `server/src/index.ts` | None | DONE |
+| M5 | Operations Control Plane & Admin Telemetry (R7) | `server/src/routes/adminTelemetry.ts`, `server/src/routes/admin.ts`, `admin/src/components/dashboard/AuditLogViewer.tsx`, `admin/src/components/dashboard/OverviewDashboard.tsx`, `admin/src/App.tsx` | M3, M4 | DONE |
+| M6 | Final Verification & Adversarial Hardening | Full 41 Vitest test suites (420 tests), 4 package builds compilation, Tier 1-5 E2E & adversarial stress testing | M1, M2, M3, M4, M5 | DONE |
 
 ---
 
