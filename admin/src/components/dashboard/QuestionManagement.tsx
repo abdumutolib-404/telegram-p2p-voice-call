@@ -12,6 +12,8 @@ import {
   Database,
   CheckCircle2,
   Clock,
+  Cpu,
+  X,
 } from 'lucide-react';
 
 interface Topic {
@@ -111,7 +113,7 @@ export const QuestionManagement: React.FC = () => {
       if (filterTopic !== 'all') params.append('topicId', filterTopic);
       if (filterActive !== 'all') params.append('isActive', filterActive);
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
-      params.append('limit', '50');
+      params.append('limit', '100');
 
       const res = await adminFetch<{ success: boolean; questions: Question[] }>(
         `/api/admin/ielts/questions?${params.toString()}`
@@ -128,9 +130,9 @@ export const QuestionManagement: React.FC = () => {
 
   const fetchCrawlerStatus = useCallback(async () => {
     try {
-      const res = await adminFetch<{ success: boolean } & CrawlerStatus>('/api/admin/ielts/crawler/status');
+      const res = await adminFetch<{ success: boolean; status: CrawlerStatus }>('/api/admin/ielts/crawler/status');
       if (res.success) {
-        setCrawlerStatus(res);
+        setCrawlerStatus(res.status);
       }
     } catch {
       // ignore
@@ -151,15 +153,16 @@ export const QuestionManagement: React.FC = () => {
         method: 'POST',
       });
       if (res.success) {
-        setCrawlMessage(
-          `Ingestion completed! Added ${res.result.questionsAccepted} new questions, skipped ${res.result.duplicatesSkipped} duplicates.`
-        );
-        void fetchCrawlerStatus();
-        void fetchQuestions();
-        void fetchTopics();
+        const r = res.result;
+        setCrawlMessage(`✅ Ingestion finished: ${r.questionsAccepted} new questions accepted, ${r.duplicatesSkipped} duplicates skipped, ${r.topicsCreated} topics created (${r.durationMs}ms).`);
+      } else {
+        setCrawlMessage('❌ Ingestion run failed.');
       }
+      void fetchQuestions();
+      void fetchTopics();
+      void fetchCrawlerStatus();
     } catch (err: any) {
-      setCrawlMessage(`Crawler error: ${err?.message || 'Failed'}`);
+      setCrawlMessage(`❌ Error: ${err?.message || 'Crawl failed'}`);
     } finally {
       setIsCrawling(false);
     }
@@ -168,23 +171,24 @@ export const QuestionManagement: React.FC = () => {
   const handleSaveQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
-    try {
-      let bulletsJson: string | null = null;
-      if (modalPart === 'PART_2' && modalCueBullets.trim()) {
-        const bulletsArray = modalCueBullets
-          .split('\n')
-          .map((b) => b.trim().replace(/^[-*•]\s*/, ''))
-          .filter(Boolean);
-        bulletsJson = JSON.stringify(bulletsArray);
-      }
 
+    let bulletsJson: string | null = null;
+    if (modalPart === 'PART_2' && modalCueBullets.trim()) {
+      const lines = modalCueBullets
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      bulletsJson = JSON.stringify(lines);
+    }
+
+    try {
       if (editingQuestion) {
         await adminFetch(`/api/admin/ielts/questions/${editingQuestion.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
             topicId: modalTopicId,
             part: modalPart,
-            questionText: modalQuestionText,
+            questionText: modalQuestionText.trim(),
             cueCardBullets: bulletsJson,
           }),
         });
@@ -194,8 +198,9 @@ export const QuestionManagement: React.FC = () => {
           body: JSON.stringify({
             topicId: modalTopicId,
             part: modalPart,
-            questionText: modalQuestionText,
+            questionText: modalQuestionText.trim(),
             cueCardBullets: bulletsJson,
+            source: 'ADMIN_MANUAL',
           }),
         });
       }
@@ -257,49 +262,107 @@ export const QuestionManagement: React.FC = () => {
     }
   };
 
+  const part1Count = questions.filter((q) => q.part === 'PART_1').length;
+  const part2Count = questions.filter((q) => q.part === 'PART_2').length;
+  const part3Count = questions.filter((q) => q.part === 'PART_3').length;
+
   return (
     <div className="space-y-6 font-sans">
-      {/* Top Banner & Tab Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-            <BookOpen className="w-5 h-5" />
+      {/* Top Banner HUD with Cyberpunk Glow */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#0B1120] via-[#0E172A] to-[#070B14] border border-cyan-500/30 p-6 rounded-3xl shadow-[0_4px_30px_rgba(6,182,212,0.15)]">
+        <div className="absolute -top-24 -right-24 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
+              <BookOpen className="w-7 h-7" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide font-mono">
+                  IELTS Question Simulator Center
+                </h1>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  LIVE
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-mono">
+                Real-time question taxonomy, in-call drawer distribution &amp; automated crawler ingestion
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-white tracking-wide font-mono">IELTS Speaking Simulator Center</h1>
-            <p className="text-xs text-slate-400 font-mono">
-              Autonomous question repository, topic taxonomy &amp; crawler sync telemetry
-            </p>
+
+          {/* Quick HUD Metrics */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="px-4 py-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-3 shadow-inner">
+              <Database className="w-4 h-4 text-cyan-400" />
+              <div>
+                <div className="text-[10px] uppercase font-mono text-slate-400">Total Bank</div>
+                <div className="text-sm font-black text-white font-mono">{questions.length} Questions</div>
+              </div>
+            </div>
+
+            <div className="px-4 py-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-3 shadow-inner">
+              <Layers className="w-4 h-4 text-purple-400" />
+              <div>
+                <div className="text-[10px] uppercase font-mono text-slate-400">Taxonomies</div>
+                <div className="text-sm font-black text-white font-mono">{topics.length} Topics</div>
+              </div>
+            </div>
+
+            <div className="px-4 py-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-3 shadow-inner">
+              <Cpu className="w-4 h-4 text-emerald-400" />
+              <div>
+                <div className="text-[10px] uppercase font-mono text-slate-400">Crawler Sync</div>
+                <div className="text-sm font-black text-emerald-400 font-mono">
+                  {crawlerStatus?.latestLog?.status || 'READY'}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono">
+        {/* Tab Navigation Pill Bar */}
+        <div className="mt-6 pt-5 border-t border-slate-800/80 flex items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('questions')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'questions' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'questions'
+                ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
             }`}
           >
-            Questions ({questions.length})
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Questions Repository ({questions.length})</span>
           </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('topics')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'topics' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'topics'
+                ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
             }`}
           >
-            Topics ({topics.length})
+            <Layers className="w-3.5 h-3.5" />
+            <span>Topics Taxonomy ({topics.length})</span>
           </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('crawler')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'crawler' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'crawler'
+                ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
             }`}
           >
-            Crawler Engine
+            <Cpu className="w-3.5 h-3.5" />
+            <span>Crawler Engine</span>
           </button>
         </div>
       </div>
@@ -307,8 +370,21 @@ export const QuestionManagement: React.FC = () => {
       {/* 1. QUESTIONS REPOSITORY TAB */}
       {activeTab === 'questions' && (
         <div className="space-y-4">
+          {/* Quick Breakdown Badges */}
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="px-3 py-1 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
+              Part 1: <strong>{part1Count}</strong>
+            </span>
+            <span className="px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
+              Part 2 (Cue Cards): <strong>{part2Count}</strong>
+            </span>
+            <span className="px-3 py-1 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300">
+              Part 3 (Discussion): <strong>{part3Count}</strong>
+            </span>
+          </div>
+
           {/* Filters & Actions Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-4 border border-slate-800 rounded-2xl text-xs font-mono">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#0C1222]/80 p-4 border border-slate-800/80 rounded-2xl text-xs font-mono shadow-lg backdrop-blur-md">
             <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
               <div className="relative flex-1 min-w-[180px]">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
@@ -317,16 +393,16 @@ export const QuestionManagement: React.FC = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search question text..."
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-colors"
                 />
               </div>
 
               <select
                 value={filterPart}
                 onChange={(e) => setFilterPart(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 focus:outline-none focus:border-cyan-400 cursor-pointer transition-colors"
               >
-                <option value="all">All Parts</option>
+                <option value="all">All Exam Parts</option>
                 <option value="PART_1">Part 1 (Intro)</option>
                 <option value="PART_2">Part 2 (Cue Card)</option>
                 <option value="PART_3">Part 3 (Discussion)</option>
@@ -335,7 +411,7 @@ export const QuestionManagement: React.FC = () => {
               <select
                 value={filterTopic}
                 onChange={(e) => setFilterTopic(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 focus:outline-none focus:border-cyan-400 cursor-pointer transition-colors"
               >
                 <option value="all">All Topics</option>
                 {topics.map((t) => (
@@ -348,7 +424,7 @@ export const QuestionManagement: React.FC = () => {
               <select
                 value={filterActive}
                 onChange={(e) => setFilterActive(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 focus:outline-none focus:border-cyan-400 cursor-pointer transition-colors"
               >
                 <option value="all">All Statuses</option>
                 <option value="true">Active Only</option>
@@ -364,7 +440,7 @@ export const QuestionManagement: React.FC = () => {
                 setModalCueBullets('');
                 setShowQuestionModal(true);
               }}
-              className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:scale-95 text-slate-950 font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 active:scale-95 text-slate-950 font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_0_20px_rgba(6,182,212,0.35)]"
             >
               <Plus className="w-4 h-4" />
               <span>Add Question</span>
@@ -372,70 +448,76 @@ export const QuestionManagement: React.FC = () => {
           </div>
 
           {/* Questions Table */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden font-mono text-xs">
+          <div className="bg-[#0A0F1D]/80 border border-slate-800/80 rounded-2xl overflow-hidden font-mono text-xs shadow-xl backdrop-blur-md">
             {loading ? (
-              <div className="p-8 text-center text-slate-400 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
-                <span>Loading question bank...</span>
+              <div className="p-12 text-center text-slate-400 flex items-center justify-center gap-3">
+                <RefreshCw className="w-5 h-5 animate-spin text-cyan-400" />
+                <span>Loading question repository...</span>
               </div>
             ) : questions.length === 0 ? (
-              <div className="p-8 text-center text-slate-500">
+              <div className="p-12 text-center text-slate-500">
                 No questions found matching criteria.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-950/80 border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider">
+                    <tr className="bg-slate-950/80 border-b border-slate-800 text-slate-400 text-[10px] uppercase tracking-wider">
                       <th className="py-3 px-4">Part</th>
                       <th className="py-3 px-4">Topic</th>
-                      <th className="py-3 px-4">Question Text</th>
+                      <th className="py-3 px-4">Question Prompt</th>
                       <th className="py-3 px-4">Source</th>
-                      <th className="py-3 px-4 text-center">Active</th>
+                      <th className="py-3 px-4 text-center">Status</th>
                       <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {questions.map((q) => (
-                      <tr key={q.id} className="hover:bg-slate-800/30 transition-colors">
+                      <tr key={q.id} className="hover:bg-slate-800/30 transition-colors group">
                         <td className="py-3 px-4 whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider ${
                               q.part === 'PART_1'
-                                ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                                ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.15)]'
                                 : q.part === 'PART_2'
-                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                                : 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
+                                : 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.15)]'
                             }`}
                           >
-                            {q.part.replace('_', ' ')}
+                            {q.part === 'PART_1' && 'P1 • Intro'}
+                            {q.part === 'PART_2' && 'P2 • Cue Card'}
+                            {q.part === 'PART_3' && 'P3 • Discussion'}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-slate-300 whitespace-nowrap">
-                          {q.topic?.name || 'General'}
+                          <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px]">
+                            {q.topic?.name || 'General'}
+                          </span>
                         </td>
                         <td className="py-3 px-4 text-slate-200 max-w-md font-sans">
-                          <p className="line-clamp-2">{q.questionText}</p>
+                          <p className="line-clamp-2 leading-relaxed text-sm">{q.questionText}</p>
                           {q.cueCardBullets && (
-                            <span className="text-[10px] text-amber-400/80 font-mono mt-0.5 block">
-                              • Contains Cue Card Bullets
+                            <span className="text-[11px] text-amber-400 font-mono mt-1 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3" />
+                              <span>Includes cue card preparation prompts</span>
                             </span>
                           )}
                         </td>
                         <td className="py-3 px-4 text-slate-400 text-[11px] whitespace-nowrap">
-                          {q.source}
+                          <span className="text-slate-500 font-mono">{q.source}</span>
                         </td>
                         <td className="py-3 px-4 text-center">
                           <button
                             type="button"
                             onClick={() => handleToggleQuestionActive(q)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 mx-auto ${
                               q.isActive
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-slate-800 text-slate-500'
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]'
+                                : 'bg-slate-800 text-slate-500 border border-slate-700'
                             }`}
                           >
-                            {q.isActive ? 'ACTIVE' : 'OFF'}
+                            <span className={`w-1.5 h-1.5 rounded-full ${q.isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                            <span>{q.isActive ? 'ACTIVE' : 'OFF'}</span>
                           </button>
                         </td>
                         <td className="py-3 px-4 text-right whitespace-nowrap">
@@ -483,41 +565,45 @@ export const QuestionManagement: React.FC = () => {
       {/* 2. TOPICS TAXONOMY TAB */}
       {activeTab === 'topics' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-900/60 p-4 border border-slate-800 rounded-2xl text-xs font-mono">
+          <div className="flex items-center justify-between bg-[#0C1222]/80 p-5 border border-slate-800/80 rounded-2xl text-xs font-mono shadow-lg">
             <div>
-              <h3 className="font-bold text-white">IELTS Topic Taxonomy</h3>
-              <p className="text-slate-400 text-[11px]">Categorizes exam topics and automated crawler mapping</p>
+              <h3 className="font-bold text-white text-sm">IELTS Topic Taxonomy</h3>
+              <p className="text-slate-400 text-[11px] mt-0.5">Categorizes exam topics and automated crawler mapping</p>
             </div>
             <button
               type="button"
               onClick={() => setShowTopicModal(true)}
-              className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_0_20px_rgba(6,182,212,0.35)]"
             >
               <Plus className="w-4 h-4" />
               <span>Create Topic</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 font-mono text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
             {topics.map((t) => (
               <div
                 key={t.id}
-                className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between hover:border-slate-700 transition-colors"
+                className="bg-[#0A0F1D]/80 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between hover:border-cyan-500/40 transition-all group shadow-lg"
               >
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-bold text-white text-sm">{t.name}</span>
-                    <span className="px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded text-[10px]">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-white text-sm group-hover:text-cyan-400 transition-colors">
+                      {t.name}
+                    </span>
+                    <span className="px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-lg text-[10px] font-bold">
                       Freq {t.relevance}/10
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 font-sans line-clamp-2 mb-3">
+                  <p className="text-[11px] text-slate-400 font-sans line-clamp-2 mb-4 leading-relaxed">
                     {t.description || 'No description provided.'}
                   </p>
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-800/60">
-                  <span>Slug: {t.slug}</span>
-                  <span className="text-cyan-400 font-bold">{t._count?.questions ?? 0} questions</span>
+                <div className="pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500">
+                  <span className="font-mono text-slate-600">/{t.slug}</span>
+                  <span className="text-cyan-400 font-bold px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
+                    {t._count?.questions ?? 0} questions
+                  </span>
                 </div>
               </div>
             ))}
@@ -530,55 +616,60 @@ export const QuestionManagement: React.FC = () => {
         <div className="space-y-6 font-mono">
           {/* Status Metrics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl">
-              <div className="text-slate-400 text-xs flex items-center gap-1.5 mb-1">
+            <div className="bg-[#0A0F1D]/80 border border-cyan-500/20 p-5 rounded-3xl shadow-lg">
+              <div className="text-slate-400 text-xs flex items-center gap-2 mb-2">
                 <Database className="w-4 h-4 text-cyan-400" />
-                <span>Total Questions</span>
+                <span>Total Ingested</span>
               </div>
-              <div className="text-2xl font-black text-white">{crawlerStatus?.totalQuestions ?? 0}</div>
+              <div className="text-3xl font-black text-white">{crawlerStatus?.totalQuestions ?? 0}</div>
+              <div className="text-[10px] text-slate-500 mt-1">Verified prompts in database</div>
             </div>
 
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl">
-              <div className="text-slate-400 text-xs flex items-center gap-1.5 mb-1">
+            <div className="bg-[#0A0F1D]/80 border border-purple-500/20 p-5 rounded-3xl shadow-lg">
+              <div className="text-slate-400 text-xs flex items-center gap-2 mb-2">
                 <Layers className="w-4 h-4 text-purple-400" />
-                <span>Active Topics</span>
+                <span>Topic Domains</span>
               </div>
-              <div className="text-2xl font-black text-white">{crawlerStatus?.totalTopics ?? 0}</div>
+              <div className="text-3xl font-black text-white">{crawlerStatus?.totalTopics ?? 0}</div>
+              <div className="text-[10px] text-slate-500 mt-1">Classification categories</div>
             </div>
 
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl">
-              <div className="text-slate-400 text-xs flex items-center gap-1.5 mb-1">
+            <div className="bg-[#0A0F1D]/80 border border-emerald-500/20 p-5 rounded-3xl shadow-lg">
+              <div className="text-slate-400 text-xs flex items-center gap-2 mb-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Last Run Status</span>
+                <span>Engine Status</span>
               </div>
-              <div className="text-2xl font-black text-emerald-400">
-                {crawlerStatus?.latestLog?.status || 'READY'}
+              <div className="text-3xl font-black text-emerald-400 flex items-center gap-2">
+                <span>{crawlerStatus?.latestLog?.status || 'READY'}</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
               </div>
+              <div className="text-[10px] text-slate-500 mt-1">Automated 24h cron active</div>
             </div>
 
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl">
-              <div className="text-slate-400 text-xs flex items-center gap-1.5 mb-1">
+            <div className="bg-[#0A0F1D]/80 border border-amber-500/20 p-5 rounded-3xl shadow-lg">
+              <div className="text-slate-400 text-xs flex items-center gap-2 mb-2">
                 <Clock className="w-4 h-4 text-amber-400" />
-                <span>Last Duration</span>
+                <span>Cycle Duration</span>
               </div>
-              <div className="text-2xl font-black text-white">
+              <div className="text-3xl font-black text-white">
                 {crawlerStatus?.latestLog?.durationMs ?? 0} ms
               </div>
+              <div className="text-[10px] text-slate-500 mt-1">Last execution speed</div>
             </div>
           </div>
 
           {/* Trigger Banner */}
-          <div className="bg-slate-900/80 border border-cyan-500/30 p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="bg-gradient-to-r from-[#0C1222] via-[#0F172A] to-[#0A0F1D] border border-cyan-500/40 p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_4px_30px_rgba(6,182,212,0.15)]">
             <div className="space-y-1 text-center md:text-left">
               <h3 className="text-base font-bold text-white flex items-center justify-center md:justify-start gap-2">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <Sparkles className="w-5 h-5 text-cyan-400" />
                 <span>Autonomous Exam Recall Ingestion</span>
               </h3>
-              <p className="text-xs text-slate-400 max-w-xl">
+              <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
                 Indexes verified IELTS Speaking question banks, computes SHA-256 fingerprints, deduplicates identical queries, and populates the live student simulator.
               </p>
               {crawlMessage && (
-                <div className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 p-2.5 rounded-xl mt-2">
+                <div className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 p-3 rounded-2xl mt-3 shadow-inner">
                   {crawlMessage}
                 </div>
               )}
@@ -588,10 +679,10 @@ export const QuestionManagement: React.FC = () => {
               type="button"
               disabled={isCrawling}
               onClick={handleRunCrawl}
-              className="px-6 py-3 bg-cyan-400 hover:bg-cyan-300 active:scale-95 disabled:opacity-50 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_0_25px_rgba(6,182,212,0.4)] flex items-center gap-2 cursor-pointer transition-all whitespace-nowrap"
+              className="px-6 py-3.5 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 active:scale-95 disabled:opacity-50 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-[0_0_25px_rgba(6,182,212,0.4)] flex items-center gap-2.5 cursor-pointer transition-all whitespace-nowrap"
             >
               <RefreshCw className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`} />
-              <span>{isCrawling ? 'Crawling & Syncing...' : 'Run Crawl Now'}</span>
+              <span>{isCrawling ? 'Crawling & Syncing...' : 'Trigger Ingestion Now'}</span>
             </button>
           </div>
         </div>
@@ -599,25 +690,35 @@ export const QuestionManagement: React.FC = () => {
 
       {/* QUESTION CREATE/EDIT MODAL */}
       {showQuestionModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#090E1B] border border-cyan-500/30 rounded-3xl max-w-lg w-full p-6 shadow-2xl font-mono text-xs space-y-4">
-            <h3 className="text-base font-bold text-white">
-              {editingQuestion ? 'Edit IELTS Question' : 'Add New IELTS Question'}
-            </h3>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#090E1B] border border-cyan-500/40 rounded-3xl max-w-lg w-full p-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] font-mono text-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-cyan-400" />
+                <span>{editingQuestion ? 'Edit IELTS Question' : 'Add New IELTS Question'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowQuestionModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             {modalError && (
-              <div className="p-2.5 bg-rose-500/15 border border-rose-500/30 rounded-xl text-rose-300">
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-rose-300 text-[11px]">
                 {modalError}
               </div>
             )}
 
-            <form onSubmit={handleSaveQuestion} className="space-y-3">
+            <form onSubmit={handleSaveQuestion} className="space-y-4">
               <div>
                 <label className="block text-slate-400 text-[11px] uppercase mb-1">Topic</label>
                 <select
                   value={modalTopicId}
                   onChange={(e) => setModalTopicId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
                 >
                   {topics.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -628,16 +729,42 @@ export const QuestionManagement: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1">Exam Part</label>
-                <select
-                  value={modalPart}
-                  onChange={(e) => setModalPart(e.target.value as any)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="PART_1">Part 1 (Intro &amp; Warm-up)</option>
-                  <option value="PART_2">Part 2 (Cue Card)</option>
-                  <option value="PART_3">Part 3 (In-depth Discussion)</option>
-                </select>
+                <label className="block text-slate-400 text-[11px] uppercase mb-1.5">Exam Part</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalPart('PART_1')}
+                    className={`py-2 rounded-xl text-center font-bold tracking-wider border cursor-pointer transition-all ${
+                      modalPart === 'PART_1'
+                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Part 1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalPart('PART_2')}
+                    className={`py-2 rounded-xl text-center font-bold tracking-wider border cursor-pointer transition-all ${
+                      modalPart === 'PART_2'
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Part 2
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalPart('PART_3')}
+                    className={`py-2 rounded-xl text-center font-bold tracking-wider border cursor-pointer transition-all ${
+                      modalPart === 'PART_3'
+                        ? 'bg-purple-500/20 border-purple-400 text-purple-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Part 3
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -648,7 +775,7 @@ export const QuestionManagement: React.FC = () => {
                   value={modalQuestionText}
                   onChange={(e) => setModalQuestionText(e.target.value)}
                   placeholder="e.g. Describe an ambitious project you have worked on..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-500 font-sans"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-sm"
                 />
               </div>
 
@@ -662,22 +789,22 @@ export const QuestionManagement: React.FC = () => {
                     value={modalCueBullets}
                     onChange={(e) => setModalCueBullets(e.target.value)}
                     placeholder="What the project was&#10;When you started it&#10;Why it was meaningful"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-500 font-sans text-xs"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs"
                   />
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowQuestionModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white"
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
+                  className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold rounded-xl shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
                 >
                   Save Question
                 </button>
@@ -689,10 +816,23 @@ export const QuestionManagement: React.FC = () => {
 
       {/* TOPIC CREATE MODAL */}
       {showTopicModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#090E1B] border border-cyan-500/30 rounded-3xl max-w-md w-full p-6 shadow-2xl font-mono text-xs space-y-4">
-            <h3 className="text-base font-bold text-white">Create New IELTS Topic</h3>
-            <form onSubmit={handleSaveTopic} className="space-y-3">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#090E1B] border border-cyan-500/40 rounded-3xl max-w-md w-full p-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] font-mono text-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Layers className="w-4 h-4 text-cyan-400" />
+                <span>Create New IELTS Topic</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowTopicModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTopic} className="space-y-3.5">
               <div>
                 <label className="block text-slate-400 text-[11px] uppercase mb-1">Topic Name</label>
                 <input
@@ -706,7 +846,7 @@ export const QuestionManagement: React.FC = () => {
                     }
                   }}
                   placeholder="e.g. Science & Space"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-cyan-400"
                 />
               </div>
 
@@ -718,7 +858,7 @@ export const QuestionManagement: React.FC = () => {
                   value={topicSlug}
                   onChange={(e) => setTopicSlug(e.target.value)}
                   placeholder="science-space"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-cyan-400"
                 />
               </div>
 
@@ -729,7 +869,7 @@ export const QuestionManagement: React.FC = () => {
                   value={topicDesc}
                   onChange={(e) => setTopicDesc(e.target.value)}
                   placeholder="Brief description of the domain..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400"
                 />
               </div>
 
@@ -741,21 +881,21 @@ export const QuestionManagement: React.FC = () => {
                   max={10}
                   value={topicRelevance}
                   onChange={(e) => setTopicRelevance(parseInt(e.target.value, 10) || 5)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-cyan-400"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowTopicModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white"
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
+                  className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold rounded-xl shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
                 >
                   Create Topic
                 </button>

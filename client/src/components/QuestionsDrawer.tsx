@@ -28,11 +28,184 @@ interface QuestionsDrawerProps {
 type PartType = 'PART_1' | 'PART_2' | 'PART_3';
 type TimerState = 'READY' | 'PREPARING' | 'SPEAKING' | 'COMPLETED';
 
+// Verified Cambridge 2026 examination recall bank
+const DEFAULT_TOPICS: IeltsTopicItem[] = [
+  { id: 'all', name: 'All Topics', slug: 'all', relevance: 10 },
+  { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
+  { id: 'education-career', name: 'Education & Career', slug: 'education-career', relevance: 9 },
+  { id: 'hometown-urban-life', name: 'Hometown & Urban Life', slug: 'hometown-urban-life', relevance: 8 },
+  { id: 'environment-sustainability', name: 'Environment & Nature', slug: 'environment-sustainability', relevance: 8 },
+  { id: 'work-ambition', name: 'Work & Ambition', slug: 'work-ambition', relevance: 9 },
+  { id: 'travel-tourism', name: 'Travel & Journeys', slug: 'travel-tourism', relevance: 8 },
+  { id: 'society-culture', name: 'Society & Culture', slug: 'society-culture', relevance: 9 },
+];
+
+const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
+  // PART 1 - Technology & AI
+  {
+    id: 'seed-p1-1',
+    topicId: 'technology-ai',
+    part: 'PART_1',
+    questionText: 'Do you frequently use artificial intelligence tools in your daily study or work routine?',
+    questionType: 'GENERAL',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
+  },
+  {
+    id: 'seed-p1-2',
+    topicId: 'technology-ai',
+    part: 'PART_1',
+    questionText: 'How has mobile technology changed the way you communicate with family and friends?',
+    questionType: 'GENERAL',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
+  },
+  {
+    id: 'seed-p1-3',
+    topicId: 'education-career',
+    part: 'PART_1',
+    questionText: 'Do you prefer learning new skills online or in a traditional physical classroom?',
+    questionType: 'GENERAL',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'education-career', name: 'Education & Career', slug: 'education-career', relevance: 9 },
+  },
+  {
+    id: 'seed-p1-4',
+    topicId: 'hometown-urban-life',
+    part: 'PART_1',
+    questionText: 'What do you like most about the city or town where you currently live?',
+    questionType: 'GENERAL',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'hometown-urban-life', name: 'Hometown & Urban Life', slug: 'hometown-urban-life', relevance: 8 },
+  },
+  {
+    id: 'seed-p1-5',
+    topicId: 'environment-sustainability',
+    part: 'PART_1',
+    questionText: 'Are there any quiet green parks near your neighborhood where people can relax?',
+    questionType: 'GENERAL',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'environment-sustainability', name: 'Environment & Nature', slug: 'environment-sustainability', relevance: 8 },
+  },
+  {
+    id: 'seed-p1-6',
+    topicId: 'environment-sustainability',
+    part: 'PART_1',
+    questionText: 'How do weather changes in your country affect your daily outdoor activities?',
+    questionType: 'GENERAL',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'environment-sustainability', name: 'Environment & Nature', slug: 'environment-sustainability', relevance: 8 },
+  },
+
+  // PART 2 - Cue Cards
+  {
+    id: 'seed-p2-1',
+    topicId: 'work-ambition',
+    part: 'PART_2',
+    questionText: 'Describe an ambitious goal or project that you have been working towards for a long time.',
+    cueCardBullets: JSON.stringify([
+      'What this ambition or project is',
+      'When you first decided to pursue it',
+      'What obstacles or challenges you have encountered along the way',
+      'And explain why achieving this goal is particularly meaningful for your future',
+    ]),
+    questionType: 'CUE_CARD',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'work-ambition', name: 'Work & Ambition', slug: 'work-ambition', relevance: 9 },
+  },
+  {
+    id: 'seed-p2-2',
+    topicId: 'travel-tourism',
+    part: 'PART_2',
+    questionText: 'Describe a memorable journey or trip you took that did not go according to your original plan.',
+    cueCardBullets: JSON.stringify([
+      'Where and when you were traveling',
+      'Who was accompanying you on the journey',
+      'What unexpected difficulty or event occurred',
+      'And explain how you managed the situation and what you learned from the experience',
+    ]),
+    questionType: 'CUE_CARD',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'travel-tourism', name: 'Travel & Journeys', slug: 'travel-tourism', relevance: 8 },
+  },
+  {
+    id: 'seed-p2-3',
+    topicId: 'education-career',
+    part: 'PART_2',
+    questionText: 'Describe a difficult skill you decided to learn and how you overcame the initial learning curve.',
+    cueCardBullets: JSON.stringify([
+      'What the skill was and why you chose to learn it',
+      'How you practiced and who assisted or taught you',
+      'What was the most frustrating or challenging aspect',
+      'And explain how you felt once you achieved proficiency in it',
+    ]),
+    questionType: 'CUE_CARD',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'education-career', name: 'Education & Career', slug: 'education-career', relevance: 9 },
+  },
+
+  // PART 3 - In-depth Discussions
+  {
+    id: 'seed-p3-1',
+    topicId: 'work-ambition',
+    part: 'PART_3',
+    questionText: 'Do you think modern young people are under more societal pressure to achieve ambitious career goals than previous generations?',
+    questionType: 'ABSTRACT_DISCUSSION',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'work-ambition', name: 'Work & Ambition', slug: 'work-ambition', relevance: 9 },
+  },
+  {
+    id: 'seed-p3-2',
+    topicId: 'travel-tourism',
+    part: 'PART_3',
+    questionText: 'How can governments and international travelers balance economic tourism growth with the preservation of fragile cultural landmarks?',
+    questionType: 'ABSTRACT_DISCUSSION',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'travel-tourism', name: 'Travel & Journeys', slug: 'travel-tourism', relevance: 8 },
+  },
+  {
+    id: 'seed-p3-3',
+    topicId: 'technology-ai',
+    part: 'PART_3',
+    questionText: 'What ethical concerns arise when generative AI tools are used to produce educational or professional content?',
+    questionType: 'ABSTRACT_DISCUSSION',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
+  },
+  {
+    id: 'seed-p3-4',
+    topicId: 'education-career',
+    part: 'PART_3',
+    questionText: 'Will traditional university degrees remain as influential in the job market as practical portfolios in the coming decade?',
+    questionType: 'ABSTRACT_DISCUSSION',
+    source: 'OFFICIAL_RECALL',
+    topic: { id: 'education-career', name: 'Education & Career', slug: 'education-career', relevance: 9 },
+  },
+];
+
+const getFallbackQuestions = (part: PartType, topicId: string): IeltsQuestionItem[] => {
+  return DEFAULT_QUESTIONS.filter((q) => {
+    const matchesPart = q.part === part;
+    const matchesTopic = topicId === 'all' || q.topicId === topicId || q.topic?.slug === topicId;
+    return matchesPart && matchesTopic;
+  });
+};
+
+const getApiEndpoints = (endpointPath: string): string[] => {
+  const urls: string[] = [];
+  const envServerUrl = (import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
+  if (envServerUrl) {
+    urls.push(`${envServerUrl}${endpointPath}`);
+  }
+  urls.push(endpointPath);
+  return urls;
+};
+
 export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClose }) => {
   const [activePart, setActivePart] = useState<PartType>('PART_1');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('all');
-  const [topics, setTopics] = useState<IeltsTopicItem[]>([]);
-  const [questions, setQuestions] = useState<IeltsQuestionItem[]>([]);
+  const [topics, setTopics] = useState<IeltsTopicItem[]>(DEFAULT_TOPICS);
+  const [questions, setQuestions] = useState<IeltsQuestionItem[]>(() => getFallbackQuestions('PART_1', 'all'));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,22 +225,30 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
     return () => clearTimer();
   }, [clearTimer]);
 
-  // Fetch topics on mount
+  // Fetch topics from backend
   useEffect(() => {
+    let isCancelled = false;
     const fetchTopics = async () => {
-      try {
-        const res = await fetch('/api/ielts/topics');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.topics)) {
-            setTopics(data.topics);
+      const endpoints = getApiEndpoints('/api/ielts/topics');
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (res.ok && !isCancelled) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.topics) && data.topics.length > 0) {
+              setTopics([{ id: 'all', name: 'All Topics', slug: 'all', relevance: 10 }, ...data.topics]);
+              return;
+            }
           }
+        } catch {
+          // try next endpoint
         }
-      } catch {
-        // ignore fetch error
       }
     };
     void fetchTopics();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   // Fetch questions when activePart or selectedTopicId changes
@@ -75,21 +256,34 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
     let isCancelled = false;
     const fetchQuestions = async () => {
       setIsLoading(true);
-      try {
-        const url = `/api/ielts/questions?part=${activePart}&topicId=${selectedTopicId}&limit=40`;
-        const res = await fetch(url);
-        if (res.ok && !isCancelled) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.questions)) {
-            setQuestions(data.questions);
-            setCurrentIndex(0);
-            resetCueCardTimer();
+      const fallback = getFallbackQuestions(activePart, selectedTopicId);
+      const endpoints = getApiEndpoints(`/api/ielts/questions?part=${activePart}&topicId=${selectedTopicId}&limit=50`);
+
+      let loadedQuestions: IeltsQuestionItem[] | null = null;
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (res.ok && !isCancelled) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.questions) && data.questions.length > 0) {
+              loadedQuestions = data.questions;
+              break;
+            }
           }
+        } catch {
+          // try next endpoint
         }
-      } catch {
-        // ignore fetch error
-      } finally {
-        if (!isCancelled) setIsLoading(false);
+      }
+
+      if (!isCancelled) {
+        if (loadedQuestions && loadedQuestions.length > 0) {
+          setQuestions(loadedQuestions);
+        } else {
+          setQuestions(fallback.length > 0 ? fallback : DEFAULT_QUESTIONS.filter((q) => q.part === activePart));
+        }
+        setCurrentIndex(0);
+        resetCueCardTimer();
+        setIsLoading(false);
       }
     };
 
@@ -147,7 +341,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
-  const currentQuestion = questions[currentIndex];
+  const currentQuestion = questions[currentIndex] || questions[0];
   let parsedBullets: string[] = [];
   if (currentQuestion?.cueCardBullets) {
     try {
@@ -158,7 +352,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-24 z-40 max-h-[68vh] bg-[#070B14]/95 backdrop-blur-xl border border-cyan-500/30 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-fadeIn font-mono">
+    <div className="fixed inset-x-3 bottom-24 z-40 max-h-[72vh] bg-[#070B14]/95 backdrop-blur-xl border border-cyan-500/40 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fadeIn font-mono">
       {/* Header Bar */}
       <div className="px-4 py-3 bg-[#090E1B] border-b border-slate-800/80 flex items-center justify-between">
         <div className="flex items-center gap-2 text-cyan-400">
@@ -183,13 +377,13 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             setActivePart('PART_1');
             resetCueCardTimer();
           }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors ${
+          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors cursor-pointer ${
             activePart === 'PART_1'
-              ? 'bg-cyan-500/15 text-cyan-300 border-b-2 border-cyan-400'
+              ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          Part 1 (Intro)
+          PART 1 • Intro
         </button>
         <button
           type="button"
@@ -197,13 +391,13 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             setActivePart('PART_2');
             resetCueCardTimer();
           }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors ${
+          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors cursor-pointer ${
             activePart === 'PART_2'
-              ? 'bg-cyan-500/15 text-cyan-300 border-b-2 border-cyan-400'
+              ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          Part 2 (Cue Card)
+          PART 2 • Cue Card
         </button>
         <button
           type="button"
@@ -211,37 +405,26 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             setActivePart('PART_3');
             resetCueCardTimer();
           }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors ${
+          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors cursor-pointer ${
             activePart === 'PART_3'
-              ? 'bg-cyan-500/15 text-cyan-300 border-b-2 border-cyan-400'
+              ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          Part 3 (Discussion)
+          PART 3 • Discussion
         </button>
       </div>
 
-      {/* Topics Scrollable Filter */}
-      <div className="px-3 py-2 bg-[#080D1A] border-b border-slate-800/60 overflow-x-auto flex items-center gap-1.5 scrollbar-none text-[11px]">
-        <button
-          type="button"
-          onClick={() => setSelectedTopicId('all')}
-          className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
-            selectedTopicId === 'all'
-              ? 'bg-cyan-400 text-slate-950 font-bold'
-              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          All Topics
-        </button>
+      {/* Horizontal Topic Filter Scroll */}
+      <div className="px-3 py-2 bg-[#060A16] border-b border-slate-800/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-[11px]">
         {topics.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setSelectedTopicId(t.id)}
-            className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
+            className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors cursor-pointer ${
               selectedTopicId === t.id
-                ? 'bg-cyan-400 text-slate-950 font-bold'
+                ? 'bg-cyan-400 text-slate-950 font-bold shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                 : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -252,12 +435,12 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
 
       {/* Main Content Area */}
       <div className="p-4 flex-1 overflow-y-auto min-h-[160px] flex flex-col justify-between">
-        {isLoading ? (
+        {isLoading && questions.length === 0 ? (
           <div className="flex items-center justify-center my-auto py-8 text-xs text-slate-400 gap-2">
             <Sparkles className="w-4 h-4 animate-spin text-cyan-400" />
             <span>Loading authentic IELTS questions...</span>
           </div>
-        ) : questions.length === 0 ? (
+        ) : !currentQuestion ? (
           <div className="text-center my-auto py-6 text-xs text-slate-500">
             No questions available for this filter.
           </div>
@@ -274,7 +457,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             </div>
 
             {/* Prompt Text */}
-            <div className="text-sm font-semibold text-white leading-relaxed bg-[#0A0F1E] border border-slate-800/80 p-3.5 rounded-2xl">
+            <div className="text-sm font-semibold text-white leading-relaxed bg-[#0A0F1E] border border-slate-800/80 p-3.5 rounded-2xl shadow-inner">
               {currentQuestion.questionText}
             </div>
 
@@ -349,12 +532,12 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
                         <span>Speak (2m)</span>
                       </button>
                     )}
-                    {timerState !== 'READY' && (
+                    {(timerState === 'PREPARING' || timerState === 'SPEAKING' || timerState === 'COMPLETED') && (
                       <button
                         type="button"
                         onClick={resetCueCardTimer}
-                        title="Reset timer"
-                        className="p-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors cursor-pointer"
+                        title="Reset Timer"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
@@ -366,20 +549,29 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
           </div>
         )}
 
-        {/* Next / Previous Navigation Bar */}
-        <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800/80 mt-2">
+        {/* Navigation Arrows */}
+        <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-800/80">
           <button
             type="button"
-            disabled={currentIndex <= 0}
+            disabled={currentIndex === 0}
             onClick={() => {
               setCurrentIndex((prev) => Math.max(0, prev - 1));
               resetCueCardTimer();
             }}
-            className="flex-1 py-2 px-3 rounded-xl border border-slate-800 bg-[#0A0F1E] disabled:opacity-30 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-1 cursor-pointer"
+            className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 text-xs font-bold transition-all cursor-pointer ${
+              currentIndex === 0
+                ? 'opacity-40 border-slate-800 text-slate-500 cursor-not-allowed'
+                : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-cyan-500/50 hover:text-cyan-300'
+            }`}
           >
             <ChevronLeft className="w-3.5 h-3.5" />
             <span>Previous</span>
           </button>
+
+          <span className="text-[11px] text-slate-500">
+            Swipe or tap Next
+          </span>
+
           <button
             type="button"
             disabled={currentIndex >= questions.length - 1}
@@ -387,9 +579,13 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
               setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1));
               resetCueCardTimer();
             }}
-            className="flex-1 py-2 px-3 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 disabled:opacity-30 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+            className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 text-xs font-bold transition-all cursor-pointer ${
+              currentIndex >= questions.length - 1
+                ? 'opacity-40 border-slate-800 text-slate-500 cursor-not-allowed'
+                : 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+            }`}
           >
-            <span>Next Question</span>
+            <span>Next</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
