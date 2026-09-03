@@ -23,11 +23,9 @@ const parseLocationToView = (): AppView => {
   const loc = (window.location.pathname + window.location.hash).toLowerCase();
   if (loc.includes('how-it-works')) return 'how-it-works';
   if (loc.includes('ielts-speaking') || loc.includes('ielts')) return 'ielts-speaking';
-  if (loc.includes('community-guidelines') || loc.includes('guidelines')) return 'community-guidelines';
-  if (loc.includes('safety')) return 'safety';
+  if (loc.includes('community-guidelines') || loc.includes('guidelines') || loc.includes('safety')) return 'community-guidelines';
   if (loc.includes('faq')) return 'faq';
-  if (loc.includes('privacy')) return 'privacy';
-  if (loc.includes('terms')) return 'terms';
+  if (loc.includes('privacy') || loc.includes('terms') || loc.includes('refund')) return 'privacy';
   return 'landing';
 };
 
@@ -63,24 +61,19 @@ export const App: React.FC = () => {
         break;
       case 'community-guidelines':
       case 'guidelines':
+      case 'safety':
         canonicalPath = '/community-guidelines';
         targetView = 'community-guidelines';
-        break;
-      case 'safety':
-        canonicalPath = '/safety';
-        targetView = 'safety';
         break;
       case 'faq':
         canonicalPath = '/faq';
         targetView = 'faq';
         break;
       case 'privacy':
+      case 'terms':
+      case 'refund':
         canonicalPath = '/privacy';
         targetView = 'privacy';
-        break;
-      case 'terms':
-        canonicalPath = '/terms';
-        targetView = 'terms';
         break;
       case 'landing':
       default:
@@ -134,13 +127,8 @@ export const App: React.FC = () => {
 
   return (
     <LandingPage
-      onOpenHowItWorks={() => navigateTo('how-it-works')}
-      onOpenIeltsGuide={() => navigateTo('ielts-speaking')}
       onOpenGuidelines={() => navigateTo('community-guidelines')}
-      onOpenSafety={() => navigateTo('safety')}
-      onOpenFaq={() => navigateTo('faq')}
       onOpenPrivacy={() => navigateTo('privacy')}
-      onOpenTerms={() => navigateTo('terms')}
     />
   );
 };

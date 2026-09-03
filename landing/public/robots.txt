@@ -1,5 +1,10 @@
 # Robots.txt for PairTalk Public Platform (https://pairtalk.online)
-# Explicitly allowing modern AI crawlers & major search engine indexing
+# Explicitly allowing modern AI search crawlers & major search engine indexing
+
+# AI-friendly content locations
+# - /llms.txt - Curated overview for AI/LLMs (markdown)
+# - /llms-full.txt - Full expanded content for larger context windows
+# - /.well-known/agents.json - Agent discovery and capabilities
 
 User-agent: Googlebot
 User-agent: Google-Extended
@@ -11,6 +16,7 @@ User-agent: ChatGPT-User
 User-agent: OAI-SearchBot
 User-agent: PerplexityBot
 User-agent: Applebot
+User-agent: Applebot-Extended
 User-agent: TelegramBot
 User-agent: Twitterbot
 User-agent: facebookexternalhit
@@ -19,20 +25,31 @@ Allow: /
 Disallow: /api/
 Disallow: /admin
 
-# Block Aggressive Scrapers & Unwanted Harvesters
+# Block Aggressive Scrapers, Vulnerability Probers & Mass Harvesters
 User-agent: Bytespider
 User-agent: TikTokSpider
 User-agent: CCBot
+User-agent: Crawl4AI
+User-agent: img2dataset
+User-agent: Scrapy
+User-agent: Diffbot
+User-agent: ImagesiftBot
+User-agent: imageSpider
+User-agent: cohere-training-data-crawler
+User-agent: WARDBot
 User-agent: Baiduspider
 User-agent: PetalBot
 User-agent: YandexBot
 User-agent: MJ12bot
 User-agent: AhrefsBot
 User-agent: SemrushBot
+User-agent: SemrushBot-OCOB
+User-agent: SemrushBot-SWA
 User-agent: DotBot
 User-agent: DataForSeoBot
-User-agent: Scrapy
 User-agent: Sogou
+User-agent: Panscient
+User-agent: panscient.com
 Disallow: /
 
 # General Crawlers

@@ -233,11 +233,42 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack, onNavigate
           </div>
         </div>
 
-        {/* Section 4: Data Rights & Account Deletion */}
+        {/* Section 4: Terms of Service & Acceptable Use */}
+        <div id="terms" className="p-6 rounded-2xl bg-[#090D18] border border-slate-800 space-y-4">
+          <div className="flex items-center gap-2.5 text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider">
+            <FileText className="w-4 h-4" />
+            <span>4. TERMS OF SERVICE &amp; ACCEPTABLE USE AGREEMENT</span>
+          </div>
+          <div className="space-y-3 text-xs sm:text-sm text-slate-300 font-mono leading-relaxed">
+            <p>
+              By accessing PairTalk via the Telegram Mini App or Web platform, you agree to enter into a legally binding agreement under these terms:
+            </p>
+            <div className="space-y-2 pl-2">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                <div><strong className="text-white">Eligibility &amp; Age:</strong> You must be at least 13 years of age (or the minimum legal age in your jurisdiction) and possess a valid Telegram account to use PairTalk.</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                <div><strong className="text-white">Educational Purpose:</strong> The service is provided solely for academic English speaking practice and IELTS exam preparation. Commercial reselling, call recording for public broadcast without mutual written consent, or reverse engineering of the platform is strictly prohibited.</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                <div><strong className="text-white">Subscription Cycles &amp; Renewal:</strong> Paid accelerator plans (PLUS, PRO, BOSS) are valid for 30 calendar days from the purchase timestamp. Unused monthly call quotas do not carry over to subsequent billing periods.</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                <div><strong className="text-white">Service Availability &amp; WebRTC SFU:</strong> PairTalk aims for 99.9% network uptime. We do not guarantee uninhibited access in regions where Telegram or WebRTC UDP protocols are restricted by local internet service providers without a VPN.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 5: Data Rights & Account Deletion */}
         <div className="p-6 rounded-2xl bg-[#090D18] border border-slate-800 space-y-4">
           <div className="flex items-center gap-2.5 text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider">
             <Lock className="w-4 h-4" />
-            <span>4. USER RIGHTS &amp; ACCOUNT ERASURE (&ldquo;RIGHT TO BE FORGOTTEN&rdquo;)</span>
+            <span>5. USER RIGHTS &amp; ACCOUNT ERASURE (&ldquo;RIGHT TO BE FORGOTTEN&rdquo;)</span>
           </div>
           <div className="space-y-2 text-xs sm:text-sm font-mono text-slate-300 leading-relaxed">
             <p>
@@ -278,10 +309,10 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack, onNavigate
             {onNavigate && (
               <button
                 type="button"
-                onClick={() => onNavigate('terms')}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider transition-all active:scale-95"
+                onClick={() => onNavigate('community-guidelines')}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
               >
-                <span>Terms of Service</span>
+                <span>Community Guidelines</span>
                 <ArrowLeft className="w-4 h-4 rotate-180" />
               </button>
             )}

@@ -254,10 +254,10 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack, onNa
             {onNavigate && (
               <button
                 type="button"
-                onClick={() => onNavigate('safety')}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider transition-all active:scale-95"
+                onClick={() => onNavigate('privacy')}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
               >
-                <span>Safety Guide</span>
+                <span>Privacy &amp; Policy</span>
                 <ArrowLeft className="w-4 h-4 rotate-180" />
               </button>
             )}
