@@ -112,7 +112,7 @@ export const env: EnvConfig = {
   S3_REGION: (process.env.S3_REGION || process.env.AWS_REGION)?.trim() || 'us-east-1',
   S3_ENDPOINT: process.env.S3_ENDPOINT?.trim(),
   S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE === 'true' || process.env.S3_FORCE_PATH_STYLE === '1',
-  PRIVACY_POLICY_URL: process.env.PRIVACY_POLICY_URL?.trim() || 'https://pairtalk.online/#privacy',
-  COMMUNITY_GUIDELINES_URL: process.env.COMMUNITY_GUIDELINES_URL?.trim() || 'https://pairtalk.online/#guidelines',
+  PRIVACY_POLICY_URL: process.env.PRIVACY_POLICY_URL?.trim() || 'https://pairtalk.online/privacy',
+  COMMUNITY_GUIDELINES_URL: process.env.COMMUNITY_GUIDELINES_URL?.trim() || 'https://pairtalk.online/community-guidelines',
 };
 

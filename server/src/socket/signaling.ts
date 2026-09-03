@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
@@ -11,21 +12,27 @@ import { moderationService } from '../services/moderation';
 import { sendPostCallReviewCard } from '../bot/handlers/postCall';
 import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
 import { MyContext } from '../bot/types';
 
 interface ToggleRecordPayload {
   readonly roomName: string;
   readonly record: boolean;
+  readonly requestId?: string;
 }
 
 interface FinishCallPayload {
   readonly roomName: string;
   readonly reason?: string;
+  readonly requestId?: string;
 }
 
 interface SocketData {
   userId?: string;
   telegramId?: string;
+  traceId?: string;
+  socketId?: string;
+  currentRequestId?: string;
 }
 
 interface ActiveEgress extends EgressResult {}
@@ -164,7 +171,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           });
         }
       } catch (err) {
-        console.error('[Signaling] recordUserCredit error:', err);
+        logger.error('recordUserCredit error', {
+          service: 'signaling',
+          event: 'record_user_credit_failed',
+          userId,
+        }, err);
       }
     };
 
@@ -185,49 +196,110 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
   };
 
   io.use(async (socket: Socket, next) => {
+    const traceId =
+      (typeof socket.handshake.auth?.traceId === 'string' && socket.handshake.auth.traceId.trim()) ||
+      (typeof socket.handshake.headers['x-trace-id'] === 'string' && (socket.handshake.headers['x-trace-id'] as string).trim()) ||
+      (typeof socket.handshake.headers['x-request-id'] === 'string' && (socket.handshake.headers['x-request-id'] as string).trim()) ||
+      crypto.randomUUID();
+
+    socket.data.traceId = traceId;
+    socket.data.socketId = socket.id;
+
     try {
       const authToken = socket.handshake.auth?.token;
       const headerToken = socket.handshake.headers['x-telegram-init-data'];
       const token = typeof authToken === 'string' ? authToken : typeof headerToken === 'string' ? headerToken : undefined;
 
-      if (env.NODE_ENV === 'test' && token === 'test-allowed') {
-        socket.data.userId = 'test_user_id';
-        socket.data.telegramId = '12345678';
+      if (env.NODE_ENV === 'test' && (token === 'test-allowed' || socket.handshake.auth?.userId)) {
+        socket.data.userId = socket.handshake.auth?.userId || 'test_user_id';
+        socket.data.telegramId = socket.handshake.auth?.telegramId || '12345678';
+        logger.info('Socket test authentication successful', {
+          service: 'signaling',
+          event: 'socket:auth_success',
+          socketId: socket.id,
+          userId: socket.data.userId,
+          traceId,
+        });
         next();
         return;
       }
 
       if (!token) {
+        logger.warn('Socket authentication rejected: Missing initData token', {
+          service: 'signaling',
+          event: 'socket:auth_missing_token',
+          socketId: socket.id,
+          traceId,
+        });
         next(new Error('Authentication failed: Missing initData token.'));
         return;
       }
 
       const { valid, user: tgUser } = validateTelegramInitData(token, env.BOT_TOKEN);
       if (!valid || !tgUser) {
+        logger.warn('Socket authentication rejected: Invalid initData signature', {
+          service: 'signaling',
+          event: 'socket:auth_invalid_signature',
+          socketId: socket.id,
+          traceId,
+        });
         next(new Error('Authentication failed: Invalid initData signature.'));
         return;
       }
 
       const dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
       if (!dbUser) {
+        logger.warn('Socket authentication rejected: User profile not found', {
+          service: 'signaling',
+          event: 'socket:auth_user_not_found',
+          socketId: socket.id,
+          telegramId: tgUser.id.toString(),
+          traceId,
+        });
         next(new Error('Authentication failed: User profile not found. Please type /start in Telegram.'));
         return;
       }
 
       socket.data.userId = dbUser.id;
       socket.data.telegramId = dbUser.telegramId.toString();
+      logger.info('Socket authenticated successfully', {
+        service: 'signaling',
+        event: 'socket:auth_success',
+        socketId: socket.id,
+        userId: dbUser.id,
+        traceId,
+      });
       next();
     } catch (error: unknown) {
-      console.error('[Socket] auth_failed', {
+      logger.error('Socket authentication exception', {
+        service: 'signaling',
+        event: 'socket:auth_failed',
         socketId: socket.id,
-        error: error instanceof Error ? error.message : 'unknown_error',
-      });
+        traceId,
+      }, error);
       next(new Error('Authentication error.'));
     }
   });
 
   io.on('connection', (socket: Socket) => {
     const userId = socket.data.userId as string | undefined;
+    const traceId = socket.data.traceId as string || socket.id;
+
+    socket.use(([event, payload, ..._rest], next) => {
+      const eventPayload = typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : undefined;
+      const eventRequestId = (typeof eventPayload?.requestId === 'string' && eventPayload.requestId.trim()) || crypto.randomUUID();
+      socket.data.currentRequestId = eventRequestId;
+      logger.debug(`Socket event: ${event}`, {
+        service: 'signaling',
+        event: `socket:${event}`,
+        socketId: socket.id,
+        userId: socket.data.userId,
+        traceId: socket.data.traceId,
+        requestId: eventRequestId,
+      });
+      next();
+    });
+
     if (userId) {
       addUserSocket(userId, socket.id);
 
@@ -265,15 +337,96 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 callDurationLimit: remainingSeconds,
                 maxDurationSeconds: callDurationLimitSeconds,
               });
+              logger.info('Active call auto-reconnected on socket connect', {
+                service: 'signaling',
+                event: 'socket:auto_reconnect',
+                socketId: socket.id,
+                userId,
+                roomName: activeCall.roomName,
+                traceId,
+              });
             }
           }
         } catch (reconnectErr) {
-          console.warn('[Socket] Auto-reconnect check failed:', reconnectErr);
+          logger.warn('Auto-reconnect check failed', {
+            service: 'signaling',
+            event: 'socket:auto_reconnect_failed',
+            socketId: socket.id,
+            userId,
+            traceId,
+          }, reconnectErr);
         }
       })();
     }
 
-    console.log('[Socket] connected', { socketId: socket.id, userId });
+    logger.info('Socket connected', {
+      service: 'signaling',
+      event: 'socket:connected',
+      socketId: socket.id,
+      userId,
+      traceId,
+    });
+
+    // WebRTC direct signaling events
+    socket.on('offer', (payload: any) => {
+      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
+      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
+      socket.to(payload.roomName).emit('offer', { ...payload, senderId: socket.data.userId, traceId: socket.data.traceId, requestId });
+      logger.debug('WebRTC offer forwarded', {
+        service: 'signaling',
+        event: 'webrtc:offer',
+        socketId: socket.id,
+        userId: socket.data.userId,
+        traceId: socket.data.traceId,
+        requestId,
+        roomName: payload.roomName,
+      });
+    });
+
+    socket.on('answer', (payload: any) => {
+      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
+      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
+      socket.to(payload.roomName).emit('answer', { ...payload, senderId: socket.data.userId, traceId: socket.data.traceId, requestId });
+      logger.debug('WebRTC answer forwarded', {
+        service: 'signaling',
+        event: 'webrtc:answer',
+        socketId: socket.id,
+        userId: socket.data.userId,
+        traceId: socket.data.traceId,
+        requestId,
+        roomName: payload.roomName,
+      });
+    });
+
+    socket.on('candidate', (payload: any) => {
+      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
+      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
+      socket.to(payload.roomName).emit('candidate', { ...payload, senderId: socket.data.userId, traceId: socket.data.traceId, requestId });
+      logger.debug('WebRTC candidate forwarded', {
+        service: 'signaling',
+        event: 'webrtc:candidate',
+        socketId: socket.id,
+        userId: socket.data.userId,
+        traceId: socket.data.traceId,
+        requestId,
+        roomName: payload.roomName,
+      });
+    });
+
+    socket.on('leave', (payload: any) => {
+      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
+      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
+      socket.to(payload.roomName).emit('leave', { senderId: socket.data.userId, roomName: payload.roomName, traceId: socket.data.traceId, requestId });
+      logger.info('WebRTC leave forwarded', {
+        service: 'signaling',
+        event: 'webrtc:leave',
+        socketId: socket.id,
+        userId: socket.data.userId,
+        traceId: socket.data.traceId,
+        requestId,
+        roomName: payload.roomName,
+      });
+    });
 
     socket.on('join_queue', async () => {
       const currentUserId = socket.data.userId as string | undefined;
@@ -392,10 +545,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             if (partner) await matchmakingService.cancelQueue(partner.id).catch(() => undefined);
             const ownBucket = getUserBucket(user);
             await matchmakingService.restoreQueue(user.id, ownBucket).catch((error: unknown) => {
-              console.error('[Socket] match_requeue_failed', {
+              logger.error('Match requeue failed for user', {
+                service: 'signaling',
+                event: 'match_requeue_failed',
                 userId: user.id,
-                error: error instanceof Error ? error.message : 'unknown_error',
-              });
+              }, error);
             });
             socket.emit('queue_joined', { status: 'searching' });
             return;
@@ -462,11 +616,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                       try {
                         await stopAudioEgress(egressId);
                       } catch (error: unknown) {
-                        console.error('[Socket] timeout_egress_stop_failed', {
+                        logger.error('Timeout egress stop failed', {
+                          service: 'signaling',
+                          event: 'timeout_egress_stop_failed',
                           roomName,
                           egressId,
-                          error: error instanceof Error ? error.message : 'unknown_error',
-                        });
+                        }, error);
                       }
                     }
                     activeEgresses.delete(roomName);
@@ -517,7 +672,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     }
                   });
                 } catch (timeoutErr) {
-                  console.error('[Signaling] Server duration timeout execution failed:', timeoutErr);
+                  logger.error('Server duration timeout execution failed', {
+                    service: 'signaling',
+                    event: 'duration_timeout_error',
+                  }, timeoutErr);
                 }
               })();
             }, callDurationLimitSeconds * 1000);
@@ -548,13 +706,14 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               maxDurationSeconds: callDurationLimitSeconds,
             });
           } catch (error: unknown) {
-            console.error('[Socket] match_dispatch_failed', {
+            logger.error('Match dispatch failed', {
+              service: 'signaling',
+              event: 'match_dispatch_failed',
               userId: user.id,
               partnerId: partner.id,
               roomName,
               transactionSucceeded,
-              error: error instanceof Error ? error.message : 'unknown_error',
-            });
+            }, error);
 
             if (transactionSucceeded) {
               await prisma.callSession.updateMany({
@@ -567,10 +726,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             if (userStillConnected) {
               const ownBucket = getUserBucket(user);
               await matchmakingService.restoreQueue(user.id, ownBucket).catch((restoreError: unknown) => {
-                console.error('[Socket] own_restore_failed', {
+                logger.error('Own restore queue failed', {
+                  service: 'signaling',
+                  event: 'own_restore_failed',
                   userId: user.id,
-                  error: restoreError instanceof Error ? restoreError.message : 'unknown_error',
-                });
+                }, restoreError);
               });
               userStillConnected.emit('queue_joined', { status: 'searching' });
             }
@@ -579,20 +739,22 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             if (partnerStillConnected) {
               const partnerBucket = getUserBucket(partner);
               await matchmakingService.restoreQueue(partner.id, partnerBucket).catch((restoreError: unknown) => {
-                console.error('[Socket] partner_restore_failed', {
+                logger.error('Partner restore queue failed', {
+                  service: 'signaling',
+                  event: 'partner_restore_failed',
                   userId: partner.id,
-                  error: restoreError instanceof Error ? restoreError.message : 'unknown_error',
-                });
+                }, restoreError);
               });
               partnerStillConnected.emit('queue_joined', { status: 'searching' });
             }
           }
         });
       } catch (error: unknown) {
-        console.error('[Socket] join_queue_failed', {
+        logger.error('Join queue failed', {
+          service: 'signaling',
+          event: 'join_queue_failed',
           userId: currentUserId,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+        }, error);
         socket.emit('error', { message: 'Failed to join matchmaking queue.' });
       }
     });
@@ -617,10 +779,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         }
         socket.emit('queue_cancelled', { success: true });
       } catch (error: unknown) {
-        console.error('[Socket] cancel_queue_failed', {
+        logger.error('Cancel queue failed', {
+          service: 'signaling',
+          event: 'cancel_queue_failed',
           userId: currentUserId,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+        }, error);
         socket.emit('error', { message: 'Failed to cancel matchmaking.' });
       }
     });
@@ -689,10 +852,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               });
               if (updated.count !== 1) {
                 await stopAudioEgress(egress.egressId).catch((error: unknown) => {
-                  console.error('[Socket] rollback_egress_stop_failed', {
+                  logger.error('Rollback egress stop failed', {
+                    service: 'signaling',
+                    event: 'rollback_egress_stop_failed',
                     roomName: payload.roomName,
-                    error: error instanceof Error ? error.message : 'unknown_error',
-                  });
+                  }, error);
                 });
                 return;
               }
@@ -701,7 +865,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               socket.emit('record_status', { record: true });
               return;
             } catch (egressErr) {
-              console.warn('[Socket] Recording start failed gracefully:', egressErr instanceof Error ? egressErr.message : egressErr);
+              logger.warn('Recording start failed gracefully', {
+                service: 'signaling',
+                event: 'recording_start_failed',
+                roomName: payload.roomName,
+              }, egressErr);
               socket.emit('record_status', { record: false });
               socket.emit('recording_error', {
                 code: 'RECORDING_UNAVAILABLE',
@@ -738,11 +906,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           socket.emit('record_status', { record: false });
         });
       } catch (error: unknown) {
-        console.error('[Socket] toggle_record_failed', {
+        logger.error('Toggle record failed', {
+          service: 'signaling',
+          event: 'toggle_record_failed',
           roomName: payload.roomName,
           requesterId,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+        }, error);
         socket.emit('recording_error', { code: 'RECORDING_UNAVAILABLE', message: 'Unable to update recording status.' });
         socket.emit('record_status', { record: false });
       }
@@ -808,11 +977,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             try {
               await stopAudioEgress(egressId);
             } catch (error: unknown) {
-              console.error('[Socket] finish_egress_stop_failed', {
+              logger.error('Finish call egress stop failed', {
+                service: 'signaling',
+                event: 'finish_egress_stop_failed',
                 roomName: payload.roomName,
                 egressId,
-                error: error instanceof Error ? error.message : 'unknown_error',
-              });
+              }, error);
             }
           }
           activeEgresses.delete(payload.roomName);
@@ -877,11 +1047,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
         });
       } catch (error: unknown) {
-        console.error('[Socket] finish_call_failed', {
+        logger.error('Finish call failed', {
+          service: 'signaling',
+          event: 'finish_call_failed',
           roomName: payload.roomName,
           requesterId,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+        }, error);
         socket.emit('error', { message: 'Failed to finish call.' });
       }
     });
@@ -932,10 +1103,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
                   if (egressId) {
                     await stopAudioEgress(egressId).catch((stopErr: unknown) => {
-                      console.error('[Socket] disconnect_egress_stop_failed', {
+                      logger.error('Disconnect egress stop failed', {
+                        service: 'signaling',
+                        event: 'disconnect_egress_stop_failed',
                         roomName: session.roomName,
-                        error: stopErr instanceof Error ? stopErr.message : 'unknown_error',
-                      });
+                      }, stopErr);
                     });
                     activeEgresses.delete(session.roomName);
                   }
@@ -999,21 +1171,23 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   }
                 });
               } catch (error: unknown) {
-                console.error('[Socket] disconnect_session_cleanup_failed', {
+                logger.error('Disconnect session cleanup failed', {
+                  service: 'signaling',
+                  event: 'disconnect_session_cleanup_failed',
                   roomName: session.roomName,
-                  error: error instanceof Error ? error.message : 'unknown_error',
-                });
+                }, error);
               }
             }
           }, 15000);
 
           disconnectGraceTimers.set(disconnectedUserId, graceTimer);
         } catch (error: unknown) {
-          console.error('[Socket] disconnect_handler_failed', {
+          logger.error('Disconnect handler failed', {
+            service: 'signaling',
+            event: 'disconnect_handler_failed',
             userId: disconnectedUserId,
             reason,
-            error: error instanceof Error ? error.message : 'unknown_error',
-          });
+          }, error);
         }
       })();
     });
@@ -1064,7 +1238,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   io.to(session.roomName).emit('call_finished', { duration: durationSeconds, reason: 'call_duration_limit_reached' });
                 });
               } catch (timeoutErr) {
-                console.error('[Signaling] Reconciled call timeout execution failed:', timeoutErr);
+                logger.error('Reconciled call timeout execution failed', {
+                  service: 'signaling',
+                  event: 'reconciled_call_timeout_error',
+                  roomName: session.roomName,
+                }, timeoutErr);
               }
             })();
           }, remainingSeconds * 1000);
@@ -1072,9 +1250,18 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           serverSessionTimers.set(session.roomName, timer);
         }
       }
-      console.log(`[Signaling] Reconciled ${activeSessions.length} active call sessions on startup.`);
+      logger.info(`Reconciled ${activeSessions.length} active call sessions on startup.`, {
+        service: 'signaling',
+        event: 'active_sessions_reconciled',
+        count: activeSessions.length,
+      });
     } catch (reconcileErr) {
-      console.error('[Signaling] Failed to reconcile active sessions on startup:', reconcileErr);
+      logger.error('Failed to reconcile active sessions on startup', {
+        service: 'signaling',
+        event: 'active_sessions_reconcile_failed',
+      }, reconcileErr);
     }
   })();
 }
+
+export const setupSignaling = setupSocketSignaling;

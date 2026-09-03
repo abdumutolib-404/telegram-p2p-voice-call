@@ -7,6 +7,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '../config/env';
 import { Readable } from 'node:stream';
+import { logger } from '../utils/logger';
 
 let s3ClientInstance: S3Client | null = null;
 
@@ -96,7 +97,9 @@ export async function checkS3ObjectExists(
       diagnosis = 'R2/S3 Bucket does not exist';
     }
 
-    console.warn('[S3Storage] check_exists_failed:', {
+    logger.warn('S3 check object exists failed', {
+      service: 'storage',
+      event: 's3_check_exists_failed',
       errorName,
       message: err.message,
       statusCode: httpStatus,
@@ -148,8 +151,16 @@ export async function deleteS3Object(storageKey: string): Promise<void> {
       Key: storageKey,
     });
     await client.send(command);
-    console.log('[S3Storage] RECORDING_OBJECT_DELETED', { key: storageKey });
+    logger.info('Recording object deleted from S3', {
+      service: 'storage',
+      event: 's3_object_deleted',
+      key: storageKey,
+    });
   } catch (err: any) {
-    console.warn('[S3Storage] delete_failed:', err.message || err);
+    logger.warn('S3 delete object failed', {
+      service: 'storage',
+      event: 's3_delete_failed',
+      key: storageKey,
+    }, err);
   }
 }

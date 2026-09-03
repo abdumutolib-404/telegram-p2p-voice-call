@@ -11,13 +11,19 @@ import {
   CreditCard,
   KeyRound,
   EyeOff,
+  Radio,
+  ExternalLink,
 } from 'lucide-react';
 
 export interface PrivacyScreenProps {
   onBack?: () => void;
+  onNavigate?: (view: string) => void;
 }
 
-export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
+export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack, onNavigate }) => {
+  const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'PairTalkBot').replace(/^@/, '');
+  const botAppUrl = `https://t.me/${botUsername}?startapp=1`;
+
   const handleBack = useCallback(() => {
     if (onBack) {
       onBack();
@@ -43,7 +49,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-[#05070E] text-slate-100 p-4 sm:p-8 md:p-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-3xl mx-auto space-y-8">
+      <div className="max-w-4xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-6">
           <div className="flex items-center gap-4">
@@ -112,7 +118,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
         </div>
 
         {/* Section 2: Optional Audio Recordings & Retention */}
-        <div className="p-6 rounded-2xl bg-[#090D18] border border-slate-800 space-y-4">
+        <div id="retention" className="p-6 rounded-2xl bg-[#090D18] border border-slate-800 space-y-4">
           <div className="flex items-center gap-2.5 text-purple-400 font-mono text-xs font-bold uppercase tracking-wider">
             <FileText className="w-4 h-4" />
             <span>2. OPTIONAL AUDIO RECORDINGS &amp; AUTHORITATIVE RETENTION WINDOWS</span>
@@ -169,7 +175,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
         </div>
 
         {/* Section 3: 100% Refund & Cancellation Policy */}
-        <div className="p-6 rounded-2xl bg-[#090D18] border border-emerald-500/30 space-y-4">
+        <div id="refund" className="p-6 rounded-2xl bg-[#090D18] border border-emerald-500/30 space-y-4">
           <div className="flex items-center gap-2.5 text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">
             <RefreshCw className="w-4 h-4" />
             <span>3. OFFICIAL SERVER-ENFORCED 100% REFUND POLICY</span>
@@ -244,6 +250,44 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
           </div>
         </div>
 
+        {/* CTA Footer */}
+        <div className="p-8 rounded-2xl bg-gradient-to-r from-cyan-950/50 via-slate-900 to-slate-900 border border-cyan-500/30 text-center space-y-4">
+          <h3 className="text-xl font-bold text-white tracking-tight">Need Billing or Privacy Support?</h3>
+          <p className="text-xs sm:text-sm text-slate-300 font-mono max-w-xl mx-auto">
+            Our support team is available 24/7 to answer questions, process refund inquiries, or handle data erasure requests.
+          </p>
+          <div className="pt-2 flex flex-wrap justify-center gap-3">
+            <a
+              href={botAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-cyan-500/25 active:scale-95"
+            >
+              <Radio className="w-4 h-4" />
+              <span>Launch PairTalk Bot</span>
+            </a>
+            <a
+              href="https://t.me/PairTalkSupport"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider transition-all active:scale-95"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Contact Support Desk</span>
+            </a>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate('terms')}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider transition-all active:scale-95"
+              >
+                <span>Terms of Service</span>
+                <ArrowLeft className="w-4 h-4 rotate-180" />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Footer */}
         <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] font-mono text-slate-600">
           <span>PAIRTALK IELTS SPEAKING NETWORK</span>
@@ -253,4 +297,5 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
     </div>
   );
 };
+
 export default PrivacyScreen;

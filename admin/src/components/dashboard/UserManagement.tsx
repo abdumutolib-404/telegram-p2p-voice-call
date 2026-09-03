@@ -329,16 +329,17 @@ export function UserManagement() {
     }
   };
 
-  // Compute overall band score using official IELTS half-band rounding
+  // Compute overall band score using strict whole-band IELTS scoring (5, 6, 7, 8, 9)
   const getOverallBand = (user: UserItem) => {
     if (user.subscores?.band !== undefined && user.subscores?.band !== null) {
-      return Number(user.subscores.band).toFixed(1);
+      const b = Number(user.subscores.band);
+      return Math.max(5, Math.min(9, Math.round(b))).toString();
     }
     if (!user.subscores) return null;
     const { fc, lr, gra, p } = user.subscores;
     const avg = (fc + lr + gra + p) / 4;
-    const rounded = Math.round(avg * 2) / 2;
-    return rounded.toFixed(1);
+    const rounded = Math.max(5, Math.min(9, Math.round(avg)));
+    return rounded.toString();
   };
 
   const getStatusBadgeComponent = (status: UserItem['status']) => {

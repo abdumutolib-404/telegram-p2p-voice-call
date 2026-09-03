@@ -8,6 +8,7 @@ import { generateLiveKitToken } from '../config/livekit';
 import { getEffectiveEntitlement, calculateEffectiveCallDuration } from '../services/plan';
 import { createCanonicalError } from '../types/canonical';
 import { isS3Configured, generatePresignedDownloadUrl, checkS3ObjectExists } from '../services/s3Storage';
+import { logger } from '../utils/logger';
 
 const router = Router();
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
@@ -85,13 +86,18 @@ const handleRecordingRetrieval = async (req: AuthenticatedTelegramRequest, res: 
 
     res.sendFile(filePath, (error?: Error) => {
       if (!error || res.headersSent) return;
-      console.error('[Calls] recording_stream_failed', { sessionId, error: error.message });
+      logger.error('Recording file stream failed', {
+        service: 'calls',
+        event: 'recording_stream_failed',
+        sessionId,
+      }, error);
     });
   } catch (error: unknown) {
-    console.error('[Calls] recording_lookup_failed', {
+    logger.error('Recording lookup failed', {
+      service: 'calls',
+      event: 'recording_lookup_failed',
       sessionId: req.params.sessionId,
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    }, error);
     if (!res.headersSent) {
       res.status(500).json(createCanonicalError('INTERNAL_ERROR', 'Unable to retrieve recording at this time.'));
     }
@@ -145,9 +151,10 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
       callDurationLimit: remainingSeconds,
     });
   } catch (error: unknown) {
-    console.error('[Calls] active_session_lookup_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Active session lookup failed', {
+      service: 'calls',
+      event: 'active_session_lookup_failed',
+    }, error);
     res.status(500).json(createCanonicalError('INTERNAL_ERROR', 'Failed to retrieve active session.'));
   }
 });

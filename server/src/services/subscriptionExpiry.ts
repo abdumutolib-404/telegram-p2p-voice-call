@@ -5,6 +5,7 @@ import { getRedis } from '../config/redis';
 import { MyContext } from '../bot/types';
 import { notificationQueue } from '../bot/notifications';
 import { getEffectiveEntitlement, getUserCallsUsedThisPeriod } from './plan';
+import { logger } from '../utils/logger';
 
 export interface ExpiryCheckResult {
   expiredCount: number;
@@ -59,7 +60,10 @@ export async function checkAndProcessSubscriptionExpirations(
       }
     }
   } catch (err) {
-    console.error('[Subscription Expiry] Error checking expired subscriptions:', err);
+    logger.error('Error checking expired subscriptions', {
+      service: 'subscriptionExpiry',
+      event: 'expired_subs_check_failed',
+    }, err);
   }
 
   // 2. Process 24-Hour Expiry Warnings (Advance Notification)
@@ -101,7 +105,10 @@ export async function checkAndProcessSubscriptionExpirations(
       }
     }
   } catch (err) {
-    console.error('[Subscription Expiry] Error checking expiring subscriptions:', err);
+    logger.error('Error checking expiring subscriptions', {
+      service: 'subscriptionExpiry',
+      event: 'expiring_subs_check_failed',
+    }, err);
   }
 
   return { expiredCount, warnedCount };
@@ -145,7 +152,11 @@ export async function notifyQuotaLimitReachedIfExhausted(
       }
     }
   } catch (err) {
-    console.error('[Quota Notification] Error sending quota notification:', err);
+    logger.error('Error sending quota notification', {
+      service: 'subscriptionExpiry',
+      event: 'quota_notify_failed',
+      userId,
+    }, err);
   }
 
   return false;
@@ -161,11 +172,22 @@ export function startSubscriptionExpiryCron(botSupplier: () => Bot<MyContext> | 
       const bot = botSupplier();
       const res = await checkAndProcessSubscriptionExpirations(bot);
       if (res.expiredCount > 0 || res.warnedCount > 0) {
-        console.log(`[Subscription Expiry Cron] Processed ${res.expiredCount} expirations, sent ${res.warnedCount} 24h reminders.`);
+        logger.info(`Processed ${res.expiredCount} expirations, sent ${res.warnedCount} 24h reminders.`, {
+          service: 'subscriptionExpiry',
+          event: 'subscription_expiry_cron_run',
+          expiredCount: res.expiredCount,
+          warnedCount: res.warnedCount,
+        });
       }
     } catch (err) {
-      console.error('[Subscription Expiry Cron] Cron job error:', err);
+      logger.error('Subscription expiry cron job error', {
+        service: 'subscriptionExpiry',
+        event: 'subscription_expiry_cron_error',
+      }, err);
     }
   });
-  console.log('[Subscription Expiry Cron] Subscription expiry and limit reminder cron scheduled (every 10 min).');
+  logger.info('Subscription expiry and limit reminder cron scheduled (every 10 min).', {
+    service: 'subscriptionExpiry',
+    event: 'subscription_expiry_cron_scheduled',
+  });
 }

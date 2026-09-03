@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
+import { setRequestContextUserId } from '../utils/requestContext';
 
 export interface TelegramUser {
   readonly id: bigint;
@@ -93,9 +95,10 @@ export function validateTelegramInitData(initData: string, botToken: string): In
 
     return { valid: true, user };
   } catch (error: unknown) {
-    console.error('[InitData] validation_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.warn('Telegram initData signature validation error', {
+      service: 'auth',
+      event: 'init_data_validation_error',
+    }, error);
     return { valid: false };
   }
 }
@@ -111,6 +114,7 @@ export function initDataLockdownMiddleware(
 
     if (env.NODE_ENV === 'test' && initData === 'test-allowed') {
       req.telegramUser = { id: BigInt(12345678), first_name: 'TestUser' };
+      setRequestContextUserId('12345678');
       next();
       return;
     }
@@ -127,11 +131,13 @@ export function initDataLockdownMiddleware(
     }
 
     req.telegramUser = result.user;
+    setRequestContextUserId(result.user.id.toString());
     next();
   } catch (error: unknown) {
-    console.error('[InitData] middleware_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Telegram initData lockdown middleware failed', {
+      service: 'auth',
+      event: 'init_data_middleware_error',
+    }, error);
     res.status(500).json({ error: 'Internal authentication error.' });
   }
 }

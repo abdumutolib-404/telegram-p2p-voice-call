@@ -4,6 +4,8 @@ import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { calculateOverallBand, generateUniqueAlias, getMainMenuKeyboard } from '../commands/start';
 import { getEffectiveEntitlement, getUserCallsUsedThisPeriod } from '../../services/plan';
+import { escapeHtml } from '../../utils/sanitize';
+import { logger } from '../../utils/logger';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
@@ -129,7 +131,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         },
       });
     } catch (err) {
-      console.error('[Callback] confirm_subscores error:', err);
+      logger.error('confirm_subscores error', {
+        service: 'bot',
+        event: 'confirm_subscores_failed',
+        telegramId: telegramId.toString(),
+      }, err);
       await ctx.answerCallbackQuery({ text: 'Failed to save profile. Please try again.' });
       return;
     }
@@ -140,7 +146,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     await ctx.answerCallbackQuery({ text: 'Profile saved!' });
     await ctx.reply(
       `🎉 <b>Profile Onboarding Complete!</b>\n\n` +
-        `• <b>Permanent Alias</b>: <code>${user.alias}</code> (Locked)\n` +
+        `• <b>Permanent Alias</b>: <code>${escapeHtml(user.alias)}</code> (Locked)\n` +
         `• <b>Target IELTS Band</b>: ${user.band.toFixed(1)}\n\n` +
         `You can now tap <b>📞 Find Partner</b> to match with complementary speaking partners.`,
       { parse_mode: 'HTML', reply_markup: menuKb }
@@ -189,7 +195,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       await ctx.editMessageReplyMarkup({ reply_markup: inlineKb });
     } catch (err) {
-      console.error('[Callback] toggle_dnd error:', err);
+      logger.error('toggle_dnd error', {
+        service: 'bot',
+        event: 'toggle_dnd_failed',
+        telegramId: telegramId.toString(),
+      }, err);
       await ctx.answerCallbackQuery({ text: 'Failed to toggle DND status.' });
     }
   });
@@ -245,7 +255,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       await ctx.answerCallbackQuery({ text: `⭐ ${partner.alias} saved to Favorites!` });
     } catch (err) {
-      console.error('[Callback] favorite_partner error:', err);
+      logger.error('favorite_partner error', {
+        service: 'bot',
+        event: 'favorite_partner_failed',
+        telegramId: telegramId.toString(),
+      }, err);
       await ctx.answerCallbackQuery({ text: 'Failed to save favorite.' });
     }
   });
@@ -353,7 +367,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       await ctx.answerCallbackQuery({ text: `Calling ${partner.alias}...` });
       await ctx.reply(
         `📞 <b>Direct Call Request Sent</b>\n\n` +
-          `Calling <b>${partner.alias}</b> (Band ${partner.band.toFixed(1)})...\n` +
+          `Calling <b>${escapeHtml(partner.alias)}</b> (Band ${partner.band.toFixed(1)})...\n` +
           `<i>They have received an invitation to join your call.</i>`,
         { parse_mode: 'HTML', reply_markup: callerKb }
       );
@@ -367,15 +381,23 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         await ctx.api.sendMessage(
           partner.telegramId.toString(),
           `📞 <b>Incoming Direct Call!</b>\n\n` +
-            `<b>${caller.alias}</b> (Band ${caller.band.toFixed(1)}) is calling you for an IELTS speaking session.\n\n` +
+            `<b>${escapeHtml(caller.alias)}</b> (Band ${caller.band.toFixed(1)}) is calling you for an IELTS speaking session.\n\n` +
             `Tap below to accept or decline:`,
           { parse_mode: 'HTML', reply_markup: partnerKb }
         );
       } catch (sendErr) {
-        console.warn(`[Direct Call] Failed to notify partner ${partner.alias}:`, sendErr);
+        logger.warn('Failed to notify partner of direct call', {
+          service: 'bot',
+          event: 'direct_call_notify_failed',
+          partnerAlias: partner.alias,
+        }, sendErr);
       }
     } catch (err) {
-      console.error('[Callback] direct_call error:', err);
+      logger.error('direct_call error', {
+        service: 'bot',
+        event: 'direct_call_failed',
+        partnerId,
+      }, err);
       await ctx.answerCallbackQuery({ text: 'An error occurred initiating the direct call.' });
     }
   });
@@ -425,7 +447,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           text: `${caller.alias} has reached their monthly call limit.`,
           show_alert: true,
         });
-        await ctx.editMessageText(`❌ Call cannot be connected because ${caller.alias} has reached their monthly call limit.`);
+        await ctx.editMessageText(`❌ Call cannot be connected because ${escapeHtml(caller.alias)} has reached their monthly call limit.`);
         return;
       }
 
@@ -442,7 +464,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       await ctx.editMessageText(
         `✅ <b>Direct Call Connected!</b>\n\n` +
-          `Your speaking session with <b>${caller.alias}</b> is active.\n` +
+          `Your speaking session with <b>${escapeHtml(caller.alias)}</b> is active.\n` +
           `Tap below to enter the call:`,
         { parse_mode: 'HTML', reply_markup: joinKb }
       );
@@ -450,15 +472,22 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       try {
         await ctx.api.sendMessage(
           caller.telegramId.toString(),
-          `✅ <b>${callee.alias} accepted your call!</b>\n\n` +
+          `✅ <b>${escapeHtml(callee.alias)} accepted your call!</b>\n\n` +
             `Tap below to enter the voice call:`,
           { parse_mode: 'HTML', reply_markup: joinKb }
         );
       } catch (notifyErr) {
-        console.warn('[Direct Call] Failed to notify caller of accept:', notifyErr);
+        logger.warn('Failed to notify caller of accept', {
+          service: 'bot',
+          event: 'direct_call_accept_notify_failed',
+        }, notifyErr);
       }
     } catch (err) {
-      console.error('[Callback] accept_direct error:', err);
+      logger.error('accept_direct error', {
+        service: 'bot',
+        event: 'accept_direct_failed',
+        sessionId,
+      }, err);
       await ctx.answerCallbackQuery({ text: 'Failed to accept call.' });
     }
   });
@@ -493,7 +522,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           try {
             await ctx.api.sendMessage(
               session.userA.telegramId.toString(),
-              `❌ <b>${session.userB.alias}</b> was unable to accept your direct call.`,
+              `❌ <b>${escapeHtml(session.userB.alias)}</b> was unable to accept your direct call.`,
               { parse_mode: 'HTML' }
             );
           } catch {}
@@ -503,7 +532,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       await ctx.answerCallbackQuery({ text: 'Call invitation declined.' });
       await ctx.editMessageText('❌ You declined the call invitation.');
     } catch (err) {
-      console.error('[Callback] decline_direct error:', err);
+      logger.error('decline_direct error', {
+        service: 'bot',
+        event: 'decline_direct_failed',
+        sessionId,
+      }, err);
     }
   });
 
@@ -547,7 +580,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       await ctx.answerCallbackQuery({ text: 'Call request cancelled.' });
       await ctx.editMessageText('✖️ Call request cancelled.');
     } catch (err) {
-      console.error('[Callback] cancel_direct error:', err);
+      logger.error('cancel_direct error', {
+        service: 'bot',
+        event: 'cancel_direct_failed',
+        sessionId,
+      }, err);
     }
   });
 
@@ -662,7 +699,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         parse_mode: 'HTML',
       });
     } catch (err) {
-      console.error('[Callback] play_rec error:', err);
+      logger.error('play_rec error', {
+        service: 'bot',
+        event: 'play_recording_failed',
+        sessionId,
+      }, err);
       await ctx.answerCallbackQuery({ text: 'An error occurred sending audio.' });
     }
   });
@@ -709,7 +750,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       leaderboardText = contest.leaderboard
         .map((entry) => {
           const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
-          return `${medal} <b>${entry.alias}</b> — <code>${entry.invitesCount} friend${entry.invitesCount > 1 ? 's' : ''}</code>`;
+          return `${medal} <b>${escapeHtml(entry.alias)}</b> — <code>${entry.invitesCount} friend${entry.invitesCount > 1 ? 's' : ''}</code>`;
         })
         .join('\n');
     }
@@ -718,10 +759,10 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     const inlineKb = new InlineKeyboard().text('👥 Get My Invite Link', 'get_my_invite_link');
 
     await ctx.reply(
-      `🏆 <b>${title}</b>\n\n` +
-        `📝 ${description}\n\n` +
+      `🏆 <b>${escapeHtml(title)}</b>\n\n` +
+        `📝 ${escapeHtml(description)}\n\n` +
         `🎁 <b>Contest Prizes:</b>\n` +
-        `${prizes}\n\n` +
+        `${escapeHtml(prizes)}\n\n` +
         `━━━━━━━━━━━━━━━━━━\n` +
         `🌟 <b>Live Leaderboard (Top 10):</b>\n\n` +
         leaderboardText,

@@ -1,5 +1,6 @@
 import { Bot } from 'grammy';
 import { MyContext } from './types';
+import { logger } from '../utils/logger';
 
 type SendMessageOptions = Parameters<Bot<MyContext>['api']['sendMessage']>[2];
 
@@ -37,15 +38,28 @@ export class NotificationQueue {
           const currentRetries = item.retries || 0;
 
           if (currentRetries < 5) {
-            console.warn(`[Bot Notification] 429 Rate limited. Retrying (${currentRetries + 1}/5) after ${retryAfter}ms`);
+            logger.warn(`Telegram notification 429 rate limited. Retrying (${currentRetries + 1}/5) after ${retryAfter}ms`, {
+              service: 'bot',
+              event: 'notification_rate_limited',
+              telegramId: item.telegramId,
+              attempt: currentRetries + 1,
+              retryAfter,
+            });
             this.queue.unshift({ ...item, retries: currentRetries + 1 });
             await new Promise((resolve) => setTimeout(resolve, retryAfter));
           } else {
-            console.error(`[Bot Notification] Max retries reached for message to ${item.telegramId}. Message dropped.`);
+            logger.error(`Max retries reached for message to ${item.telegramId}. Message dropped.`, {
+              service: 'bot',
+              event: 'notification_max_retries_dropped',
+              telegramId: item.telegramId,
+            });
           }
         } else {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          console.warn(`[Bot Notification] Failed to send message to ${item.telegramId}:`, errMsg);
+          logger.warn(`Failed to send message to ${item.telegramId}`, {
+            service: 'bot',
+            event: 'notification_send_failed',
+            telegramId: item.telegramId,
+          }, err);
         }
       }
 

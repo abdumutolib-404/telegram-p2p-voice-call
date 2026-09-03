@@ -1,0 +1,45 @@
+# Robots.txt for PairTalk Public Platform (https://pairtalk.online)
+# Explicitly allowing modern AI crawlers & major search engine indexing
+
+User-agent: Googlebot
+User-agent: Google-Extended
+User-agent: Bingbot
+User-agent: ClaudeBot
+User-agent: anthropic-ai
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: OAI-SearchBot
+User-agent: PerplexityBot
+User-agent: Applebot
+User-agent: TelegramBot
+User-agent: Twitterbot
+User-agent: facebookexternalhit
+User-agent: FacebookBot
+Allow: /
+Disallow: /api/
+Disallow: /admin
+
+# Block Aggressive Scrapers & Unwanted Harvesters
+User-agent: Bytespider
+User-agent: TikTokSpider
+User-agent: CCBot
+User-agent: Baiduspider
+User-agent: PetalBot
+User-agent: YandexBot
+User-agent: MJ12bot
+User-agent: AhrefsBot
+User-agent: SemrushBot
+User-agent: DotBot
+User-agent: DataForSeoBot
+User-agent: Scrapy
+User-agent: Sogou
+Disallow: /
+
+# General Crawlers
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+
+# Authoritative Canonical Sitemap
+Sitemap: https://pairtalk.online/sitemap.xml

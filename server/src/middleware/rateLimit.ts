@@ -2,13 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { checkRateLimit, type RateLimitAction } from '../services/rateLimitMatrix';
 import { createCanonicalError } from '../types/canonical';
 
-export function getClientIp(req: Request): string {
-  const cfIp = req.headers['cf-connecting-ip'];
-  if (typeof cfIp === 'string' && cfIp.trim()) {
-    return cfIp.trim();
-  }
-  return req.ip || req.socket?.remoteAddress || 'unknown';
-}
+import { getClientIp, extractClientIp } from '../utils/sanitize';
+export { getClientIp, extractClientIp };
 
 export function createActionRateLimiter(
   action: RateLimitAction,

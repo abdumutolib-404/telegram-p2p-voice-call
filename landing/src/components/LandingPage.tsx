@@ -26,13 +26,23 @@ import {
 } from 'lucide-react';
 
 export interface LandingPageProps {
-  onOpenPrivacy?: () => void;
+  onOpenHowItWorks?: () => void;
+  onOpenIeltsGuide?: () => void;
   onOpenGuidelines?: () => void;
+  onOpenSafety?: () => void;
+  onOpenFaq?: () => void;
+  onOpenPrivacy?: () => void;
+  onOpenTerms?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
-  onOpenPrivacy,
+  onOpenHowItWorks,
+  onOpenIeltsGuide,
   onOpenGuidelines,
+  onOpenSafety,
+  onOpenFaq,
+  onOpenPrivacy,
+  onOpenTerms,
 }) => {
   const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'PairTalkBot').replace(/^@/, '');
   const botAppUrl = `https://t.me/${botUsername}?startapp=1`;
@@ -99,23 +109,107 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Navigation Header */}
-        <header className="flex items-center justify-between py-6 border-b border-zinc-800/80">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
-              <Radio className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <span className="text-xl font-bold tracking-wider text-white">
-                PAIR<span className="text-cyan-400">TALK</span>
-              </span>
-              <span className="hidden sm:inline-block ml-2 text-[11px] uppercase tracking-widest text-zinc-400 border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 rounded">
-                IELTS P2P
-              </span>
+        <header className="flex flex-col md:flex-row items-center justify-between py-6 border-b border-zinc-800/80 gap-4">
+          <div className="flex items-center justify-between w-full md:w-auto">
+            <a href="/" className="flex items-center gap-3 cursor-pointer">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
+                <Radio className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <span className="text-xl font-bold tracking-wider text-white">
+                  PAIR<span className="text-cyan-400">TALK</span>
+                </span>
+                <span className="hidden sm:inline-block ml-2 text-[11px] uppercase tracking-widest text-zinc-400 border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 rounded">
+                  IELTS P2P
+                </span>
+              </div>
+            </a>
+
+            <div className="flex md:hidden items-center gap-2">
+              <a
+                href={botAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-black bg-cyan-400 hover:bg-cyan-300 rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+              >
+                <span>Launch</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
+          {/* Navigation Links */}
+          <nav className="hidden lg:flex items-center gap-6 text-xs font-mono font-medium text-zinc-400">
+            <a
+              href="/how-it-works"
+              onClick={(e) => {
+                if (onOpenHowItWorks) {
+                  e.preventDefault();
+                  onOpenHowItWorks();
+                }
+              }}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              How It Works
+            </a>
+            <a
+              href="/ielts-speaking"
+              onClick={(e) => {
+                if (onOpenIeltsGuide) {
+                  e.preventDefault();
+                  onOpenIeltsGuide();
+                }
+              }}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              IELTS Guide
+            </a>
+            <a
+              href="/community-guidelines"
+              onClick={(e) => {
+                if (onOpenGuidelines) {
+                  e.preventDefault();
+                  onOpenGuidelines();
+                }
+              }}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Guidelines
+            </a>
+            <a
+              href="/safety"
+              onClick={(e) => {
+                if (onOpenSafety) {
+                  e.preventDefault();
+                  onOpenSafety();
+                }
+              }}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Safety
+            </a>
+            <a
+              href="/faq"
+              onClick={(e) => {
+                if (onOpenFaq) {
+                  e.preventDefault();
+                  onOpenFaq();
+                }
+              }}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              FAQ
+            </a>
+            <a
+              href="#pricing"
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Pricing
+            </a>
+          </nav>
+
+          <div className="hidden md:flex items-center gap-4">
+            <div className="hidden xl:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <span>SFU NETWORK ONLINE</span>
             </div>
@@ -815,72 +909,260 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
         </section>
-
         {/* ==================================================================== */}
-        {/* SECTION 9: FOOTER WITH EXPLICIT DEEP LINKS                           */}
+        {/* SECTION 9: 4-COLUMN FOOTER WITH EXPLICIT DEEP LINKS                 */}
         {/* ==================================================================== */}
-        <footer className="py-10 border-t border-zinc-800/80 text-xs text-zinc-500">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                <Radio className="w-4 h-4" />
+        <footer className="py-12 border-t border-zinc-800/80 text-xs text-zinc-400">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-10">
+            {/* Brand Column */}
+            <div className="lg:col-span-1 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Radio className="w-4 h-4" />
+                </div>
+                <span className="text-base font-bold tracking-wider text-white">
+                  PAIR<span className="text-cyan-400">TALK</span>
+                </span>
               </div>
-              <span className="text-base font-bold tracking-wider text-white">
-                PAIR<span className="text-cyan-400">TALK</span>
-              </span>
-              <span className="text-[10px] uppercase font-mono tracking-widest text-zinc-500 border border-zinc-800 px-1.5 py-0.5 rounded">
-                V2.0
-              </span>
+              <p className="text-xs text-zinc-500 font-mono leading-relaxed">
+                Autonomous criteria-matched peer-to-peer IELTS Speaking practice platform on Telegram &amp; Web.
+              </p>
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>LiveKit SFU Active</span>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-6">
-              <a
-                href="#guidelines"
-                onClick={(e) => {
-                  if (onOpenGuidelines) {
-                    e.preventDefault();
-                    onOpenGuidelines();
-                  }
-                }}
-                className="hover:text-cyan-400 transition-colors"
-              >
-                Community Guidelines
-              </a>
-              <a
-                href="#privacy"
-                onClick={(e) => {
-                  if (onOpenPrivacy) {
-                    e.preventDefault();
-                    onOpenPrivacy();
-                  }
-                }}
-                className="hover:text-cyan-400 transition-colors"
-              >
-                Privacy &amp; Refund Policy
-              </a>
-              <a
-                href={botDirectUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-cyan-400 transition-colors"
-              >
-                Telegram Bot
-              </a>
-              <a
-                href="https://t.me/PairTalkSupport"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-cyan-400 transition-colors"
-              >
-                Support Desk
-              </a>
+            {/* Column 1: Platform & Learning */}
+            <div className="space-y-3 font-mono">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-white">Platform &amp; Learning</h4>
+              <ul className="space-y-2 text-xs text-zinc-400">
+                <li>
+                  <a
+                    href="/how-it-works"
+                    onClick={(e) => {
+                      if (onOpenHowItWorks) {
+                        e.preventDefault();
+                        onOpenHowItWorks();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    How It Works
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/ielts-speaking"
+                    onClick={(e) => {
+                      if (onOpenIeltsGuide) {
+                        e.preventDefault();
+                        onOpenIeltsGuide();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    IELTS Speaking Guide
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/ielts-speaking#descriptors"
+                    onClick={(e) => {
+                      if (onOpenIeltsGuide) {
+                        e.preventDefault();
+                        onOpenIeltsGuide();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Band Descriptors Matrix
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/faq"
+                    onClick={(e) => {
+                      if (onOpenFaq) {
+                        e.preventDefault();
+                        onOpenFaq();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Frequently Asked Questions
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 2: Community & Safety */}
+            <div className="space-y-3 font-mono">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-white">Community &amp; Safety</h4>
+              <ul className="space-y-2 text-xs text-zinc-400">
+                <li>
+                  <a
+                    href="/community-guidelines"
+                    onClick={(e) => {
+                      if (onOpenGuidelines) {
+                        e.preventDefault();
+                        onOpenGuidelines();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Community Guidelines
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/safety"
+                    onClick={(e) => {
+                      if (onOpenSafety) {
+                        e.preventDefault();
+                        onOpenSafety();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Safety &amp; Anti-Solicitation
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/community-guidelines#appeals"
+                    onClick={(e) => {
+                      if (onOpenGuidelines) {
+                        e.preventDefault();
+                        onOpenGuidelines();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Moderation &amp; Appeals
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={botDirectUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Unban Appeal (<code className="text-cyan-300">/appeal</code>)
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 3: Legal & Policies */}
+            <div className="space-y-3 font-mono">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-white">Legal &amp; Policies</h4>
+              <ul className="space-y-2 text-xs text-zinc-400">
+                <li>
+                  <a
+                    href="/privacy"
+                    onClick={(e) => {
+                      if (onOpenPrivacy) {
+                        e.preventDefault();
+                        onOpenPrivacy();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Privacy Policy
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/terms"
+                    onClick={(e) => {
+                      if (onOpenTerms) {
+                        e.preventDefault();
+                        onOpenTerms();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Terms of Service
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/privacy#refund"
+                    onClick={(e) => {
+                      if (onOpenPrivacy) {
+                        e.preventDefault();
+                        onOpenPrivacy();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    100% Refund Guarantee
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/privacy#retention"
+                    onClick={(e) => {
+                      if (onOpenPrivacy) {
+                        e.preventDefault();
+                        onOpenPrivacy();
+                      }
+                    }}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer"
+                  >
+                    Audio Retention Matrix
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 4: Official Bot & Support */}
+            <div className="space-y-3 font-mono">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-white">Official Bot &amp; Support</h4>
+              <ul className="space-y-2 text-xs text-zinc-400">
+                <li>
+                  <a
+                    href={botAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-cyan-400 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Launch Web App</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={botDirectUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-cyan-400 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Telegram Bot (@{botUsername})</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://t.me/PairTalkSupport"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-cyan-400 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Customer Support Desk</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </li>
+              </ul>
             </div>
           </div>
 
-          <div className="border-t border-zinc-900 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left text-[11px] text-zinc-600">
+          <div className="border-t border-zinc-900 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left text-[11px] text-zinc-600 font-mono">
             <p>© {new Date().getFullYear()} PairTalk IELTS Speaking Network. All rights reserved.</p>
             <p className="max-w-md">
-              Disclaimer: PairTalk is an autonomous peer-to-peer educational platform. IELTS is a registered trademark of University of Cambridge ESOL, British Council, and IDP Education Australia.
+              Disclaimer: PairTalk is an autonomous peer-to-peer educational platform. IELTS® is a registered trademark of University of Cambridge ESOL, British Council, and IDP Education Australia. PairTalk is not affiliated with or endorsed by IELTS.
             </p>
           </div>
         </footer>

@@ -11,6 +11,7 @@ import { prisma } from '../config/database';
 import { checkRateLimit } from '../services/rateLimitMatrix';
 import { getRedis } from '../config/redis';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
 const memorySessions = new Map<string, SessionData>();
 
@@ -61,7 +62,14 @@ export function createBot(token: string): Bot<MyContext> {
       } catch (error: any) {
         if (error?.error_code === 429 && attempt < maxRetries) {
           const retryAfter = (error.parameters?.retry_after || 1) * 1000;
-          console.warn(`[Telegram API 429] Method ${method} rate limited. Retrying in ${retryAfter}ms (attempt ${attempt + 1}/${maxRetries})`);
+          logger.warn(`Telegram API 429 rate limit hit. Retrying in ${retryAfter}ms (attempt ${attempt + 1}/${maxRetries})`, {
+            service: 'bot',
+            event: 'telegram_api_rate_limited',
+            method,
+            retryAfter,
+            attempt: attempt + 1,
+            maxRetries,
+          });
           await new Promise((resolve) => setTimeout(resolve, retryAfter));
           continue;
         }
@@ -178,7 +186,10 @@ export function createBot(token: string): Bot<MyContext> {
         }
       }
     } catch (err) {
-      console.error('[Bot Auth Check Failed]', err);
+      logger.error('Bot auth suspension check failed', {
+        service: 'bot',
+        event: 'bot_suspension_check_failed',
+      }, err);
     }
 
     return next();
@@ -194,7 +205,11 @@ export function createBot(token: string): Bot<MyContext> {
     ) {
       return; // Ignore benign duplicate button clicks
     }
-    console.error(`[Grammy Bot Error] Update ${err.ctx.update.update_id} failed:`, err.error);
+    logger.error(`Grammy bot update ${err.ctx.update.update_id} failed`, {
+      service: 'bot',
+      event: 'bot_update_error',
+      updateId: err.ctx.update.update_id,
+    }, err.error);
   });
 
   // Register commands & handlers

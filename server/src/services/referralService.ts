@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { Bot } from 'grammy';
 import { MyContext } from '../bot/types';
+import { logger } from '../utils/logger';
 
 export interface ReferralStats {
   totalInvited: number;
@@ -119,12 +120,20 @@ export async function bindReferral(
         `💡 <i>Encourage your friend to practice their first IELTS call to unlock your bonus!</i>`;
 
       await bot.api.sendMessage(inviter.telegramId.toString(), msg, { parse_mode: 'HTML' })
-        .catch((e: unknown) => console.warn('[Referral] Failed to send new invite notification:', e));
+        .catch((e: unknown) => logger.warn('Failed to send new invite notification', {
+          service: 'referral',
+          event: 'invite_notify_failed',
+          inviterTelegramId: inviter.telegramId.toString(),
+        }, e));
     }
 
     return { success: true, inviterAlias: inviter.alias };
   } catch (err) {
-    console.error('[Referral] bindReferral error:', err);
+    logger.error('bindReferral error', {
+      service: 'referral',
+      event: 'bind_referral_error',
+      invitedTelegramId: invitedTelegramId.toString(),
+    }, err);
     return { success: false };
   }
 }
@@ -186,11 +195,19 @@ export async function onCallFinishedCheckReferralReward(
             `💡 <i>Your bonus calls are saved forever and automatically used whenever your monthly plan limits run out.</i>`;
 
           await bot.api.sendMessage(inviter.telegramId.toString(), msg, { parse_mode: 'HTML' })
-            .catch((e: unknown) => console.warn('[Referral] Failed to deliver reward notice:', e));
+            .catch((e: unknown) => logger.warn('Failed to deliver reward notice', {
+              service: 'referral',
+              event: 'reward_notice_failed',
+              inviterTelegramId: inviter.telegramId.toString(),
+            }, e));
         }
       }
     } catch (err) {
-      console.error('[Referral] Error processing qualifying call reward for participant:', participantId, err);
+      logger.error('Error processing qualifying call reward for participant', {
+        service: 'referral',
+        event: 'qualifying_reward_error',
+        participantId,
+      }, err);
     }
   }
 }
@@ -241,7 +258,11 @@ export async function consumeOldestBonusCall(userId: string): Promise<boolean> {
 
     return true;
   } catch (err) {
-    console.error('[Referral] consumeOldestBonusCall error:', err);
+    logger.error('consumeOldestBonusCall error', {
+      service: 'referral',
+      event: 'consume_bonus_call_error',
+      userId,
+    }, err);
     return false;
   }
 }
@@ -552,7 +573,11 @@ export async function concludeContestAndDistributePrizes(
           `Thank you for helping grow the PairTalk speaking community! 🚀`;
 
         await bot.api.sendMessage(winner.telegramId, msg, { parse_mode: 'HTML' })
-          .catch((e: unknown) => console.warn('[Referral] Failed to deliver prize notification to winner:', winner.telegramId, e));
+          .catch((e: unknown) => logger.warn('Failed to deliver prize notification to winner', {
+            service: 'referral',
+            event: 'prize_notification_failed',
+            winnerTelegramId: winner.telegramId,
+          }, e));
       }
     }
   }

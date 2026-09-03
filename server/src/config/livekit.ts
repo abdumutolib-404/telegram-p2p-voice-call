@@ -12,22 +12,24 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { env } from './env';
+import { logger } from '../utils/logger';
 
 export interface EgressResult {
   readonly egressId: string;
   readonly relativeUrl: string;
 }
 
-let egressClient: EgressClient | null = null;
-let roomServiceClient: RoomServiceClient | null = null;
+export let egressClient: EgressClient | null = null;
+export let roomServiceClient: RoomServiceClient | null = null;
 
 try {
   egressClient = new EgressClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
   roomServiceClient = new RoomServiceClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
 } catch (error: unknown) {
-  console.error('[LiveKit] client_init_failed', {
-    error: error instanceof Error ? error.message : 'unknown_error',
-  });
+  logger.error('LiveKit client initialization failed', {
+    service: 'livekit',
+    event: 'livekit_client_init_failed',
+  }, error);
 }
 
 /**
@@ -130,11 +132,12 @@ export async function generateLiveKitToken(
     accessToken.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
     return await accessToken.toJwt();
   } catch (error: unknown) {
-    console.error('[LiveKit] token_generation_failed', {
+    logger.error('LiveKit token generation failed', {
+      service: 'livekit',
+      event: 'livekit_token_generation_failed',
       roomName,
       participantIdentity,
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    }, error);
     throw error;
   }
 }
@@ -175,7 +178,9 @@ export async function startAudioEgress(roomName: string): Promise<EgressResult> 
       }
     );
 
-    console.log('[LiveKit] RECORDING_START_ACCEPTED', {
+    logger.info('LiveKit Egress started', {
+      service: 'livekit',
+      event: 'egress_started',
       roomName,
       egressId: info.egressId,
       status: info.status,
@@ -183,10 +188,11 @@ export async function startAudioEgress(roomName: string): Promise<EgressResult> 
 
     return { egressId: info.egressId, relativeUrl };
   } catch (error: unknown) {
-    console.warn('[LiveKit] RECORDING_START_FAILED', {
+    logger.warn('LiveKit Egress start failed', {
+      service: 'livekit',
+      event: 'egress_start_failed',
       roomName,
-      error: error instanceof Error ? error.message : error,
-    });
+    }, error);
     throw error;
   }
 }
@@ -198,16 +204,19 @@ export async function stopAudioEgress(egressId: string): Promise<EgressInfo | nu
   if (!egressId || !egressClient) return null;
   try {
     const info = await egressClient.stopEgress(egressId);
-    console.log('[LiveKit] RECORDING_STOP_ACCEPTED', {
+    logger.info('LiveKit Egress stopped', {
+      service: 'livekit',
+      event: 'egress_stopped',
       egressId,
       status: info?.status,
     });
     return info;
   } catch (error: unknown) {
-    console.warn('[LiveKit] egress_stop_failed', {
+    logger.warn('LiveKit Egress stop failed', {
+      service: 'livekit',
+      event: 'egress_stop_failed',
       egressId,
-      error: error instanceof Error ? error.message : error,
-    });
+    }, error);
     return null;
   }
 }
@@ -221,10 +230,11 @@ export async function getAudioEgressInfo(egressId: string): Promise<EgressInfo |
     const list = await egressClient.listEgress({ egressId });
     return list && list.length > 0 ? list[0] : null;
   } catch (error: unknown) {
-    console.warn('[LiveKit] get_egress_info_failed', {
+    logger.warn('LiveKit get Egress info failed', {
+      service: 'livekit',
+      event: 'get_egress_info_failed',
       egressId,
-      error: error instanceof Error ? error.message : error,
-    });
+    }, error);
     return null;
   }
 }

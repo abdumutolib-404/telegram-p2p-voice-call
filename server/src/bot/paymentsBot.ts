@@ -1,5 +1,6 @@
 import { Bot, InputFile } from 'grammy';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
 export interface AdminPaymentNotificationParams {
   orderNumber: string;
@@ -56,9 +57,11 @@ export async function downloadTelegramReceiptFile(
       filePath: fileInfo.file_path,
     };
   } catch (err: unknown) {
-    const rawMsg = err instanceof Error ? err.message : String(err);
-    const sanitizedMsg = rawMsg.replace(/bot\d+:[a-zA-Z0-9_-]+/g, '[REDACTED_TOKEN]');
-    console.error('[PaymentsBot] downloadTelegramReceiptFile failed:', sanitizedMsg);
+    logger.error('downloadTelegramReceiptFile failed', {
+      service: 'bot',
+      event: 'receipt_download_failed',
+      fileId,
+    }, err);
     return null;
   }
 }

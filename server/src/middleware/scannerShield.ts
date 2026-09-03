@@ -1,5 +1,6 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { getRedis } from '../config/redis';
+import { logger } from '../utils/logger';
 
 // In-memory fallback cache for jailed IPs when Redis is disconnected
 const memoryJailedIps = new Map<string, number>();
@@ -66,17 +67,8 @@ function decodeSafely(uri: string): string {
   }
 }
 
-export function getClientIp(req: Request): string {
-  const cf = req.headers['cf-connecting-ip'];
-  if (typeof cf === 'string' && cf.trim()) {
-    return cf.trim();
-  }
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff.trim()) {
-    return xff.split(',')[0].trim();
-  }
-  return req.socket.remoteAddress || 'unknown';
-}
+import { getClientIp, extractClientIp } from '../utils/sanitize';
+export { getClientIp, extractClientIp };
 
 export async function isIpJailed(ip: string): Promise<boolean> {
   if (!ip || ip === 'unknown' || ip === '127.0.0.1' || ip === '::1') {
@@ -118,7 +110,13 @@ export async function jailIp(ip: string, reason: string, path: string): Promise<
     // Memory fallback preserved
   }
 
-  console.warn(`[Shield 🛡️ Bot Banned] IP: ${ip} jailed for 24h. Reason: ${reason} (Path: ${path.slice(0, 100)})`);
+  logger.warn(`[Shield 🛡️ Bot Banned] IP: ${ip} jailed for 24h. Reason: ${reason} (Path: ${path.slice(0, 100)})`, {
+    service: 'shield',
+    event: 'ip_jailed',
+    ip,
+    reason,
+    path: path.slice(0, 100),
+  });
 }
 
 export function isExploitProbe(path: string): boolean {

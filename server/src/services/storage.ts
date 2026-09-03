@@ -5,6 +5,7 @@ import path from 'node:path';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
 import { isS3Configured, deleteS3Object } from './s3Storage';
+import { logger } from '../utils/logger';
 
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
 
@@ -45,14 +46,23 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
           await deleteS3Object(session.recordingUrl);
           fileDeleted = true;
         } catch (s3Err) {
-          console.warn(`[Storage Purge] Could not delete S3 object for session ${session.id}:`, s3Err);
+          logger.warn(`Could not delete S3 object for session ${session.id}`, {
+            service: 'storage',
+            event: 'storage_purge_s3_failed',
+            sessionId: session.id,
+          }, s3Err);
         }
       } else {
         // 2. Local filesystem cleanup
         try {
           const filePath = resolveSafeRecordingPath(session.recordingUrl);
           if (!filePath) {
-            console.warn(`[Storage Purge] Path traversal or invalid recordingUrl for session ${session.id}: ${session.recordingUrl}`);
+            logger.warn(`Path traversal or invalid recordingUrl for session ${session.id}: ${session.recordingUrl}`, {
+              service: 'storage',
+              event: 'storage_purge_invalid_path',
+              sessionId: session.id,
+              recordingUrl: session.recordingUrl,
+            });
             await prisma.callSession.update({
               where: { id: session.id },
               data: { recordingUrl: null },
@@ -71,7 +81,11 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
             fileDeleted = true;
           }
         } catch (err) {
-          console.warn(`[Storage Purge] Could not delete file for session ${session.id}:`, err);
+          logger.warn(`Could not delete file for session ${session.id}`, {
+            service: 'storage',
+            event: 'storage_purge_file_failed',
+            sessionId: session.id,
+          }, err);
           continue;
         }
       }
@@ -86,19 +100,33 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
     }
   }
 
-  console.log(`[Storage Purge] Completed daily purge: ${purgedCount} files removed, ${freedSpaceBytes} bytes freed.`);
+  logger.info(`Completed daily purge: ${purgedCount} files removed, ${freedSpaceBytes} bytes freed.`, {
+    service: 'storage',
+    event: 'storage_purge_completed',
+    purgedCount,
+    freedSpaceBytes,
+  });
   return { purgedCount, freedSpaceBytes };
 }
 
 export function startStoragePurgeCron() {
   // Run daily at midnight UTC: 0 0 * * *
   cron.schedule('0 0 * * *', async () => {
-    console.log('[Storage Purge Cron] Running daily audio retention cleanup job...');
+    logger.info('Running daily audio retention cleanup job...', {
+      service: 'storage',
+      event: 'storage_purge_cron_start',
+    });
     try {
       await purgeExpiredRecordings();
     } catch (err) {
-      console.error('[Storage Purge Cron] Purge job failed:', err);
+      logger.error('Purge job failed', {
+        service: 'storage',
+        event: 'storage_purge_cron_failed',
+      }, err);
     }
   });
-  console.log('[Storage Purge Cron] Storage cleanup cron scheduled.');
+  logger.info('Storage cleanup cron scheduled.', {
+    service: 'storage',
+    event: 'storage_purge_cron_scheduled',
+  });
 }

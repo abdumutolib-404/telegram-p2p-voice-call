@@ -12,13 +12,18 @@ import {
   Ban,
   Scale,
   Award,
+  Radio,
 } from 'lucide-react';
 
 export interface GuidelinesScreenProps {
   onBack?: () => void;
+  onNavigate?: (view: string) => void;
 }
 
-export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) => {
+export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack, onNavigate }) => {
+  const botUsername = (import.meta.env.VITE_BOT_USERNAME || 'PairTalkBot').replace(/^@/, '');
+  const botAppUrl = `https://t.me/${botUsername}?startapp=1`;
+
   const handleBack = useCallback(() => {
     if (onBack) {
       onBack();
@@ -44,7 +49,7 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
 
   return (
     <div className="min-h-screen bg-[#05070E] text-slate-100 p-4 sm:p-8 md:p-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-3xl mx-auto space-y-8">
+      <div className="max-w-4xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-6">
           <div className="flex items-center gap-4">
@@ -213,7 +218,7 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
         </div>
 
         {/* Article 5: Unban Appeals Process */}
-        <div className="p-6 rounded-2xl bg-[#090D18] border border-slate-800 space-y-4">
+        <div id="appeals" className="p-6 rounded-2xl bg-[#090D18] border border-slate-800 space-y-4">
           <div className="flex items-center gap-2.5 text-purple-400 font-mono text-xs font-bold uppercase tracking-wider">
             <HelpCircle className="w-4 h-4" />
             <span>ARTICLE 5. OFFICIAL UNBAN APPEAL SYSTEM</span>
@@ -226,8 +231,37 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
             <code>/appeal &lt;detailed explanation of incident and rationale for review&gt;</code>
           </div>
           <p className="text-[11px] text-slate-400 font-mono">
-            Appeals are reviewed by human platform administrators within 24 hours. Each candidate may submit one appeal per disciplinary action. Frivolous or abusive appeals are permanently rejected.
+            Appeals are reviewed by human platform administrators within 24–48 hours. Each candidate may submit one appeal per disciplinary action. Frivolous or abusive appeals are permanently rejected.
           </p>
+        </div>
+
+        {/* CTA Footer */}
+        <div className="p-8 rounded-2xl bg-gradient-to-r from-cyan-950/50 via-slate-900 to-slate-900 border border-cyan-500/30 text-center space-y-4">
+          <h3 className="text-xl font-bold text-white tracking-tight">Ready for Respectful, High-Quality Practice?</h3>
+          <p className="text-xs sm:text-sm text-slate-300 font-mono max-w-xl mx-auto">
+            Join thousands of serious IELTS candidates practicing every day under our community standards.
+          </p>
+          <div className="pt-2 flex flex-wrap justify-center gap-3">
+            <a
+              href={botAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-cyan-500/25 active:scale-95"
+            >
+              <Radio className="w-4 h-4" />
+              <span>Launch PairTalk Bot</span>
+            </a>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate('safety')}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider transition-all active:scale-95"
+              >
+                <span>Safety Guide</span>
+                <ArrowLeft className="w-4 h-4 rotate-180" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -239,4 +273,5 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
     </div>
   );
 };
+
 export default GuidelinesScreen;

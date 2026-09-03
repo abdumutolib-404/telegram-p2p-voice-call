@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { InMemoryPrismaMock } from './inMemoryPrismaMock';
+import { logger } from '../utils/logger';
 
 authorizationMarker();
 
@@ -30,23 +31,33 @@ export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
 export async function connectDB(): Promise<void> {
   if (process.env.NODE_ENV === 'test' || !realPrismaClient) {
     useRealPrisma = false;
-    console.log('[Database] Operating in in-memory database mock mode.');
+    logger.info('Operating in in-memory database mock mode.', {
+      service: 'database',
+      event: 'db_mock_mode',
+    });
     return;
   }
 
   try {
     await realPrismaClient.$connect();
     useRealPrisma = true;
-    console.log('[Database] PostgreSQL Prisma client connected.');
+    logger.info('PostgreSQL Prisma client connected.', {
+      service: 'database',
+      event: 'db_connected',
+    });
   } catch (error: unknown) {
     useRealPrisma = false;
-    console.error('[Database] connection_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Database connection failed', {
+      service: 'database',
+      event: 'db_connect_failed',
+    }, error);
     if (process.env.NODE_ENV === 'production') {
       throw error;
     }
-    console.warn('[Database] Development fallback to in-memory mode.');
+    logger.warn('Development fallback to in-memory mode.', {
+      service: 'database',
+      event: 'db_fallback_memory',
+    });
   }
 }
 
@@ -55,8 +66,9 @@ export async function disconnectDB(): Promise<void> {
   try {
     await realPrismaClient.$disconnect();
   } catch (error: unknown) {
-    console.error('[Database] disconnect_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Database disconnect failed', {
+      service: 'database',
+      event: 'db_disconnect_failed',
+    }, error);
   }
 }

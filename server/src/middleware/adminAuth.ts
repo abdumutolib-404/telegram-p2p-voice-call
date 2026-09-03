@@ -1,6 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
+import { setRequestContextUserId } from '../utils/requestContext';
 
 export interface AdminAuthenticatedRequest extends Request {
   adminUser?: { telegramId: string; role: 'admin' };
@@ -52,11 +54,14 @@ export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Respons
     }
 
     req.adminUser = { telegramId: telegramIdStr, role: 'admin' };
+    setRequestContextUserId(`admin:${telegramIdStr}`);
     next();
   } catch (error: unknown) {
-    console.error('[AdminAuth] verification_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.warn('Admin token verification failed', {
+      service: 'admin',
+      event: 'admin_auth_failed',
+    }, error);
     res.status(401).json({ error: 'Unauthorized: Token expired or invalid.' });
   }
 }
+

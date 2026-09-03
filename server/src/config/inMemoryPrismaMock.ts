@@ -747,16 +747,30 @@ export class InMemoryPrismaMock {
       this.auditLogs.set(id, row);
       return { ...row };
     },
-    findFirst: async (args?: { where?: { targetId?: string; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' } }): Promise<AuditLogRow | null> => {
+    findFirst: async (args?: { where?: { targetId?: string | { in?: string[] }; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' } }): Promise<AuditLogRow | null> => {
       let list = [...this.auditLogs.values()];
-      if (args?.where?.targetId) list = list.filter((l) => l.targetId === args.where!.targetId);
+      if (args?.where?.targetId) {
+        if (typeof args.where.targetId === 'object' && args.where.targetId && 'in' in args.where.targetId && Array.isArray(args.where.targetId.in)) {
+          const targetIn = args.where.targetId.in;
+          list = list.filter((l) => l.targetId && targetIn.includes(l.targetId));
+        } else {
+          list = list.filter((l) => l.targetId === args.where!.targetId);
+        }
+      }
       if (args?.where?.action) list = list.filter((l) => l.action === args.where!.action);
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       return list[0] ? { ...list[0] } : null;
     },
-    findMany: async (args?: { where?: { targetId?: string; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<AuditLogRow[]> => {
+    findMany: async (args?: { where?: { targetId?: string | { in?: string[] }; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<AuditLogRow[]> => {
       let list = [...this.auditLogs.values()];
-      if (args?.where?.targetId) list = list.filter((l) => l.targetId === args.where!.targetId);
+      if (args?.where?.targetId) {
+        if (typeof args.where.targetId === 'object' && args.where.targetId && 'in' in args.where.targetId && Array.isArray(args.where.targetId.in)) {
+          const targetIn = args.where.targetId.in;
+          list = list.filter((l) => l.targetId && targetIn.includes(l.targetId));
+        } else {
+          list = list.filter((l) => l.targetId === args.where!.targetId);
+        }
+      }
       if (args?.where?.action) list = list.filter((l) => l.action === args.where!.action);
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       if (args?.take !== undefined) list = list.slice(0, args.take);

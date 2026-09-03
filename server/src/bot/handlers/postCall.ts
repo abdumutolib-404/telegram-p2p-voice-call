@@ -4,6 +4,7 @@ import { prisma } from '../../config/database';
 import { moderationService } from '../../services/moderation';
 import { notificationQueue } from '../notifications';
 import { notifyQuotaLimitReachedIfExhausted } from '../../services/subscriptionExpiry';
+import { logger } from '../../utils/logger';
 
 export async function sendPostCallReviewCard(
   bot: Bot<MyContext>,
@@ -58,7 +59,12 @@ export async function sendPostCallReviewCard(
       }).catch(() => undefined);
     }
   } catch (err) {
-    console.warn(`[PostCall Review] Failed to enqueue review card to ${userTelegramId}:`, err);
+    logger.warn('Failed to enqueue review card', {
+      service: 'bot',
+      event: 'postcall_review_enqueue_failed',
+      userTelegramId,
+      callSessionId,
+    }, err);
   }
 }
 

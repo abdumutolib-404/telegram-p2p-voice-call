@@ -1,12 +1,13 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { Bot, InputFile } from 'grammy';
 import { verifyAndConsumeAdminToken } from '../bot/commands/admin';
 import { env } from '../config/env';
-import { adminAuthMiddleware } from '../middleware/adminAuth';
+import { adminAuthMiddleware, type AdminAuthenticatedRequest } from '../middleware/adminAuth';
 import { getAdminAnalytics } from '../services/analytics';
+import { escapeHtml, isSafeStorageUrl } from '../utils/sanitize';
 import {
   getPlansConfig,
   getPurchasablePlansConfig,
@@ -25,10 +26,16 @@ import { prisma } from '../config/database';
 import { createActionRateLimiter, getClientIp } from '../middleware/rateLimit';
 import { getRedis } from '../config/redis';
 import type { MyContext } from '../bot/types';
+import { logger, getRecentErrors } from '../utils/logger';
+import { setRequestContextUserId } from '../utils/requestContext';
+import adminTelemetryRouter from './adminTelemetry';
 
 const router = Router();
 const adminAuthLimiter = createActionRateLimiter('ADMIN_LOGIN', getClientIp);
 const otpVerifyLimiter = createActionRateLimiter('ADMIN_OTP', getClientIp);
+
+// Mount Telemetry Sub-Router (Protected under /api/admin/telemetry/*)
+router.use('/telemetry', adminAuthMiddleware, adminTelemetryRouter);
 
 interface AdminOtpChallenge {
   challengeId: string;
@@ -45,6 +52,42 @@ let adminBotInstance: Bot<MyContext> | null = null;
 
 export function setAdminBot(bot: Bot<MyContext> | null): void {
   adminBotInstance = bot;
+}
+
+export function getAdminBot(): Bot<MyContext> | null {
+  return adminBotInstance;
+}
+
+export async function recordAdminAuditLog(params: {
+  action: string;
+  targetId?: string | null;
+  adminId: string;
+  beforeState?: unknown;
+  afterState?: unknown;
+  reason?: string | null;
+  tx?: Prisma.TransactionClient;
+}): Promise<void> {
+  const db = params.tx || prisma;
+  try {
+    await db.auditLog.create({
+      data: {
+        action: params.action,
+        targetId: params.targetId || null,
+        adminId: params.adminId,
+        beforeState: params.beforeState ? JSON.stringify(params.beforeState) : null,
+        afterState: params.afterState ? JSON.stringify(params.afterState) : null,
+        reason: params.reason || null,
+      },
+    });
+  } catch (error: unknown) {
+    logger.error('Failed to write admin audit log', {
+      service: 'admin',
+      event: 'audit_log_write_failed',
+      action: params.action,
+      targetId: params.targetId,
+      adminId: params.adminId,
+    }, error);
+  }
 }
 
 export function getAdminChallenge(challengeId: string): AdminOtpChallenge | undefined {
@@ -153,7 +196,10 @@ async function verifyOtpChallengeAtomic(
       }
     }
   } catch (err) {
-    console.warn('[AdminAuth] Redis OTP eval error, checking memory fallback:', err);
+    logger.warn('Redis OTP eval error, checking memory fallback', {
+      service: 'adminAuth',
+      event: 'otp_eval_error',
+    }, err);
   }
 
   // Memory fallback (if Redis was unavailable or key not found)
@@ -229,7 +275,7 @@ async function deleteOtpChallengeFromRedis(challengeId: string): Promise<void> {
   }
 }
 
-function setAdminSessionCookie(res: any, token: string, expiresAt: Date): void {
+function setAdminSessionCookie(res: Response, token: string, expiresAt: Date): void {
   const isProduction = env.NODE_ENV === 'production';
   res.cookie('admin_session', token, {
     httpOnly: true,
@@ -300,20 +346,34 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
     if (botToUse && env.ADMIN_TELEGRAM_IDS.length > 0) {
       for (const adminIdStr of env.ADMIN_TELEGRAM_IDS) {
         try {
-          console.log('[AdminAuth] Dispatching OTP to Telegram ID:', adminIdStr);
+          logger.info('Dispatching OTP to Telegram ID', {
+            service: 'adminAuth',
+            event: 'otp_dispatch_started',
+            adminId: adminIdStr,
+          });
           await botToUse.api.sendMessage(
             adminIdStr,
             `🔐 *Admin Login Verification*\n\nYour 6-digit OTP code is:\n\`${otp}\`\n\nExpires in 5 minutes. Do not share this code.`,
             { parse_mode: 'Markdown' }
           );
           sentCount += 1;
-          console.log('[AdminAuth] OTP successfully dispatched to:', adminIdStr);
+          logger.info('OTP successfully dispatched', {
+            service: 'adminAuth',
+            event: 'otp_dispatched',
+            adminId: adminIdStr,
+          });
         } catch (err: unknown) {
-          console.error('[AdminAuth] Failed to dispatch OTP to Telegram ID', adminIdStr, err instanceof Error ? err.message : err);
+          logger.error('Failed to dispatch OTP to Telegram ID', {
+            service: 'adminAuth',
+            event: 'otp_dispatch_failed',
+            adminId: adminIdStr,
+          }, err);
         }
       }
     } else {
-      console.warn('[AdminAuth] No active bot instance or empty ADMIN_TELEGRAM_IDS:', {
+      logger.warn('No active bot instance or empty ADMIN_TELEGRAM_IDS', {
+        service: 'adminAuth',
+        event: 'otp_bot_unavailable',
         hasBot: Boolean(botToUse),
         adminCount: env.ADMIN_TELEGRAM_IDS.length,
       });
@@ -332,9 +392,10 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
       ...(env.NODE_ENV === 'test' && req.headers['x-test-otp'] === 'true' ? { testOtp: otp } : {}),
     });
   } catch (error: unknown) {
-    console.error('[AdminAuth] password_step_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Admin password step failed', {
+      service: 'adminAuth',
+      event: 'password_step_failed',
+    }, error);
     res.status(500).json({ error: 'Admin password authentication unavailable.' });
   }
 });
@@ -376,9 +437,10 @@ router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
       expiresAt: expiresAtDate.toISOString(),
     });
   } catch (error: unknown) {
-    console.error('[AdminAuth] otp_step_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Admin OTP step failed', {
+      service: 'adminAuth',
+      event: 'otp_step_failed',
+    }, error);
     res.status(500).json({ error: 'Admin OTP verification unavailable.' });
   }
 });
@@ -503,7 +565,17 @@ router.get('/plans/purchasable', adminAuthMiddleware, async (req, res) => {
 // PUT /api/admin/plans (Protected)
 router.put('/plans', adminAuthMiddleware, async (req, res) => {
   try {
+    const beforeState = getPlansConfig();
     const updated = updatePlansConfig(req.body);
+    const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
+    await recordAdminAuditLog({
+      action: 'GLOBAL_PLANS_UPDATE',
+      targetId: 'plans_config',
+      adminId,
+      beforeState,
+      afterState: updated,
+      reason: 'Admin updated global plan tier parameters',
+    });
     res.json({ success: true, ...updated, plans: updated });
   } catch (err) {
     res.status(400).json({ error: 'Failed to update plan configurations.' });
@@ -577,16 +649,19 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    console.error('[Admin] Failed to fetch manual payments:', err);
+    logger.error('Failed to fetch manual payments', {
+      service: 'admin',
+      event: 'fetch_manual_payments_failed',
+    }, err);
     res.status(500).json({ error: 'Failed to retrieve manual payment requests.' });
   }
 });
 
 // POST /api/admin/payments/manual/:id/approve (Protected)
-router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res) => {
+router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req: AdminAuthenticatedRequest, res) => {
   const { id } = req.params;
   const { note } = req.body;
-  const adminId = (req as any).adminUser?.telegramId || 'admin';
+  const adminId = req.adminUser?.telegramId || 'admin';
 
   try {
     const result = await approveManualPaymentRequest({
@@ -605,7 +680,7 @@ router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res
       await adminBotInstance.api.sendMessage(
         result.user.telegramId.toString(),
         `🎉 <b>Payment Verified & Approved!</b>\n\n` +
-          `Your <b>${result.user.plan} Plan</b> has been activated.\n` +
+          `Your <b>${escapeHtml(result.user.plan)} Plan</b> has been activated.\n` +
           `• Max Call Duration: ${config.maxDuration >= 999 ? 'Unlimited' : `${config.maxDuration} minutes`}\n` +
           `• Monthly Calls: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/month`}\n` +
           `• Recording Retention: ${config.retentionDays} days\n\n` +
@@ -622,17 +697,22 @@ router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req, res
         telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
       },
     });
-  } catch (err: any) {
-    console.error('[Admin] Failed to approve manual payment:', err);
-    res.status(400).json({ error: err.message || 'Failed to approve payment.' });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to approve payment.';
+    logger.error('Failed to approve manual payment', {
+      service: 'admin',
+      event: 'approve_manual_payment_failed',
+      requestId: id,
+    }, err);
+    res.status(400).json({ error: errorMsg });
   }
 });
 
 // POST /api/admin/payments/manual/:id/reject (Protected)
-router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res) => {
+router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req: AdminAuthenticatedRequest, res) => {
   const { id } = req.params;
   const { note } = req.body;
-  const adminId = (req as any).adminUser?.telegramId || 'admin';
+  const adminId = req.adminUser?.telegramId || 'admin';
 
   try {
     const result = await rejectManualPaymentRequest({
@@ -643,20 +723,24 @@ router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res)
 
     if (adminBotInstance && result.request?.telegramId) {
       const orderNum = result.request.orderNumber || `A${result.request.id.slice(0, 4)}`;
-      const reasonText = note ? `<b>Reason:</b>\n${note}\n\n` : '';
+      const reasonText = note ? `<b>Reason:</b>\n${escapeHtml(note)}\n\n` : '';
       const supportContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
 
       await adminBotInstance.api.sendMessage(
         result.request.telegramId.toString(),
         `❌ <b>Payment Request Rejected</b>\n\n` +
-          `<b>Order:</b> <code>${orderNum}</code>\n` +
-          `<b>Plan:</b> ${result.request.plan}\n\n` +
+          `<b>Order:</b> <code>${escapeHtml(orderNum)}</code>\n` +
+          `<b>Plan:</b> ${escapeHtml(result.request.plan)}\n\n` +
           `${reasonText}` +
           `Your account has not been upgraded.\n\n` +
-          `Contact ${supportContact} if you believe this decision was incorrect.`,
+          `Contact ${escapeHtml(supportContact)} if you believe this decision was incorrect.`,
         { parse_mode: 'HTML' }
       ).catch((err: unknown) => {
-        console.warn('[Admin] Failed to send payment rejection notification to user:', err instanceof Error ? err.message : err);
+        logger.warn('Failed to send payment rejection notification to user', {
+          service: 'admin',
+          event: 'reject_payment_notification_failed',
+          requestId: id,
+        }, err);
       });
     }
 
@@ -668,17 +752,22 @@ router.post('/payments/manual/:id/reject', adminAuthMiddleware, async (req, res)
         telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
       },
     });
-  } catch (err: any) {
-    console.error('[Admin] Failed to reject manual payment:', err);
-    res.status(400).json({ error: err.message || 'Failed to reject payment.' });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to reject payment.';
+    logger.error('Failed to reject manual payment', {
+      service: 'admin',
+      event: 'reject_manual_payment_failed',
+      requestId: id,
+    }, err);
+    res.status(400).json({ error: errorMsg });
   }
 });
 
 // POST /api/admin/payments/manual/:id/refund (Protected - Process UZS Refund with Transfer Bill)
-router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res) => {
+router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req: AdminAuthenticatedRequest, res) => {
   const { id } = req.params;
   const { refundProof, note } = req.body;
-  const adminId = (req as any).adminUser?.telegramId || 'admin';
+  const adminId = req.adminUser?.telegramId || 'admin';
 
   if (!refundProof || typeof refundProof !== 'string' || !refundProof.trim()) {
     res.status(400).json({ error: 'Bank transfer bill / proof image is strictly required to approve a refund.' });
@@ -698,12 +787,12 @@ router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res)
       const cardDisplay = result.request.refundCardNumber || 'your registered card';
       const caption =
         `🎉 <b>Refund Approved & Money Sent!</b>\n\n` +
-        `Your refund of <b>${result.request.uzsAmount.toLocaleString()} UZS</b> for Order #<code>${orderNum}</code> has been transferred to your card:\n` +
-        `💳 <code>${cardDisplay}</code>\n\n` +
+        `Your refund of <b>${result.request.uzsAmount.toLocaleString()} UZS</b> for Order #<code>${escapeHtml(orderNum)}</code> has been transferred to your card:\n` +
+        `💳 <code>${escapeHtml(cardDisplay)}</code>\n\n` +
         `📎 <i>The official bank transfer bill is attached above.</i>\n\n` +
         `Your account has been reverted to the <b>FREE Plan</b>. Thank you for using PairTalk!`;
 
-      // Try sending with photo if refundProof is a valid base64 data URI or HTTP/HTTPS URL
+      // Try sending with photo if refundProof is a valid base64 data URI or validated safe HTTPS URL
       let sent = false;
       const targetTgId = result.user.telegramId.toString();
 
@@ -722,22 +811,44 @@ router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res)
               parse_mode: 'HTML',
             });
             sent = true;
-            console.log('[Admin] Refund bill photo successfully dispatched via base64 buffer to Telegram ID:', targetTgId);
+            logger.info('Refund bill photo successfully dispatched via base64 buffer', {
+              service: 'admin',
+              event: 'refund_photo_base64_dispatched',
+              targetTgId,
+            });
           }
         } catch (photoErr) {
-          console.warn('[Admin] Failed to dispatch base64 refund photo, attempting fallback:', photoErr);
+          logger.warn('Failed to dispatch base64 refund photo, attempting fallback', {
+            service: 'admin',
+            event: 'refund_photo_base64_failed',
+            targetTgId,
+          }, photoErr);
         }
-      } else if (refundProof.startsWith('http://') || refundProof.startsWith('https://')) {
+      } else if (isSafeStorageUrl(refundProof)) {
         try {
           await adminBotInstance.api.sendPhoto(targetTgId, refundProof, {
             caption,
             parse_mode: 'HTML',
           });
           sent = true;
-          console.log('[Admin] Refund bill photo successfully dispatched via URL to Telegram ID:', targetTgId);
+          logger.info('Refund bill photo successfully dispatched via URL', {
+            service: 'admin',
+            event: 'refund_photo_url_dispatched',
+            targetTgId,
+          });
         } catch (photoUrlErr) {
-          console.warn('[Admin] Failed to dispatch URL refund photo, attempting fallback:', photoUrlErr);
+          logger.warn('Failed to dispatch URL refund photo, attempting fallback', {
+            service: 'admin',
+            event: 'refund_photo_url_failed',
+            targetTgId,
+          }, photoUrlErr);
         }
+      } else {
+        logger.warn('SSRF protection: refundProof URL is not an approved safe HTTPS storage domain', {
+          service: 'admin',
+          event: 'refund_proof_ssrf_blocked',
+          refundProof,
+        });
       }
 
       if (!sent) {
@@ -757,17 +868,22 @@ router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req, res)
         telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
       },
     });
-  } catch (err: any) {
-    console.error('[Admin] Failed to refund manual payment:', err);
-    res.status(400).json({ error: err.message || 'Failed to refund payment.' });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to refund payment.';
+    logger.error('Failed to refund manual payment', {
+      service: 'admin',
+      event: 'refund_manual_payment_failed',
+      requestId: id,
+    }, err);
+    res.status(400).json({ error: errorMsg });
   }
 });
 
 // POST /api/admin/payments/manual/:id/reject-refund (Protected - Reject UZS Refund with Mandatory Reason)
-router.post('/payments/manual/:id/reject-refund', adminAuthMiddleware, async (req, res) => {
+router.post('/payments/manual/:id/reject-refund', adminAuthMiddleware, async (req: AdminAuthenticatedRequest, res) => {
   const { id } = req.params;
   const { reason, note } = req.body;
-  const adminId = (req as any).adminUser?.telegramId || 'admin';
+  const adminId = req.adminUser?.telegramId || 'admin';
   const rejectionReason = (typeof reason === 'string' && reason.trim()) || (typeof note === 'string' && note.trim());
 
   if (!rejectionReason) {
@@ -789,10 +905,10 @@ router.post('/payments/manual/:id/reject-refund', adminAuthMiddleware, async (re
       await adminBotInstance.api.sendMessage(
         result.request.telegramId.toString(),
         `❌ <b>Refund Request Rejected</b>\n\n` +
-          `Your refund request for Order #<code>${orderNum}</code> was reviewed by administration and not approved.\n\n` +
-          `<b>Reason:</b>\n${rejectionReason}\n\n` +
-          `Your <b>${result.request.plan} Plan</b> remains active.\n\n` +
-          `If you have questions, please contact ${supportContact}.`,
+          `Your refund request for Order #<code>${escapeHtml(orderNum)}</code> was reviewed by administration and not approved.\n\n` +
+          `<b>Reason:</b>\n${escapeHtml(rejectionReason)}\n\n` +
+          `Your <b>${escapeHtml(result.request.plan)} Plan</b> remains active.\n\n` +
+          `If you have questions, please contact ${escapeHtml(supportContact)}.`,
         { parse_mode: 'HTML' }
       ).catch(() => undefined);
     }
@@ -805,9 +921,14 @@ router.post('/payments/manual/:id/reject-refund', adminAuthMiddleware, async (re
         telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',
       },
     });
-  } catch (err: any) {
-    console.error('[Admin] Failed to reject refund:', err);
-    res.status(400).json({ error: err.message || 'Failed to reject refund.' });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to reject refund.';
+    logger.error('Failed to reject refund', {
+      service: 'admin',
+      event: 'reject_refund_failed',
+      requestId: id,
+    }, err);
+    res.status(400).json({ error: errorMsg });
   }
 });
 
@@ -835,16 +956,19 @@ router.get('/payments/stars', adminAuthMiddleware, async (_req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    console.error('[Admin] Failed to fetch stars transactions:', err);
+    logger.error('Failed to fetch stars transactions', {
+      service: 'admin',
+      event: 'fetch_stars_transactions_failed',
+    }, err);
     res.status(500).json({ error: 'Failed to retrieve stars transactions.' });
   }
 });
 
 // POST /api/admin/payments/stars/:id/refund (Protected)
-router.post('/payments/stars/:id/refund', adminAuthMiddleware, async (req, res) => {
+router.post('/payments/stars/:id/refund', adminAuthMiddleware, async (req: AdminAuthenticatedRequest, res) => {
   const { id } = req.params;
   const { reason } = req.body;
-  const adminId = (req as any).adminUser?.telegramId || 'admin';
+  const adminId = req.adminUser?.telegramId || 'admin';
 
   try {
     const result = await revokePlanOnRefund({
@@ -866,7 +990,11 @@ router.post('/payments/stars/:id/refund', adminAuthMiddleware, async (req, res) 
 
     res.json({ success: true, message: 'Stars payment refunded and plan revoked.', transaction: result.transaction });
   } catch (err: any) {
-    console.error('[Admin] Failed to refund stars transaction:', err);
+    logger.error('Failed to refund stars transaction', {
+      service: 'admin',
+      event: 'refund_stars_transaction_failed',
+      transactionId: id,
+    }, err);
     res.status(400).json({ error: err.message || 'Failed to refund transaction.' });
   }
 });
@@ -880,7 +1008,10 @@ router.get('/audit-logs', adminAuthMiddleware, async (_req, res) => {
     });
     res.json(logs);
   } catch (err) {
-    console.error('[Admin] Failed to fetch audit logs:', err);
+    logger.error('Failed to fetch audit logs', {
+      service: 'admin',
+      event: 'fetch_audit_logs_failed',
+    }, err);
     res.status(500).json({ error: 'Failed to retrieve audit logs.' });
   }
 });
@@ -926,6 +1057,7 @@ router.get('/appeals', adminAuthMiddleware, async (req, res) => {
 // POST /api/admin/appeals/:id/approve (Protected)
 router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
+  const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
   try {
     const appeal = await prisma.unblockAppeal.findUnique({ where: { id } });
@@ -953,6 +1085,17 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
             warningCount: 0,
           },
         });
+
+        await tx.auditLog.create({
+          data: {
+            action: 'APPEAL_APPROVED',
+            targetId: id,
+            adminId,
+            beforeState: JSON.stringify({ appealStatus: appeal.status, userBanned: true, userId: appeal.userId }),
+            afterState: JSON.stringify({ appealStatus: 'APPROVED', userBanned: false, userId: appeal.userId }),
+            reason: 'Admin approved candidate unblock appeal',
+          },
+        });
       });
     } catch (txErr: any) {
       if (txErr.message === 'ALREADY_PROCESSED') {
@@ -966,7 +1109,13 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
         appeal.telegramId.toString(),
         '🎉 *Appeal Approved*\n\nYour unban appeal has been approved by the moderation team. Your account has been restored to active status. Welcome back to PairTalk!',
         { parse_mode: 'Markdown' }
-      ).catch((e: unknown) => console.warn('[Admin] Failed to send appeal approval notice:', e));
+      ).catch((e: unknown) => {
+        logger.warn('Failed to send appeal approval notice', {
+          service: 'admin',
+          event: 'appeal_approval_notice_failed',
+          appealId: id,
+        }, e);
+      });
     }
 
     res.json({ success: true, message: 'Unblock appeal approved. User unbanned.' });
@@ -978,6 +1127,7 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
 // POST /api/admin/appeals/:id/reject (Protected)
 router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
+  const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
   try {
     const appeal = await prisma.unblockAppeal.findUnique({ where: { id } });
@@ -995,6 +1145,17 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
         if (updated.count !== 1) {
           throw new Error('ALREADY_PROCESSED');
         }
+
+        await tx.auditLog.create({
+          data: {
+            action: 'APPEAL_REJECTED',
+            targetId: id,
+            adminId,
+            beforeState: JSON.stringify({ appealStatus: appeal.status, userId: appeal.userId }),
+            afterState: JSON.stringify({ appealStatus: 'REJECTED', userId: appeal.userId }),
+            reason: 'Admin rejected candidate unblock appeal',
+          },
+        });
       });
     } catch (txErr: any) {
       if (txErr.message === 'ALREADY_PROCESSED') {
@@ -1008,7 +1169,13 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
         appeal.telegramId.toString(),
         '❌ *Appeal Decision*\n\nYour unban appeal has been reviewed and rejected by the moderation team. Your suspension remains active.',
         { parse_mode: 'Markdown' }
-      ).catch((e: unknown) => console.warn('[Admin] Failed to send appeal rejection notice:', e));
+      ).catch((e: unknown) => {
+        logger.warn('Failed to send appeal rejection notice', {
+          service: 'admin',
+          event: 'appeal_rejection_notice_failed',
+          appealId: id,
+        }, e);
+      });
     }
 
     res.json({ success: true, message: 'Unblock appeal rejected.' });
@@ -1099,7 +1266,10 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    console.error('[Admin] Failed to fetch users:', err);
+    logger.error('Failed to fetch users', {
+      service: 'admin',
+      event: 'fetch_users_failed',
+    }, err);
     res.status(500).json({ error: 'Failed to fetch users.' });
   }
 });
@@ -1114,6 +1284,18 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
     }
+
+    const beforeState = {
+      plan: user.plan,
+      customPlanName: user.customPlanName,
+      dailyLimit: user.dailyLimit,
+      dailyCallsUsed: user.dailyCallsUsed,
+      maxDuration: user.maxDuration,
+      retentionOverride: user.retentionOverride,
+      recordingLimitOverride: user.recordingLimitOverride,
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionExpiresAt: user.subscriptionExpiresAt,
+    };
 
     const updateData: Prisma.UserUpdateInput = {};
 
@@ -1187,6 +1369,28 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       data: updateData,
     });
 
+    const afterState = {
+      plan: updated.plan,
+      customPlanName: updated.customPlanName,
+      dailyLimit: updated.dailyLimit,
+      dailyCallsUsed: updated.dailyCallsUsed,
+      maxDuration: updated.maxDuration,
+      retentionOverride: updated.retentionOverride,
+      recordingLimitOverride: updated.recordingLimitOverride,
+      subscriptionStatus: updated.subscriptionStatus,
+      subscriptionExpiresAt: updated.subscriptionExpiresAt,
+    };
+
+    const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
+    await recordAdminAuditLog({
+      action: 'USER_PLAN_UPDATE',
+      targetId: id,
+      adminId,
+      beforeState,
+      afterState,
+      reason: typeof req.body?.reason === 'string' ? req.body.reason : 'Admin updated candidate plan and limits',
+    });
+
     if (adminBotInstance && (plan || resetDailyCalls || dailyLimit !== undefined || retentionOverride !== undefined)) {
       const planName = updated.customPlanName || updated.plan;
       const limitText = updated.dailyLimit >= 999 ? 'Unlimited' : `${updated.dailyLimit} calls/month`;
@@ -1198,17 +1402,20 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       const msg =
         `⭐ <b>Account Plan Updated by Administrator</b>\n\n` +
         `Your PairTalk limits have been updated:\n` +
-        `• <b>Plan Tier</b>: <b>${planName}</b>\n` +
-        `• <b>Monthly Call Limit</b>: ${limitText}\n` +
-        `• <b>Max Call Duration</b>: ${durText}\n` +
-        `• <b>Recording Retention</b>: ${retentionText}\n` +
+        `• <b>Plan Tier</b>: <b>${escapeHtml(planName)}</b>\n` +
+        `• <b>Monthly Call Limit</b>: ${escapeHtml(limitText)}\n` +
+        `• <b>Max Call Duration</b>: ${escapeHtml(durText)}\n` +
+        `• <b>Recording Retention</b>: ${escapeHtml(retentionText)}\n` +
         expiresLine +
         (resetDailyCalls ? `• <b>Calls Used This Month</b>: Reset to 0\n` : '') +
         `\nEnjoy practicing!`;
       await adminBotInstance.api.sendMessage(updated.telegramId.toString(), msg, { parse_mode: 'HTML' })
         .catch((e: unknown) => {
-          const errMsg = e instanceof Error ? e.message : String(e);
-          console.warn(`[Admin] User notification skipped for Telegram ID ${updated.telegramId}: ${errMsg}`);
+          logger.warn('User notification skipped for user plan update', {
+            service: 'admin',
+            event: 'user_plan_notification_failed',
+            telegramId: updated.telegramId.toString(),
+          }, e);
         });
     }
 
@@ -1239,7 +1446,11 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       createdAt: updated.createdAt.toISOString(),
     });
   } catch (err) {
-    console.error('[Admin] Failed to update user plan:', err);
+    logger.error('Failed to update user plan', {
+      service: 'admin',
+      event: 'update_user_plan_failed',
+      userId: id,
+    }, err);
     res.status(500).json({ error: 'Failed to update user plan.' });
   }
 });
@@ -1248,8 +1459,10 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
 router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const { permanent, reason } = req.body;
+  const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
   try {
+    const userBefore = await prisma.user.findUnique({ where: { id } });
     const user = await prisma.user.update({
       where: { id },
       data: {
@@ -1259,12 +1472,35 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
       },
     });
 
+    await recordAdminAuditLog({
+      action: 'USER_BAN',
+      targetId: id,
+      adminId,
+      beforeState: userBefore ? {
+        isBanned: userBefore.isBanned,
+        isPermanentlyBanned: userBefore.isPermanentlyBanned,
+        bannedUntil: userBefore.bannedUntil,
+      } : null,
+      afterState: {
+        isBanned: user.isBanned,
+        isPermanentlyBanned: user.isPermanentlyBanned,
+        bannedUntil: user.bannedUntil,
+      },
+      reason: reason || (permanent ? 'Permanent suspension' : 'Temporary 6h suspension'),
+    });
+
     if (adminBotInstance) {
       const banText = permanent ?? true
         ? `⛔ *Account Permanently Banned*\n\nYour account has been permanently suspended by administration.\n*Reason:* ${reason || 'Violation of community guidelines.'}\n\nYou may submit an appeal using the bot menu.`
         : `🚫 *Account Temporarily Suspended*\n\nYour account has been blocked for 6 hours.\n*Reason:* ${reason || 'Community policy violation.'}`;
       await adminBotInstance.api.sendMessage(user.telegramId.toString(), banText, { parse_mode: 'Markdown' })
-        .catch((e: unknown) => console.warn('[Admin] Failed to send ban notice:', e));
+        .catch((e: unknown) => {
+          logger.warn('Failed to send ban notice', {
+            service: 'admin',
+            event: 'ban_notice_failed',
+            userId: id,
+          }, e);
+        });
     }
 
     res.json({ success: true, user: { ...user, telegramId: user.telegramId.toString() } });
@@ -1277,6 +1513,7 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
 router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const { action, reason } = req.body;
+  const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
   if (!action || !['warn', 'block', 'ban', 'unblock', 'reset-calls', 'reset-score'].includes(action)) {
     return res.status(400).json({ error: 'Invalid moderation action. Must be warn, block, ban, unblock, reset-calls, or reset-score.' });
@@ -1294,9 +1531,32 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
     switch (action) {
       case 'warn': {
         const escalation = await moderationService.escalateUserWarning(id, reason);
+        await recordAdminAuditLog({
+          action: 'USER_MODERATION',
+          targetId: id,
+          adminId,
+          beforeState: {
+            action: 'warn',
+            warningCount: user.warningCount,
+            isBanned: user.isBanned,
+          },
+          afterState: {
+            action: 'warn',
+            penaltyLevel: escalation.penaltyLevel,
+            warningCount: escalation.warningCount,
+            isBanned: escalation.user.isBanned,
+          },
+          reason: reason || 'Warning issued',
+        });
         if (adminBotInstance) {
           await adminBotInstance.api.sendMessage(escalation.user.telegramId.toString(), escalation.notificationText, { parse_mode: 'Markdown' })
-            .catch((e: unknown) => console.warn('[Admin] Failed to send warn notice:', e));
+            .catch((e: unknown) => {
+              logger.warn('Failed to send warn notice', {
+                service: 'admin',
+                event: 'warn_notice_failed',
+                userId: id,
+              }, e);
+            });
         }
         return res.json({
           success: true,
@@ -1354,9 +1614,48 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       data: updateData,
     });
 
+    await recordAdminAuditLog({
+      action: 'USER_MODERATION',
+      targetId: id,
+      adminId,
+      beforeState: {
+        action,
+        warningCount: user.warningCount,
+        isBanned: user.isBanned,
+        isPermanentlyBanned: user.isPermanentlyBanned,
+        bannedUntil: user.bannedUntil,
+        dailyCallsUsed: user.dailyCallsUsed,
+        subFC: user.subFC,
+        subLR: user.subLR,
+        subGRA: user.subGRA,
+        subP: user.subP,
+        band: user.band,
+      },
+      afterState: {
+        action,
+        warningCount: updated.warningCount,
+        isBanned: updated.isBanned,
+        isPermanentlyBanned: updated.isPermanentlyBanned,
+        bannedUntil: updated.bannedUntil,
+        dailyCallsUsed: updated.dailyCallsUsed,
+        subFC: updated.subFC,
+        subLR: updated.subLR,
+        subGRA: updated.subGRA,
+        subP: updated.subP,
+        band: updated.band,
+      },
+      reason: reason || `Moderation action: ${action}`,
+    });
+
     if (adminBotInstance && notificationText) {
       await adminBotInstance.api.sendMessage(updated.telegramId.toString(), notificationText, { parse_mode: 'Markdown' })
-        .catch((e: unknown) => console.warn('[Admin] Failed to send moderation notice:', e));
+        .catch((e: unknown) => {
+          logger.warn('Failed to send moderation notice', {
+            service: 'admin',
+            event: 'moderation_notice_failed',
+            userId: id,
+          }, e);
+        });
     }
 
     const now = new Date();
@@ -1389,7 +1688,11 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       createdAt: updated.createdAt.toISOString(),
     });
   } catch (err) {
-    console.error('[Admin] Moderation action failed:', err);
+    logger.error('Moderation action failed', {
+      service: 'admin',
+      event: 'moderation_action_failed',
+      userId: id,
+    }, err);
     res.status(500).json({ error: 'Failed to execute moderation action.' });
   }
 });
@@ -1416,7 +1719,10 @@ router.get('/contest', adminAuthMiddleware, async (_req, res) => {
       history: allContests,
     });
   } catch (err) {
-    console.error('[Admin] Failed to fetch contest status:', err);
+    logger.error('Failed to fetch contest status', {
+      service: 'admin',
+      event: 'fetch_contest_failed',
+    }, err);
     res.status(500).json({ error: 'Failed to fetch contest status.' });
   }
 });
@@ -1459,6 +1765,30 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
       });
     }
 
+    const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
+    await recordAdminAuditLog({
+      action: 'CONTEST_MUTATION',
+      targetId: contest.id,
+      adminId,
+      beforeState: existingActive ? {
+        id: existingActive.id,
+        title: existingActive.title,
+        description: existingActive.description,
+        prizes: existingActive.prizes,
+        isActive: existingActive.isActive,
+        endsAt: existingActive.endsAt,
+      } : null,
+      afterState: {
+        id: contest.id,
+        title: contest.title,
+        description: contest.description,
+        prizes: contest.prizes,
+        isActive: contest.isActive,
+        endsAt: contest.endsAt,
+      },
+      reason: 'Admin configured or launched referral championship',
+    });
+
     // Broadcast championship start announcement with Redis deduplication lock
     if (contest.isActive && adminBotInstance) {
       try {
@@ -1477,16 +1807,29 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
             adminBotInstance.api,
             { type: 'text', text: startAnnouncement },
             'admin'
-          ).catch((e: unknown) => console.warn('[Admin] Contest start broadcast notice failed:', e));
+          ).catch((e: unknown) => {
+            logger.warn('Contest start broadcast notice failed', {
+              service: 'admin',
+              event: 'contest_start_broadcast_failed',
+              contestId: contest.id,
+            }, e);
+          });
         }
       } catch (e: unknown) {
-        console.warn('[Admin] Failed to trigger contest start broadcast:', e);
+        logger.warn('Failed to trigger contest start broadcast', {
+          service: 'admin',
+          event: 'contest_start_broadcast_trigger_failed',
+          contestId: contest.id,
+        }, e);
       }
     }
 
     res.json({ success: true, contest });
   } catch (err) {
-    console.error('[Admin] Failed to save contest:', err);
+    logger.error('Failed to save contest', {
+      service: 'admin',
+      event: 'save_contest_failed',
+    }, err);
     res.status(500).json({ error: 'Failed to save contest.' });
   }
 });
@@ -1515,16 +1858,28 @@ router.post('/contest/conclude', adminAuthMiddleware, async (req, res) => {
             adminBotInstance.api,
             { type: 'text', text: endAnnouncement },
             'admin'
-          ).catch((e: unknown) => console.warn('[Admin] Contest end broadcast notice failed:', e));
+          ).catch((e: unknown) => {
+            logger.warn('Contest end broadcast notice failed', {
+              service: 'admin',
+              event: 'contest_end_broadcast_failed',
+              contestId: distribution.contestId,
+            }, e);
+          });
         }
       } catch (e: unknown) {
-        console.warn('[Admin] Failed to trigger contest end broadcast:', e);
+        logger.warn('Failed to trigger contest end broadcast', {
+          service: 'admin',
+          event: 'contest_end_broadcast_trigger_failed',
+        }, e);
       }
     }
 
     res.json({ ...distribution });
   } catch (err: any) {
-    console.error('[Admin] Failed to conclude contest:', err);
+    logger.error('Failed to conclude contest', {
+      service: 'admin',
+      event: 'conclude_contest_failed',
+    }, err);
     res.status(400).json({ error: err.message || 'Failed to conclude contest.' });
   }
 });
@@ -1534,12 +1889,23 @@ router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
   try {
     const { isActive } = req.body;
     const targetState = Boolean(isActive);
+    const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
     if (!targetState) {
       // Conclude contest and execute atomic idempotent prize distribution
       const { concludeContestAndDistributePrizes } = await import('../services/referralService');
       const distribution = await concludeContestAndDistributePrizes(undefined, adminBotInstance || undefined);
       const contest = await prisma.contest.findUnique({ where: { id: distribution.contestId } });
+
+      await recordAdminAuditLog({
+        action: 'CONTEST_TOGGLE',
+        targetId: distribution.contestId,
+        adminId,
+        beforeState: { isActive: true },
+        afterState: { isActive: false },
+        reason: 'Admin concluded championship via toggle',
+      });
+
       res.json({ success: true, contest, distribution });
       return;
     }
@@ -1557,6 +1923,16 @@ router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
           isActive: true,
         },
       });
+
+      await recordAdminAuditLog({
+        action: 'CONTEST_TOGGLE',
+        targetId: created.id,
+        adminId,
+        beforeState: null,
+        afterState: { isActive: true, title: created.title },
+        reason: 'Admin created & activated new championship via toggle',
+      });
+
       res.json({ success: true, contest: created });
       return;
     }
@@ -1566,9 +1942,21 @@ router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
       data: { isActive: true },
     });
 
+    await recordAdminAuditLog({
+      action: 'CONTEST_TOGGLE',
+      targetId: updated.id,
+      adminId,
+      beforeState: { isActive: latest.isActive },
+      afterState: { isActive: true },
+      reason: 'Admin activated championship via toggle',
+    });
+
     res.json({ success: true, contest: updated });
   } catch (err: any) {
-    console.error('[Admin] Failed to toggle contest:', err);
+    logger.error('Failed to toggle contest', {
+      service: 'admin',
+      event: 'toggle_contest_failed',
+    }, err);
     res.status(400).json({ error: err.message || 'Failed to toggle contest.' });
   }
 });

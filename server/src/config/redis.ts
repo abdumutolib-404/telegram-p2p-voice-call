@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { env } from './env';
+import { logger } from '../utils/logger';
 
 class InMemoryRedisMock {
   private readonly sets = new Map<string, Set<string>>();
@@ -298,14 +299,18 @@ if (env.NODE_ENV !== 'test') {
   });
   realRedisInstance.on('error', (error: Error) => {
     isRealRedisReady = false;
-    console.error('[Redis] connection_error', { error: error.message });
+    logger.error('Redis connection error', {
+      service: 'redis',
+      event: 'redis_connection_error',
+    }, error);
   });
 
   void realRedisInstance.connect().catch((error: unknown) => {
     isRealRedisReady = false;
-    console.error('[Redis] connection_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Redis initial connection failed', {
+      service: 'redis',
+      event: 'redis_connect_failed',
+    }, error);
   });
 }
 

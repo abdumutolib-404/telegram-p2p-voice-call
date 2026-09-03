@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { WebhookReceiver, EgressStatus, EgressInfo } from 'livekit-server-sdk';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
+import { logger } from '../utils/logger';
 
 export const livekitWebhookRouter = Router();
 
@@ -22,7 +23,10 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
     const receiver = getWebhookReceiver();
     event = await receiver.receive(rawBody, authHeader);
   } catch (err: unknown) {
-    console.warn('[LiveKit Webhook] auth_validation_failed:', err instanceof Error ? err.message : err);
+    logger.warn('LiveKit webhook auth validation failed', {
+      service: 'livekit',
+      event: 'webhook_auth_failed',
+    }, err);
     res.status(401).send('Unauthorized webhook signature');
     return;
   }
@@ -39,8 +43,10 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
   const roomName = egressInfo.roomName;
   const status = egressInfo.status;
 
-  console.log('[LiveKit Webhook] EVENT_RECEIVED', {
-    event: eventName,
+  logger.info('LiveKit webhook event received', {
+    service: 'livekit',
+    event: 'webhook_event_received',
+    webhookEvent: eventName,
     egressId,
     roomName,
     status,
@@ -59,7 +65,12 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
     });
 
     if (!session) {
-      console.warn('[LiveKit Webhook] session_not_found', { egressId, roomName });
+      logger.warn('LiveKit webhook session not found', {
+        service: 'livekit',
+        event: 'webhook_session_not_found',
+        egressId,
+        roomName,
+      });
       res.status(200).send('OK');
       return;
     }
@@ -72,7 +83,12 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
           egressId,
         },
       });
-      console.log('[LiveKit Webhook] RECORDING_ACTIVE', { sessionId: session.id, egressId });
+      logger.info('LiveKit recording active', {
+        service: 'livekit',
+        event: 'recording_active',
+        sessionId: session.id,
+        egressId,
+      });
     } else if (eventName === 'egress_ended') {
       if (status === EgressStatus.EGRESS_COMPLETE) {
         const fileResult = egressInfo.fileResults?.[0];
@@ -82,7 +98,9 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
 
         // F5 Fix: Reject zero-byte or missing egress results so empty files do not consume quota
         if (!fileResult || !size || size <= 0) {
-          console.warn('[LiveKit Webhook] RECORDING_EMPTY_RESULT', {
+          logger.warn('LiveKit recording ended with empty result', {
+            service: 'livekit',
+            event: 'recording_empty_result',
             sessionId: session.id,
             egressId,
             status,
@@ -105,7 +123,9 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
             },
           });
 
-          console.log('[LiveKit Webhook] RECORDING_COMPLETED', {
+          logger.info('LiveKit recording completed', {
+            service: 'livekit',
+            event: 'recording_completed',
             sessionId: session.id,
             egressId,
             storageKey,
@@ -114,7 +134,9 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
           });
         }
       } else {
-        console.warn('[LiveKit Webhook] RECORDING_FAILED', {
+        logger.warn('LiveKit recording failed', {
+          service: 'livekit',
+          event: 'recording_failed',
           sessionId: session.id,
           egressId,
           status,
@@ -131,7 +153,10 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
     }
   } catch (dbErr: unknown) {
     // F6 Fix: Return 500 on database failure so LiveKit retries delivery via exponential backoff
-    console.error('[LiveKit Webhook] db_update_failed', dbErr);
+    logger.error('LiveKit webhook database update failed', {
+      service: 'livekit',
+      event: 'webhook_db_update_failed',
+    }, dbErr);
     res.status(500).send('Database update failed');
     return;
   }

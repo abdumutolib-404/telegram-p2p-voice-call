@@ -12,12 +12,17 @@ import { prisma, connectDB, disconnectDB } from './config/database';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
 import adminRoutes, { setAdminBot } from './routes/admin';
+import adminTelemetryRouter from './routes/adminTelemetry';
+import { adminAuthMiddleware } from './middleware/adminAuth';
 import { livekitWebhookRouter } from './routes/livekitWebhook';
 import { setupSocketSignaling } from './socket/signaling';
 import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
 import { startSubscriptionExpiryCron } from './services/subscriptionExpiry';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
+import { requestIdMiddleware } from './middleware/requestId';
+import { logger } from './utils/logger';
+import { getRequestId } from './utils/requestContext';
 import type { MyContext } from './bot/types';
 
 // Global BigInt JSON serialization guard
@@ -72,10 +77,13 @@ const isAllowedOrigin = (origin: string | undefined): boolean => {
 
 app.disable('x-powered-by');
 
-// 🛡️ Automated Bot Banishment & Exploit Scanner Shield (Pre-Routing Filter)
+// 1. 🆔 Request Correlation & AsyncContext (Must be FIRST in chain)
+app.use(requestIdMiddleware);
+
+// 2. 🛡️ Automated Bot Banishment & Exploit Scanner Shield (Pre-Routing Filter)
 app.use(scannerShieldMiddleware);
 
-// Standard HTTP Security Headers Middleware (Telegram WebApp compatible)
+// 3. Standard HTTP Security Headers Middleware (Telegram WebApp compatible)
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '0');
@@ -86,13 +94,15 @@ app.use((_req, res, next) => {
   next();
 });
 
+// 4. CORS configuration with Request-ID support
 app.use(cors({
   origin: (origin, callback) => {
     callback(null, isAllowedOrigin(origin));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data', 'Cookie'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data', 'Cookie', 'X-Request-ID', 'x-request-id', 'x-correlation-id'],
+  exposedHeaders: ['X-Request-ID'],
 }));
 
 app.options('*', cors());
@@ -101,28 +111,9 @@ app.use('/api/livekit/webhook', express.raw({ type: '*/*', limit: '2mb' }));
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
-// Comprehensive Production Request & Response Logging Middleware (Query-Sanitized)
-app.use((req, res, next) => {
-  const start = Date.now();
-  const rawCf = req.headers['cf-connecting-ip'];
-  const ip = typeof rawCf === 'string' && rawCf.trim()
-    ? rawCf.trim()
-    : req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-  const method = req.method;
-  const path = (req.originalUrl || req.url || '').split('?')[0];
-
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    const status = res.statusCode;
-    const statusTag = status >= 500 ? '🔥 ERROR' : status >= 400 ? '⚠️ WARN' : '✅ OK';
-    console.log(`[HTTP ${statusTag}] ${method} ${path} -> ${status} (${duration}ms) [IP: ${ip}]`);
-  });
-
-  next();
-});
-
 // --- Static Path Resolvers & Pre-Rendered SEO HTML ---
 const getLandingDistPath = (): string | null => {
+  if (process.env.NODE_ENV === 'test') return null;
   const candidates = [
     path.resolve(__dirname, '../public/landing'),
     path.resolve(__dirname, '../../landing/dist'),
@@ -531,6 +522,7 @@ app.use((req, res, next) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/admin/telemetry', adminAuthMiddleware, adminTelemetryRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/livekit', livekitWebhookRouter);
 
@@ -547,26 +539,18 @@ app.get('/health', async (_req, res) => {
   }
 });
 
-// --- Static Asset Serving ---
-const landingDist = getLandingDistPath();
-if (landingDist) {
-  app.use(express.static(landingDist, { index: false }));
-}
-const clientDist = getClientDistPath();
-if (clientDist) {
-  app.use(express.static(clientDist, { index: false }));
-}
-const adminDist = getAdminDistPath();
-if (adminDist) {
-  app.use('/admin', express.static(adminDist, { index: false }));
-}
-const serverAssetsPath = path.resolve(__dirname, '../assets');
-if (fs.existsSync(serverAssetsPath)) {
-  app.use('/assets', express.static(serverAssetsPath));
-}
-
 // --- Robots.txt Crawler Filtering ---
-app.get('/robots.txt', (_req, res) => {
+app.get('/robots.txt', (req, res) => {
+  const rawHost = (req.headers['x-forwarded-host'] as string) || req.hostname || (req.headers.host as string) || '';
+  const cleanHost = rawHost.split(':')[0].trim().toLowerCase();
+  const isApiSubdomain = cleanHost === 'api.pairtalk.online' || cleanHost.startsWith('api.');
+
+  if (isApiSubdomain) {
+    res.type('text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(`User-agent: *\nDisallow: /\n`);
+  }
+
   const robotsTxt = `# Robots.txt for PairTalk Public Platform (pairtalk.online)
 
 # Allowed AI & Major Search Engine Crawlers
@@ -649,6 +633,24 @@ app.get('/sitemap.xml', (_req, res) => {
   res.send(sitemapXml);
 });
 
+// --- Static Asset Serving ---
+const landingDist = getLandingDistPath();
+if (landingDist) {
+  app.use(express.static(landingDist, { index: false }));
+}
+const clientDist = getClientDistPath();
+if (clientDist) {
+  app.use(express.static(clientDist, { index: false }));
+}
+const adminDist = getAdminDistPath();
+if (adminDist) {
+  app.use('/admin', express.static(adminDist, { index: false }));
+}
+const serverAssetsPath = path.resolve(__dirname, '../assets');
+if (fs.existsSync(serverAssetsPath)) {
+  app.use('/assets', express.static(serverAssetsPath));
+}
+
 // --- Root GET / & Pre-rendered SEO Landing Page ---
 app.get('/', (_req, res) => {
   const lDist = getLandingDistPath();
@@ -709,10 +711,14 @@ async function startBotWithRetry(botInstance: Bot<MyContext>): Promise<void> {
 
   while (isRunning) {
     try {
-      console.log('[Grammy Bot] Starting bot polling...');
+      logger.info('Starting Telegram bot polling...', { service: 'bot', event: 'bot_polling_start' });
       await botInstance.start({
         onStart: (botInfo: UserFromGetMe) => {
-          console.log(`[Grammy Bot] Bot @${botInfo.username} launched and listening for updates.`);
+          logger.info(`Bot @${botInfo.username} launched and listening for updates.`, {
+            service: 'bot',
+            event: 'bot_started',
+            botUsername: botInfo.username,
+          });
         },
         drop_pending_updates: false,
       });
@@ -720,7 +726,10 @@ async function startBotWithRetry(botInstance: Bot<MyContext>): Promise<void> {
     } catch (error: any) {
       if (!isRunning) break;
       const errMsg = error instanceof Error ? error.message : String(error);
-      console.warn(`[Grammy Bot] Polling interrupted (${errMsg}). Re-attempting in 3 seconds...`);
+      logger.warn(`Bot polling interrupted (${errMsg}). Re-attempting in 3 seconds...`, {
+        service: 'bot',
+        event: 'bot_polling_retry',
+      }, error);
       await new Promise((resolve) => setTimeout(resolve, 3000));
     }
   }
@@ -732,12 +741,16 @@ if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
     setAdminBot(bot);
     void startBotWithRetry(bot);
   } catch (error: unknown) {
-    console.error('[Grammy Bot] startup_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Telegram bot startup failed', {
+      service: 'bot',
+      event: 'bot_startup_failed',
+    }, error);
   }
 } else {
-  console.log('[Grammy Bot] Mock bot token configured. Bot polling disabled.');
+  logger.info('Mock bot token configured. Bot polling disabled.', {
+    service: 'bot',
+    event: 'bot_mock_mode',
+  });
 }
 
 async function bootstrap(): Promise<void> {
@@ -753,43 +766,67 @@ async function bootstrap(): Promise<void> {
         server.once('error', reject);
         server.listen(env.PORT, resolve);
       });
-      console.log(`[Server] IELTS Speaking P2P Backend running on port ${env.PORT}`);
+      logger.info(`IELTS Speaking P2P Backend running on port ${env.PORT}`, {
+        service: 'server',
+        event: 'server_listening',
+        port: env.PORT,
+      });
     }
   } catch (error: unknown) {
-    console.error('[Server] bootstrap_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Server bootstrap failed', {
+      service: 'server',
+      event: 'server_bootstrap_failed',
+    }, error);
     if (env.NODE_ENV === 'production') process.exitCode = 1;
   }
 }
 
 void bootstrap().catch((error: unknown) => {
-  console.error('[Server] bootstrap_unhandled', {
-    error: error instanceof Error ? error.message : 'unknown_error',
-  });
+  logger.error('Server bootstrap unhandled rejection', {
+    service: 'server',
+    event: 'server_bootstrap_unhandled',
+  }, error);
   process.exitCode = 1;
 });
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const reqId = getRequestId() || req.id || req.requestId;
   if (err instanceof URIError || (err as any).status === 400 || (err as any).statusCode === 400) {
     if (!res.headersSent) res.status(400).json({ error: 'Bad request: malformed URI sequence.' });
     return;
   }
-  console.error('[Express Error]', err.message);
+  logger.error('[Express Error] Unhandled server error', {
+    service: 'server',
+    event: 'unhandled_express_error',
+    requestId: reqId,
+    statusCode: 500,
+    path: (req.originalUrl || req.url || '').split('?')[0],
+    method: req.method,
+  }, err);
   if (!res.headersSent) res.status(500).json({ error: 'Internal server error.' });
 });
 
 const gracefulShutdown = async (signal: string) => {
-  console.log(`[Server] Received ${signal}. Initiating graceful shutdown...`);
+  logger.info(`Received ${signal}. Initiating graceful shutdown...`, {
+    service: 'server',
+    event: 'shutdown_initiated',
+    signal,
+  });
   try {
     if (bot) await bot.stop().catch(() => undefined);
     io.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await disconnectDB().catch(() => undefined);
-    console.log('[Server] Graceful shutdown complete.');
+    logger.info('Graceful shutdown complete.', {
+      service: 'server',
+      event: 'shutdown_complete',
+    });
     process.exit(0);
   } catch (err) {
-    console.error('[Server] Shutdown error:', err);
+    logger.error('Shutdown error', {
+      service: 'server',
+      event: 'shutdown_error',
+    }, err);
     process.exit(1);
   }
 };

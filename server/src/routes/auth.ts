@@ -5,6 +5,8 @@ import { prisma } from '../config/database';
 import { createActionRateLimiter, getClientIp } from '../middleware/rateLimit';
 import { generateUniqueAlias } from '../bot/commands/start';
 import { getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../services/plan';
+import { logger } from '../utils/logger';
+import { setRequestContextUserId } from '../utils/requestContext';
 
 const router = Router();
 const authLimiter = createActionRateLimiter('AUTH_VERIFY', getClientIp);
@@ -65,6 +67,8 @@ router.post('/verify', authLimiter, async (req, res) => {
         plan: 'FREE',
       },
     });
+
+    setRequestContextUserId(dbUser.id);
 
     const now = new Date();
 
@@ -144,9 +148,10 @@ router.post('/verify', authLimiter, async (req, res) => {
       },
     });
   } catch (error: unknown) {
-    console.error('[Auth] verify_failed', {
-      error: error instanceof Error ? error.message : 'unknown_error',
-    });
+    logger.error('Auth verification failed', {
+      service: 'auth',
+      event: 'auth_verify_failed',
+    }, error);
     res.status(500).json({ error: 'Authentication service unavailable.' });
   }
 });

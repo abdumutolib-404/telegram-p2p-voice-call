@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { getRedis, type RedisClientInterface } from '../config/redis';
+import { logger } from '../utils/logger';
 
 export interface UserSkills {
   readonly subFC: number;
@@ -133,7 +134,7 @@ export class MatchmakingService {
       // 2. Exact complementary skill match at same band (e.g. 7.0:P:FC)
       // 3. Same skill match at same band (e.g. 7.0:FC:P)
       // 4. Same band general pool
-      // 5. Adjacent ±0.5 band general pools
+      // 5. Adjacent ±0.5 and ±1.0 band general pools
       const candidateBuckets: string[] = [
         this.getPriorityPoolKey('BOSS'),
         this.getPriorityPoolKey('PRO'),
@@ -143,7 +144,7 @@ export class MatchmakingService {
         bandPoolKey,
       ];
 
-      const deltas = [0.5, -0.5];
+      const deltas = [0.5, -0.5, 1.0, -1.0];
       for (const delta of deltas) {
         const targetBand = band + delta;
         if (targetBand >= 4.0 && targetBand <= 9.0) {
@@ -199,10 +200,11 @@ export class MatchmakingService {
 
         return { matched: false, bucketKey: ownBucketKey };
       } catch (error: unknown) {
-        console.error('[Matchmaking] join_failed', {
+        logger.error('Matchmaking join failed', {
+          service: 'matchmaking',
+          event: 'join_failed',
           userId,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+        }, error);
         throw error;
       }
     });
@@ -225,10 +227,11 @@ export class MatchmakingService {
           this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS),
         ]);
       } catch (error: unknown) {
-        console.error('[Matchmaking] restore_failed', {
+        logger.error('Matchmaking queue restore failed', {
+          service: 'matchmaking',
+          event: 'restore_failed',
           userId,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+        }, error);
         throw error;
       }
     });
@@ -240,10 +243,11 @@ export class MatchmakingService {
       try {
         return await this.cancelQueueUnlocked(userId);
       } catch (error: unknown) {
-        console.error('[Matchmaking] cancel_failed', {
+        logger.error('Matchmaking cancel failed', {
+          service: 'matchmaking',
+          event: 'cancel_failed',
           userId,
-          error: error instanceof Error ? error.message : 'unknown_error',
-        });
+        }, error);
         throw error;
       }
     });
@@ -279,10 +283,11 @@ export class MatchmakingService {
           try {
             await this.redis.eval(LOCK_RELEASE_SCRIPT, 1, lockKey, token);
           } catch (error: unknown) {
-            console.error('[Matchmaking] lock_release_failed', {
+            logger.error('Matchmaking lock release failed', {
+              service: 'matchmaking',
+              event: 'lock_release_failed',
               userId,
-              error: error instanceof Error ? error.message : 'unknown_error',
-            });
+            }, error);
           }
         }
       }

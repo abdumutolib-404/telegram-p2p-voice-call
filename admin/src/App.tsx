@@ -8,6 +8,7 @@ import { ManualPaymentsQueue } from './components/dashboard/ManualPaymentsQueue.
 import { AppealsQueue } from './components/dashboard/AppealsQueue.tsx';
 import { UserManagement } from './components/dashboard/UserManagement.tsx';
 import { ContestManagement } from './components/dashboard/ContestManagement.tsx';
+import { AuditLogViewer } from './components/dashboard/AuditLogViewer.tsx';
 import { adminFetch } from './api/client.ts';
 import type { ManualPaymentRequestItem, AppealItem } from './types/index.ts';
 import {
@@ -19,7 +20,15 @@ import {
   PanelLeftOpen,
 } from 'lucide-react';
 
-export type NavigationTab = 'overview' | 'users' | 'plans' | 'payments' | 'appeals' | 'analytics' | 'contest';
+export type NavigationTab =
+  | 'overview'
+  | 'users'
+  | 'plans'
+  | 'payments'
+  | 'appeals'
+  | 'analytics'
+  | 'contest'
+  | 'audit';
 
 interface NavItemMeta {
   id: NavigationTab;
@@ -91,6 +100,12 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Analytics & Revenue',
         shortLabel: 'AN',
         description: 'Stars & UZS revenue, WebRTC telemetry & quality metrics',
+      },
+      {
+        id: 'audit',
+        label: 'Audit & Telemetry',
+        shortLabel: 'AT',
+        description: 'Immutable administrative audit logs, diff inspector & error tracker',
       },
     ],
   },
@@ -540,6 +555,7 @@ function MainDashboard() {
           {activeTab === 'appeals' && <AppealsQueue />}
           {activeTab === 'analytics' && <AnalyticsOverview />}
           {activeTab === 'contest' && <ContestManagement />}
+          {activeTab === 'audit' && <AuditLogViewer />}
         </main>
       </div>
     </div>

@@ -9,6 +9,7 @@ import {
   refundManualPaymentRequest,
   rejectManualPaymentRefund,
 } from '../../services/plan';
+import { logger } from '../../utils/logger';
 
 const getPolicyUrl = () => {
   const baseUrl = env.MINI_APP_URL || 'https://pairtalk.online';
@@ -207,7 +208,11 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
       // Execute Telegram API Star Refund
       if (tx.telegramPaymentId) {
         await ctx.api.refundStarPayment(telegramIdNum, tx.telegramPaymentId).catch((err) => {
-          console.warn('[Refund] Telegram refundStarPayment API warning:', err);
+          logger.warn('Telegram refundStarPayment API warning', {
+            service: 'bot',
+            event: 'refund_stars_api_warning',
+            telegramIdNum,
+          }, err);
         });
       }
 
@@ -226,7 +231,11 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
         { parse_mode: 'HTML' }
       );
     } catch (err: unknown) {
-      console.error('[Refund] Stars refund failed:', err);
+      logger.error('Stars refund failed', {
+        service: 'bot',
+        event: 'stars_refund_failed',
+        starsTxId,
+      }, err);
       await ctx.reply(
         '⚠️ Failed to complete automatic refund. Please contact @PairTalkSupport for manual assistance.'
       );
@@ -264,7 +273,11 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
         { parse_mode: 'HTML', reply_markup: inlineKb }
       );
     } catch (err) {
-      console.error('[Refund] UZS refund init failed:', err);
+      logger.error('UZS refund init failed', {
+        service: 'bot',
+        event: 'uzs_refund_init_failed',
+        manualReqId,
+      }, err);
       await ctx.reply('⚠️ Failed to initiate refund. Please contact @PairTalkSupport.');
     }
   });
@@ -359,7 +372,10 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
         { parse_mode: 'HTML' }
       );
     } catch (err) {
-      console.error('[Refund] Failed to record refund card:', err);
+      logger.error('Failed to record refund card', {
+        service: 'bot',
+        event: 'refund_card_record_failed',
+      }, err);
       ctx.session.step = 'idle';
       ctx.session.pendingRefundManualReqId = undefined;
       await ctx.reply('⚠️ Failed to submit refund request. Please contact @PairTalkSupport.');

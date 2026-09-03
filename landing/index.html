@@ -45,11 +45,22 @@
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-    <!-- Machine-Readable Schema.org JSON-LD (SoftwareApplication, EducationalOrganization, FAQPage) -->
+    <!-- Complete 4-Node Schema.org JSON-LD Graph (WebSite, SoftwareApplication/EducationalApplication, Organization/EducationalOrganization, FAQPage) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://pairtalk.online/#website",
+          "url": "https://pairtalk.online/",
+          "name": "PairTalk — IELTS Speaking Practice",
+          "description": "Instant Criteria-Matched Peer-to-Peer IELTS Speaking Practice Platform on Telegram & Web.",
+          "publisher": {
+            "@id": "https://pairtalk.online/#organization"
+          },
+          "inLanguage": "en"
+        },
         {
           "@type": ["SoftwareApplication", "EducationalApplication"],
           "@id": "https://pairtalk.online/#software",
@@ -60,8 +71,12 @@
           "url": "https://pairtalk.online/",
           "image": "https://pairtalk.online/favicon.png",
           "screenshot": "https://pairtalk.online/plans_pricing.jpg",
-          "description": "Autonomous peer-to-peer IELTS Speaking practice platform operated inside Telegram. Connects candidates with live speaking partners worldwide in <3 seconds based on target band scores (5-9) and official IELTS assessment criteria.",
+          "description": "Autonomous peer-to-peer IELTS Speaking practice platform inside Telegram. Connects candidates with live speaking partners worldwide in <3 seconds based on target band scores (5-9) and official IELTS criteria (FC, LR, GRA, P).",
           "softwareVersion": "2026.2.0",
+          "isAccessibleForFree": true,
+          "author": {
+            "@id": "https://pairtalk.online/#organization"
+          },
           "offers": [
             {
               "@type": "Offer",
@@ -124,8 +139,7 @@
           "description": "Global peer-to-peer language learning network providing autonomous, criteria-matched IELTS Speaking simulation rooms for candidates worldwide.",
           "sameAs": [
             "https://t.me/PairTalkBot",
-            "https://pairtalk.online/#guidelines",
-            "https://pairtalk.online/#privacy"
+            "https://t.me/PairTalkSupport"
           ],
           "contactPoint": {
             "@type": "ContactPoint",
@@ -155,7 +169,15 @@
               "name": "What is PairTalk and how does live IELTS Speaking matchmaking work?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "PairTalk is an autonomous peer-to-peer IELTS Speaking practice platform that operates natively inside Telegram. Candidates configure their target whole-band scores (Band 5 to 9) across the four official IELTS criteria (Fluency, Vocabulary, Grammar, Pronunciation). When you tap 'Find Partner', PairTalk's matchmaking radar pairs you with an active, criteria-matched study buddy worldwide in under 3 seconds inside an encrypted WebRTC voice room."
+                "text": "PairTalk is an autonomous peer-to-peer IELTS Speaking practice platform operating natively inside Telegram and the Web. Candidates configure their target whole-band scores (Band 5 to 9) across the four official IELTS criteria (Fluency, Vocabulary, Grammar, Pronunciation). When you tap 'Find Partner', PairTalk's matchmaking radar pairs you with an active, criteria-matched study buddy worldwide in under 3 seconds inside an encrypted WebRTC voice room."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Who is PairTalk designed for?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "PairTalk is designed for serious IELTS Academic and General Training candidates aiming for Band 6.0, 6.5, 7.0, 7.5, 8.0, or higher who need consistent, daily speaking practice. It is ideal for self-studying learners who want to eliminate speaking anxiety, test their impromptu speaking skills, and practice without paying $20–$50/hour for private tutors."
               }
             },
             {
@@ -171,7 +193,7 @@
               "name": "How does PairTalk use the official IELTS Speaking Band Descriptors (FC, LR, GRA, P)?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "PairTalk aligns directly with the official British Council / IDP IELTS Speaking Band Descriptors: Fluency & Coherence (FC), Lexical Resource (LR), Grammatical Range & Accuracy (GRA), and Pronunciation (P). Learners set their individual target sub-scores, allowing the algorithm to match candidates with complementary strengths (e.g. pairing a candidate seeking Pronunciation coaching with a partner proficient in Pronunciation) for maximum mutual learning synergy."
+                "text": "PairTalk aligns directly with the official British Council / IDP IELTS Speaking Band Descriptors: Fluency & Coherence (FC), Lexical Resource (LR), Grammatical Range & Accuracy (GRA), and Pronunciation (P). Learners set their individual target sub-scores, allowing the algorithm to match candidates with complementary strengths for maximum mutual learning synergy."
               }
             },
             {
@@ -179,7 +201,7 @@
               "name": "Can I practice IELTS Speaking Part 1, Part 2 (Cue Card), and Part 3 (Discussion) on PairTalk?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Yes. PairTalk voice sessions are structured to simulate the complete 2026 IELTS Speaking exam format. Partners can alternate roles as examiner and candidate across Part 1 introductory questions, Part 2 1-minute preparation and 2-minute cue card monologues, and Part 3 abstract two-way discussions."
+                "text": "Yes. PairTalk voice sessions are structured to simulate the complete IELTS Speaking exam format. Partners can alternate roles as examiner and candidate across Part 1 introductory questions, Part 2 1-minute preparation and 2-minute cue card monologues, and Part 3 abstract two-way discussions."
               }
             },
             {
@@ -187,7 +209,7 @@
               "name": "How much does IELTS Speaking practice cost on PairTalk compared to private tutors?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Private 1-on-1 IELTS tutors on Cambly, iTalki, or Preply typically cost $20 to $45 per hour. PairTalk is 100% free to start with complimentary monthly practice calls. Paid accelerator tiers (PLUS, PRO, BOSS) range from 79 to 679 Telegram Stars ($1.58 to $13.58 / 15,000 to 149,000 UZS) for up to 50 practice calls of up to 90 minutes each, delivering over 95% cost savings compared to traditional tutoring."
+                "text": "Private 1-on-1 IELTS tutors on Cambly, iTalki, or Preply typically cost $20 to $50 per hour. PairTalk is 100% free to start with complimentary monthly practice calls. Paid accelerator tiers (PLUS, PRO, BOSS) range from 79 to 679 Telegram Stars ($1.58 to $13.58 / 15,000 to 149,000 UZS) for up to 50 practice calls of up to 90 minutes each, delivering over 95% cost savings."
               }
             },
             {
@@ -237,7 +259,223 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-rendered Semantic HTML for Search Engines & AI Bots without JS execution -->
+      <header>
+        <nav aria-label="Main Navigation">
+          <a href="/" aria-label="PairTalk Homepage"><strong>PairTalk</strong></a>
+          <ul>
+            <li><a href="/how-it-works">How It Works</a></li>
+            <li><a href="/ielts-speaking">IELTS Speaking Guide</a></li>
+            <li><a href="/community-guidelines">Community Guidelines</a></li>
+            <li><a href="/safety">Safety Guide</a></li>
+            <li><a href="/faq">FAQ</a></li>
+            <li><a href="/#pricing">Pricing Plans</a></li>
+          </ul>
+          <a href="https://t.me/PairTalkBot?startapp=1" rel="noopener noreferrer">Launch App on Telegram</a>
+        </nav>
+      </header>
+
+      <main>
+        <article>
+          <section id="hero">
+            <h1>PairTalk — IELTS Speaking Practice | Criteria-Matched P2P Calls</h1>
+            <p><strong>Partner ghosted you again? No more excuses.</strong> Stop waiting for your study buddy to reply. Get matched with a live IELTS partner in &lt; 3 seconds. Practice Part 1, 2, and 3 with criteria-matched candidates. 100% anonymous &amp; free to start on Telegram.</p>
+            <p><a href="https://t.me/PairTalkBot?startapp=1">Start Speaking Now — It's Free</a></p>
+          </section>
+
+          <section id="what-is-pairtalk">
+            <h2>What is PairTalk?</h2>
+            <p>PairTalk is an autonomous peer-to-peer IELTS Speaking preparation platform operating natively inside Telegram and Web. It solves the biggest hurdle in IELTS preparation: finding reliable, serious speaking partners at your target proficiency level on demand.</p>
+            <p>With PairTalk, you configure your target band scores (Band 5 to 9) across the four official assessment criteria. When you tap Find Partner, PairTalk connects you with a matched candidate worldwide in less than 3 seconds inside an encrypted WebRTC voice room.</p>
+          </section>
+
+          <section id="who-it-is-for">
+            <h2>Who is PairTalk For?</h2>
+            <ul>
+              <li><strong>Self-Studying Candidates:</strong> IELTS Academic and General Training test takers preparing independently who need daily, disciplined conversation repetition.</li>
+              <li><strong>Band 6.5 to 8.5 Aspirants:</strong> University applicants, medical professionals, and immigration candidates who are stuck at Band 6.0 and need focused practice to achieve higher bands.</li>
+              <li><strong>Busy Learners:</strong> Anyone frustrated by unresponsive partners in Discord servers, ghosting in study groups, or expensive private tutor rates ($20–$50/hour).</li>
+            </ul>
+          </section>
+
+          <section id="problem-matrix">
+            <h2>Why 90% of Self-Studying Candidates Get Stuck at Band 6.0</h2>
+            <div>
+              <h3>Private Tutor Price Crunch</h3>
+              <p>Private IELTS tutoring on platforms like Cambly, iTalki, or Preply costs $20 to $50 per hour. Practicing daily for 3 months can easily exceed $1,500, making regular speaking drills unaffordable for most students.</p>
+            </div>
+            <div>
+              <h3>Chaotic Discord &amp; Telegram Groups</h3>
+              <p>Free online study groups suffer from ghosting, mismatched language levels, intrusive background noise, and endless scheduling conflicts. You spend 45 minutes looking for a partner and only 10 minutes actually speaking.</p>
+            </div>
+            <div>
+              <h3>Speaking Anxiety &amp; Hesitation</h3>
+              <p>Without regular mock interviews, candidates freeze under real exam conditions. PairTalk eliminates anxiety by offering daily, low-stakes, anonymous practice sessions that build natural English reflexes.</p>
+            </div>
+          </section>
+
+          <section id="band-descriptors">
+            <h2>Official IELTS Speaking Band Descriptors Calibration (FC, LR, GRA, P)</h2>
+            <p>PairTalk evaluates and calibrates partner matching based on the four official British Council / IDP IELTS Speaking criteria:</p>
+            <dl>
+              <dt><strong>Fluency and Coherence (FC)</strong></dt>
+              <dd>Measures your ability to speak at length with natural flow, minimal hesitation, appropriate linking phrases, and coherent discourse sequencing.</dd>
+              <dt><strong>Lexical Resource (LR)</strong></dt>
+              <dd>Evaluates your vocabulary breadth, precision, idiomatic expressions, collocations, and ability to paraphrase without repetition.</dd>
+              <dt><strong>Grammatical Range and Accuracy (GRA)</strong></dt>
+              <dd>Assesses your mastery of compound and complex sentence structures, tense consistency, and error-free clause construction.</dd>
+              <dt><strong>Pronunciation (P)</strong></dt>
+              <dd>Scores phonetic clarity, syllable stress, sentence rhythm, intonation patterns, and effortless intelligibility.</dd>
+            </dl>
+            <p>PairTalk supports strict whole-band scoring across Band 5, 6, 7, 8, and 9, matching candidates with complementary strengths for maximum mutual improvement.</p>
+          </section>
+
+          <section id="exam-format">
+            <h2>Complete 3-Part Exam Format Simulation</h2>
+            <p>Every PairTalk voice call is structured to mirror the official 2026 IELTS Speaking test format:</p>
+            <ol>
+              <li><strong>Part 1 — Introduction &amp; General Interview (4–5 mins):</strong> Familiar questions on home, work, studies, hobbies, and everyday experiences.</li>
+              <li><strong>Part 2 — Individual Long Turn Cue Card (3–4 mins):</strong> 1 minute of silent preparation followed by an uninterrupted 2-minute speaking monologue on a prompt card.</li>
+              <li><strong>Part 3 — Two-Way Abstract Discussion (4–5 mins):</strong> In-depth thematic questions exploring societal, philosophical, and analytical perspectives linked to the Part 2 topic.</li>
+            </ol>
+            <p>Partners alternate roles as examiner and candidate, giving both participants authentic test-day experience from both perspectives.</p>
+          </section>
+
+          <section id="anonymity-security">
+            <h2>100% Anonymity, Privacy &amp; WebRTC Security</h2>
+            <ul>
+              <li><strong>Permanent Cryptographic Aliases:</strong> Every candidate is assigned an anonymous handle (e.g. <code>P2P-0284DB68</code>). Your real name, phone number, and Telegram username are never shared.</li>
+              <li><strong>Zero PII Exposure:</strong> No personal profile data or chat logs are ever made public or indexed.</li>
+              <li><strong>Encrypted Audio:</strong> Live voice streams are encrypted end-to-end via WebRTC Selective Forwarding Units (SFU).</li>
+              <li><strong>Authoritative Audio Retention Matrix:</strong> Optional cloud audio recordings are automatically and permanently purged once your retention window expires (FREE: 24h, PLUS: 7d, PRO: 30d, BOSS: 90d).</li>
+            </ol>
+          </section>
+
+          <section id="comparison">
+            <h2>PairTalk vs. Private Tutors vs. Public Groups</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>PairTalk Platform</th>
+                  <th>Private 1-on-1 Tutors</th>
+                  <th>Discord / Telegram Chats</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Matching Speed</strong></td>
+                  <td>&lt; 3 seconds instant radar</td>
+                  <td>Requires advance scheduling</td>
+                  <td>15–45 min waiting / ghosting</td>
+                </tr>
+                <tr>
+                  <td><strong>Monthly Cost</strong></td>
+                  <td>$0 to $13.58 / month</td>
+                  <td>$150 to $600 / month</td>
+                  <td>Free (chaotic)</td>
+                </tr>
+                <tr>
+                  <td><strong>Criteria Calibration</strong></td>
+                  <td>Whole-Band 5–9 (FC, LR, GRA, P)</td>
+                  <td>Tutor dependent</td>
+                  <td>None / completely random</td>
+                </tr>
+                <tr>
+                  <td><strong>Privacy &amp; Anonymity</strong></td>
+                  <td>100% anonymous alias</td>
+                  <td>Personal profile required</td>
+                  <td>Exposed public handle/phone</td>
+                </tr>
+                <tr>
+                  <td><strong>Exam Simulation</strong></td>
+                  <td>Full Part 1, 2, 3 with timers</td>
+                  <td>Yes</td>
+                  <td>Unstructured chat</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="pricing">
+            <h2>Transparent Plans &amp; Accelerator Pricing</h2>
+            <div>
+              <h3>FREE Tier — $0</h3>
+              <p>Complimentary monthly practice calls, 15 min duration, 1 cloud recording with 24-hour retention.</p>
+            </div>
+            <div>
+              <h3>PLUS Plan — $1.58 / mo (79 Stars / 15,000 UZS)</h3>
+              <p>10 practice calls / month, 30 min duration, 3 cloud recordings with 7-day retention.</p>
+            </div>
+            <div>
+              <h3>PRO Plan — $5.10 / mo (255 Stars / 55,000 UZS)</h3>
+              <p>25 practice calls / month, 60 min duration, 7 cloud recordings with 30-day retention, high priority queue.</p>
+            </div>
+            <div>
+              <h3>BOSS Plan — $13.58 / mo (679 Stars / 149,000 UZS)</h3>
+              <p>50 practice calls / month, 90 min duration, 15 cloud recordings with 90-day retention, VIP priority queue.</p>
+            </div>
+            <p><strong>100% Money-Back Guarantee:</strong> Request a full refund within 48 hours of purchase if you have used less than 10% of your call allowance. Instant processing for Telegram Stars via <code>/refund</code>, 1–3 business days for bank cards.</p>
+          </section>
+
+          <section id="faq-section">
+            <h2>Frequently Asked Questions</h2>
+            <div>
+              <h3>What is PairTalk and how does live IELTS Speaking matchmaking work?</h3>
+              <p>PairTalk is an autonomous peer-to-peer IELTS Speaking practice platform operating natively inside Telegram and the Web. Candidates configure their target whole-band scores (Band 5 to 9) across the four official IELTS criteria. When you tap 'Find Partner', PairTalk's matchmaking radar pairs you with an active, criteria-matched study buddy worldwide in under 3 seconds inside an encrypted WebRTC voice room.</p>
+            </div>
+            <div>
+              <h3>Who is PairTalk designed for?</h3>
+              <p>PairTalk is designed for serious IELTS Academic and General Training candidates aiming for Band 6.0, 6.5, 7.0, 7.5, 8.0, or higher who need consistent, daily speaking practice. It is ideal for self-studying learners who want to eliminate speaking anxiety, test their impromptu speaking skills, and practice without paying $20–$50/hour for private tutors.</p>
+            </div>
+            <div>
+              <h3>How does PairTalk help candidates achieve Band 6.5, Band 7.0, or Band 8.0 in IELTS Speaking 2026?</h3>
+              <p>Achieving IELTS Band 7+ requires spontaneous fluency without unnatural hesitation, flexible idiomatic vocabulary, complex clause structures with high accuracy, and natural rhythm with correct intonation. PairTalk provides daily high-repetition conversational exposure with criteria-matched candidates, eliminating speaking anxiety and building spontaneous English reflex.</p>
+            </div>
+            <div>
+              <h3>Is PairTalk completely anonymous and how is candidate privacy protected?</h3>
+              <p>PairTalk enforces strict privacy. Each candidate is assigned a randomized anonymous identifier (e.g. P2P-0284DB68). Your real name, phone number, and Telegram username are never shared with partners. Live voice calls are encrypted via WebRTC SFU, and optional cloud audio recordings are automatically and permanently purged once the tier retention window expires.</p>
+            </div>
+          </section>
+        </article>
+      </main>
+
+      <footer>
+        <div>
+          <h4>Platform &amp; Learning</h4>
+          <ul>
+            <li><a href="/how-it-works">How It Works</a></li>
+            <li><a href="/ielts-speaking">IELTS Speaking Guide</a></li>
+            <li><a href="/faq">Frequently Asked Questions</a></li>
+            <li><a href="/#pricing">Pricing &amp; Plans</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Community &amp; Safety</h4>
+          <ul>
+            <li><a href="/community-guidelines">Community Guidelines</a></li>
+            <li><a href="/safety">Safety Guide &amp; Anti-Solicitation</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Legal &amp; Transparency</h4>
+          <ul>
+            <li><a href="/privacy">Privacy Policy &amp; 100% Refund Policy</a></li>
+            <li><a href="/terms">Terms of Service</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Connect</h4>
+          <ul>
+            <li><a href="https://t.me/PairTalkBot" rel="noopener noreferrer">Telegram Bot (@PairTalkBot)</a></li>
+            <li><a href="https://t.me/PairTalkSupport" rel="noopener noreferrer">Customer Support (@PairTalkSupport)</a></li>
+          </ul>
+        </div>
+        <p>© 2026 PairTalk IELTS Speaking Network. All rights reserved.</p>
+        <p><small>IELTS is a registered trademark of University of Cambridge ESOL, the British Council, and IDP Education Australia. PairTalk is an independent autonomous learning network not affiliated with or endorsed by IELTS Partners.</small></p>
+      </footer>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

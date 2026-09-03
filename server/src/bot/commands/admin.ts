@@ -9,6 +9,7 @@ import {
   isBroadcastActive,
   AnnouncementPayload,
 } from '../../services/announcement';
+import { logger } from '../../utils/logger';
 
 export const adminTokenStore = new Map<string, { telegramId: number; expiresAt: number }>();
 const ADMIN_TOKEN_TTL_SECONDS = 300;
@@ -25,7 +26,10 @@ export async function generateAdminToken(telegramId: number | string): Promise<s
     if (stored !== 'OK') throw new Error('Failed to persist admin token');
   } catch (error: unknown) {
     if (env.NODE_ENV === 'production') {
-      console.error('[Admin] token_persist_failed', { error: error instanceof Error ? error.message : 'unknown_error' });
+      logger.error('Admin token persistence failed', {
+        service: 'bot',
+        event: 'admin_token_persist_failed',
+      }, error);
       throw error;
     }
     adminTokenStore.set(token, { telegramId: numId, expiresAt: Date.now() + ADMIN_TOKEN_TTL_SECONDS * 1000 });
@@ -43,7 +47,10 @@ export async function verifyAndConsumeAdminToken(token: string): Promise<number 
     if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
   } catch (error: unknown) {
     if (env.NODE_ENV === 'production') {
-      console.error('[Admin] token_consume_failed', { error: error instanceof Error ? error.message : 'unknown_error' });
+      logger.error('Admin token consumption failed', {
+        service: 'bot',
+        event: 'admin_token_consume_failed',
+      }, error);
       return null;
     }
   }
@@ -137,7 +144,11 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
         { parse_mode: 'HTML' }
       );
     } catch (err: unknown) {
-      console.error('[AdminAnnouncement] broadcast_failed', err);
+      logger.error('Announcement broadcast failed', {
+        service: 'bot',
+        event: 'admin_broadcast_failed',
+        adminId,
+      }, err);
       await ctx.reply(
         `❌ <b>Broadcast Error:</b> ${err instanceof Error ? err.message : 'Broadcast failed.'}`,
         { parse_mode: 'HTML' }

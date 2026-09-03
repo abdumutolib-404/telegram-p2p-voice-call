@@ -199,3 +199,88 @@ export interface AnalyticsData {
   manualUzsRevenue?: ManualUzsRevenue;
   totalMinutesSpoken?: number;
 }
+
+// --- Operational Telemetry Types ---
+export interface ApiHealthTelemetry {
+  uptime: number; // in seconds
+  memoryMb: number;
+}
+
+export interface ServiceHealthMetric {
+  status: 'healthy' | 'degraded' | 'down';
+  latencyMs?: number;
+  activeRooms?: number;
+  polling?: boolean;
+  lastUpdateTs?: string;
+}
+
+export interface SystemHealthTelemetry {
+  status: 'ok' | 'degraded' | 'error';
+  api: ApiHealthTelemetry;
+  database: ServiceHealthMetric;
+  redis: ServiceHealthMetric;
+  livekit: ServiceHealthMetric;
+  bot: ServiceHealthMetric;
+}
+
+export interface MatchmakingQueueTelemetry {
+  waitingCount: number;
+  buckets: {
+    '5': number;
+    '6': number;
+    '7': number;
+    '8': number;
+    '9': number;
+    [key: string]: number;
+  };
+  oldestWaitingSec: number;
+}
+
+export interface ActiveCallRoom {
+  roomName: string;
+  durationSec: number;
+  userA: string;
+  userB: string;
+  recording: boolean;
+  createdAt?: string;
+}
+
+export interface ActiveCallsTelemetry {
+  activeCallsCount: number;
+  rooms: ActiveCallRoom[];
+}
+
+export interface SystemErrorLogEntry {
+  timestamp: string;
+  level: string | number;
+  levelName?: string;
+  message: string;
+  requestId?: string;
+  error?: string | {
+    name?: string;
+    message?: string;
+    stack?: string;
+  };
+  service?: string;
+  userId?: string;
+  event?: string;
+  durationMs?: number;
+  [key: string]: unknown;
+}
+
+export interface SystemErrorsTelemetry {
+  success?: boolean;
+  count?: number;
+  recentErrors: SystemErrorLogEntry[];
+  errors?: SystemErrorLogEntry[];
+}
+
+// --- Audit Log Filter Types ---
+export type AuditActionCategory =
+  | 'ALL'
+  | 'BANS'
+  | 'PLANS'
+  | 'APPEALS'
+  | 'CONTESTS'
+  | 'REFUNDS'
+  | 'LOGINS';

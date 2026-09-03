@@ -14,8 +14,10 @@ import { checkRateLimit } from '../../services/rateLimitMatrix';
 import { env } from '../../config/env';
 import { sendAdminPaymentNotification, downloadTelegramReceiptFile } from '../paymentsBot';
 import { validateReceipt } from '../receiptValidator';
+import { escapeHtml } from '../../utils/sanitize';
+import { logger } from '../../utils/logger';
 
-async function editMessageOrCaption(ctx: MyContext, text: string, other?: any) {
+async function editMessageOrCaption(ctx: MyContext, text: string, other?: Record<string, unknown>) {
   const isPhotoMessage = Boolean(ctx.callbackQuery?.message && 'photo' in ctx.callbackQuery.message);
 
   if (isPhotoMessage) {
@@ -25,8 +27,9 @@ async function editMessageOrCaption(ctx: MyContext, text: string, other?: any) {
         parse_mode: 'HTML',
         ...other,
       });
-    } catch (captionErr: any) {
-      if (captionErr?.description?.includes('message is not modified')) {
+    } catch (captionErr: unknown) {
+      const errDesc = captionErr instanceof Error ? captionErr.message : String((captionErr as { description?: string })?.description || '');
+      if (errDesc.includes('message is not modified')) {
         return;
       }
       try {
@@ -40,11 +43,12 @@ async function editMessageOrCaption(ctx: MyContext, text: string, other?: any) {
 
   try {
     return await ctx.editMessageText(text, { parse_mode: 'HTML', ...other });
-  } catch (textErr: any) {
-    if (textErr?.description?.includes('message is not modified')) {
+  } catch (textErr: unknown) {
+    const errDesc = textErr instanceof Error ? textErr.message : String((textErr as { description?: string })?.description || '');
+    if (errDesc.includes('message is not modified')) {
       return;
     }
-    if (textErr?.description?.includes('there is no text in the message to edit')) {
+    if (errDesc.includes('there is no text in the message to edit')) {
       try {
         return await ctx.editMessageCaption({
           caption: text,
@@ -78,9 +82,9 @@ export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' |
     if (user) {
       const profile = getPaidUserProfile(user);
       if (profile.isActivePaid) {
-        const msg = `You have an active paid plan — ${profile.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`;
+        const msg = `You have an active paid plan — ${escapeHtml(profile.plan)}. Therefore, you cannot request or buy another plan. Wait until this one expires.`;
         if (ctx.callbackQuery) {
-          await ctx.answerCallbackQuery({ text: msg, show_alert: true });
+          await ctx.answerCallbackQuery({ text: `You have an active paid plan — ${profile.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`, show_alert: true });
         } else {
           await ctx.reply(`⚠️ <b>Active Subscription</b>\n\n${msg}`, { parse_mode: 'HTML' });
         }
@@ -94,9 +98,9 @@ export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' |
 
       if (pendingRequest) {
         const orderNum = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
-        const msg = `⏳ You already have a pending request for ${pendingRequest.plan} Plan (Order #${orderNum}) awaiting verification. Please wait for approval or cancel it before requesting another.`;
+        const msg = `⏳ You already have a pending request for ${escapeHtml(pendingRequest.plan)} Plan (Order #${escapeHtml(orderNum)}) awaiting verification. Please wait for approval or cancel it before requesting another.`;
         if (ctx.callbackQuery) {
-          await ctx.answerCallbackQuery({ text: msg, show_alert: true });
+          await ctx.answerCallbackQuery({ text: `⏳ You already have a pending request for ${pendingRequest.plan} Plan (Order #${orderNum}) awaiting verification. Please wait for approval or cancel it before requesting another.`, show_alert: true });
         } else {
           await ctx.reply(msg, { parse_mode: 'HTML' });
         }
@@ -164,8 +168,8 @@ export async function renderPlansOverview(ctx: MyContext) {
     const orderNum = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
     pendingBanner =
       `⏳ <b>Active Pending Request:</b>\n` +
-      `• <b>Plan</b>: ${pendingRequest.plan}\n` +
-      `• <b>Order</b>: <code>#${orderNum}</code>\n` +
+      `• <b>Plan</b>: ${escapeHtml(pendingRequest.plan)}\n` +
+      `• <b>Order</b>: <code>#${escapeHtml(orderNum)}</code>\n` +
       `• <b>Status</b>: <i>Under Review by Administrators</i>\n` +
       `<i>You cannot submit another payment request until this one is approved, rejected, or cancelled.</i>\n\n`;
   }
@@ -177,8 +181,8 @@ export async function renderPlansOverview(ctx: MyContext) {
   await editMessageOrCaption(
     ctx,
     `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
-      `Current Plan: <b>${profile.planDisplayName}</b>\n` +
-      (profile.isActivePaid && profile.expiration ? `Expires: <code>${profile.expiration}</code>\n\n` : '\n') +
+      `Current Plan: <b>${escapeHtml(profile.planDisplayName)}</b>\n` +
+      (profile.isActivePaid && profile.expiration ? `Expires: <code>${escapeHtml(profile.expiration)}</code>\n\n` : '\n') +
       pendingBanner +
       `🆓 <b>FREE Plan</b> (0 UZS / 0 Stars)\n` +
       `• Max Call Duration: 15 minutes\n` +
@@ -289,7 +293,11 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         [{ label: `${tier} Plan`, amount: planConfig.starsPrice }]
       );
     } catch (err) {
-      console.error('[Payments] Failed to send Stars invoice:', err);
+      logger.error('Failed to send Stars invoice', {
+        service: 'bot',
+        event: 'stars_invoice_send_failed',
+        tier,
+      }, err);
       await ctx.reply('⚠️ Unable to open payment invoice right now. Please try again later.');
     }
   });
@@ -354,12 +362,12 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     await ctx.answerCallbackQuery();
     await ctx.reply(
       `📋 <b>Manual Payment Instructions</b>\n\n` +
-        `You are subscribing to the <b>${tier} Plan</b>.\n\n` +
+        `You are subscribing to the <b>${escapeHtml(tier)} Plan</b>.\n\n` +
         `💵 <b>Amount Due</b>: <b>${formattedAmount} UZS</b>\n` +
-        `💳 <b>Card Requisites</b>:\n<code>${cardDetails}</code>\n\n` +
+        `💳 <b>Card Requisites</b>:\n<code>${escapeHtml(cardDetails)}</code>\n\n` +
         `📌 <b>Instructions</b>:\n` +
-        `${instructions}\n` +
-        `Support: ${adminUsername}\n\n` +
+        `${escapeHtml(instructions)}\n` +
+        `Support: ${escapeHtml(adminUsername)}\n\n` +
         `<i>Send your receipt (photo or PDF) right here in this chat to submit your request for verification.</i>`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
@@ -447,7 +455,10 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
       await ctx.answerPreCheckoutQuery(true);
     } catch (err) {
-      console.error('[Payments] Pre-checkout query error:', err);
+      logger.error('Pre-checkout query error', {
+        service: 'bot',
+        event: 'pre_checkout_query_failed',
+      }, err);
       await ctx.answerPreCheckoutQuery(false, { error_message: 'Checkout validation failed.' });
     }
   });
@@ -459,12 +470,20 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
     const payload = payment.invoice_payload;
     if (!payload || !payload.startsWith('plan_purchase:')) {
-      console.error('[Payments] Invalid or missing invoice payload structure:', payload);
+      logger.error('Invalid or missing invoice payload structure', {
+        service: 'bot',
+        event: 'invalid_invoice_payload',
+        payload,
+      });
       return;
     }
 
     if (payment.currency !== 'XTR') {
-      console.error('[Payments] Non-XTR payment received in successful_payment:', payment.currency);
+      logger.error('Non-XTR payment received in successful_payment', {
+        service: 'bot',
+        event: 'invalid_currency_received',
+        currency: payment.currency,
+      });
       return;
     }
 
@@ -475,12 +494,21 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     const telegramId = BigInt(ctx.from?.id || 0);
 
     if (tier !== 'PLUS' && tier !== 'PRO' && tier !== 'BOSS') {
-      console.error('[Payments] Unsupported subscription tier in payload:', tier);
+      logger.error('Unsupported subscription tier in payload', {
+        service: 'bot',
+        event: 'unsupported_tier_in_payload',
+        tier,
+      });
       return;
     }
 
     if (String(ctx.from?.id) !== invoiceBuyerId) {
-      console.error('[Payments] Buyer ID mismatch in successful_payment:', { actual: ctx.from?.id, invoiceBuyerId });
+      logger.error('Buyer ID mismatch in successful_payment', {
+        service: 'bot',
+        event: 'buyer_id_mismatch',
+        actual: ctx.from?.id,
+        invoiceBuyerId,
+      });
       return;
     }
 
@@ -488,7 +516,12 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     const config = plans[tier];
 
     if (payment.total_amount !== config.starsPrice) {
-      console.error('[Payments] Payment amount mismatch:', { received: payment.total_amount, expected: config.starsPrice });
+      logger.error('Payment amount mismatch', {
+        service: 'bot',
+        event: 'payment_amount_mismatch',
+        received: payment.total_amount,
+        expected: config.starsPrice,
+      });
       return;
     }
 
@@ -557,14 +590,18 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       });
 
       if (result.status === 'duplicate') {
-        console.log('[Payments] Duplicate payment webhook safely acknowledged', { chargeId: payment.telegram_payment_charge_id });
+        logger.info('Duplicate payment webhook safely acknowledged', {
+          service: 'bot',
+          event: 'duplicate_payment_acknowledged',
+          chargeId: payment.telegram_payment_charge_id,
+        });
         return;
       }
 
       if (result.status === 'suspended') {
         await ctx.reply(
           `⚠️ <b>Payment received</b>, but your account is currently suspended.\n` +
-            `Please submit an /appeal to our moderation team with Payment ID: <code>${payment.telegram_payment_charge_id}</code>`,
+            `Please submit an /appeal to our moderation team with Payment ID: <code>${escapeHtml(payment.telegram_payment_charge_id)}</code>`,
           { parse_mode: 'HTML' }
         );
         return;
@@ -573,7 +610,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       if (result.status === 'success' && result.user) {
         await ctx.reply(
           `🎉 <b>Payment Successful!</b>\n\n` +
-            `Your subscription has been upgraded to <b>${result.user.plan} Plan</b> (Order #${orderNumber}).\n` +
+            `Your subscription has been upgraded to <b>${escapeHtml(result.user.plan)} Plan</b> (Order #${escapeHtml(orderNumber)}).\n` +
             `• Max Call Duration: ${config.maxDuration >= 999 ? 'Unlimited' : `${config.maxDuration} minutes`}\n` +
             `• Monthly Calls: ${config.dailyLimit >= 999 ? 'Unlimited' : `${config.dailyLimit} calls/month`}\n` +
             `• Recording Storage: ${config.retentionDays} days\n\n` +
@@ -581,106 +618,113 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           { parse_mode: 'HTML' }
         );
       } else {
-        console.error('[Payments] User not found after successful payment', { telegramId: telegramId.toString() });
+        logger.error('User not found after successful payment', {
+          service: 'bot',
+          event: 'user_not_found_post_payment',
+          telegramId: telegramId.toString(),
+        });
         await ctx.reply(
           `⚠️ Payment received, but we could not locate your user profile.\n` +
-            `Please contact support with your payment ID: <code>${payment.telegram_payment_charge_id}</code>`,
+            `Please contact support with your payment ID: <code>${escapeHtml(payment.telegram_payment_charge_id)}</code>`,
           { parse_mode: 'HTML' }
         );
       }
     } catch (err) {
-      console.error('[Payments] Error handling successful_payment:', err);
+      logger.error('Error handling successful_payment', {
+        service: 'bot',
+        event: 'successful_payment_handler_error',
+      }, err);
       await ctx.reply(`Payment received! Subscription processing complete.`);
     }
   });
 
   // /paysupport Command
-  if (typeof (bot as any).command === 'function') {
-    (bot as any).command('paysupport', async (ctx: any) => {
-      const telegramId = BigInt(ctx.from?.id || 0);
-      const user = await prisma.user.findUnique({ where: { telegramId } });
+  if (typeof (bot as { command?: unknown }).command === 'function') {
+    bot.command('paysupport', async (ctx) => {
+    const telegramId = BigInt(ctx.from?.id || 0);
+    const user = await prisma.user.findUnique({ where: { telegramId } });
 
-      if (!user) {
-        await ctx.reply('Please register first with /start.');
-        return;
-      }
+    if (!user) {
+      await ctx.reply('Please register first with /start.');
+      return;
+    }
 
-      const starsTx = await prisma.starsTransaction.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-      });
-
-      const manualRequests = await prisma.manualPaymentRequest.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-      });
-
-      interface UnifiedTx {
-        id: string;
-        orderNumber?: string;
-        type: 'STARS' | 'UZS';
-        plan: string;
-        amountStr: string;
-        status: string;
-        createdAt: Date;
-      }
-
-      const combined: UnifiedTx[] = [
-        ...starsTx.map((tx) => ({
-          id: tx.id,
-          orderNumber: tx.orderNumber || undefined,
-          type: 'STARS' as const,
-          plan: tx.planTier,
-          amountStr: `⭐ ${tx.starsAmount} Stars`,
-          status: tx.status,
-          createdAt: tx.createdAt,
-        })),
-        ...manualRequests.map((req) => ({
-          id: req.id,
-          orderNumber: req.orderNumber || `A${req.id.slice(0, 4)}`,
-          type: 'UZS' as const,
-          plan: req.plan,
-          amountStr: `💳 ${req.uzsAmount.toLocaleString()} UZS`,
-          status: req.status,
-          createdAt: req.createdAt,
-        })),
-      ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-      let historyText = '<b>Recent Transactions:</b>\n';
-      if (combined.length === 0) {
-        historyText += '<i>No payment transactions recorded for this account.</i>\n';
-      } else {
-        combined.slice(0, 5).forEach((tx) => {
-          const dateStr = tx.createdAt.toISOString().slice(0, 16).replace('T', ' ');
-          const statusIcon = tx.status === 'APPROVED' || tx.status === 'SUCCESS' ? '✅' : tx.status === 'PENDING' ? '⏳' : '❌';
-          const orderPrefix = tx.orderNumber ? `[#${tx.orderNumber}] ` : '';
-          historyText += `• ${tx.amountStr} — <b>${tx.plan}</b>: ${statusIcon} <code>${tx.status}</code> (${orderPrefix}${dateStr})\n`;
-        });
-      }
-
-      const adminContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
-      const policyUrl = env.PRIVACY_POLICY_URL || `${env.MINI_APP_URL}/privacy`;
-      const inlineKb = new InlineKeyboard()
-        .text('💸 Request Refund', 'request_refund')
-        .row()
-        .webApp('📜 View Refund Policy', policyUrl)
-        .row()
-        .text('⭐ View Plans & Pricing', 'show_plans');
-
-      await ctx.reply(
-        `🛡️ <b>Payment & Billing Support</b>\n\n` +
-          `${historyText}\n` +
-          `🛡️ <b>100% Refund Eligibility Policy</b>:\n` +
-          `• <b>Eligibility Criteria</b>: A full refund is eligible if requested within <b>48 hours (2 days)</b> of purchase <b>AND</b> if less than <b>10% of monthly call allowance</b> has been used (0 calls on PLUS, ≤ 2 calls on PRO, ≤ 4 calls on BOSS).\n` +
-          `• <b>Telegram Stars</b>: Instant automatic refund executed via <code>/refund</code> in the bot.\n` +
-          `• <b>Card Payments (UZS)</b>: Verified card refunds are submitted via <code>/refund</code> and processed to your card in 1–3 business days.\n` +
-          `• <b>Entitlement Reversion</b>: Processing a refund automatically reverts account limits to the Free tier.\n\n` +
-          `For billing inquiries, receipt verification, or manual support: ${adminContact}`,
-        { parse_mode: 'HTML', reply_markup: inlineKb }
-      );
+    const starsTx = await prisma.starsTransaction.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
     });
+
+    const manualRequests = await prisma.manualPaymentRequest.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+
+    interface UnifiedTx {
+      id: string;
+      orderNumber?: string;
+      type: 'STARS' | 'UZS';
+      plan: string;
+      amountStr: string;
+      status: string;
+      createdAt: Date;
+    }
+
+    const combined: UnifiedTx[] = [
+      ...starsTx.map((tx) => ({
+        id: tx.id,
+        orderNumber: tx.orderNumber || undefined,
+        type: 'STARS' as const,
+        plan: tx.planTier,
+        amountStr: `⭐ ${tx.starsAmount} Stars`,
+        status: tx.status,
+        createdAt: tx.createdAt,
+      })),
+      ...manualRequests.map((req) => ({
+        id: req.id,
+        orderNumber: req.orderNumber || `A${req.id.slice(0, 4)}`,
+        type: 'UZS' as const,
+        plan: req.plan,
+        amountStr: `💳 ${req.uzsAmount.toLocaleString()} UZS`,
+        status: req.status,
+        createdAt: req.createdAt,
+      })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    let historyText = '<b>Recent Transactions:</b>\n';
+    if (combined.length === 0) {
+      historyText += '<i>No payment transactions recorded for this account.</i>\n';
+    } else {
+      combined.slice(0, 5).forEach((tx) => {
+        const dateStr = tx.createdAt.toISOString().slice(0, 16).replace('T', ' ');
+        const statusIcon = tx.status === 'APPROVED' || tx.status === 'SUCCESS' ? '✅' : tx.status === 'PENDING' ? '⏳' : '❌';
+        const orderPrefix = tx.orderNumber ? `[#${escapeHtml(tx.orderNumber)}] ` : '';
+        historyText += `• ${escapeHtml(tx.amountStr)} — <b>${escapeHtml(tx.plan)}</b>: ${statusIcon} <code>${escapeHtml(tx.status)}</code> (${orderPrefix}${dateStr})\n`;
+      });
+    }
+
+    const adminContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
+    const policyUrl = env.PRIVACY_POLICY_URL || `${env.MINI_APP_URL}/privacy`;
+    const inlineKb = new InlineKeyboard()
+      .text('💸 Request Refund', 'request_refund')
+      .row()
+      .webApp('📜 View Refund Policy', policyUrl)
+      .row()
+      .text('⭐ View Plans & Pricing', 'show_plans');
+
+    await ctx.reply(
+      `🛡️ <b>Payment & Billing Support</b>\n\n` +
+        `${historyText}\n` +
+        `🛡️ <b>100% Refund Eligibility Policy</b>:\n` +
+        `• <b>Eligibility Criteria</b>: A full refund is eligible if requested within <b>48 hours (2 days)</b> of purchase <b>AND</b> if less than <b>10% of monthly call allowance</b> has been used (0 calls on PLUS, ≤ 2 calls on PRO, ≤ 4 calls on BOSS).\n` +
+        `• <b>Telegram Stars</b>: Instant automatic refund executed via <code>/refund</code> in the bot.\n` +
+        `• <b>Card Payments (UZS)</b>: Verified card refunds are submitted via <code>/refund</code> and processed to your card in 1–3 business days.\n` +
+        `• <b>Entitlement Reversion</b>: Processing a refund automatically reverts account limits to the Free tier.\n\n` +
+        `For billing inquiries, receipt verification, or manual support: ${escapeHtml(adminContact)}`,
+      { parse_mode: 'HTML', reply_markup: inlineKb }
+    );
+  });
   }
 
   // In-bot receipt ingest for users submitting manual payment receipts (photos, documents, PDFs)
@@ -707,7 +751,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         const inlineKb = new InlineKeyboard().text('✖️ Cancel Current Request', `cancel_manual_pay:${pendingRequest.id}`);
         await ctx.reply(
           `⏳ <b>Payment Request Already Under Review</b>\n\n` +
-            `You already have a pending request for the <b>${pendingRequest.plan} Plan</b> (Order #<code>${orderNum}</code>) submitted for administrator verification.\n\n` +
+            `You already have a pending request for the <b>${escapeHtml(pendingRequest.plan)} Plan</b> (Order #<code>${escapeHtml(orderNum)}</code>) submitted for administrator verification.\n\n` +
             `You can only have <b>one active payment request</b> at a time. Please wait for approval or rejection before submitting another.\n\n` +
             `<i>If you made a mistake and want to submit a new receipt, cancel your current request below:</i>`,
           { parse_mode: 'HTML', reply_markup: inlineKb }
@@ -752,7 +796,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         return next();
       }
 
-      console.log(`[Payments] RECEIPT_RECEIVED`, {
+      logger.info('Payment receipt received', {
+        service: 'bot',
+        event: 'receipt_received',
         orderNumber,
         userId: user.id,
         telegramId: ctx.from.id,
@@ -772,7 +818,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       });
 
       if (!validation.valid) {
-        console.log(`[Payments] RECEIPT_REJECTED`, {
+        logger.info('Payment receipt rejected', {
+          service: 'bot',
+          event: 'receipt_rejected',
           orderNumber,
           category: validation.category,
           reason: validation.reason,
@@ -782,7 +830,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      console.log(`[Payments] RECEIPT_VALIDATED`, {
+      logger.info('Payment receipt validated', {
+        service: 'bot',
+        event: 'receipt_validated',
         orderNumber,
         category: validation.category,
         fileId,
@@ -826,22 +876,31 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       ctx.session.pendingPaymentPlan = undefined;
       ctx.session.step = 'idle';
 
-      console.log(`[Payments] RECEIPT_ATTACHED`, { orderNumber, requestId: pendingRequest?.id });
+      logger.info('Payment receipt attached', {
+        service: 'bot',
+        event: 'receipt_attached',
+        orderNumber,
+        requestId: pendingRequest?.id,
+      });
 
       await ctx.reply(
         `✅ <b>Payment Receipt Received!</b>\n\n` +
-          `Your receipt (<b>${validation.fileName}</b>) has been submitted for Order #<b>${orderNumber}</b>.\n` +
-          `Our administration team will verify your payment and activate your <b>${planTier} Plan</b> subscription shortly.\n\n` +
+          `Your receipt (<b>${escapeHtml(validation.fileName)}</b>) has been submitted for Order #<b>${escapeHtml(orderNumber)}</b>.\n` +
+          `Our administration team will verify your payment and activate your <b>${escapeHtml(planTier)} Plan</b> subscription shortly.\n\n` +
           `Thank you for practicing with us!`,
         { parse_mode: 'HTML' }
       );
 
       // P0-B: Download file bytes via Main Bot so Bot B can upload raw bytes (InputFile) to admin
-      console.log(`[Payments] ADMIN_NOTIFICATION_STARTED`, { orderNumber });
+      logger.info('Admin payment notification started', {
+        service: 'bot',
+        event: 'admin_payment_notification_started',
+        orderNumber,
+      });
       try {
         const downloadedReceipt = await downloadTelegramReceiptFile(ctx.api, fileId);
 
-        await sendAdminPaymentNotification(ctx.api as any, {
+        await sendAdminPaymentNotification({ api: ctx.api } as unknown as Bot, {
           orderNumber,
           userAlias: user.alias,
           telegramId: user.telegramId,
@@ -855,17 +914,23 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           status: 'PENDING',
         });
 
-        console.log(`[Payments] ADMIN_NOTIFICATION_SENT`, { orderNumber });
-      } catch (notifyErr) {
-        const rawErr = notifyErr instanceof Error ? notifyErr.message : String(notifyErr);
-        const sanitizedErr = rawErr.replace(/bot\d+:[a-zA-Z0-9_-]+/g, '[REDACTED_TOKEN]');
-        console.error(`[Payments] ADMIN_NOTIFICATION_FAILED`, {
+        logger.info('Admin payment notification sent', {
+          service: 'bot',
+          event: 'admin_payment_notification_sent',
           orderNumber,
-          error: sanitizedErr,
         });
+      } catch (notifyErr) {
+        logger.error('Admin payment notification failed', {
+          service: 'bot',
+          event: 'admin_payment_notification_failed',
+          orderNumber,
+        }, notifyErr);
       }
     } catch (err) {
-      console.error('[Payments] Error handling receipt message:', err);
+      logger.error('Error handling receipt message', {
+        service: 'bot',
+        event: 'receipt_message_handler_error',
+      }, err);
       return next();
     }
   });

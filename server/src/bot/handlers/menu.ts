@@ -8,6 +8,7 @@ import { env } from '../../config/env';
 import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../../services/plan';
 import { getReferralStats, getContestStatus, getActiveBonusCallsCount } from '../../services/referralService';
 import { getRedis } from '../../config/redis';
+import { logger } from '../../utils/logger';
 
 function getPlansImagePath(): string | null {
   const candidatePaths = [
@@ -332,7 +333,10 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         });
         return;
       } catch (err) {
-        console.warn('[Bot] Failed to send plans photo, falling back to text:', err);
+        logger.warn('Failed to send plans photo, falling back to text', {
+          service: 'bot',
+          event: 'plans_photo_failed',
+        }, err);
       }
     }
 
@@ -498,7 +502,11 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         { parse_mode: 'HTML' }
       );
     } catch (err) {
-      console.error('[Bot] Failed to create appeal:', err);
+      logger.error('Failed to create appeal', {
+        service: 'bot',
+        event: 'appeal_creation_failed',
+        userId: user.id,
+      }, err);
       await ctx.reply('⚠️ Failed to record your appeal. Please try again in a moment.');
     }
   });

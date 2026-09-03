@@ -7,6 +7,7 @@ import { getPaidUserProfile } from '../../services/plan';
 import { bindReferral } from '../../services/referralService';
 import { renderPlanSelection, renderPlansOverview } from '../handlers/payments';
 import { handleRefundRequest } from '../handlers/refund';
+import { logger } from '../../utils/logger';
 
 export const getMainMenuKeyboard = () => {
   return new Keyboard()
@@ -26,6 +27,8 @@ export const getMainMenuKeyboard = () => {
     .text('📜 Community Guidelines')
     .resized();
 };
+
+import { escapeHtml } from '../../utils/sanitize';
 
 export function calculateOverallBand(fc: number, lr: number, gra: number, p: number): number {
   const avg = (fc + lr + gra + p) / 4;
@@ -50,8 +53,15 @@ export function setupStartCommand(bot: Bot<MyContext>) {
 
     const startPayload = typeof ctx.match === 'string' ? ctx.match.trim() : '';
     if (startPayload.startsWith('ref_')) {
-      const guestName = ctx.from?.first_name || (ctx.from?.username ? `@${ctx.from.username}` : undefined);
-      await bindReferral(telegramId, startPayload, bot, guestName).catch((e) => console.warn('[Start] bindReferral error:', e));
+      const rawGuestName = ctx.from?.first_name || (ctx.from?.username ? `@${ctx.from.username}` : undefined);
+      const guestName = rawGuestName ? escapeHtml(rawGuestName) : undefined;
+      await bindReferral(telegramId, startPayload, bot, guestName).catch((e) => {
+        logger.warn('bindReferral error on start command', {
+          service: 'bot',
+          event: 'start_bind_referral_failed',
+          telegramId: telegramId.toString(),
+        }, e);
+      });
     }
 
     let user = await prisma.user.findUnique({
