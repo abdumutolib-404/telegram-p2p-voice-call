@@ -287,17 +287,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-[1.1]">
-            Partner ghosted you again?{' '}
+            Practice IELTS Speaking with{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400">
-              No more excuses.
+              Criteria-Matched Partners
             </span>
           </h1>
 
-          <p className="mt-6 text-lg sm:text-xl text-zinc-400 max-w-3xl mx-auto leading-relaxed">
-            Stop waiting for your study buddy to reply. Get matched with a live IELTS partner in &lt; 3 seconds. Practice Part 1, 2, and 3 with criteria-matched candidates. 100% anonymous &amp; free to start on Telegram.
+          {/* Machine-Extractable Definition */}
+          <div className="mt-6 max-w-2xl mx-auto px-4 py-3 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 text-xs sm:text-sm text-zinc-300 font-sans shadow-inner text-center">
+            <strong className="text-cyan-400 font-semibold">What is PairTalk?</strong> PairTalk is an autonomous peer-to-peer web and Telegram platform that matches IELTS candidates worldwide for criteria-calibrated spoken English practice in encrypted voice rooms.
+          </div>
+
+          <p className="mt-5 text-base sm:text-lg text-zinc-400 max-w-3xl mx-auto leading-relaxed">
+            Stop waiting for inactive study partners to reply. Connect with active test-takers in under 3 seconds to practice Part 1, 2, and 3 with real examination timers. 100% anonymous &amp; free to start on Telegram.
           </p>
 
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
               href={botAppUrl}
               target="_blank"
@@ -318,6 +323,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <span>Open @{botUsername}</span>
             </a>
           </div>
+
+          {/* Prominently Surfaced Non-Affiliation Disclaimer */}
+          <p className="mt-4 text-[11px] text-zinc-500 font-mono max-w-xl mx-auto">
+            PairTalk is an independent educational platform and is not affiliated with, approved, or endorsed by the British Council, IDP: IELTS Australia, or Cambridge University Press &amp; Assessment.
+          </p>
 
           {/* Quick Metrics Bar */}
           <div className="mt-14 pt-8 border-t border-zinc-800/60 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">

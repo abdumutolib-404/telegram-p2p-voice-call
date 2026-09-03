@@ -1,32 +1,11 @@
 # PairTalk
 
-> Autonomous peer-to-peer IELTS Speaking preparation platform operating natively inside Telegram and on the Web. Matches candidates with criteria-aligned study partners worldwide in <3 seconds for Part 1, 2, and 3 simulations inside studio-grade WebRTC encrypted voice rooms.
+> PairTalk is an autonomous peer-to-peer IELTS Speaking preparation platform operating natively on Telegram and the Web. It connects English learners worldwide in under 3 seconds based on target band scores (Band 5–9) and official IELTS criteria (Fluency, Vocabulary, Grammar, Pronunciation) for live Part 1, 2, and 3 practice sessions inside encrypted WebRTC voice rooms.
 
-## Core Capabilities & Architecture
-- **Deterministic Matchmaking Radar**: Instant sub-3-second pairing with live speaking partners based on whole-band target scores (Band 5 to 9).
-- **Official Rubric Calibration**: Aligned with British Council / IDP IELTS Speaking Band Descriptors across Fluency & Coherence (FC), Lexical Resource (LR), Grammatical Range & Accuracy (GRA), and Pronunciation (P).
-- **100% Anonymous Aliases**: Candidates operate under randomized cryptographic aliases (e.g. `P2P-0284DB68`). Telegram usernames, phone numbers, and real names are never transmitted to peers.
-- **Studio-Grade WebRTC SFU**: Encrypted live voice calls with cross-device audio unlock and jitter-free packet relay via LiveKit.
-- **Speaking Sprint & Community Rewards**: Real-time community leaderboards and permanent bonus practice calls for friend referrals.
-- **Server-Enforced 100% Refund Policy**: Unconditional refund within 48 hours of purchase and <10% quota usage via `/refund` in Telegram.
-
-## Authoritative Documentation & Policies
-- [Guidelines](https://pairtalk.online/community-guidelines): Official IELTS Speaking Code of Conduct, call environment etiquette, anti-solicitation safety protocols, moderation penalty ladder, and unban appeals.
-- [Privacy & Policy](https://pairtalk.online/privacy): Zero-knowledge PII protection, audio recording retention matrix (Free 24h, Plus 7d, Pro 30d, Boss 90d), Terms of Service, and 100% money-back guarantee.
-- [How It Works](https://pairtalk.online/how-it-works): Comprehensive walkthrough of the matchmaking radar, criteria calibration, and 1-on-1 exam room simulation.
-- [IELTS Speaking Guide](https://pairtalk.online/ielts-speaking): Detailed breakdown of the 2026 IELTS Speaking exam format (Part 1 Interview, Part 2 Cue Card, Part 3 Discussion) and whole-band descriptors.
-- [FAQ](https://pairtalk.online/faq): Verified answers regarding pricing, practice formats, tutor comparisons, and refund procedures.
-
-## Plans & Pricing Structure
-- **FREE**: $0. Complimentary monthly calls, 15 min duration, 1 cloud recording (24-hour retention).
-- **PLUS**: $1.58 / 79 Telegram Stars (15,000 UZS). 10 calls/month, 30 min duration, 3 cloud recordings (7-day retention).
-- **PRO**: $5.10 / 255 Telegram Stars (55,000 UZS). 25 calls/month, 60 min duration, 7 cloud recordings (30-day retention), high-priority matching queue.
-- **BOSS**: $13.58 / 679 Telegram Stars (149,000 UZS). 50 calls/month, 90 min duration, 15 cloud recordings (90-day retention), VIP priority matching queue.
-
-## Access Points & Endpoints
-- Web Platform: https://pairtalk.online
-- Telegram Mini App: https://t.me/PairTalkBot?startapp=1
-- Telegram Bot: https://t.me/PairTalkBot
-- Customer Support: https://t.me/PairTalkSupport
-- Expanded Context: https://pairtalk.online/llms-full.txt
-- Agent Discovery: https://pairtalk.online/.well-known/agents.json
+## Core Documentation
+- [How It Works](https://pairtalk.online/how-it-works): Matchmaking radar, band scoring criteria calibration, and room simulation workflow.
+- [IELTS Speaking Guide](https://pairtalk.online/ielts-speaking): Detailed breakdown of IELTS Speaking Part 1 interview, Part 2 cue cards, Part 3 discussions, and band descriptors.
+- [Pricing](https://pairtalk.online/#pricing): Comparison of Free tier and paid accelerator plans (Plus, Pro, Boss) with audio recording retention limits.
+- [FAQ](https://pairtalk.online/faq): Verbatim answers on partner matching, audio requirements, privacy protections, and money-back guarantee.
+- [Safety & Etiquette](https://pairtalk.online/community-guidelines): Candidate code of conduct, anti-harassment policies, moderation ladder, and unban appeal procedures.
+- [Privacy Policy](https://pairtalk.online/privacy): Audio retention schedules, zero-knowledge PII safeguards, and refund policy terms.

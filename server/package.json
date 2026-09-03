@@ -21,6 +21,7 @@
     "express": "^4.19.2",
     "grammy": "^1.26.0",
     "ioredis": "^5.4.1",
+    "ipaddr.js": "^2.5.0",
     "jsonwebtoken": "^9.0.2",
     "livekit-server-sdk": "^2.1.2",
     "node-cron": "^3.0.3",

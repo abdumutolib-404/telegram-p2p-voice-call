@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getRedis } from '../config/redis';
 import { logger } from '../utils/logger';
+import { verifyCrawler } from '../services/crawler/verifyCrawler';
 
 // In-memory fallback cache for jailed IPs when Redis is disconnected
 const memoryJailedIps = new Map<string, number>();
@@ -129,15 +130,25 @@ export function isExploitProbe(path: string): boolean {
  */
 export async function scannerShieldMiddleware(req: Request, res: Response, next: NextFunction) {
   const ip = getClientIp(req);
+  const rawUrl = req.originalUrl || req.url || '';
+  const decoded = decodeSafely(rawUrl);
+  const userAgent = req.headers['user-agent'];
 
-  // 1. Fast reject jailed IPs
-  if (await isIpJailed(ip)) {
+  // 0. Pre-check Crawler Authenticity
+  const crawlerCheck = await verifyCrawler(ip, userAgent);
+
+  // If a request spoofs a known crawler User-Agent from an unauthorized IP:
+  if (crawlerCheck.isSpoofed) {
+    await jailIp(ip, `Spoofed Crawler User-Agent (${crawlerCheck.crawlerName})`, decoded);
     res.status(403).setHeader('Connection', 'close').end();
     return;
   }
 
-  const rawUrl = req.originalUrl || req.url || '';
-  const decoded = decodeSafely(rawUrl);
+  // 1. Fast reject jailed IPs (genuine crawlers are never jailed)
+  if (!crawlerCheck.isVerified && (await isIpJailed(ip))) {
+    res.status(403).setHeader('Connection', 'close').end();
+    return;
+  }
 
   // 2. Exploit Probe Detection
   if (isExploitProbe(decoded)) {
@@ -146,25 +157,27 @@ export async function scannerShieldMiddleware(req: Request, res: Response, next:
     return;
   }
 
-  // 3. Track 404s after response finish for heuristic brute-force banishment
-  res.on('finish', () => {
-    if (res.statusCode === 404) {
-      const now = Date.now();
-      const current = anomaly404Tracker.get(ip) || { count: 0, firstAt: now };
-      if (now - current.firstAt > 30000) {
-        // Reset window every 30s
-        anomaly404Tracker.set(ip, { count: 1, firstAt: now });
-      } else {
-        current.count += 1;
-        anomaly404Tracker.set(ip, current);
-        if (current.count >= 15) {
-          // Banish aggressive 404 crawlers
-          anomaly404Tracker.delete(ip);
-          jailIp(ip, 'Excessive 404 Anomaly (>15 in 30s)', decoded).catch(() => {});
+  // 3. Track 404s after response finish for heuristic brute-force banishment (skip for genuine verified crawlers)
+  if (!crawlerCheck.isVerified) {
+    res.on('finish', () => {
+      if (res.statusCode === 404) {
+        const now = Date.now();
+        const current = anomaly404Tracker.get(ip) || { count: 0, firstAt: now };
+        if (now - current.firstAt > 30000) {
+          // Reset window every 30s
+          anomaly404Tracker.set(ip, { count: 1, firstAt: now });
+        } else {
+          current.count += 1;
+          anomaly404Tracker.set(ip, current);
+          if (current.count >= 15) {
+            // Banish aggressive 404 scrapers
+            anomaly404Tracker.delete(ip);
+            jailIp(ip, 'Excessive 404 Anomaly (>15 in 30s)', decoded).catch(() => {});
+          }
         }
       }
-    }
-  });
+    });
+  }
 
   next();
 }

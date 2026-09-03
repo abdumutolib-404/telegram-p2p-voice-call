@@ -1,62 +1,38 @@
-# Robots.txt for PairTalk Public Platform (https://pairtalk.online)
+# Robots.txt for PairTalk (https://pairtalk.online)
 # Explicitly allowing modern AI search crawlers & major search engine indexing
 
-# AI-friendly content locations
-# - /llms.txt - Curated overview for AI/LLMs (markdown)
-# - /llms-full.txt - Full expanded content for larger context windows
-# - /.well-known/agents.json - Agent discovery and capabilities
+# AI documentation indices
+# https://pairtalk.online/llms.txt
+# https://pairtalk.online/llms-full.txt
 
+# --- AI & Search Engine Crawlers ---
 User-agent: Googlebot
 User-agent: Google-Extended
-User-agent: Bingbot
 User-agent: ClaudeBot
-User-agent: anthropic-ai
 User-agent: GPTBot
-User-agent: ChatGPT-User
 User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
 User-agent: PerplexityBot
-User-agent: Applebot
-User-agent: Applebot-Extended
-User-agent: TelegramBot
-User-agent: Twitterbot
-User-agent: facebookexternalhit
-User-agent: FacebookBot
+User-agent: CCBot
 Allow: /
 Disallow: /api/
 Disallow: /admin
 
-# Block Aggressive Scrapers, Vulnerability Probers & Mass Harvesters
-User-agent: Bytespider
-User-agent: TikTokSpider
-User-agent: CCBot
-User-agent: Crawl4AI
-User-agent: img2dataset
-User-agent: Scrapy
-User-agent: Diffbot
-User-agent: ImagesiftBot
-User-agent: imageSpider
-User-agent: cohere-training-data-crawler
-User-agent: WARDBot
-User-agent: Baiduspider
-User-agent: PetalBot
-User-agent: YandexBot
-User-agent: MJ12bot
-User-agent: AhrefsBot
-User-agent: SemrushBot
-User-agent: SemrushBot-OCOB
-User-agent: SemrushBot-SWA
-User-agent: DotBot
-User-agent: DataForSeoBot
-User-agent: Sogou
-User-agent: Panscient
-User-agent: panscient.com
-Disallow: /
+# --- Social & Messenger Unfurlers ---
+User-agent: TelegramBot
+User-agent: Twitterbot
+User-agent: facebookexternalhit
+User-agent: Applebot
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /admin
 
-# General Crawlers
+# --- Default Crawlers ---
 User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /admin
 
-# Authoritative Canonical Sitemap
+# --- Sitemap Directive ---
 Sitemap: https://pairtalk.online/sitemap.xml
