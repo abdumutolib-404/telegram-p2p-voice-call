@@ -9,6 +9,8 @@ import { Bot } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
 import { env } from './config/env';
 import { prisma, connectDB, disconnectDB } from './config/database';
+import { connectRedis } from './config/redis';
+import { primeAllCrawlerCaches } from './services/crawler/verifyCrawler';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
 import ieltsRoutes from './routes/ielts';
@@ -772,11 +774,10 @@ if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
   try {
     bot = createBot(env.BOT_TOKEN);
     setAdminBot(bot);
-    void startBotWithRetry(bot);
   } catch (error: unknown) {
-    logger.error('Telegram bot startup failed', {
+    logger.error('Telegram bot instance creation failed', {
       service: 'bot',
-      event: 'bot_startup_failed',
+      event: 'bot_creation_failed',
     }, error);
   }
 } else {
@@ -789,7 +790,17 @@ if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
 async function bootstrap(): Promise<void> {
   try {
     await connectDB();
+    await connectRedis();
     setAdminBot(bot);
+
+    // Start bot polling under distributed leader election only after Redis and DB are ready
+    if (bot) {
+      void startBotWithRetry(bot);
+    }
+
+    // Warm verified crawler IP prefixes in background
+    void primeAllCrawlerCaches().catch(() => undefined);
+
     setupSocketSignaling(io, bot ?? undefined);
     startStoragePurgeCron();
     startSubscriptionExpiryCron(() => bot);

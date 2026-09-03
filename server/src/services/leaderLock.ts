@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { getRedis } from '../config/redis';
+import { getRedis, isRedisReady } from '../config/redis';
 import { logger } from '../utils/logger';
 
 export interface LeaderLockOptions {
@@ -37,8 +37,15 @@ export class DistributedLeaderLock {
   }
 
   public async acquire(): Promise<boolean> {
-    const redis = getRedis();
     try {
+      if (!isRedisReady()) {
+        logger.debug(`Redis not ready yet; deferring leader lock acquisition for [${this.lockKey}]`, {
+          service: 'leaderLock',
+          instanceId: this.instanceId,
+        });
+        return false;
+      }
+      const redis = getRedis();
       const res = await redis.set(this.lockKey, this.instanceId, 'PX', this.ttlMs, 'NX');
       if (res === 'OK') {
         this.isLeader = true;
@@ -63,16 +70,17 @@ export class DistributedLeaderLock {
 
   public async renew(): Promise<boolean> {
     if (!this.isLeader) return false;
-    const redis = getRedis();
-    const script = `
-      -- LOCK_RENEW
-      if redis.call('GET', KEYS[1]) == ARGV[1] then
-        return redis.call('PEXPIRE', KEYS[1], ARGV[2])
-      else
-        return 0
-      end
-    `;
     try {
+      if (!isRedisReady()) return false;
+      const redis = getRedis();
+      const script = `
+        -- LOCK_RENEW
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+          return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+        else
+          return 0
+        end
+      `;
       const res = await redis.eval(script, 1, this.lockKey, this.instanceId, String(this.ttlMs));
       if (Number(res) === 1) {
         return true;
@@ -96,16 +104,21 @@ export class DistributedLeaderLock {
 
   public async release(): Promise<boolean> {
     if (!this.isLeader) return false;
-    const redis = getRedis();
-    const script = `
-      -- LOCK_RELEASE
-      if redis.call('GET', KEYS[1]) == ARGV[1] then
-        return redis.call('DEL', KEYS[1])
-      else
-        return 0
-      end
-    `;
     try {
+      if (!isRedisReady()) {
+        this.isLeader = false;
+        this.stopTimers();
+        return false;
+      }
+      const redis = getRedis();
+      const script = `
+        -- LOCK_RELEASE
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+          return redis.call('DEL', KEYS[1])
+        else
+          return 0
+        end
+      `;
       const res = await redis.eval(script, 1, this.lockKey, this.instanceId);
       this.isLeader = false;
       this.stopTimers();
@@ -138,19 +151,27 @@ export class DistributedLeaderLock {
       if (!this.isRunning) return;
       if (this.isLeader) return;
 
-      const acquired = await this.acquire();
-      if (acquired) {
-        this.clearStandbyTimer();
-        this.startHeartbeat(callbacks.onLost);
-        try {
-          await callbacks.onElected();
-        } catch (err: unknown) {
-          logger.error('Error in onElected callback', {
-            service: 'leaderLock',
-            event: 'on_elected_error',
-          }, err);
+      try {
+        const acquired = await this.acquire();
+        if (acquired) {
+          this.clearStandbyTimer();
+          this.startHeartbeat(callbacks.onLost);
+          try {
+            await callbacks.onElected();
+          } catch (err: unknown) {
+            logger.error('Error in onElected callback', {
+              service: 'leaderLock',
+              event: 'on_elected_error',
+            }, err);
+          }
+        } else {
+          this.scheduleStandby(tryElect);
         }
-      } else {
+      } catch (err: unknown) {
+        logger.warn('Unexpected error during election cycle, retrying in standby...', {
+          service: 'leaderLock',
+          event: 'election_cycle_error',
+        }, err);
         this.scheduleStandby(tryElect);
       }
     };

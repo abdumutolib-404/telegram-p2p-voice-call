@@ -30,6 +30,8 @@ export class NotificationQueue {
 
       try {
         await bot.api.sendMessage(item.telegramId, item.text, item.options);
+        // Rate-pacing delay to respect Telegram's 30 msg/s broadcast limit
+        await new Promise((resolve) => setTimeout(resolve, 35));
       } catch (err: unknown) {
         const errorObj = err as { error_code?: number; parameters?: { retry_after?: number }; message?: string };
         if (errorObj?.error_code === 429) {

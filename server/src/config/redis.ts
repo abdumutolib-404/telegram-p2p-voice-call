@@ -299,12 +299,16 @@ let isRealRedisReady = false;
 if (env.NODE_ENV !== 'test') {
   realRedisInstance = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: 1,
-    retryStrategy: () => null,
+    retryStrategy: (times) => Math.min(times * 150, 3000),
     lazyConnect: true,
   });
 
   realRedisInstance.on('ready', () => {
     isRealRedisReady = true;
+    logger.info('Redis connection ready', {
+      service: 'redis',
+      event: 'redis_ready',
+    });
   });
   realRedisInstance.on('end', () => {
     isRealRedisReady = false;
@@ -323,6 +327,45 @@ if (env.NODE_ENV !== 'test') {
       service: 'redis',
       event: 'redis_connect_failed',
     }, error);
+  });
+}
+
+export function isRedisReady(): boolean {
+  if (env.NODE_ENV === 'test') return true;
+  if (env.NODE_ENV === 'development') return true;
+  return Boolean(realRedisInstance && isRealRedisReady);
+}
+
+export async function connectRedis(timeoutMs = 15000): Promise<boolean> {
+  if (env.NODE_ENV === 'test') return true;
+  if (!realRedisInstance) return false;
+  if (isRealRedisReady) return true;
+
+  return new Promise<boolean>((resolve) => {
+    if (isRealRedisReady) {
+      resolve(true);
+      return;
+    }
+
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        logger.warn('Redis initial connection wait timed out, continuing startup with degraded lock...', {
+          service: 'redis',
+          event: 'redis_connect_timeout',
+        });
+        resolve(false);
+      }
+    }, timeoutMs);
+
+    realRedisInstance.once('ready', () => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timer);
+        resolve(true);
+      }
+    });
   });
 }
 
