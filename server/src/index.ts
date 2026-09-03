@@ -5,12 +5,13 @@ import cors from 'cors';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Server as SocketIOServer } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import { Bot } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
 import { run, RunnerHandle } from '@grammyjs/runner';
 import { env } from './config/env';
 import { prisma, connectDB, disconnectDB } from './config/database';
-import { connectRedis } from './config/redis';
+import { connectRedis, pubClient, subClient } from './config/redis';
 import { primeAllCrawlerCaches } from './services/crawler/verifyCrawler';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
@@ -19,7 +20,7 @@ import adminRoutes, { setAdminBot } from './routes/admin';
 import adminTelemetryRouter from './routes/adminTelemetry';
 import { adminAuthMiddleware } from './middleware/adminAuth';
 import { livekitWebhookRouter } from './routes/livekitWebhook';
-import { setupSocketSignaling } from './socket/signaling';
+import { setupSocketSignaling, startZombieSessionCleaner } from './socket/signaling';
 import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
 import { startSubscriptionExpiryCron } from './services/subscriptionExpiry';
@@ -916,6 +917,14 @@ methods: ['GET', 'POST'],
   },
 });
 
+if (pubClient && subClient) {
+  io.adapter(createAdapter(pubClient, subClient));
+  logger.info('Socket.IO configured with @socket.io/redis-adapter for horizontal clustering', {
+    service: 'socket',
+    event: 'redis_adapter_configured',
+  });
+}
+
 let bot: Bot<MyContext> | null = null;
 
 async function startBotWithRetry(botInstance: Bot<MyContext>): Promise<void> {
@@ -1037,6 +1046,7 @@ async function bootstrap(): Promise<void> {
     void primeAllCrawlerCaches().catch(() => undefined);
 
     setupSocketSignaling(io, bot ?? undefined);
+    startZombieSessionCleaner(io, bot ?? undefined);
     startStoragePurgeCron();
     startSubscriptionExpiryCron(() => bot);
 

@@ -9,8 +9,9 @@ import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEnt
 import { getReferralStats, getContestStatus, getActiveBonusCallsCount } from '../../services/referralService';
 import { getRedis } from '../../config/redis';
 import { logger } from '../../utils/logger';
+import { moderationService } from '../../services/moderation';
 
-function getPlansImagePath(): string | null {
+const cachedPlansImagePath: string | null = (() => {
   const candidatePaths = [
     path.resolve(__dirname, '../../../assets/plans_pricing.jpg'),
     path.resolve(__dirname, '../../assets/plans_pricing.jpg'),
@@ -25,6 +26,10 @@ function getPlansImagePath(): string | null {
     if (fs.existsSync(p)) return p;
   }
   return null;
+})();
+
+function getPlansImagePath(): string | null {
+  return cachedPlansImagePath;
 }
 
 async function withUserAppealLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -64,9 +69,11 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
-    const callsUsed = await getUserCallsUsedThisPeriod(user.id, user);
-    const recUsed = await getUserRecordingsUsedThisPeriod(user.id, user);
-    const activeBonusCalls = await getActiveBonusCallsCount(user.id);
+    const [callsUsed, recUsed, activeBonusCalls] = await Promise.all([
+      getUserCallsUsedThisPeriod(user.id, user),
+      getUserRecordingsUsedThisPeriod(user.id, user),
+      getActiveBonusCallsCount(user.id),
+    ]);
     const profile = getPaidUserProfile({
       ...user,
       dailyCallsUsed: callsUsed,
@@ -112,8 +119,10 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
     const botUsername = ctx.me?.username || bot.botInfo?.username || 'PairTalkBot';
     const inviteLink = `https://t.me/${botUsername}?start=ref_${user.telegramId}`;
 
-    const stats = await getReferralStats(user.id);
-    const contest = await getContestStatus();
+    const [stats, contest] = await Promise.all([
+      getReferralStats(user.id),
+      getContestStatus(),
+    ]);
 
     const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Join me on PairTalk to practice IELTS Speaking with real learners!')}`;
 
@@ -262,13 +271,14 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
   // ⭐ Subscription / Upgrade Plans
   const sendPlansOverview = async (ctx: MyContext) => {
     const telegramId = BigInt(ctx.from?.id || 0);
-    const user = await prisma.user.findUnique({ where: { telegramId } });
+    const [user, pendingRequest] = await Promise.all([
+      prisma.user.findUnique({ where: { telegramId } }),
+      prisma.manualPaymentRequest.findFirst({
+        where: { telegramId, status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
     const profile = user ? getPaidUserProfile(user) : getPaidUserProfile({ plan: 'FREE' });
-
-    const pendingRequest = await prisma.manualPaymentRequest.findFirst({
-      where: { telegramId, status: 'PENDING' },
-      orderBy: { createdAt: 'desc' },
-    });
 
     const inlineKb = new InlineKeyboard();
 
@@ -493,6 +503,8 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
         );
         return;
       }
+
+      await moderationService.invalidateBanCache(telegramId);
 
       await ctx.reply(
         `✅ <b>Appeal Submitted Successfully</b>\n\n` +

@@ -1,7 +1,7 @@
 import { prisma } from '../../config/database';
 import { getRedis } from '../../config/redis';
 import { logger } from '../../utils/logger';
-import { classifyTopic, SEED_TOPICS } from './taxonomy';
+import { classifyTopic, SEED_TOPICS, formatCapitalizedTopicName } from './taxonomy';
 import { isSemanticDuplicate, generateCanonicalSemanticKey } from './semanticMatcher';
 import { generateQuestionFingerprint } from './fingerprint';
 
@@ -133,10 +133,10 @@ export class QuestionFilterService {
             const seed = SEED_TOPICS.find((s) => s.slug === bestSlug);
             const created = await prisma.ieltsTopic.create({
               data: {
-                name: seed ? seed.name : bestSlug,
+                name: seed ? seed.name : formatCapitalizedTopicName(bestSlug),
                 slug: bestSlug,
-                description: seed ? seed.description : null,
-                relevance: seed ? seed.relevance : 7,
+                description: seed ? seed.description : `Discussion and speaking topics for ${formatCapitalizedTopicName(bestSlug)}.`,
+                relevance: seed ? seed.relevance : 6,
                 isActive: true,
               },
             });

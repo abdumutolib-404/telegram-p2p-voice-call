@@ -2,7 +2,7 @@ import { prisma } from '../../config/database';
 import { getRedis } from '../../config/redis';
 import { logger } from '../../utils/logger';
 import { generateQuestionFingerprint } from './fingerprint';
-import { SEED_TOPICS, classifyTopic } from './taxonomy';
+import { SEED_TOPICS, classifyTopic, evaluateTopicClassification, formatCapitalizedTopicName } from './taxonomy';
 import { OFFICIAL_2026_EXAM_FORECAST_BANK, RawCandidateQuestion, VERIFIED_CRAWLER_TARGETS } from './sources';
 import { webCrawlerService } from './webCrawlerService';
 import { generateCanonicalSemanticKey, isSemanticDuplicate } from './semanticMatcher';
@@ -175,34 +175,66 @@ export class QuestionIngestionService {
           continue;
         }
 
-        // Determine matching topic
-        let targetSlug = item.suggestedTopicSlug;
-        if (!targetSlug || !topicMap.has(targetSlug)) {
-          targetSlug = classifyTopic(text, bullets);
+        // Determine matching topic with dynamic emergence
+        const classification = evaluateTopicClassification(text, bullets, item.extractedTopicName);
+
+        let targetSlug: string;
+        if (item.source === 'IELTS_2026_EXAM_FORECAST' && item.suggestedTopicSlug && item.suggestedTopicSlug !== 'daily-life-habits') {
+          targetSlug = item.suggestedTopicSlug;
+        } else if (classification.isEmergent && classification.emergentTopic) {
+          targetSlug = classification.emergentTopic.slug;
+        } else if (classification.score >= 3) {
+          targetSlug = classification.slug;
+        } else if (item.suggestedTopicSlug && item.suggestedTopicSlug !== 'daily-life-habits') {
+          targetSlug = item.suggestedTopicSlug;
+        } else {
+          targetSlug = classification.slug;
         }
 
         let topicId = topicMap.get(targetSlug);
         if (!topicId) {
-          // If topic doesn't exist, create a new taxonomy domain dynamically
+          // Dynamically create a new IeltsTopic in PostgreSQL
+          const emergent = classification.emergentTopic;
+          const topicName = emergent ? emergent.name : formatCapitalizedTopicName(targetSlug);
+          const topicSlug = emergent ? emergent.slug : targetSlug;
+          const topicDescription = emergent
+            ? emergent.description
+            : `IELTS speaking practice questions and discussion regarding ${topicName}.`;
+          const topicRelevance = emergent ? emergent.relevance : 6;
+
           try {
-            const topicName = targetSlug
-              .split('-')
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-              .join(' ');
-            const newTopic = await prisma.ieltsTopic.create({
-              data: {
-                name: topicName,
-                slug: targetSlug,
-                description: `Automatically classified topic domain for ${topicName} practice.`,
-                relevance: 6,
-                isActive: true,
-              },
-            });
-            topicId = newTopic.id;
+            let dbTopic =
+              (await prisma.ieltsTopic.findUnique({ where: { slug: topicSlug } })) ||
+              (await prisma.ieltsTopic.findUnique({ where: { name: topicName } }));
+
+            if (!dbTopic) {
+              dbTopic = await prisma.ieltsTopic.create({
+                data: {
+                  name: topicName,
+                  slug: topicSlug,
+                  description: topicDescription,
+                  relevance: topicRelevance,
+                  isActive: true,
+                },
+              });
+              topicsCreated++;
+              newlyCreatedTopics.push(dbTopic.name);
+              logger.info('Dynamically created emergent IELTS topic in PostgreSQL', {
+                service: 'crawler',
+                name: dbTopic.name,
+                slug: dbTopic.slug,
+              });
+            }
+
+            topicId = dbTopic.id;
+            topicMap.set(dbTopic.slug, topicId);
             topicMap.set(targetSlug, topicId);
-            topicsCreated++;
-            newlyCreatedTopics.push(newTopic.name);
-          } catch {
+          } catch (err: unknown) {
+            logger.warn('Failed creating dynamic IELTS topic, falling back', {
+              service: 'crawler',
+              slug: targetSlug,
+              error: err instanceof Error ? err.message : String(err),
+            });
             topicId = topicMap.get('daily-life-habits')!;
           }
         }

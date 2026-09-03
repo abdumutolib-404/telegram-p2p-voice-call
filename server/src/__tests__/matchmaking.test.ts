@@ -135,4 +135,94 @@ describe('MatchmakingService - O(1) Redis Bucket Queue', () => {
     expect(join65.matched).toBe(true);
     expect(join65.partnerId).toBe('band_6_0_user');
   });
+
+  it('atomically removes claimed partner from ALL registered sets and eliminates ghost IDs', async () => {
+    // Boss User A registers in ownBucket, bandPool, and priority:BOSS
+    const bossUserA = {
+      userId: 'boss_user_alpha',
+      band: 7.0,
+      skills: { subFC: 6.0, subLR: 8.0, subGRA: 7.0, subP: 7.0 }, // weak FC, strong LR -> match_queue:7.0:FC:LR
+    };
+
+    const joinA = await matchmakingService.joinQueue(bossUserA.userId, bossUserA.band, bossUserA.skills, { plan: 'BOSS' });
+    expect(joinA.matched).toBe(false);
+
+    const ownBucket = 'match_queue:7.0:FC:LR';
+    const bandPool = 'match_queue:band:7.0';
+    const bossPriorityPool = 'match_queue:priority:BOSS';
+
+    // Verify User A is in all 3 sets before matching
+    expect(await inMemoryRedis.smembers(ownBucket)).toContain('boss_user_alpha');
+    expect(await inMemoryRedis.smembers(bandPool)).toContain('boss_user_alpha');
+    expect(await inMemoryRedis.smembers(bossPriorityPool)).toContain('boss_user_alpha');
+    expect(await inMemoryRedis.get(`user_queue:${bossUserA.userId}`)).toBe(ownBucket);
+
+    // User B joins with different band (7.5), claiming User A from the BOSS priority pool
+    const userB = {
+      userId: 'user_bravo',
+      band: 7.5,
+      skills: { subFC: 7.5, subLR: 7.5, subGRA: 7.5, subP: 7.5 },
+    };
+
+    const joinB = await matchmakingService.joinQueue(userB.userId, userB.band, userB.skills);
+    expect(joinB.matched).toBe(true);
+    expect(joinB.partnerId).toBe('boss_user_alpha');
+    expect(joinB.partnerBucketKey).toBe(bossPriorityPool);
+
+    // Verify User A was atomically purged from ALL sets:
+    // 1. Own bucket
+    const ownMembers = await inMemoryRedis.smembers(ownBucket);
+    expect(ownMembers).not.toContain('boss_user_alpha');
+
+    // 2. Band pool
+    const bandMembers = await inMemoryRedis.smembers(bandPool);
+    expect(bandMembers).not.toContain('boss_user_alpha');
+
+    // 3. Priority pool
+    const priorityMembers = await inMemoryRedis.smembers(bossPriorityPool);
+    expect(priorityMembers).not.toContain('boss_user_alpha');
+
+    // 4. Pointer key
+    expect(await inMemoryRedis.get(`user_queue:${bossUserA.userId}`)).toBeNull();
+
+    // 5. User C joins with exact same complementary skills as User A
+    // Since User A was cleanly removed without ghost IDs, User C does NOT match with User A
+    const userC = {
+      userId: 'user_charlie',
+      band: 7.0,
+      skills: { subFC: 8.0, subLR: 6.0, subGRA: 7.0, subP: 7.0 }, // complementary to User A's bucket
+    };
+
+    const joinC = await matchmakingService.joinQueue(userC.userId, userC.band, userC.skills);
+    expect(joinC.matched).toBe(false);
+  });
+
+  it('performs candidate search in a single atomic EVAL roundtrip without sequential per-bucket calls', async () => {
+    const evalCalls: Array<{ script: string; numKeys: number }> = [];
+    const originalEval = inMemoryRedis.eval.bind(inMemoryRedis);
+
+    inMemoryRedis.eval = async (script: string, numKeys: number, ...args: string[]) => {
+      evalCalls.push({ script, numKeys });
+      return originalEval(script, numKeys, ...args);
+    };
+
+    try {
+      const user = {
+        userId: 'roundtrip_test_user',
+        band: 6.5,
+        skills: { subFC: 6.0, subLR: 7.0, subGRA: 6.5, subP: 6.5 },
+      };
+
+      await matchmakingService.joinQueue(user.userId, user.band, user.skills);
+
+      // Verify that MATCH_QUEUE_MULTI_CLAIM was called exactly ONCE with all candidate buckets passed together
+      const multiClaimCalls = evalCalls.filter((c) => c.script.includes('MATCH_QUEUE_MULTI_CLAIM'));
+      expect(multiClaimCalls.length).toBe(1);
+      // It passed all candidate buckets in numKeys (> 5 buckets) in that single call
+      expect(multiClaimCalls[0].numKeys).toBeGreaterThanOrEqual(6);
+    } finally {
+      inMemoryRedis.eval = originalEval;
+    }
+  });
 });
+

@@ -87,39 +87,89 @@ export function removeSessionRecorder(currentRecordedBy: string | null | undefin
   return ids.length > 0 ? ids.join(',') : null;
 }
 
-export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
-  const userSockets = new Map<string, Set<string>>();
-  const activeEgresses = new Map<string, ActiveEgress>();
-  const roomOperationTails = new Map<string, Promise<void>>();
-  const userJoinTails = new Map<string, Promise<void>>();
-  const serverSessionTimers = new Map<string, NodeJS.Timeout>();
-  const userLastActionTime = new Map<string, number>();
-  const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
+const userSockets = new Map<string, Set<string>>();
+const activeEgresses = new Map<string, ActiveEgress>();
+const roomOperationTails = new Map<string, Promise<void>>();
+const userJoinTails = new Map<string, Promise<void>>();
+const serverSessionTimers = new Map<string, NodeJS.Timeout>();
+const userLastActionTime = new Map<string, number>();
+const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
 
-  const clearSessionTimer = (roomName: string) => {
-    const existing = serverSessionTimers.get(roomName);
-    if (existing) {
-      clearTimeout(existing);
-      serverSessionTimers.delete(roomName);
-    }
-  };
+let globalIo: Server | null = null;
+let globalBot: Bot<MyContext> | null = null;
 
-  const runSerialized = async <T>(map: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> => {
-    const previous = map.get(key) ?? Promise.resolve();
-    let release: (() => void) | undefined;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    map.set(key, current);
+const clearSessionTimer = (roomName: string) => {
+  const existing = serverSessionTimers.get(roomName);
+  if (existing) {
+    clearTimeout(existing);
+    serverSessionTimers.delete(roomName);
+  }
+};
 
-    await previous.catch(() => undefined);
+const runSerialized = async <T>(map: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> => {
+  const previous = map.get(key) ?? Promise.resolve();
+  let release: (() => void) | undefined;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  map.set(key, current);
+
+  await previous.catch(() => undefined);
+  try {
+    return await operation();
+  } finally {
+    release?.();
+    if (map.get(key) === current) map.delete(key);
+  }
+};
+
+const recordCompletedCallCredits = async (userAId: string, userBId: string, durationSeconds: number): Promise<void> => {
+  if (durationSeconds < 5) return;
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  const recordUserCredit = async (userId: string) => {
     try {
-      return await operation();
-    } finally {
-      release?.();
-      if (map.get(key) === current) map.delete(key);
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return;
+      const entitlement = getEffectiveEntitlement(user);
+      const callsUsed = await getUserCallsUsedThisPeriod(userId, user);
+
+      if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit) {
+        const bonusConsumed = await consumeOldestBonusCall(userId);
+        if (bonusConsumed) {
+          return;
+        }
+      }
+
+      if (user.lastCallDate === currentMonth) {
+        await prisma.user.updateMany({
+          where: { id: userId, lastCallDate: currentMonth },
+          data: { dailyCallsUsed: { increment: 1 } },
+        });
+      } else {
+        await prisma.user.updateMany({
+          where: { id: userId },
+          data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
+        });
+      }
+    } catch (err) {
+      logger.error('recordUserCredit error', {
+        service: 'signaling',
+        event: 'record_user_credit_failed',
+        userId,
+      }, err);
     }
   };
+
+  await Promise.allSettled([
+    recordUserCredit(userAId),
+    recordUserCredit(userBId),
+  ]);
+};
+
+export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
+  globalIo = io;
+  if (bot) globalBot = bot;
 
   const addUserSocket = (userId: string, socketId: string): void => {
     const sockets = userSockets.get(userId) ?? new Set<string>();
@@ -154,50 +204,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     if (!sockets) return;
     sockets.delete(socketId);
     if (sockets.size === 0) userSockets.delete(userId);
-  };
-
-  const recordCompletedCallCredits = async (userAId: string, userBId: string, durationSeconds: number): Promise<void> => {
-    if (durationSeconds < 5) return;
-    const currentMonth = new Date().toISOString().slice(0, 7);
-
-    const recordUserCredit = async (userId: string) => {
-      try {
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user) return;
-        const entitlement = getEffectiveEntitlement(user);
-        const callsUsed = await getUserCallsUsedThisPeriod(userId, user);
-
-        if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit) {
-          const bonusConsumed = await consumeOldestBonusCall(userId);
-          if (bonusConsumed) {
-            return;
-          }
-        }
-
-        if (user.lastCallDate === currentMonth) {
-          await prisma.user.updateMany({
-            where: { id: userId, lastCallDate: currentMonth },
-            data: { dailyCallsUsed: { increment: 1 } },
-          });
-        } else {
-          await prisma.user.updateMany({
-            where: { id: userId },
-            data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
-          });
-        }
-      } catch (err) {
-        logger.error('recordUserCredit error', {
-          service: 'signaling',
-          event: 'record_user_credit_failed',
-          userId,
-        }, err);
-      }
-    };
-
-    await Promise.allSettled([
-      recordUserCredit(userAId),
-      recordUserCredit(userBId),
-    ]);
   };
 
   const getConnectedSocket = (userId: string): Socket | undefined => {
@@ -1285,6 +1291,212 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       }, reconcileErr);
     }
   })();
+}
+
+export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Promise<number> {
+  const effectiveIo = io ?? globalIo;
+  const effectiveBot = bot ?? globalBot;
+
+  try {
+    const activeSessions = await prisma.callSession.findMany({
+      where: { status: 'ACTIVE' },
+      include: { userA: true, userB: true },
+    });
+
+    if (activeSessions.length === 0) return 0;
+
+    const now = Date.now();
+    let sweptCount = 0;
+
+    for (const session of activeSessions) {
+      try {
+        const maxDurationMinutes = calculateEffectiveCallDuration(session.userA, session.userB);
+        const maxDurationMs = maxDurationMinutes * 60 * 1000;
+        const elapsedMs = now - session.createdAt.getTime();
+        const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+
+        // 1. Condition: createdAt < now - maxDuration - 5 minutes
+        const isPastMaxDurationWithMargin = elapsedMs > (maxDurationMs + 5 * 60 * 1000);
+
+        // 2. Condition: both participants disconnected
+        // Allow a 30-second initial grace period after creation to avoid terminating newly matching sessions
+        let bothParticipantsDisconnected = false;
+        if (elapsedMs >= 30_000) {
+          let roomSocketsCount = 0;
+          if (effectiveIo) {
+            try {
+              const sockets = await effectiveIo.in(session.roomName).fetchSockets();
+              roomSocketsCount = sockets.length;
+            } catch {
+              const userASockets = userSockets.get(session.userAId)?.size ?? 0;
+              const userBSockets = userSockets.get(session.userBId)?.size ?? 0;
+              roomSocketsCount = userASockets + userBSockets;
+            }
+          } else {
+            const userASockets = userSockets.get(session.userAId)?.size ?? 0;
+            const userBSockets = userSockets.get(session.userBId)?.size ?? 0;
+            roomSocketsCount = userASockets + userBSockets;
+          }
+
+          const isGraceA = disconnectGraceTimers.has(session.userAId);
+          const isGraceB = disconnectGraceTimers.has(session.userBId);
+          bothParticipantsDisconnected = roomSocketsCount === 0 && !isGraceA && !isGraceB;
+        }
+
+        if (!isPastMaxDurationWithMargin && !bothParticipantsDisconnected) {
+          continue;
+        }
+
+        await runSerialized(roomOperationTails, session.roomName, async () => {
+          const current = await prisma.callSession.findUnique({
+            where: { id: session.id },
+          });
+          if (!current || current.status !== 'ACTIVE') return;
+
+          const endedAt = new Date();
+          // If past max duration or call lasted at least 15 seconds before both dropped, mark COMPLETED. Otherwise CANCELLED.
+          const isCompleted = isPastMaxDurationWithMargin || elapsedSeconds >= 15;
+          const targetStatus = isCompleted ? 'COMPLETED' : 'CANCELLED';
+          const finalDuration = isCompleted ? Math.min(elapsedSeconds, maxDurationMinutes * 60) : 0;
+
+          const claimed = await prisma.callSession.updateMany({
+            where: { id: session.id, status: 'ACTIVE' },
+            data: {
+              status: targetStatus,
+              endedAt,
+              duration: finalDuration,
+            },
+          });
+
+          if (claimed.count !== 1) return;
+
+          clearSessionTimer(session.roomName);
+
+          const egress = activeEgresses.get(session.roomName);
+          const egressId = egress?.egressId ?? session.egressId;
+          const recordingUrl = egress?.relativeUrl || session.recordingUrl || undefined;
+
+          if (egressId) {
+            try {
+              await stopAudioEgress(egressId);
+            } catch (eErr) {
+              logger.warn('Zombie sweeper stop audio egress failed', {
+                service: 'signaling',
+                event: 'zombie_sweeper_egress_stop_failed',
+                roomName: session.roomName,
+                egressId,
+              }, eErr);
+            }
+          }
+          activeEgresses.delete(session.roomName);
+
+          try {
+            await deleteLiveKitRoom(session.roomName);
+          } catch (lkErr) {
+            logger.warn('Zombie sweeper delete LiveKit room failed', {
+              service: 'signaling',
+              event: 'zombie_sweeper_delete_room_failed',
+              roomName: session.roomName,
+            }, lkErr);
+          }
+
+          if (recordingUrl) {
+            const isUserARecorder = Boolean(isUserSessionRecorder(session.recordedByUserId, session.userAId));
+            const isUserBRecorder = Boolean(isUserSessionRecorder(session.recordedByUserId, session.userBId));
+            const retentionA = isUserARecorder ? getEffectiveEntitlement(session.userA).retentionDays : 0;
+            const retentionB = isUserBRecorder ? getEffectiveEntitlement(session.userB).retentionDays : 0;
+            const maxRetention = Math.max(retentionA, retentionB, 1);
+            const recordingExpiresAt = (isUserARecorder || isUserBRecorder)
+              ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
+              : null;
+
+            await prisma.callSession.update({
+              where: { id: session.id },
+              data: {
+                egressId: egressId ?? null,
+                recordingUrl: recordingUrl ?? null,
+                recordingExpiresAt,
+              },
+            }).catch(() => undefined);
+          }
+
+          if (targetStatus === 'COMPLETED' && finalDuration >= 5) {
+            await recordCompletedCallCredits(session.userAId, session.userBId, finalDuration).catch(() => undefined);
+            await onCallFinishedCheckReferralReward(
+              { id: session.id, userAId: session.userAId, userBId: session.userBId, duration: finalDuration },
+              effectiveBot ?? undefined
+            ).catch(() => undefined);
+          }
+
+          if (effectiveIo) {
+            effectiveIo.to(session.roomName).emit('call_finished', {
+              duration: finalDuration,
+              reason: isPastMaxDurationWithMargin ? 'call_duration_limit_reached' : 'all_participants_disconnected',
+            });
+          }
+
+          sweptCount += 1;
+          logger.info(`Zombie call session cleaned up safely`, {
+            service: 'signaling',
+            event: 'zombie_session_cleaned',
+            sessionId: session.id,
+            roomName: session.roomName,
+            status: targetStatus,
+            duration: finalDuration,
+            reason: isPastMaxDurationWithMargin ? 'max_duration_exceeded' : 'both_participants_disconnected',
+          });
+        });
+      } catch (sessionErr) {
+        logger.error('Error sweeping individual zombie session', {
+          service: 'signaling',
+          event: 'zombie_session_clean_error',
+          sessionId: session.id,
+          roomName: session.roomName,
+        }, sessionErr);
+      }
+    }
+
+    if (sweptCount > 0) {
+      logger.info(`Zombie session sweeper finished run: ${sweptCount} sessions swept.`, {
+        service: 'signaling',
+        event: 'zombie_sweeper_completed',
+        sweptCount,
+      });
+    }
+
+    return sweptCount;
+  } catch (error) {
+    logger.error('Zombie session sweeper run failed', {
+      service: 'signaling',
+      event: 'zombie_sweeper_run_failed',
+    }, error);
+    return 0;
+  }
+}
+
+export function startZombieSessionCleaner(io?: Server, bot?: Bot<MyContext>): NodeJS.Timeout {
+  if (io) globalIo = io;
+  if (bot) globalBot = bot;
+
+  logger.info('Starting 5-minute background zombie call session cleaner...', {
+    service: 'signaling',
+    event: 'zombie_cleaner_started',
+  });
+
+  const interval = setInterval(() => {
+    void sweepZombieSessions(io, bot).catch((error) => {
+      logger.error('Scheduled zombie session cleaner encountered an error', {
+        service: 'signaling',
+        event: 'zombie_cleaner_interval_error',
+      }, error);
+    });
+  }, 5 * 60 * 1000);
+
+  if (interval.unref) {
+    interval.unref();
+  }
+
+  return interval;
 }
 
 export const setupSignaling = setupSocketSignaling;

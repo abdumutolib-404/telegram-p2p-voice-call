@@ -226,8 +226,8 @@ export function createBot(token: string): Bot<MyContext> {
         }
       }
 
-      // User is clean: cache for 60s
-      await redis.set(cacheKey, 'CLEAN', 'EX', 60).catch(() => undefined);
+      // User is clean: cache for 600s (10 minutes)
+      await redis.set(cacheKey, 'CLEAN', 'EX', 600).catch(() => undefined);
     } catch (err) {
       logger.error('Bot auth suspension check failed', {
         service: 'bot',

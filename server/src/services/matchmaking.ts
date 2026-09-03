@@ -30,23 +30,69 @@ const QUEUE_TTL_SECONDS = 15 * 60;
 const USER_LOCK_PREFIX = 'match_lock:';
 const USER_LOCK_TTL_MS = 5000;
 
-const MATCH_QUEUE_CLAIM_SCRIPT = `-- MATCH_QUEUE_CLAIM
-local candidate = redis.call('SPOP', KEYS[1])
-local scanned = 0
+export const MATCH_QUEUE_MULTI_CLAIM_SCRIPT = `-- MATCH_QUEUE_MULTI_CLAIM
+local user_prefix = ARGV[1]
+local self_id = ARGV[2]
 local max_scans = 50
-while candidate and scanned < max_scans do
-  scanned = scanned + 1
-  if candidate ~= ARGV[1] then
-    local pointer = redis.call('GET', KEYS[2] .. candidate)
-    if pointer then
-      redis.call('DEL', KEYS[2] .. candidate)
-      redis.call('DEL', KEYS[2] .. ARGV[1])
-      return candidate
+
+for i = 1, #KEYS do
+  local bucket = KEYS[i]
+  local scanned = 0
+  local candidate = redis.call('SPOP', bucket)
+  while candidate and scanned < max_scans do
+    scanned = scanned + 1
+    if candidate ~= self_id then
+      local pointer_key = user_prefix .. candidate
+      local pointer = redis.call('GET', pointer_key)
+      if pointer then
+        -- Atomically claim candidate and delete pointers
+        redis.call('DEL', pointer_key)
+        redis.call('DEL', user_prefix .. self_id)
+
+        -- Atomically remove candidate from ALL registered sets:
+        -- 1. Candidate's own bucket
+        redis.call('SREM', pointer, candidate)
+
+        -- 2. Candidate's band pool (derived from pointer)
+        local band = string.match(pointer, "^match_queue:([^:]+):")
+        if band then
+          redis.call('SREM', 'match_queue:band:' .. band, candidate)
+        end
+
+        -- 3. All band brackets (ensures no band cross-talk / ghost entries)
+        local all_bands = {'4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0'}
+        for _, b in ipairs(all_bands) do
+          redis.call('SREM', 'match_queue:band:' .. b, candidate)
+        end
+
+        -- 4. All priority pools
+        redis.call('SREM', 'match_queue:priority:BOSS', candidate)
+        redis.call('SREM', 'match_queue:priority:PRO', candidate)
+        redis.call('SREM', 'match_queue:priority:PLUS', candidate)
+
+        -- 5. Global pool
+        redis.call('SREM', 'match_queue:global', candidate)
+
+        -- 6. All candidate buckets scanned
+        for j = 1, #KEYS do
+          redis.call('SREM', KEYS[j], candidate)
+        end
+
+        return { candidate, bucket }
+      else
+        -- Purge ghost candidate from auxiliary pools
+        redis.call('SREM', 'match_queue:priority:BOSS', candidate)
+        redis.call('SREM', 'match_queue:priority:PRO', candidate)
+        redis.call('SREM', 'match_queue:priority:PLUS', candidate)
+        redis.call('SREM', 'match_queue:global', candidate)
+      end
     end
+    candidate = redis.call('SPOP', bucket)
   end
-  candidate = redis.call('SPOP', KEYS[1])
 end
 return false`;
+
+export const MATCH_QUEUE_CLAIM_SCRIPT = MATCH_QUEUE_MULTI_CLAIM_SCRIPT;
 
 const LOCK_RELEASE_SCRIPT = `-- LOCK_RELEASE
 if redis.call('GET', KEYS[1]) == ARGV[1] then
@@ -155,32 +201,31 @@ export class MatchmakingService {
       try {
         await this.cancelQueueUnlocked(userId);
 
-        // Scan candidate buckets in priority order
-        for (const bucketKey of candidateBuckets) {
-          const claimedPartner = await this.redis.eval(
-            MATCH_QUEUE_CLAIM_SCRIPT,
-            2,
-            bucketKey,
-            USER_QUEUE_PREFIX,
-            userId
-          );
+        // Single atomic multi-claim evaluation across all candidate buckets
+        const uniqueCandidateBuckets = [...new Set(candidateBuckets)];
+        const claimResult = (await this.redis.eval(
+          MATCH_QUEUE_MULTI_CLAIM_SCRIPT,
+          uniqueCandidateBuckets.length,
+          ...uniqueCandidateBuckets,
+          USER_QUEUE_PREFIX,
+          userId
+        )) as [string, string] | null;
 
-          if (typeof claimedPartner === 'string' && claimedPartner !== userId) {
-            // Clean up partner from auxiliary pools
-            await Promise.allSettled([
-              this.redis.srem(bandPoolKey, claimedPartner),
-              this.redis.srem(this.getPriorityPoolKey('BOSS'), claimedPartner),
-              this.redis.srem(this.getPriorityPoolKey('PRO'), claimedPartner),
-              this.redis.srem(this.getPriorityPoolKey('PLUS'), claimedPartner),
-            ]);
+        let claimedPartner: string | undefined;
+        let partnerBucketKey: string | undefined;
 
-            return {
-              matched: true,
-              partnerId: claimedPartner,
-              roomName: `room_${crypto.randomUUID()}`,
-              partnerBucketKey: bucketKey,
-            };
-          }
+        if (Array.isArray(claimResult) && claimResult.length >= 2) {
+          claimedPartner = String(claimResult[0]);
+          partnerBucketKey = String(claimResult[1]);
+        }
+
+        if (claimedPartner && partnerBucketKey && claimedPartner !== userId) {
+          return {
+            matched: true,
+            partnerId: claimedPartner,
+            roomName: `room_${crypto.randomUUID()}`,
+            partnerBucketKey,
+          };
         }
 
         // No partner online yet: Register user into priority and standard pools

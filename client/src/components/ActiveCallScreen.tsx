@@ -16,6 +16,7 @@ interface ActiveCallScreenProps {
   micError?: string | null;
   micDeniedCount?: number;
   analyserNode?: AnalyserNode | null;
+  audioContext?: AudioContext | null;
   onToggleMic: () => void;
   onRetryMic?: () => Promise<boolean>;
   onFinishCall: (reason?: string) => void;
@@ -33,6 +34,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   micError = null,
   micDeniedCount = 0,
   analyserNode,
+  audioContext,
   onToggleMic,
   onRetryMic,
   onFinishCall,
@@ -66,27 +68,51 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Auto-resume AudioContext and unlock audio whenever visibility transitions to 'visible' (eliminates iOS Safari silence on app switch)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const ctx = audioContext || (analyserNode?.context as AudioContext | undefined);
+        if (ctx && typeof ctx.resume === 'function') {
+          ctx.resume().catch(() => {});
+        }
+        if (onUnlockAudio) {
+          onUnlockAudio().catch(() => {});
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [audioContext, analyserNode, onUnlockAudio]);
+
   // Automatically unlock browser audio playback on mount and on any user touch/click gesture
   useEffect(() => {
-    if (!onUnlockAudio) return;
+    const resumeAndUnlock = () => {
+      const ctx = audioContext || (analyserNode?.context as AudioContext | undefined);
+      if (ctx && typeof ctx.resume === 'function') {
+        ctx.resume().catch(() => {});
+      }
+      if (onUnlockAudio) {
+        onUnlockAudio().catch(() => {});
+      }
+    };
 
     // Immediate attempt on call screen entry
-    onUnlockAudio().catch(() => {});
+    resumeAndUnlock();
 
-    const unlockOnGesture = () => {
-      onUnlockAudio().catch(() => {});
-    };
-
-    window.addEventListener('click', unlockOnGesture, { capture: true, passive: true });
-    window.addEventListener('touchstart', unlockOnGesture, { capture: true, passive: true });
-    window.addEventListener('touchend', unlockOnGesture, { capture: true, passive: true });
+    window.addEventListener('click', resumeAndUnlock, { capture: true, passive: true });
+    window.addEventListener('touchstart', resumeAndUnlock, { capture: true, passive: true });
+    window.addEventListener('touchend', resumeAndUnlock, { capture: true, passive: true });
 
     return () => {
-      window.removeEventListener('click', unlockOnGesture, { capture: true });
-      window.removeEventListener('touchstart', unlockOnGesture, { capture: true });
-      window.removeEventListener('touchend', unlockOnGesture, { capture: true });
+      window.removeEventListener('click', resumeAndUnlock, { capture: true });
+      window.removeEventListener('touchstart', resumeAndUnlock, { capture: true });
+      window.removeEventListener('touchend', resumeAndUnlock, { capture: true });
     };
-  }, [onUnlockAudio]);
+  }, [audioContext, analyserNode, onUnlockAudio]);
 
   // Auto-finish call if microphone permission is denied 3 times
   useEffect(() => {

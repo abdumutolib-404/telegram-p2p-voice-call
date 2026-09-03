@@ -59,12 +59,33 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       : null;
 
     let phase = 0;
+    const TARGET_FPS = 30;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS; // ~33.33ms
+    let lastFrameTime = 0;
 
-    const renderFrame = () => {
-      if (document.hidden) {
-        animFrameIdRef.current = requestAnimationFrame(renderFrame);
+    const renderFrame = (timestamp: number) => {
+      // Pause requestAnimationFrame entirely when document is hidden to save CPU and battery
+      if (document.visibilityState === 'hidden') {
+        animFrameIdRef.current = null;
         return;
       }
+
+      animFrameIdRef.current = requestAnimationFrame(renderFrame);
+
+      const now = typeof timestamp === 'number' ? timestamp : performance.now();
+      const delta = now - lastFrameTime;
+
+      // Throttle canvas rendering using timestamp delta to cap at 30 FPS instead of unthrottled 60-120 FPS
+      if (delta < FRAME_INTERVAL) {
+        return;
+      }
+
+      if (lastFrameTime === 0 || delta > 1000) {
+        lastFrameTime = now;
+      } else {
+        lastFrameTime = now - (delta % FRAME_INTERVAL);
+      }
+
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const dpr = window.devicePixelRatio || 1;
@@ -103,7 +124,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         } else {
           // Fallback or muted idle wave
           if (!prefersReducedMotion) {
-            phase += 0.05;
+            phase += 0.08;
           }
           const gap = 3;
           const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
@@ -130,13 +151,32 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
           ctx.globalAlpha = 1.0;
         }
       }
-
-      animFrameIdRef.current = requestAnimationFrame(renderFrame);
     };
 
-    renderFrame();
+    // Pause requestAnimationFrame entirely when hidden, resume when visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (animFrameIdRef.current !== null) {
+          cancelAnimationFrame(animFrameIdRef.current);
+          animFrameIdRef.current = null;
+        }
+      } else if (document.visibilityState === 'visible') {
+        if (animFrameIdRef.current === null) {
+          lastFrameTime = 0;
+          animFrameIdRef.current = requestAnimationFrame(renderFrame);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Initial start if visible
+    if (document.visibilityState !== 'hidden') {
+      animFrameIdRef.current = requestAnimationFrame(renderFrame);
+    }
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (animFrameIdRef.current !== null) {
         cancelAnimationFrame(animFrameIdRef.current);
         animFrameIdRef.current = null;

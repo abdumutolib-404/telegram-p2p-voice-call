@@ -69,13 +69,16 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
     const stars = parseInt(match[2], 10);
     const raterTelegramId = BigInt(ctx.from.id);
 
-    const rater = await prisma.user.findUnique({ where: { telegramId: raterTelegramId } });
+    const [rater, session] = await Promise.all([
+      prisma.user.findUnique({ where: { telegramId: raterTelegramId } }),
+      prisma.callSession.findUnique({ where: { id: callId } }),
+    ]);
+
     if (!rater) {
       await ctx.answerCallbackQuery({ text: 'User not found.' });
       return;
     }
 
-    const session = await prisma.callSession.findUnique({ where: { id: callId } });
     if (!session) {
       await ctx.answerCallbackQuery({ text: 'Call session not found.' });
       return;
@@ -121,13 +124,16 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
     const callId = ctx.match[1];
     const raterTelegramId = BigInt(ctx.from.id);
 
-    const rater = await prisma.user.findUnique({ where: { telegramId: raterTelegramId } });
+    const [rater, session] = await Promise.all([
+      prisma.user.findUnique({ where: { telegramId: raterTelegramId } }),
+      prisma.callSession.findUnique({ where: { id: callId } }),
+    ]);
+
     if (!rater) {
       await ctx.answerCallbackQuery({ text: 'User not found.' });
       return;
     }
 
-    const session = await prisma.callSession.findUnique({ where: { id: callId } });
     if (!session) {
       await ctx.answerCallbackQuery({ text: 'Call session not found.' });
       return;

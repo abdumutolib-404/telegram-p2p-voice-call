@@ -6,6 +6,7 @@ export interface RawCandidateQuestion {
   cueCardBullets?: string | null;
   questionType?: string;
   suggestedTopicSlug?: string;
+  extractedTopicName?: string;
   source: string;
   sourceUrl?: string;
 }
@@ -13,44 +14,69 @@ export interface RawCandidateQuestion {
 export interface CrawlTargetSource {
   name: string;
   url: string;
-  suggestedTopicSlug: string;
+  suggestedTopicSlug?: string;
   category: 'RECALL_FEED' | 'OFFICIAL_ARCHIVE' | 'COMMUNITY_BLOG';
   enabled: boolean;
 }
 
 export const VERIFIED_CRAWLER_TARGETS: CrawlTargetSource[] = [
   {
-    name: 'IELTS Speaking Recent Exam Recalls 2026',
-    url: 'https://ieltsmaterial.com/ielts-speaking-actual-tests-questions/',
-    suggestedTopicSlug: 'daily-life-habits',
-    category: 'RECALL_FEED',
-    enabled: true,
-  },
-  {
     name: 'IELTS Liz Speaking Part 1 Topic Bank',
     url: 'https://ieltsliz.com/ielts-speaking-part-1-topics/',
-    suggestedTopicSlug: 'daily-life-habits',
     category: 'COMMUNITY_BLOG',
     enabled: true,
   },
   {
-    name: 'IELTS Liz Speaking Part 2 Cue Cards',
+    name: 'IELTS Liz Speaking Part 2 & 3 Topics & Cue Cards',
     url: 'https://ieltsliz.com/ielts-speaking-part-2-topics-cue-cards/',
-    suggestedTopicSlug: 'work-ambition',
+    category: 'COMMUNITY_BLOG',
+    enabled: true,
+  },
+  {
+    name: 'IELTS Material Speaking Actual Tests Recent Recalls',
+    url: 'https://ieltsmaterial.com/ielts-speaking-actual-tests-questions/',
+    category: 'RECALL_FEED',
+    enabled: true,
+  },
+  {
+    name: 'IELTS Advantage Speaking Master Hub',
+    url: 'https://www.ieltsadvantage.com/speaking/',
+    category: 'COMMUNITY_BLOG',
+    enabled: true,
+  },
+  {
+    name: 'IELTS Advantage Speaking Part 1 Topics',
+    url: 'https://www.ieltsadvantage.com/speaking/ielts-speaking-part-1/',
+    category: 'COMMUNITY_BLOG',
+    enabled: true,
+  },
+  {
+    name: 'IELTS Advantage Speaking Part 2 Cue Cards',
+    url: 'https://www.ieltsadvantage.com/speaking/ielts-speaking-part-2/',
     category: 'COMMUNITY_BLOG',
     enabled: true,
   },
   {
     name: 'IELTS Advantage Speaking Part 3 Discussion',
     url: 'https://www.ieltsadvantage.com/speaking/ielts-speaking-part-3/',
-    suggestedTopicSlug: 'education-career',
     category: 'COMMUNITY_BLOG',
     enabled: true,
   },
   {
-    name: 'Cambridge IELTS Actual Test Recalls',
+    name: 'IELTS Mentor Speaking Sample Part 1 Index',
+    url: 'https://ielts-mentor.com/speaking-sample/ielts-speaking-part-1',
+    category: 'OFFICIAL_ARCHIVE',
+    enabled: true,
+  },
+  {
+    name: 'Cambridge IELTS Actual Test Recalls Part 2',
     url: 'https://ielts-mentor.com/speaking-sample/ielts-speaking-part-2',
-    suggestedTopicSlug: 'travel-tourism',
+    category: 'OFFICIAL_ARCHIVE',
+    enabled: true,
+  },
+  {
+    name: 'Cambridge IELTS Actual Test Recalls Part 3 Discussion',
+    url: 'https://ielts-mentor.com/speaking-sample/ielts-speaking-part-3',
     category: 'OFFICIAL_ARCHIVE',
     enabled: true,
   },

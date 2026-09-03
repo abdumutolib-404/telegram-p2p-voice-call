@@ -520,9 +520,14 @@ export class InMemoryPrismaMock {
         if (args?.where?.part && q.part !== args.where.part) return false;
         if (args?.where?.isActive !== undefined && q.isActive !== args.where.isActive) return false;
         if (args?.where?.sourceHash && q.sourceHash !== args.where.sourceHash) return false;
-        if (args?.where?.questionText && typeof args.where.questionText === 'object' && 'contains' in args.where.questionText) {
-          const needle = String((args.where.questionText as { contains: string }).contains).toLowerCase();
-          if (!q.questionText.toLowerCase().includes(needle)) return false;
+        if (args?.where?.questionText) {
+          if (typeof args.where.questionText === 'string' && q.questionText !== args.where.questionText) {
+            return false;
+          }
+          if (typeof args.where.questionText === 'object' && 'contains' in args.where.questionText) {
+            const needle = String((args.where.questionText as { contains: string }).contains).toLowerCase();
+            if (!q.questionText.toLowerCase().includes(needle)) return false;
+          }
         }
         return true;
       });

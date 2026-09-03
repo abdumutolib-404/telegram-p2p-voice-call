@@ -1107,6 +1107,8 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
       throw txErr;
     }
 
+    await moderationService.invalidateBanCache(appeal.telegramId);
+
     if (adminBotInstance) {
       await adminBotInstance.api.sendMessage(
         appeal.telegramId.toString(),
@@ -1166,6 +1168,8 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
       }
       throw txErr;
     }
+
+    await moderationService.invalidateBanCache(appeal.telegramId);
 
     if (adminBotInstance) {
       await adminBotInstance.api.sendMessage(
@@ -1475,6 +1479,8 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
       },
     });
 
+    await moderationService.invalidateBanCache(user.telegramId);
+
     await recordAdminAuditLog({
       action: 'USER_BAN',
       targetId: id,
@@ -1616,6 +1622,10 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       where: { id },
       data: updateData,
     });
+
+    if (['block', 'ban', 'unblock'].includes(action)) {
+      await moderationService.invalidateBanCache(updated.telegramId);
+    }
 
     await recordAdminAuditLog({
       action: 'USER_MODERATION',

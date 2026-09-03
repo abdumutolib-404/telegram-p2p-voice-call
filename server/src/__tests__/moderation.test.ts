@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { moderationService } from '../services/moderation';
 import { prisma } from '../config/database';
+import { getRedis } from '../config/redis';
 
 describe('Moderation Penalty Ladder', () => {
   let userAId: string;
@@ -105,5 +106,47 @@ describe('Moderation Penalty Ladder', () => {
     const banCheck = await moderationService.isUserBanned(userBId);
     expect(banCheck.banned).toBe(true);
     expect(banCheck.reason).toContain('Permanently banned');
+  });
+
+  it('invalidates bot ban check cache on ban, unban, and appeal status change', async () => {
+    const redis = getRedis();
+    const telegramId = BigInt(99990002);
+    const cacheKey = `bot:ban_check:${telegramId}`;
+
+    // 1. Seed cache with CLEAN
+    await redis.set(cacheKey, 'CLEAN');
+    expect(await redis.get(cacheKey)).toBe('CLEAN');
+
+    // 2. Explicitly invalidate
+    await moderationService.invalidateBanCache(telegramId);
+    expect(await redis.get(cacheKey)).toBeNull();
+
+    // 3. Unban user and verify cache invalidation
+    await redis.set(cacheKey, 'CLEAN');
+    await moderationService.unbanUser(userBId);
+    expect(await redis.get(cacheKey)).toBeNull();
+
+    // 4. Ban user and verify cache invalidation
+    await redis.set(cacheKey, 'CLEAN');
+    await moderationService.banUser(userBId, true);
+    expect(await redis.get(cacheKey)).toBeNull();
+
+    // 5. Update appeal status and verify cache invalidation
+    const appeal = await prisma.unblockAppeal.create({
+      data: {
+        userId: userBId,
+        telegramId,
+        alias: 'P2P-Partner-ModB',
+        appealText: 'Please unban me',
+        banReason: 'Test ban',
+        status: 'PENDING',
+      },
+    });
+
+    await redis.set(cacheKey, 'CLEAN');
+    await moderationService.updateAppealStatus(appeal.id, 'APPROVED');
+    expect(await redis.get(cacheKey)).toBeNull();
+
+    await prisma.unblockAppeal.deleteMany({ where: { id: appeal.id } });
   });
 });

@@ -52,21 +52,29 @@ export function setupStartCommand(bot: Bot<MyContext>) {
     ctx.session.pendingRefundManualReqId = undefined;
 
     const startPayload = typeof ctx.match === 'string' ? ctx.match.trim() : '';
+    let user: Awaited<ReturnType<typeof prisma.user.findUnique>> = null;
+
     if (startPayload.startsWith('ref_')) {
       const rawGuestName = ctx.from?.first_name || (ctx.from?.username ? `@${ctx.from.username}` : undefined);
       const guestName = rawGuestName ? escapeHtml(rawGuestName) : undefined;
-      await bindReferral(telegramId, startPayload, bot, guestName).catch((e) => {
-        logger.warn('bindReferral error on start command', {
-          service: 'bot',
-          event: 'start_bind_referral_failed',
-          telegramId: telegramId.toString(),
-        }, e);
+      const [, fetchedUser] = await Promise.all([
+        bindReferral(telegramId, startPayload, bot, guestName).catch((e) => {
+          logger.warn('bindReferral error on start command', {
+            service: 'bot',
+            event: 'start_bind_referral_failed',
+            telegramId: telegramId.toString(),
+          }, e);
+        }),
+        prisma.user.findUnique({
+          where: { telegramId },
+        }),
+      ]);
+      user = fetchedUser;
+    } else {
+      user = await prisma.user.findUnique({
+        where: { telegramId },
       });
     }
-
-    let user = await prisma.user.findUnique({
-      where: { telegramId },
-    });
 
     if (user && user.onboarded) {
       // 1. Deep Link: Plan Upgrade from Mini App (e.g. /start upgrade_plus)

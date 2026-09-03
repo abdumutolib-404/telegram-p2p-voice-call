@@ -1,4 +1,6 @@
 import { prisma } from '../config/database';
+import { getRedis } from '../config/redis';
+import { logger } from '../utils/logger';
 
 export interface ModerationResult {
   penaltyLevel: 'WARNING' | 'TEMP_BAN' | 'PERM_BAN';
@@ -9,6 +11,23 @@ export interface ModerationResult {
 }
 
 export class ModerationService {
+  /**
+   * Invalidate the Redis ban check cache for a telegram user
+   * Key: bot:ban_check:${telegramId}
+   */
+  async invalidateBanCache(telegramId: bigint | string | number): Promise<void> {
+    try {
+      const redis = getRedis();
+      await redis.del(`bot:ban_check:${telegramId.toString()}`);
+    } catch (err) {
+      logger.warn('Failed to invalidate ban check cache', {
+        service: 'moderation',
+        event: 'invalidate_ban_check_failed',
+        telegramId: telegramId.toString(),
+      }, err);
+    }
+  }
+
   /**
    * Process a report against a target user following the Moderation Penalty Ladder
    */
@@ -21,7 +40,9 @@ export class ModerationService {
       throw new Error('Cannot report yourself');
     }
 
-    return await prisma.$transaction(async (tx) => {
+    let targetTelegramId: bigint | null = null;
+
+    const result = await prisma.$transaction(async (tx) => {
       // Validate that both users were actual participants in this call
       const session = await tx.callSession.findUnique({ where: { id: callId } });
       if (!session) {
@@ -45,6 +66,8 @@ export class ModerationService {
       if (!targetUser) {
         throw new Error('Target user not found');
       }
+
+      targetTelegramId = targetUser.telegramId;
 
       // Save CallRating with reported=true
       await tx.callRating.create({
@@ -112,6 +135,12 @@ export class ModerationService {
         };
       }
     });
+
+    if (result.penaltyLevel !== 'WARNING' && targetTelegramId) {
+      await this.invalidateBanCache(targetTelegramId);
+    }
+
+    return result;
   }
 
   /**
@@ -126,7 +155,7 @@ export class ModerationService {
     warningCount: number;
     notificationText: string;
   }> {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id: userId } });
       if (!user) throw new Error('User not found');
 
@@ -171,6 +200,12 @@ export class ModerationService {
         notificationText,
       };
     });
+
+    if (result.penaltyLevel !== 'WARNING' && result.user?.telegramId) {
+      await this.invalidateBanCache(result.user.telegramId);
+    }
+
+    return result;
   }
 
   /**
@@ -197,11 +232,96 @@ export class ModerationService {
           where: { id: userId },
           data: { isBanned: false, bannedUntil: null },
         });
+        if (user.telegramId) {
+          await this.invalidateBanCache(user.telegramId);
+        }
       }
     }
 
     return { banned: false };
   }
+
+  /**
+   * Explicitly ban a user and invalidate ban cache
+   */
+  async banUser(userId: string, permanent: boolean = true, durationMs: number = 6 * 60 * 60 * 1000) {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBanned: true,
+        isPermanentlyBanned: permanent,
+        bannedUntil: permanent ? null : new Date(Date.now() + durationMs),
+      },
+    });
+
+    if (user.telegramId) {
+      await this.invalidateBanCache(user.telegramId);
+    }
+
+    return user;
+  }
+
+  /**
+   * Explicitly unban a user and invalidate ban cache
+   */
+  async unbanUser(userId: string) {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBanned: false,
+        isPermanentlyBanned: false,
+        bannedUntil: null,
+        warningCount: 0,
+      },
+    });
+
+    if (user.telegramId) {
+      await this.invalidateBanCache(user.telegramId);
+    }
+
+    return user;
+  }
+
+  /**
+   * Handle appeal status change and invalidate ban cache
+   */
+  async updateAppealStatus(appealId: string, status: 'APPROVED' | 'REJECTED') {
+    const appeal = await prisma.unblockAppeal.findUnique({ where: { id: appealId } });
+    if (!appeal) {
+      throw new Error('Appeal not found');
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const app = await tx.unblockAppeal.update({
+        where: { id: appealId },
+        data: { status, reviewedAt: new Date() },
+      });
+
+      if (status === 'APPROVED') {
+        await tx.user.update({
+          where: { id: appeal.userId },
+          data: {
+            isBanned: false,
+            isPermanentlyBanned: false,
+            bannedUntil: null,
+            warningCount: 0,
+          },
+        });
+      }
+
+      return app;
+    });
+
+    if (appeal.telegramId) {
+      await this.invalidateBanCache(appeal.telegramId);
+    }
+
+    return updated;
+  }
 }
 
 export const moderationService = new ModerationService();
+
+export async function invalidateBanCheckCache(telegramId: bigint | string | number): Promise<void> {
+  return moderationService.invalidateBanCache(telegramId);
+}

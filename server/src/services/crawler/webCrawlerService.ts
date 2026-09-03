@@ -1,6 +1,7 @@
 import { IeltsPart } from '@prisma/client';
 import { RawCandidateQuestion, CrawlTargetSource, VERIFIED_CRAWLER_TARGETS } from './sources';
-import { classifyTopic } from './taxonomy';
+import { classifyTopic, cleanSubjectFromHeading, extractSubjectFromUrl, detectGroupStrongSubject } from './taxonomy';
+import { getRedis } from '../../config/redis';
 import { logger } from '../../utils/logger';
 
 function stripHtml(html: string): string {
@@ -30,9 +31,156 @@ function stripHtml(html: string): string {
 export class WebCrawlerService {
   private readonly defaultTimeoutMs = 12000;
   private readonly userAgent = 'PairTalk-ExamCrawler/2.0 (+https://pairtalk.online)';
+  private readonly visitedSetKey = 'pairtalk:crawler:visited_urls';
+  private readonly inMemoryVisited = new Set<string>();
 
-  public async fetchAndExtractUrl(url: string, defaultTopicSlug?: string): Promise<RawCandidateQuestion[]> {
-    logger.info(`Crawling IELTS target URL: ${url}`, { service: 'crawler', url });
+  /**
+   * Normalizes a URL by trimming trailing slashes, stripping hashes and tracking queries.
+   */
+  public normalizeUrl(rawUrl: string): string {
+    try {
+      const parsed = new URL(rawUrl);
+      parsed.hash = '';
+      const searchParams = new URLSearchParams(parsed.search);
+      const trackingKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'];
+      for (const k of trackingKeys) {
+        searchParams.delete(k);
+      }
+      parsed.search = searchParams.toString();
+
+      let pathname = parsed.pathname;
+      if (pathname.length > 1 && pathname.endsWith('/')) {
+        pathname = pathname.slice(0, -1);
+      }
+      parsed.pathname = pathname;
+      return parsed.toString();
+    } catch {
+      return rawUrl.trim();
+    }
+  }
+
+  /**
+   * Checks whether a URL has already been crawled using Redis crawl memory.
+   */
+  public async isUrlVisited(url: string): Promise<boolean> {
+    const normalized = this.normalizeUrl(url);
+    try {
+      const redis = getRedis();
+      const isMember = await redis.sismember(this.visitedSetKey, normalized);
+      return isMember === 1 || this.inMemoryVisited.has(normalized);
+    } catch {
+      return this.inMemoryVisited.has(normalized);
+    }
+  }
+
+  /**
+   * Marks a URL as crawled in Redis set pairtalk:crawler:visited_urls.
+   */
+  public async markUrlVisited(url: string): Promise<void> {
+    const normalized = this.normalizeUrl(url);
+    this.inMemoryVisited.add(normalized);
+    try {
+      const redis = getRedis();
+      await redis.sadd(this.visitedSetKey, normalized);
+    } catch {
+      // Redis unavailable; in-memory set handles this cycle
+    }
+  }
+
+  /**
+   * Extracts internal <a href="..."> links matching IELTS patterns (/part-1/, /part-2/, /speaking/, /cue-card/, /topics/).
+   */
+  public extractInternalIeltsLinks(html: string, baseUrl: string): string[] {
+    const links: string[] = [];
+    const seen = new Set<string>();
+    let baseHost = '';
+    try {
+      baseHost = new URL(baseUrl).hostname.toLowerCase();
+    } catch {
+      return [];
+    }
+
+    const ieltsPattern = /(?:part-?[123]|speaking|cue-card|topics)/i;
+    const assetPattern = /\.(?:jpg|jpeg|png|gif|svg|webp|pdf|css|js|xml|zip|mp3|mp4|json|ico)$/i;
+
+    const hrefRegex = /<a\b[^>]*?\bhref=["']([^"']+)["'][^>]*>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = hrefRegex.exec(html)) !== null) {
+      const rawHref = match[1].trim();
+      if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript:') || rawHref.startsWith('mailto:') || rawHref.startsWith('tel:')) {
+        continue;
+      }
+
+      try {
+        const resolved = new URL(rawHref, baseUrl);
+        const resolvedHost = resolved.hostname.toLowerCase();
+
+        if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+          continue;
+        }
+
+        const isInternal = resolvedHost === baseHost || resolvedHost.endsWith('.' + baseHost) || baseHost.endsWith('.' + resolvedHost);
+        if (!isInternal) {
+          continue;
+        }
+
+        if (assetPattern.test(resolved.pathname)) {
+          continue;
+        }
+
+        if (!ieltsPattern.test(resolved.pathname)) {
+          continue;
+        }
+
+        const normalized = this.normalizeUrl(resolved.href);
+        const normalizedBase = this.normalizeUrl(baseUrl);
+        if (normalized !== normalizedBase && !seen.has(normalized)) {
+          seen.add(normalized);
+          links.push(normalized);
+        }
+      } catch {
+        // Skip invalid URLs
+      }
+    }
+
+    return links;
+  }
+
+  /**
+   * Extracts the topic name from the subpage's <h1> or <h2> heading, <title>, or URL slug.
+   * e.g. <h1>Perfume - IELTS Speaking Part 1</h1> -> "Perfumes & Scents"
+   */
+  public extractTopicNameFromHtmlOrUrl(html: string, sourceUrl: string): string | null {
+    // 1. Try <h1>
+    const h1Match = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+    if (h1Match && h1Match[1]) {
+      const topic = cleanSubjectFromHeading(h1Match[1]);
+      if (topic) return topic;
+    }
+
+    // 2. Try <h2>
+    const h2Match = html.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
+    if (h2Match && h2Match[1]) {
+      const topic = cleanSubjectFromHeading(h2Match[1]);
+      if (topic) return topic;
+    }
+
+    // 3. Try <title>
+    const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+    if (titleMatch && titleMatch[1]) {
+      const topic = cleanSubjectFromHeading(titleMatch[1]);
+      if (topic) return topic;
+    }
+
+    // 4. Fallback to URL slug
+    return extractSubjectFromUrl(sourceUrl);
+  }
+
+  /**
+   * Fetches raw HTML from a given URL with timeout and user-agent.
+   */
+  public async fetchHtml(url: string): Promise<string | null> {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.defaultTimeoutMs);
@@ -48,40 +196,56 @@ export class WebCrawlerService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        logger.warn(`Crawler fetch failed with status ${response.status}`, { service: 'crawler', url, status: response.status });
-        return [];
+        logger.warn(`Crawler fetch returned HTTP status ${response.status}`, {
+          service: 'crawler',
+          url,
+          status: response.status,
+        });
+        return null;
       }
 
-      const html = await response.text();
-      return this.parseHtmlContent(html, url, defaultTopicSlug);
+      return await response.text();
     } catch (error: any) {
-      logger.warn(`Crawler could not reach URL ${url}: ${error?.message || String(error)}`, { service: 'crawler', url });
-      return [];
+      logger.warn(`Crawler could not reach URL ${url}: ${error?.message || String(error)}`, {
+        service: 'crawler',
+        url,
+      });
+      return null;
     }
   }
 
-  public parseHtmlContent(html: string, sourceUrl: string, defaultTopicSlug?: string): RawCandidateQuestion[] {
+  /**
+   * Parses HTML content and extracts IELTS questions.
+   * Eliminates defaultTopicSlug override: Always executes classifyTopic(text, bullets)
+   * so questions are evaluated by their actual content.
+   */
+  public parseHtmlContent(html: string, sourceUrl: string): RawCandidateQuestion[] {
+    const pageTopicName = this.extractTopicNameFromHtmlOrUrl(html, sourceUrl);
     const text = stripHtml(html);
     const lines = text
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l.length > 5);
 
-    const questions: RawCandidateQuestion[] = [];
+    interface IntermediateQuestion {
+      part: IeltsPart;
+      questionText: string;
+      cueCardBullets?: string | null;
+      questionType?: string;
+    }
+
+    const intermediateList: IntermediateQuestion[] = [];
     let currentPart: IeltsPart = 'PART_1';
     let currentCuePrompt: string | null = null;
     let currentCueBullets: string[] = [];
 
     const flushCueCard = () => {
       if (currentCuePrompt) {
-        questions.push({
+        intermediateList.push({
           part: 'PART_2',
           questionText: currentCuePrompt,
           cueCardBullets: currentCueBullets.length > 0 ? JSON.stringify(currentCueBullets) : null,
           questionType: 'CUE_CARD',
-          suggestedTopicSlug: defaultTopicSlug || classifyTopic(currentCuePrompt, JSON.stringify(currentCueBullets)),
-          source: 'WEB_CRAWLER',
-          sourceUrl,
         });
       }
       currentCuePrompt = null;
@@ -134,7 +298,6 @@ export class WebCrawlerService {
 
       // Detect General and Discussion Questions (ends with '?')
       if (line.endsWith('?') && line.length >= 20 && line.length <= 250) {
-        // Skip administrative or navigation questions
         if (
           lower.includes('how to prepare') ||
           lower.includes('privacy') ||
@@ -148,28 +311,174 @@ export class WebCrawlerService {
 
         const cleanQuestion = line.replace(/^[•\-\d.]+\s*/, '').trim();
         const part = currentPart === 'PART_2' ? 'PART_3' : currentPart;
-        questions.push({
+        intermediateList.push({
           part,
           questionText: cleanQuestion,
           questionType: part === 'PART_3' ? 'DISCUSSION' : 'GENERAL',
-          suggestedTopicSlug: defaultTopicSlug || classifyTopic(cleanQuestion),
-          source: 'WEB_CRAWLER',
-          sourceUrl,
         });
       }
     }
 
     flushCueCard();
-    return questions;
+
+    // Group-level emergence detection across the questions on this page
+    const groupSubject = detectGroupStrongSubject(intermediateList, pageTopicName, sourceUrl) || pageTopicName;
+
+    // Convert to RawCandidateQuestion by evaluating each question's actual content
+    const finalQuestions: RawCandidateQuestion[] = intermediateList.map((item) => {
+      const topicSlug = classifyTopic(item.questionText, item.cueCardBullets, groupSubject);
+      return {
+        part: item.part,
+        questionText: item.questionText,
+        cueCardBullets: item.cueCardBullets ?? null,
+        questionType: item.questionType || (item.part === 'PART_2' ? 'CUE_CARD' : 'GENERAL'),
+        suggestedTopicSlug: topicSlug,
+        extractedTopicName: groupSubject || undefined,
+        source: 'WEB_CRAWLER',
+        sourceUrl,
+      };
+    });
+
+    return finalQuestions;
   }
 
-  public async crawlAllConfiguredSources(): Promise<RawCandidateQuestion[]> {
+  /**
+   * Fetches a URL and extracts its questions. Optionally performs depth-1 spidering.
+   */
+  public async fetchAndExtractUrl(
+    url: string,
+    options?: { depth?: number; maxSubpages?: number; delayMs?: number },
+  ): Promise<RawCandidateQuestion[]> {
+    logger.info(`Crawling IELTS target URL: ${url}`, { service: 'crawler', url });
+    await this.markUrlVisited(url);
+
+    const html = await this.fetchHtml(url);
+    if (!html) return [];
+
+    const directQuestions = this.parseHtmlContent(html, url);
+
+    if (options?.depth === 1) {
+      const maxSubpages = options.maxSubpages ?? 10;
+      const delayMs = options.delayMs ?? 200;
+      const subLinks = this.extractInternalIeltsLinks(html, url);
+
+      let fetchedSubpages = 0;
+      for (const link of subLinks) {
+        if (fetchedSubpages >= maxSubpages) break;
+        const alreadyVisited = await this.isUrlVisited(link);
+        if (alreadyVisited) continue;
+
+        await this.markUrlVisited(link);
+        if (delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+
+        const subHtml = await this.fetchHtml(link);
+        if (subHtml) {
+          const subQuestions = this.parseHtmlContent(subHtml, link);
+          directQuestions.push(...subQuestions);
+          fetchedSubpages++;
+        }
+      }
+    }
+
+    return directQuestions;
+  }
+
+  /**
+   * Performs depth-1 link spidering on a target hub page.
+   * Extracts internal IELTS subpage links, verifies against Redis crawl memory,
+   * fetches subpages, and extracts candidate questions.
+   */
+  public async spiderHubUrl(
+    hubUrl: string,
+    maxSubpages = 10,
+    delayMs = 250,
+  ): Promise<RawCandidateQuestion[]> {
+    logger.info(`Visiting IELTS hub page: ${hubUrl}`, { service: 'crawler', hubUrl });
+    await this.markUrlVisited(hubUrl);
+
+    const hubHtml = await this.fetchHtml(hubUrl);
+    if (!hubHtml) return [];
+
+    const collectedQuestions: RawCandidateQuestion[] = [...this.parseHtmlContent(hubHtml, hubUrl)];
+
+    // Depth-1 link spidering: extract matching internal subpage links
+    const subLinks = this.extractInternalIeltsLinks(hubHtml, hubUrl);
+    logger.info(`Found ${subLinks.length} candidate internal IELTS links on ${hubUrl}`, {
+      service: 'crawler',
+      hubUrl,
+      count: subLinks.length,
+    });
+
+    let subpagesCrawled = 0;
+    for (const link of subLinks) {
+      if (subpagesCrawled >= maxSubpages) {
+        logger.info(`Reached maximum subpage crawl limit (${maxSubpages}) for hub ${hubUrl}`, {
+          service: 'crawler',
+          hubUrl,
+        });
+        break;
+      }
+
+      // Check Redis crawl memory
+      const visited = await this.isUrlVisited(link);
+      if (visited) {
+        logger.debug(`Skipping previously crawled IELTS URL: ${link}`, { service: 'crawler', link });
+        continue;
+      }
+
+      // Record in Redis crawl memory
+      await this.markUrlVisited(link);
+
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+
+      logger.info(`Spidering depth-1 subpage: ${link}`, { service: 'crawler', link, hubUrl });
+      const subHtml = await this.fetchHtml(link);
+      if (!subHtml) continue;
+
+      const subQuestions = this.parseHtmlContent(subHtml, link);
+      collectedQuestions.push(...subQuestions);
+      subpagesCrawled++;
+    }
+
+    logger.info(`Completed depth-1 spidering for ${hubUrl}: crawled ${subpagesCrawled} subpages, found ${collectedQuestions.length} total questions`, {
+      service: 'crawler',
+      hubUrl,
+      subpagesCrawled,
+      questionsFound: collectedQuestions.length,
+    });
+
+    return collectedQuestions;
+  }
+
+  /**
+   * Crawls all configured sources with depth-1 spidering and Redis crawl memory.
+   */
+  public async crawlAllConfiguredSources(options?: {
+    maxDepth1PagesPerTarget?: number;
+    delayMs?: number;
+  }): Promise<RawCandidateQuestion[]> {
     const allCrawled: RawCandidateQuestion[] = [];
+    const maxSubpages = options?.maxDepth1PagesPerTarget ?? 10;
+    const delayMs = options?.delayMs ?? 250;
+
     for (const target of VERIFIED_CRAWLER_TARGETS) {
       if (!target.enabled) continue;
-      const results = await this.fetchAndExtractUrl(target.url, target.suggestedTopicSlug);
-      allCrawled.push(...results);
+      try {
+        const results = await this.spiderHubUrl(target.url, maxSubpages, delayMs);
+        allCrawled.push(...results);
+      } catch (err: unknown) {
+        logger.warn(`Depth-1 crawler encountered error on target ${target.url}`, {
+          service: 'crawler',
+          url: target.url,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
+
     return allCrawled;
   }
 }

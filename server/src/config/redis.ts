@@ -19,6 +19,11 @@ class InMemoryRedisMock {
     return added;
   }
 
+  async sismember(key: string, member: string): Promise<number> {
+    const set = this.sets.get(key);
+    return set && set.has(member) ? 1 : 0;
+  }
+
   async spop(key: string): Promise<string | null> {
     const set = this.sets.get(key);
     if (!set || set.size === 0) return null;
@@ -79,10 +84,102 @@ class InMemoryRedisMock {
     return count;
   }
 
-  async eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<string | number | null> {
+  async eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<any> {
     const keys = keyArgs.slice(0, numberOfKeys);
     const args = keyArgs.slice(numberOfKeys);
     // This mock implements the atomic primitives used by production matchmaking, admin tokens, and locks.
+    if (script.includes('MATCH_QUEUE_MULTI_CLAIM')) {
+      const pointerPrefix = args[0];
+      const selfId = args[1];
+
+      for (const bucketKey of keys) {
+        const set = this.sets.get(bucketKey);
+        if (!set) continue;
+
+        for (const candidate of [...set]) {
+          if (candidate === selfId) {
+            set.delete(candidate);
+            continue;
+          }
+          const entry = this.kv.get(`${pointerPrefix}${candidate}`);
+          const pointer = entry && (entry.expiresAt === undefined || Date.now() < entry.expiresAt) ? entry.value : null;
+          if (!pointer) {
+            set.delete(candidate);
+            for (const p of ['match_queue:priority:BOSS', 'match_queue:priority:PRO', 'match_queue:priority:PLUS', 'match_queue:global']) {
+              const ps = this.sets.get(p);
+              if (ps) {
+                ps.delete(candidate);
+                if (ps.size === 0) this.sets.delete(p);
+              }
+            }
+            continue;
+          }
+
+          set.delete(candidate);
+          if (set.size === 0) this.sets.delete(bucketKey);
+          this.kv.delete(`${pointerPrefix}${candidate}`);
+          this.kv.delete(`${pointerPrefix}${selfId}`);
+
+          // Remove candidate from ALL registered sets
+          // 1. Candidate's own bucket
+          const ownSet = this.sets.get(pointer);
+          if (ownSet) {
+            ownSet.delete(candidate);
+            if (ownSet.size === 0) this.sets.delete(pointer);
+          }
+
+          // 2. Candidate's band pool
+          const bandMatch = pointer.match(/^match_queue:([^:]+):/);
+          if (bandMatch) {
+            const bandKey = `match_queue:band:${bandMatch[1]}`;
+            const bandSet = this.sets.get(bandKey);
+            if (bandSet) {
+              bandSet.delete(candidate);
+              if (bandSet.size === 0) this.sets.delete(bandKey);
+            }
+          }
+
+          // 3. All band brackets
+          const allBands = ['4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0'];
+          for (const b of allBands) {
+            const bs = this.sets.get(`match_queue:band:${b}`);
+            if (bs) {
+              bs.delete(candidate);
+              if (bs.size === 0) this.sets.delete(`match_queue:band:${b}`);
+            }
+          }
+
+          // 4. Priority pools & global
+          const auxPools = [
+            'match_queue:priority:BOSS',
+            'match_queue:priority:PRO',
+            'match_queue:priority:PLUS',
+            'match_queue:global',
+          ];
+          for (const pool of auxPools) {
+            const pSet = this.sets.get(pool);
+            if (pSet) {
+              pSet.delete(candidate);
+              if (pSet.size === 0) this.sets.delete(pool);
+            }
+          }
+
+          // 5. All candidate bucket keys
+          for (const k of keys) {
+            const kSet = this.sets.get(k);
+            if (kSet) {
+              kSet.delete(candidate);
+              if (kSet.size === 0) this.sets.delete(k);
+            }
+          }
+
+          return [candidate, bucketKey];
+        }
+        if (set.size === 0) this.sets.delete(bucketKey);
+      }
+      return null;
+    }
+
     if (script.includes('MATCH_QUEUE_CLAIM')) {
       const bucketKey = keys[0];
       const pointerPrefix = keys[1];
@@ -271,6 +368,7 @@ class InMemoryRedisMock {
 
 export interface RedisClientInterface {
   sadd(key: string, ...members: string[]): Promise<number>;
+  sismember(key: string, member: string): Promise<number>;
   spop(key: string): Promise<string | null>;
   srem(key: string, ...members: string[]): Promise<number>;
   smembers(key: string): Promise<string[]>;
@@ -287,7 +385,7 @@ export interface RedisClientInterface {
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
   del(...keys: string[]): Promise<number>;
-  eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<string | number | null>;
+  eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<any>;
   flushall?(): Promise<'OK'>;
 }
 
@@ -330,6 +428,41 @@ if (env.NODE_ENV !== 'test') {
   });
 }
 
+export let pubClient: Redis | null = null;
+export let subClient: Redis | null = null;
+
+if (env.NODE_ENV !== 'test' && realRedisInstance) {
+  pubClient = realRedisInstance.duplicate();
+  subClient = realRedisInstance.duplicate();
+
+  pubClient.on('error', (error: Error) => {
+    logger.error('Redis pubClient error', {
+      service: 'redis',
+      event: 'redis_pub_error',
+    }, error);
+  });
+
+  subClient.on('error', (error: Error) => {
+    logger.error('Redis subClient error', {
+      service: 'redis',
+      event: 'redis_sub_error',
+    }, error);
+  });
+}
+
+export function createRedisDuplicates(): { pubClient: Redis; subClient: Redis } | null {
+  if (pubClient && subClient) {
+    return { pubClient, subClient };
+  }
+  if (!realRedisInstance) return null;
+  return {
+    pubClient: realRedisInstance.duplicate(),
+    subClient: realRedisInstance.duplicate(),
+  };
+}
+
+export const getRedisDuplicates = createRedisDuplicates;
+
 export function isRedisReady(): boolean {
   if (env.NODE_ENV === 'test') return true;
   if (env.NODE_ENV === 'development') return true;
@@ -339,6 +472,12 @@ export function isRedisReady(): boolean {
 export async function connectRedis(timeoutMs = 15000): Promise<boolean> {
   if (env.NODE_ENV === 'test') return true;
   if (!realRedisInstance) return false;
+  if (pubClient && pubClient.status === 'wait') {
+    void pubClient.connect().catch(() => undefined);
+  }
+  if (subClient && subClient.status === 'wait') {
+    void subClient.connect().catch(() => undefined);
+  }
   if (isRealRedisReady) return true;
 
   return new Promise<boolean>((resolve) => {
