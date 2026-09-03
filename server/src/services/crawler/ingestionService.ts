@@ -3,7 +3,8 @@ import { getRedis } from '../../config/redis';
 import { logger } from '../../utils/logger';
 import { generateQuestionFingerprint } from './fingerprint';
 import { SEED_TOPICS, classifyTopic } from './taxonomy';
-import { OFFICIAL_2026_EXAM_FORECAST_BANK, RawCandidateQuestion } from './sources';
+import { OFFICIAL_2026_EXAM_FORECAST_BANK, RawCandidateQuestion, VERIFIED_CRAWLER_TARGETS } from './sources';
+import { webCrawlerService } from './webCrawlerService';
 
 export interface IngestionResult {
   status: 'SUCCESS' | 'FAILED' | 'LOCKED';
@@ -22,6 +23,8 @@ export class QuestionIngestionService {
 
   public async runIngestion(options?: {
     customSources?: RawCandidateQuestion[];
+    customUrl?: string;
+    deepCrawl?: boolean;
     force?: boolean;
     onNewTopics?: (newCount: number, topics: string[]) => Promise<void>;
   }): Promise<IngestionResult> {
@@ -96,18 +99,50 @@ export class QuestionIngestionService {
         topicMap.set(t.slug, topic.id);
       }
 
-      // 4. Ingest candidate questions
-      const pool: RawCandidateQuestion[] = [
+      // Also load any custom topics already created by admin
+      const allDbTopics = await prisma.ieltsTopic.findMany({ select: { id: true, slug: true } });
+      for (const t of allDbTopics) {
+        topicMap.set(t.slug, t.id);
+      }
+
+      // 4. Ingest questions from:
+      // a) Verified 2026 Forecast Bank (120+ authentic questions)
+      // b) Custom URL crawl if requested
+      // c) Deep web crawl if requested
+      // d) Custom source payload
+      const candidateQuestions: RawCandidateQuestion[] = [
         ...OFFICIAL_2026_EXAM_FORECAST_BANK,
         ...(options?.customSources ?? []),
       ];
+      sourcesProcessed++; // 1 for the official forecast feed
 
-      sourcesProcessed = 1; // Verified 2026 Exam Recall Feed
-      questionsDiscovered = pool.length;
+      // Custom URL Crawl on-demand
+      if (options?.customUrl && options.customUrl.startsWith('http')) {
+        try {
+          const crawledFromUrl = await webCrawlerService.fetchAndExtractUrl(options.customUrl);
+          candidateQuestions.push(...crawledFromUrl);
+          sourcesProcessed++;
+        } catch (err) {
+          logger.warn('Custom URL crawl encountered error', { service: 'crawler', url: options.customUrl }, err);
+        }
+      }
 
-      for (const item of pool) {
+      // Deep Crawl configured sources if flag set
+      if (options?.deepCrawl) {
+        try {
+          const crawledFromWeb = await webCrawlerService.crawlAllConfiguredSources();
+          candidateQuestions.push(...crawledFromWeb);
+          sourcesProcessed += VERIFIED_CRAWLER_TARGETS.filter(t => t.enabled).length;
+        } catch (err) {
+          logger.warn('Deep web crawl encountered error', { service: 'crawler' }, err);
+        }
+      }
+
+      questionsDiscovered = candidateQuestions.length;
+
+      for (const item of candidateQuestions) {
         const text = item.questionText.trim();
-        if (!text) continue;
+        if (!text || text.length < 10) continue;
 
         const bullets = item.cueCardBullets ? item.cueCardBullets.trim() : null;
         const fingerprint = generateQuestionFingerprint(item.part, text, bullets);
@@ -128,7 +163,31 @@ export class QuestionIngestionService {
           targetSlug = classifyTopic(text, bullets);
         }
 
-        const topicId = topicMap.get(targetSlug) || topicMap.get('daily-life-habits')!;
+        let topicId = topicMap.get(targetSlug);
+        if (!topicId) {
+          // If topic doesn't exist, create a new taxonomy domain dynamically
+          try {
+            const topicName = targetSlug
+              .split('-')
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+              .join(' ');
+            const newTopic = await prisma.ieltsTopic.create({
+              data: {
+                name: topicName,
+                slug: targetSlug,
+                description: `Automatically classified topic domain for ${topicName} practice.`,
+                relevance: 6,
+                isActive: true,
+              },
+            });
+            topicId = newTopic.id;
+            topicMap.set(targetSlug, topicId);
+            topicsCreated++;
+            newlyCreatedTopics.push(newTopic.name);
+          } catch {
+            topicId = topicMap.get('daily-life-habits')!;
+          }
+        }
 
         // Insert new verified question
         await prisma.ieltsQuestion.create({
@@ -138,7 +197,7 @@ export class QuestionIngestionService {
             questionText: text,
             cueCardBullets: bullets,
             questionType: item.questionType || (item.part === 'PART_2' ? 'CUE_CARD' : 'GENERAL'),
-            source: item.source || 'OFFICIAL_RECALL',
+            source: item.source || 'WEB_CRAWLER',
             sourceUrl: item.sourceUrl || null,
             sourceHash: fingerprint,
             isActive: true,
@@ -150,7 +209,7 @@ export class QuestionIngestionService {
 
       const durationMs = Date.now() - startTime;
 
-      // 5. Update sync log
+      // 5. Update sync log to SUCCESS
       if (syncLogId) {
         await prisma.crawlerSyncLog.update({
           where: { id: syncLogId },
@@ -164,24 +223,22 @@ export class QuestionIngestionService {
             durationMs,
             completedAt: new Date(),
           },
-        });
+        }).catch(() => undefined);
       }
 
-      logger.info('Crawler ingestion run completed successfully', {
+      // 6. Notify admin or telegram subscribers if new topics emerged
+      if (topicsCreated > 0 && options?.onNewTopics) {
+        await options.onNewTopics(topicsCreated, newlyCreatedTopics).catch(() => undefined);
+      }
+
+      logger.info('Question ingestion cycle completed successfully', {
         service: 'crawler',
-        event: 'ingestion_success',
-        sourcesProcessed,
-        questionsDiscovered,
+        event: 'crawler_sync_success',
+        durationMs,
         questionsAccepted,
         duplicatesSkipped,
         topicsCreated,
-        durationMs,
       });
-
-      // 6. Trigger notification callback if new questions were added
-      if (questionsAccepted > 0 && options?.onNewTopics) {
-        void options.onNewTopics(questionsAccepted, newlyCreatedTopics).catch(() => undefined);
-      }
 
       return {
         status: 'SUCCESS',
@@ -192,9 +249,10 @@ export class QuestionIngestionService {
         topicsCreated,
         durationMs,
       };
-    } catch (err: unknown) {
+    } catch (error: any) {
       const durationMs = Date.now() - startTime;
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = error?.message || String(error);
+
       if (syncLogId) {
         await prisma.crawlerSyncLog.update({
           where: { id: syncLogId },
@@ -206,12 +264,12 @@ export class QuestionIngestionService {
           },
         }).catch(() => undefined);
       }
-      logger.error('Crawler ingestion run failed', {
+
+      logger.error('Question ingestion cycle failed', {
         service: 'crawler',
-        event: 'ingestion_failed',
-        error: errMsg,
-        durationMs,
-      }, err);
+        event: 'crawler_sync_failed',
+      }, error);
+
       return {
         status: 'FAILED',
         sourcesProcessed,
@@ -223,7 +281,7 @@ export class QuestionIngestionService {
         error: errMsg,
       };
     } finally {
-      // 7. Release crawler lock
+      // Release distributed lock
       try {
         await redis.del(this.crawlerLockKey);
       } catch {

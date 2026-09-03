@@ -262,6 +262,68 @@ router.delete('/questions/:id', async (req: AdminAuthenticatedRequest, res: Resp
   }
 });
 
+// --- BULK QUESTIONS IMPORT ---
+// POST /api/admin/ielts/questions/bulk
+router.post('/questions/bulk', async (req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { items, defaultTopicId } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: 'Items array is required' });
+      return;
+    }
+
+    let defaultTopic = defaultTopicId ? await prisma.ieltsTopic.findUnique({ where: { id: defaultTopicId } }) : null;
+    if (!defaultTopic) {
+      defaultTopic = (await prisma.ieltsTopic.findFirst({ where: { slug: 'daily-life-habits' } })) || (await prisma.ieltsTopic.findFirst());
+    }
+
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    for (const raw of items) {
+      const text = typeof raw === 'string' ? raw.trim() : (raw.questionText || raw.text || '').trim();
+      if (!text || text.length < 5) continue;
+
+      const part: IeltsPart = raw.part === 'PART_2' ? 'PART_2' : raw.part === 'PART_3' ? 'PART_3' : 'PART_1';
+      let bulletsJson: string | null = null;
+      if (raw.cueCardBullets) {
+        bulletsJson = Array.isArray(raw.cueCardBullets) ? JSON.stringify(raw.cueCardBullets) : String(raw.cueCardBullets);
+      }
+
+      const fingerprint = generateQuestionFingerprint(part, text, bulletsJson);
+      const existing = await prisma.ieltsQuestion.findUnique({ where: { sourceHash: fingerprint } });
+      if (existing) {
+        skippedCount++;
+        continue;
+      }
+
+      await prisma.ieltsQuestion.create({
+        data: {
+          topicId: raw.topicId || defaultTopic?.id || 'default',
+          part,
+          questionText: text,
+          cueCardBullets: bulletsJson,
+          questionType: part === 'PART_2' ? 'CUE_CARD' : part === 'PART_3' ? 'DISCUSSION' : 'GENERAL',
+          source: raw.source || 'ADMIN_BULK_IMPORT',
+          sourceHash: fingerprint,
+          isActive: true,
+        },
+      });
+      importedCount++;
+    }
+
+    res.json({
+      success: true,
+      importedCount,
+      skippedCount,
+      totalProcessed: items.length,
+    });
+  } catch (err: unknown) {
+    logger.error('Admin bulk question import failed', { service: 'admin_ielts' }, err);
+    res.status(500).json({ error: 'Internal server error importing questions' });
+  }
+});
+
 // --- CRAWLER CONTROL & TELEMETRY ---
 // GET /api/admin/ielts/crawler/status
 router.get('/crawler/status', async (_req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
@@ -286,12 +348,29 @@ router.get('/crawler/status', async (_req: AdminAuthenticatedRequest, res: Respo
   }
 });
 
-// POST /api/admin/ielts/crawler/run
-router.post('/crawler/run', async (_req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
+// GET /api/admin/ielts/crawler/logs
+router.get('/crawler/logs', async (_req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    logger.info('Admin triggered manual crawler ingestion run', { service: 'admin_ielts' });
+    const logs = await prisma.crawlerSyncLog.findMany({
+      orderBy: { startedAt: 'desc' },
+      take: 20,
+    });
+    res.json({ success: true, logs });
+  } catch (err: unknown) {
+    logger.error('Admin fetch crawler logs failed', { service: 'admin_ielts' }, err);
+    res.status(500).json({ error: 'Internal server error fetching crawler logs' });
+  }
+});
+
+// POST /api/admin/ielts/crawler/run
+router.post('/crawler/run', async (req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { customUrl, deepCrawl } = req.body || {};
+    logger.info('Admin triggered manual crawler ingestion run', { service: 'admin_ielts', customUrl, deepCrawl });
     const result = await questionIngestionService.runIngestion({
       force: true,
+      customUrl: typeof customUrl === 'string' && customUrl.startsWith('http') ? customUrl.trim() : undefined,
+      deepCrawl: Boolean(deepCrawl),
       onNewTopics: async (newCount, topics) => {
         const bot = getAdminBot();
         if (bot) {
