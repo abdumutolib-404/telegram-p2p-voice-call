@@ -5,6 +5,7 @@ import { generateQuestionFingerprint } from './fingerprint';
 import { SEED_TOPICS, classifyTopic } from './taxonomy';
 import { OFFICIAL_2026_EXAM_FORECAST_BANK, RawCandidateQuestion, VERIFIED_CRAWLER_TARGETS } from './sources';
 import { webCrawlerService } from './webCrawlerService';
+import { generateCanonicalSemanticKey, isSemanticDuplicate } from './semanticMatcher';
 
 export interface IngestionResult {
   status: 'SUCCESS' | 'FAILED' | 'LOCKED';
@@ -105,7 +106,24 @@ export class QuestionIngestionService {
         topicMap.set(t.slug, t.id);
       }
 
-      // 4. Ingest questions from:
+      // 4. Pre-cache existing questions for semantic deduplication (grouped by topicId_part)
+      const existingDbQuestions = await prisma.ieltsQuestion.findMany({
+        select: { id: true, topicId: true, part: true, questionText: true },
+      });
+
+      const semanticBankMap = new Map<string, Array<{ questionText: string; canonicalKey: string }>>();
+      for (const q of existingDbQuestions) {
+        const groupKey = `${q.topicId}_${q.part}`;
+        if (!semanticBankMap.has(groupKey)) {
+          semanticBankMap.set(groupKey, []);
+        }
+        semanticBankMap.get(groupKey)!.push({
+          questionText: q.questionText,
+          canonicalKey: generateCanonicalSemanticKey(q.questionText),
+        });
+      }
+
+      // 5. Ingest questions from:
       // a) Verified 2026 Forecast Bank (120+ authentic questions)
       // b) Custom URL crawl if requested
       // c) Deep web crawl if requested
@@ -147,7 +165,7 @@ export class QuestionIngestionService {
         const bullets = item.cueCardBullets ? item.cueCardBullets.trim() : null;
         const fingerprint = generateQuestionFingerprint(item.part, text, bullets);
 
-        // Check deduplication via unique SHA-256 fingerprint
+        // Check Layer 1: Exact SHA-256 fingerprint
         const existing = await prisma.ieltsQuestion.findUnique({
           where: { sourceHash: fingerprint },
         });
@@ -189,7 +207,23 @@ export class QuestionIngestionService {
           }
         }
 
-        // Insert new verified question
+        // Check Layer 2 & 3: Semantic Paraphrase Deduplication against same topic & part
+        const groupKey = `${topicId}_${item.part}`;
+        const groupQuestions = semanticBankMap.get(groupKey) || [];
+
+        const semanticCheck = isSemanticDuplicate(text, groupQuestions, 0.75);
+        if (semanticCheck.isDuplicate) {
+          duplicatesSkipped++;
+          logger.info('Skipping semantic paraphrase duplicate question', {
+            service: 'crawler',
+            candidate: text,
+            matchedWith: semanticCheck.matchedQuestion,
+            similarityScore: semanticCheck.score,
+          });
+          continue;
+        }
+
+        // Insert new verified question into DB
         await prisma.ieltsQuestion.create({
           data: {
             topicId,
@@ -204,12 +238,21 @@ export class QuestionIngestionService {
           },
         });
 
+        // Add to in-memory semantic cache for subsequent checks in this run
+        if (!semanticBankMap.has(groupKey)) {
+          semanticBankMap.set(groupKey, []);
+        }
+        semanticBankMap.get(groupKey)!.push({
+          questionText: text,
+          canonicalKey: generateCanonicalSemanticKey(text),
+        });
+
         questionsAccepted++;
       }
 
       const durationMs = Date.now() - startTime;
 
-      // 5. Update sync log to SUCCESS
+      // 6. Update sync log to SUCCESS
       if (syncLogId) {
         await prisma.crawlerSyncLog.update({
           where: { id: syncLogId },
@@ -226,12 +269,12 @@ export class QuestionIngestionService {
         }).catch(() => undefined);
       }
 
-      // 6. Notify admin or telegram subscribers if new topics emerged
+      // 7. Notify admin or telegram subscribers if new topics emerged
       if (topicsCreated > 0 && options?.onNewTopics) {
         await options.onNewTopics(topicsCreated, newlyCreatedTopics).catch(() => undefined);
       }
 
-      logger.info('Question ingestion cycle completed successfully', {
+      logger.info('Question ingestion cycle completed successfully with semantic deduplication', {
         service: 'crawler',
         event: 'crawler_sync_success',
         durationMs,
