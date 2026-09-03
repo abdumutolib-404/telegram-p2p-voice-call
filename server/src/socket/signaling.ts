@@ -131,6 +131,21 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     if (graceTimer) {
       clearTimeout(graceTimer);
       disconnectGraceTimers.delete(userId);
+      logger.info(`User ${userId} reconnected within grace period. Cancelled session teardown.`);
+
+      void prisma.callSession.findMany({
+        where: {
+          status: 'ACTIVE',
+          OR: [{ userAId: userId }, { userBId: userId }],
+        },
+      }).then((sessions) => {
+        for (const s of sessions) {
+          io.to(s.roomName).emit('partner_reconnected', {
+            userId,
+            reconnectedAt: new Date().toISOString(),
+          });
+        }
+      }).catch(() => undefined);
     }
   };
 
@@ -1078,6 +1093,14 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           });
 
           if (activeSessions.length === 0) return;
+
+          // Notify the room that temporary connection was interrupted and grace timer has started
+          for (const session of activeSessions) {
+            io.to(session.roomName).emit('partner_connection_lost', {
+              userId: disconnectedUserId,
+              gracePeriodSec: 15,
+            });
+          }
 
           // 15-second grace period for mobile app blur / network reconnect
           const graceTimer = setTimeout(async () => {

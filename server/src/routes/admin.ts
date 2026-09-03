@@ -29,6 +29,7 @@ import type { MyContext } from '../bot/types';
 import { logger, getRecentErrors } from '../utils/logger';
 import { setRequestContextUserId } from '../utils/requestContext';
 import adminTelemetryRouter from './adminTelemetry';
+import adminIeltsRouter from './adminIelts';
 
 const router = Router();
 const adminAuthLimiter = createActionRateLimiter('ADMIN_LOGIN', getClientIp);
@@ -36,6 +37,8 @@ const otpVerifyLimiter = createActionRateLimiter('ADMIN_OTP', getClientIp);
 
 // Mount Telemetry Sub-Router (Protected under /api/admin/telemetry/*)
 router.use('/telemetry', adminAuthMiddleware, adminTelemetryRouter);
+// Mount IELTS Sub-Router (Protected under /api/admin/ielts/*)
+router.use('/ielts', adminAuthMiddleware, adminIeltsRouter);
 
 interface AdminOtpChallenge {
   challengeId: string;

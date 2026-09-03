@@ -187,3 +187,63 @@ model Contest {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
+
+enum IeltsPart {
+  PART_1
+  PART_2
+  PART_3
+}
+
+model IeltsTopic {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  slug           String          @unique
+  description    String?
+  relevance      Int             @default(5) // 1-10 priority/frequency
+  sourceMetadata String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  questions      IeltsQuestion[]
+
+  @@index([slug, isActive])
+  @@index([relevance])
+}
+
+model IeltsQuestion {
+  id             String     @id @default(uuid())
+  topicId        String
+  part           IeltsPart
+  questionText   String
+  cueCardBullets String?    // For Part 2 cue cards (JSON array of bullet points)
+  questionType   String     @default("GENERAL") // "GENERAL", "CUE_CARD", "DISCUSSION", "FOLLOW_UP"
+  source         String     @default("OFFICIAL_RECALL")
+  sourceUrl      String?
+  sourceHash     String     @unique // Deterministic SHA-256 fingerprint of normalized text
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  topic          IeltsTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([part, isActive])
+  @@index([topicId, part, isActive])
+}
+
+model CrawlerSyncLog {
+  id                  String    @id @default(uuid())
+  status              String    // "SUCCESS", "FAILED", "RUNNING"
+  sourcesProcessed    Int       @default(0)
+  questionsDiscovered Int       @default(0)
+  questionsAccepted   Int       @default(0)
+  duplicatesSkipped   Int       @default(0)
+  topicsCreated       Int       @default(0)
+  errors              String?
+  durationMs          Int       @default(0)
+  startedAt           DateTime  @default(now())
+  completedAt         DateTime?
+
+  @@index([startedAt])
+}
+

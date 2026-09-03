@@ -11,6 +11,7 @@ import { env } from './config/env';
 import { prisma, connectDB, disconnectDB } from './config/database';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
+import ieltsRoutes from './routes/ielts';
 import adminRoutes, { setAdminBot } from './routes/admin';
 import adminTelemetryRouter from './routes/adminTelemetry';
 import { adminAuthMiddleware } from './middleware/adminAuth';
@@ -19,6 +20,9 @@ import { setupSocketSignaling } from './socket/signaling';
 import { createBot } from './bot/bot';
 import { startStoragePurgeCron } from './services/storage';
 import { startSubscriptionExpiryCron } from './services/subscriptionExpiry';
+import { botLeaderLock } from './services/leaderLock';
+import { questionIngestionService } from './services/crawler/ingestionService';
+import { topicNotificationService } from './services/topicNotificationService';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
 import { requestIdMiddleware } from './middleware/requestId';
 import { logger } from './utils/logger';
@@ -522,6 +526,7 @@ app.use((req, res, next) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/ielts', ieltsRoutes);
 app.use('/api/admin/telemetry', adminAuthMiddleware, adminTelemetryRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/livekit', livekitWebhookRouter);
@@ -703,36 +708,64 @@ let bot: Bot<MyContext> | null = null;
 
 async function startBotWithRetry(botInstance: Bot<MyContext>): Promise<void> {
   let isRunning = true;
-  const stopHandler = () => {
+  const stopHandler = async () => {
     isRunning = false;
+    botLeaderLock.stopTimers();
+    await botLeaderLock.release().catch(() => {});
+    try {
+      await botInstance.stop().catch(() => {});
+    } catch {
+      // ignore
+    }
   };
   process.once('SIGINT', stopHandler);
   process.once('SIGTERM', stopHandler);
 
-  while (isRunning) {
-    try {
-      logger.info('Starting Telegram bot polling...', { service: 'bot', event: 'bot_polling_start' });
-      await botInstance.start({
-        onStart: (botInfo: UserFromGetMe) => {
-          logger.info(`Bot @${botInfo.username} launched and listening for updates.`, {
-            service: 'bot',
-            event: 'bot_started',
-            botUsername: botInfo.username,
-          });
-        },
-        drop_pending_updates: false,
-      });
-      break;
-    } catch (error: any) {
-      if (!isRunning) break;
-      const errMsg = error instanceof Error ? error.message : String(error);
-      logger.warn(`Bot polling interrupted (${errMsg}). Re-attempting in 3 seconds...`, {
+  botLeaderLock.startElection({
+    onElected: async () => {
+      logger.info('Elected as Telegram Bot polling leader. Launching bot polling...', {
         service: 'bot',
-        event: 'bot_polling_retry',
-      }, error);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    }
-  }
+        event: 'bot_leader_elected',
+        instanceId: botLeaderLock.getInstanceId(),
+      });
+      while (isRunning && botLeaderLock.isCurrentLeader()) {
+        try {
+          await botInstance.start({
+            onStart: (botInfo: UserFromGetMe) => {
+              logger.info(`Bot @${botInfo.username} launched and listening for updates (Leader).`, {
+                service: 'bot',
+                event: 'bot_started',
+                botUsername: botInfo.username,
+                instanceId: botLeaderLock.getInstanceId(),
+              });
+            },
+            drop_pending_updates: false,
+          });
+          break;
+        } catch (error: any) {
+          if (!isRunning || !botLeaderLock.isCurrentLeader()) break;
+          const errMsg = error instanceof Error ? error.message : String(error);
+          logger.warn(`Bot polling interrupted (${errMsg}). Re-attempting in 3 seconds...`, {
+            service: 'bot',
+            event: 'bot_polling_retry',
+          }, error);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+    },
+    onLost: async () => {
+      logger.warn('Telegram bot leadership lost. Stopping polling to enter standby...', {
+        service: 'bot',
+        event: 'bot_leader_lost',
+        instanceId: botLeaderLock.getInstanceId(),
+      });
+      try {
+        await botInstance.stop().catch(() => {});
+      } catch {
+        // ignore
+      }
+    },
+  });
 }
 
 if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
@@ -760,6 +793,21 @@ async function bootstrap(): Promise<void> {
     setupSocketSignaling(io, bot ?? undefined);
     startStoragePurgeCron();
     startSubscriptionExpiryCron(() => bot);
+
+    // Initial crawler seed on boot & daily 24h periodic sync
+    void questionIngestionService.runIngestion({
+      onNewTopics: async (newCount, topics) => {
+        if (bot) await topicNotificationService.broadcastNewTopics(newCount, topics, bot);
+      },
+    }).catch(() => undefined);
+
+    setInterval(() => {
+      void questionIngestionService.runIngestion({
+        onNewTopics: async (newCount, topics) => {
+          if (bot) await topicNotificationService.broadcastNewTopics(newCount, topics, bot);
+        },
+      }).catch(() => undefined);
+    }, 24 * 60 * 60 * 1000).unref();
 
     if (env.NODE_ENV !== 'test') {
       await new Promise<void>((resolve, reject) => {

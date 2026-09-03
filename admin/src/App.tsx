@@ -9,6 +9,7 @@ import { AppealsQueue } from './components/dashboard/AppealsQueue.tsx';
 import { UserManagement } from './components/dashboard/UserManagement.tsx';
 import { ContestManagement } from './components/dashboard/ContestManagement.tsx';
 import { AuditLogViewer } from './components/dashboard/AuditLogViewer.tsx';
+import { QuestionManagement } from './components/dashboard/QuestionManagement.tsx';
 import { adminFetch } from './api/client.ts';
 import type { ManualPaymentRequestItem, AppealItem } from './types/index.ts';
 import {
@@ -23,6 +24,7 @@ import {
 export type NavigationTab =
   | 'overview'
   | 'users'
+  | 'questions'
   | 'plans'
   | 'payments'
   | 'appeals'
@@ -58,6 +60,12 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Candidates',
         shortLabel: 'CD',
         description: 'Learners roster, speaking limits & moderation controls',
+      },
+      {
+        id: 'questions',
+        label: 'IELTS Questions',
+        shortLabel: 'IQ',
+        description: 'Exam question bank, topic taxonomy & crawler sync controls',
       },
       {
         id: 'contest',
@@ -550,6 +558,7 @@ function MainDashboard() {
         >
           {activeTab === 'overview' && <OverviewDashboard onNavigateTab={setActiveTab} />}
           {activeTab === 'users' && <UserManagement />}
+          {activeTab === 'questions' && <QuestionManagement />}
           {activeTab === 'plans' && <PlanEditor />}
           {activeTab === 'payments' && <ManualPaymentsQueue />}
           {activeTab === 'appeals' && <AppealsQueue />}

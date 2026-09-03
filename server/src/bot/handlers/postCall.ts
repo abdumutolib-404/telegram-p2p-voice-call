@@ -19,13 +19,7 @@ export async function sendPostCallReviewCard(
   const durationSec = durationSeconds % 60;
   const durationStr = `${durationMin}m ${durationSec}s`;
 
-  const inlineKb = new InlineKeyboard()
-    .text('⭐ 1', `rate_call:${callSessionId}:1`)
-    .text('⭐ 2', `rate_call:${callSessionId}:2`)
-    .text('⭐ 3', `rate_call:${callSessionId}:3`)
-    .text('⭐ 4', `rate_call:${callSessionId}:4`)
-    .text('⭐ 5', `rate_call:${callSessionId}:5`)
-    .row();
+  const inlineKb = new InlineKeyboard();
 
   if (recordingUrl) {
     inlineKb.text('🎧 Listen Recording', `play_rec:${callSessionId}`).row();
@@ -47,8 +41,7 @@ export async function sendPostCallReviewCard(
       `📞 <b>Practice Session Complete!</b>\n\n` +
         `• <b>Partner</b>: ${partnerAlias}\n` +
         `• <b>Duration</b>: ${durationStr}` +
-        `${retentionNotice}\n\n` +
-        `<b>How was your call audio quality?</b>`,
+        `${retentionNotice}`,
       { parse_mode: 'HTML', reply_markup: inlineKb }
     );
 

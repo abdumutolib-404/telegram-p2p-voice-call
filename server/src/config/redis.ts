@@ -153,6 +153,18 @@ class InMemoryRedisMock {
       return 0;
     }
 
+    if (script.includes('LOCK_RENEW') || script.includes('ARGV[1] then return redis.call(\'PEXPIRE\', KEYS[1]')) {
+      const key = keys[0];
+      const expected = args[0];
+      const ttlMs = Number(args[1]) || 15000;
+      const entry = this.kv.get(key);
+      if (entry && entry.value === expected) {
+        entry.expiresAt = Date.now() + ttlMs;
+        return 1;
+      }
+      return 0;
+    }
+
     if (script.includes('VERIFY_OTP') || script.includes('otpHash') || script.includes('maxAttempts')) {
       const key = keys[0];
       const providedOtpHash = args[0];

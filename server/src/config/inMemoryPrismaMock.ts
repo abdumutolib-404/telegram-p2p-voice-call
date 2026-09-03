@@ -65,6 +65,46 @@ interface UserRow {
   createdAt: Date;
   updatedAt: Date;
 }
+interface IeltsTopicRow {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  relevance: number;
+  sourceMetadata: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface IeltsQuestionRow {
+  id: string;
+  topicId: string;
+  part: 'PART_1' | 'PART_2' | 'PART_3';
+  questionText: string;
+  cueCardBullets: string | null;
+  questionType: string;
+  source: string;
+  sourceUrl: string | null;
+  sourceHash: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface CrawlerSyncLogRow {
+  id: string;
+  status: string;
+  sourcesProcessed: number;
+  questionsDiscovered: number;
+  questionsAccepted: number;
+  duplicatesSkipped: number;
+  topicsCreated: number;
+  errors: string | null;
+  durationMs: number;
+  startedAt: Date;
+  completedAt: Date | null;
+}
 
 interface ReferralRewardRow {
   id: string;
@@ -216,6 +256,9 @@ export class InMemoryPrismaMock {
   private readonly favoritePartners = new Map<string, FavoriteRow>();
   private readonly referralRewards = new Map<string, ReferralRewardRow>();
   private readonly contests = new Map<string, ContestRow>();
+  private readonly ieltsTopics = new Map<string, IeltsTopicRow>();
+  private readonly ieltsQuestions = new Map<string, IeltsQuestionRow>();
+  private readonly crawlerSyncLogs = new Map<string, CrawlerSyncLogRow>();
 
   private txQueue: Promise<unknown> = Promise.resolve();
 
@@ -335,6 +378,231 @@ export class InMemoryPrismaMock {
         }
       }
       return { count };
+    },
+  };
+  ieltsTopic = {
+    create: async (args: { data: Record<string, unknown> }): Promise<IeltsTopicRow> => {
+      const id = (args.data.id as string) || crypto.randomUUID();
+      const row: IeltsTopicRow = {
+        id,
+        name: String(args.data.name),
+        slug: String(args.data.slug),
+        description: (args.data.description as string) ?? null,
+        relevance: Number(args.data.relevance ?? 5),
+        sourceMetadata: (args.data.sourceMetadata as string) ?? null,
+        isActive: args.data.isActive !== undefined ? Boolean(args.data.isActive) : true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.ieltsTopics.set(id, row);
+      return { ...row };
+    },
+    upsert: async (args: { where: { slug?: string; name?: string; id?: string }; create: Record<string, unknown>; update: Record<string, unknown> }): Promise<IeltsTopicRow> => {
+      let existing: IeltsTopicRow | undefined;
+      for (const t of this.ieltsTopics.values()) {
+        if (args.where.slug && t.slug === args.where.slug) { existing = t; break; }
+        if (args.where.name && t.name === args.where.name) { existing = t; break; }
+        if (args.where.id && t.id === args.where.id) { existing = t; break; }
+      }
+      if (existing) {
+        const updated = { ...existing, ...args.update, updatedAt: new Date() } as IeltsTopicRow;
+        this.ieltsTopics.set(existing.id, updated);
+        return { ...updated };
+      }
+      return await this.ieltsTopic.create({ data: args.create });
+    },
+    findUnique: async (args: { where: { id?: string; slug?: string; name?: string } }): Promise<IeltsTopicRow | null> => {
+      for (const t of this.ieltsTopics.values()) {
+        if (args.where.id && t.id === args.where.id) return { ...t };
+        if (args.where.slug && t.slug === args.where.slug) return { ...t };
+        if (args.where.name && t.name === args.where.name) return { ...t };
+      }
+      return null;
+    },
+    findFirst: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> }): Promise<IeltsTopicRow | null> => {
+      const all = await this.ieltsTopic.findMany(args);
+      return all[0] ?? null;
+    },
+    findMany: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'>; include?: Record<string, boolean> }): Promise<any[]> => {
+      let list = [...this.ieltsTopics.values()].filter((t) => {
+        if (args?.where?.isActive !== undefined && t.isActive !== args.where.isActive) return false;
+        if (args?.where?.slug && t.slug !== args.where.slug) return false;
+        if (args?.where?.name && t.name !== args.where.name) return false;
+        return true;
+      });
+      if (args?.orderBy?.relevance === 'desc') list.sort((a, b) => b.relevance - a.relevance);
+      if (args?.orderBy?.name === 'asc') list.sort((a, b) => a.name.localeCompare(b.name));
+
+      return list.map((t) => {
+        const row: any = { ...t };
+        if (args?.include?.questions) {
+          row.questions = [...this.ieltsQuestions.values()].filter((q) => q.topicId === t.id);
+        }
+        if (args?.include?._count) {
+          row._count = {
+            questions: [...this.ieltsQuestions.values()].filter((q) => q.topicId === t.id).length,
+          };
+        }
+        return row;
+      });
+    },
+    update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<IeltsTopicRow> => {
+      const existing = this.ieltsTopics.get(args.where.id);
+      if (!existing) throw new Error('IeltsTopic not found');
+      const updated = { ...existing, ...args.data, updatedAt: new Date() } as IeltsTopicRow;
+      this.ieltsTopics.set(args.where.id, updated);
+      return { ...updated };
+    },
+    delete: async (args: { where: { id: string } }): Promise<IeltsTopicRow> => {
+      const existing = this.ieltsTopics.get(args.where.id);
+      if (!existing) throw new Error('IeltsTopic not found');
+      this.ieltsTopics.delete(args.where.id);
+      return { ...existing };
+    },
+    count: async (args?: { where?: Record<string, unknown> }): Promise<number> => {
+      const list = await this.ieltsTopic.findMany(args);
+      return list.length;
+    },
+  };
+
+  ieltsQuestion = {
+    create: async (args: { data: Record<string, unknown> }): Promise<IeltsQuestionRow> => {
+      const id = (args.data.id as string) || crypto.randomUUID();
+      const row: IeltsQuestionRow = {
+        id,
+        topicId: String(args.data.topicId),
+        part: args.data.part as 'PART_1' | 'PART_2' | 'PART_3',
+        questionText: String(args.data.questionText),
+        cueCardBullets: (args.data.cueCardBullets as string) ?? null,
+        questionType: (args.data.questionType as string) ?? 'GENERAL',
+        source: (args.data.source as string) ?? 'OFFICIAL_RECALL',
+        sourceUrl: (args.data.sourceUrl as string) ?? null,
+        sourceHash: String(args.data.sourceHash),
+        isActive: args.data.isActive !== undefined ? Boolean(args.data.isActive) : true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.ieltsQuestions.set(id, row);
+      return { ...row };
+    },
+    upsert: async (args: { where: { sourceHash?: string; id?: string }; create: Record<string, unknown>; update: Record<string, unknown> }): Promise<IeltsQuestionRow> => {
+      let existing: IeltsQuestionRow | undefined;
+      for (const q of this.ieltsQuestions.values()) {
+        if (args.where.sourceHash && q.sourceHash === args.where.sourceHash) { existing = q; break; }
+        if (args.where.id && q.id === args.where.id) { existing = q; break; }
+      }
+      if (existing) {
+        const updated = { ...existing, ...args.update, updatedAt: new Date() } as IeltsQuestionRow;
+        this.ieltsQuestions.set(existing.id, updated);
+        return { ...updated };
+      }
+      return await this.ieltsQuestion.create({ data: args.create });
+    },
+    findUnique: async (args: { where: { id?: string; sourceHash?: string }; include?: Record<string, boolean> }): Promise<any> => {
+      for (const q of this.ieltsQuestions.values()) {
+        if ((args.where.id && q.id === args.where.id) || (args.where.sourceHash && q.sourceHash === args.where.sourceHash)) {
+          const row: any = { ...q };
+          if (args.include?.topic) {
+            row.topic = this.ieltsTopics.get(q.topicId) ? { ...this.ieltsTopics.get(q.topicId)! } : null;
+          }
+          return row;
+        }
+      }
+      return null;
+    },
+    findFirst: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'>; include?: Record<string, boolean> }): Promise<any> => {
+      const all = await this.ieltsQuestion.findMany(args);
+      return all[0] ?? null;
+    },
+    findMany: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'>; take?: number; skip?: number; include?: Record<string, boolean> }): Promise<any[]> => {
+      let list = [...this.ieltsQuestions.values()].filter((q) => {
+        if (args?.where?.topicId && q.topicId !== args.where.topicId) return false;
+        if (args?.where?.part && q.part !== args.where.part) return false;
+        if (args?.where?.isActive !== undefined && q.isActive !== args.where.isActive) return false;
+        if (args?.where?.sourceHash && q.sourceHash !== args.where.sourceHash) return false;
+        if (args?.where?.questionText && typeof args.where.questionText === 'object' && 'contains' in args.where.questionText) {
+          const needle = String((args.where.questionText as { contains: string }).contains).toLowerCase();
+          if (!q.questionText.toLowerCase().includes(needle)) return false;
+        }
+        return true;
+      });
+      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (args?.skip) list = list.slice(args.skip);
+      if (args?.take) list = list.slice(0, args.take);
+
+      return list.map((q) => {
+        const row: any = { ...q };
+        if (args?.include?.topic) {
+          row.topic = this.ieltsTopics.get(q.topicId) ? { ...this.ieltsTopics.get(q.topicId)! } : null;
+        }
+        return row;
+      });
+    },
+    update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<IeltsQuestionRow> => {
+      const existing = this.ieltsQuestions.get(args.where.id);
+      if (!existing) throw new Error('IeltsQuestion not found');
+      const updated = { ...existing, ...args.data, updatedAt: new Date() } as IeltsQuestionRow;
+      this.ieltsQuestions.set(args.where.id, updated);
+      return { ...updated };
+    },
+    delete: async (args: { where: { id: string } }): Promise<IeltsQuestionRow> => {
+      const existing = this.ieltsQuestions.get(args.where.id);
+      if (!existing) throw new Error('IeltsQuestion not found');
+      this.ieltsQuestions.delete(args.where.id);
+      return { ...existing };
+    },
+    deleteMany: async (args?: { where?: Record<string, unknown> }): Promise<{ count: number }> => {
+      const toDelete = await this.ieltsQuestion.findMany(args);
+      for (const item of toDelete) {
+        this.ieltsQuestions.delete(item.id);
+      }
+      return { count: toDelete.length };
+    },
+    count: async (args?: { where?: Record<string, unknown> }): Promise<number> => {
+      const list = await this.ieltsQuestion.findMany(args);
+      return list.length;
+    },
+  };
+
+  crawlerSyncLog = {
+    create: async (args: { data: Record<string, unknown> }): Promise<CrawlerSyncLogRow> => {
+      const id = (args.data.id as string) || crypto.randomUUID();
+      const row: CrawlerSyncLogRow = {
+        id,
+        status: (args.data.status as string) || 'RUNNING',
+        sourcesProcessed: Number(args.data.sourcesProcessed || 0),
+        questionsDiscovered: Number(args.data.questionsDiscovered || 0),
+        questionsAccepted: Number(args.data.questionsAccepted || 0),
+        duplicatesSkipped: Number(args.data.duplicatesSkipped || 0),
+        topicsCreated: Number(args.data.topicsCreated || 0),
+        errors: (args.data.errors as string) ?? null,
+        durationMs: Number(args.data.durationMs || 0),
+        startedAt: (args.data.startedAt as Date) || new Date(),
+        completedAt: (args.data.completedAt as Date) || null,
+      };
+      this.crawlerSyncLogs.set(id, row);
+      return { ...row };
+    },
+    update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<CrawlerSyncLogRow> => {
+      const existing = this.crawlerSyncLogs.get(args.where.id);
+      if (!existing) throw new Error('CrawlerSyncLog not found');
+      const updated = { ...existing, ...args.data } as CrawlerSyncLogRow;
+      this.crawlerSyncLogs.set(args.where.id, updated);
+      return { ...updated };
+    },
+    findFirst: async (args?: { orderBy?: Record<string, 'asc' | 'desc'> }): Promise<CrawlerSyncLogRow | null> => {
+      const list = [...this.crawlerSyncLogs.values()];
+      if (args?.orderBy?.startedAt === 'desc') list.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+      return list[0] ? { ...list[0] } : null;
+    },
+    findMany: async (args?: { orderBy?: Record<string, 'asc' | 'desc'>; take?: number }): Promise<CrawlerSyncLogRow[]> => {
+      let list = [...this.crawlerSyncLogs.values()];
+      if (args?.orderBy?.startedAt === 'desc') list.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+      if (args?.take) list = list.slice(0, args.take);
+      return list.map((l) => ({ ...l }));
+    },
+    count: async (): Promise<number> => {
+      return this.crawlerSyncLogs.size;
     },
   };
 

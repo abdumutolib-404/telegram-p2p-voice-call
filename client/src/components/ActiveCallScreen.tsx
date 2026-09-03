@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Mic, MicOff, PhoneOff, Circle, AlertTriangle, ShieldCheck, Volume2, Wifi } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Circle, AlertTriangle, ShieldCheck, Volume2, Wifi, BookOpen } from 'lucide-react';
 import { socketService } from '../services/socket';
 import { AudioVisualizer } from './AudioVisualizer';
+import { QuestionsDrawer } from './QuestionsDrawer';
 import type { RecordStatusPayload } from '../types';
 
 interface ActiveCallScreenProps {
@@ -41,6 +42,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
   const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
+  const [showQuestionsDrawer, setShowQuestionsDrawer] = useState(false);
+  const [reconnectingGraceSec, setReconnectingGraceSec] = useState<number | null>(null);
 
   const hasFinishedRef = useRef(false);
   const handleFinishCall = useCallback((reason?: string) => {
@@ -114,12 +117,24 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       setTimeout(() => setRecordingWarning(null), 4000);
     };
 
+    const handlePartnerConnectionLost = (data: { gracePeriodSec?: number }) => {
+      setReconnectingGraceSec(data?.gracePeriodSec || 15);
+    };
+
+    const handlePartnerReconnected = () => {
+      setReconnectingGraceSec(null);
+    };
+
     socket.on('record_status', handleRecordStatus);
     socket.on('recording_error', handleRecordingError);
+    socket.on('partner_connection_lost', handlePartnerConnectionLost);
+    socket.on('partner_reconnected', handlePartnerReconnected);
 
     return () => {
       socket.off('record_status', handleRecordStatus);
       socket.off('recording_error', handleRecordingError);
+      socket.off('partner_connection_lost', handlePartnerConnectionLost);
+      socket.off('partner_reconnected', handlePartnerReconnected);
     };
   }, []);
 
@@ -196,25 +211,48 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         </div>
       )}
 
+      {/* 4. Reconnecting Grace Banner */}
+      {reconnectingGraceSec !== null && (
+        <div className="fixed top-16 inset-x-4 z-50 py-2.5 px-4 bg-amber-500/20 border border-amber-500/50 text-amber-300 font-mono font-medium rounded-2xl text-xs flex items-center justify-center gap-2 text-center animate-pulse motion-reduce:animate-none">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+          <span>Partner network interrupted. Waiting to reconnect ({reconnectingGraceSec}s)...</span>
+        </div>
+      )}
+
       {/* Header Info */}
       <div className="flex flex-col items-center mt-2 gap-2 z-10 font-mono">
-        <div className="flex items-center gap-2 bg-[#090D18] border border-slate-800 px-4 py-1.5 rounded-full text-xs text-slate-400">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Encrypted Voice SFU</span>
-          <span className="text-slate-600">•</span>
-          {onUnlockAudio ? (
-            <button
-              type="button"
-              onClick={() => onUnlockAudio()}
-              className="flex items-center gap-1 text-cyan-300 hover:text-cyan-200"
-              title="Tap to verify partner audio"
-            >
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Audio Active</span>
-            </button>
-          ) : (
-            <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-          )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-[#090D18] border border-slate-800 px-3.5 py-1.5 rounded-full text-xs text-slate-400">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Encrypted SFU</span>
+            <span className="text-slate-600">•</span>
+            {onUnlockAudio ? (
+              <button
+                type="button"
+                onClick={() => onUnlockAudio()}
+                className="flex items-center gap-1 text-cyan-300 hover:text-cyan-200"
+                title="Tap to verify partner audio"
+              >
+                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Audio</span>
+              </button>
+            ) : (
+              <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowQuestionsDrawer((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
+              showQuestionsDrawer
+                ? 'bg-cyan-400 text-slate-950 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.5)]'
+                : 'bg-[#090D18] text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/10'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>{showQuestionsDrawer ? 'Close' : 'Questions'}</span>
+          </button>
         </div>
 
         {/* Big High-Contrast Monospace Timer */}
@@ -288,6 +326,12 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           )}
         </div>
       </div>
+
+      {/* Non-Intrusive IELTS Question Simulator Drawer */}
+      <QuestionsDrawer
+        isOpen={showQuestionsDrawer}
+        onClose={() => setShowQuestionsDrawer(false)}
+      />
 
       {/* Controls: Large Accessible Touch Targets */}
       <div className="flex items-center justify-center gap-3 w-full max-w-sm mx-auto mb-4 z-10 font-mono">

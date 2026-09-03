@@ -21,6 +21,8 @@ export interface ServerToClientEvents {
   record_status: (data: RecordStatusPayload) => void;
   recording_error: (data: RecordingErrorPayload) => void;
   call_finished: (data: CallEndedPayload) => void;
+  partner_connection_lost: (data: { userId?: string; gracePeriodSec?: number }) => void;
+  partner_reconnected: (data: { userId?: string; reconnectedAt?: string }) => void;
   error: (data: SocketErrorPayload) => void;
 }
 
