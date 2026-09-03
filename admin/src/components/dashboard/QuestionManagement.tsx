@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { adminFetch } from '../../api/client';
+import './QuestionManagement.css';
 import {
   BookOpen,
   Search,
@@ -188,7 +189,7 @@ export const QuestionManagement: React.FC = () => {
       if (res.success) {
         const r = res.result;
         setCrawlMessage(
-          `✅ Ingestion finished: ${r.questionsAccepted} new questions accepted, ${r.duplicatesSkipped} duplicates skipped, ${r.topicsCreated} topics created in ${r.durationMs}ms.`
+          `✅ Ingestion finished: ${r.questionsAccepted} accepted, ${r.duplicatesSkipped} duplicates skipped, ${r.topicsCreated} topics created in ${r.durationMs}ms.`
         );
         setCustomCrawlUrl('');
       } else {
@@ -216,7 +217,6 @@ export const QuestionManagement: React.FC = () => {
       if (trimmed.startsWith('[')) {
         parsedItems = JSON.parse(trimmed);
       } else {
-        // Plain text: split by lines
         parsedItems = trimmed
           .split('\n')
           .map((l) => l.trim())
@@ -356,215 +356,208 @@ export const QuestionManagement: React.FC = () => {
   const cueCardQuestions = questions.filter((q) => q.part === 'PART_2');
 
   return (
-    <div className="space-y-6 font-sans text-slate-100 max-w-7xl mx-auto pb-16">
+    <div className="qm-container">
       {/* 1. EXECUTIVE COMMAND HUD HEADER */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#0B1120] via-[#0E172A] to-[#070B14] border border-cyan-500/25 p-6 sm:p-8 rounded-3xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-        <div className="absolute -top-32 -right-32 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.25)] flex-shrink-0">
-              <BookOpen className="w-7 h-7" />
+      <div className="qm-hero">
+        <div className="qm-hero-top">
+          <div className="qm-hero-title-group">
+            <div className="qm-hero-icon">
+              <BookOpen size={26} />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2.5 mb-1.5">
-                <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide font-mono">
-                  IELTS Question Simulator Studio
-                </h1>
-                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shadow-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  AUTONOMOUS CRAWLER READY
+              <div className="qm-hero-title">
+                <span>IELTS Question Simulator Studio</span>
+                <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
+                  <span className="dot dot-pulse" style={{ backgroundColor: 'var(--success)' }} />
+                  CRAWLER ACTIVE
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-mono leading-relaxed max-w-2xl">
-                Multi-source web indexing, instant SHA-256 deduplication &amp; live in-call exam drawer simulator
-              </p>
+              <div className="qm-hero-subtitle">
+                Autonomous web scraper, SHA-256 deduplication &amp; live in-call exam drawer simulator
+              </div>
             </div>
           </div>
 
-          {/* Quick HUD Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
-            <div className="px-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner">
-              <div className="text-[10px] uppercase text-slate-400 flex items-center gap-1.5 mb-1">
-                <Database className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Total Bank</span>
-              </div>
-              <div className="text-lg font-black text-white">{crawlerStatus?.totalQuestions ?? questions.length}</div>
-              <div className="text-[9px] text-slate-500 mt-0.5">P1:{part1Count} • P2:{part2Count} • P3:{part3Count}</div>
-            </div>
-
-            <div className="px-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner">
-              <div className="text-[10px] uppercase text-slate-400 flex items-center gap-1.5 mb-1">
-                <Layers className="w-3.5 h-3.5 text-purple-400" />
-                <span>Taxonomies</span>
-              </div>
-              <div className="text-lg font-black text-white">{topics.length}</div>
-              <div className="text-[9px] text-slate-500 mt-0.5">12 Active Domains</div>
-            </div>
-
-            <div className="px-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner">
-              <div className="text-[10px] uppercase text-slate-400 flex items-center gap-1.5 mb-1">
-                <Cpu className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Crawler Status</span>
-              </div>
-              <div className="text-lg font-black text-emerald-400 flex items-center gap-1.5">
-                <span>{crawlerStatus?.latestLog?.status || 'READY'}</span>
-              </div>
-              <div className="text-[9px] text-slate-500 mt-0.5">{crawlerStatus?.latestLog?.durationMs ?? 0}ms last cycle</div>
-            </div>
-
-            <div className="px-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner">
-              <div className="text-[10px] uppercase text-slate-400 flex items-center gap-1.5 mb-1">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>Exam Format</span>
-              </div>
-              <div className="text-lg font-black text-amber-400">2026 Forecast</div>
-              <div className="text-[9px] text-slate-500 mt-0.5">Part 1, 2 &amp; 3 Full Sets</div>
-            </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => handleRunCrawl()}
+              disabled={isCrawling}
+              className="btn-primary"
+              style={{ fontSize: '0.8rem', height: '34px' }}
+            >
+              <RefreshCw size={14} style={{ animation: isCrawling ? 'spin 1s linear infinite' : 'none' }} />
+              <span>{isCrawling ? 'Syncing...' : 'Sync Crawler'}</span>
+            </button>
           </div>
         </div>
 
-        {/* Segmented Tab Navigation Pill Bar */}
-        <div className="mt-6 pt-5 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('questions')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'questions'
-                ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.35)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>Questions Library ({questions.length})</span>
-          </button>
+        {/* Hero Stats */}
+        <div className="qm-hero-stats">
+          <div className="qm-stat-box">
+            <div className="qm-stat-label">
+              <Database size={13} style={{ color: 'var(--info)' }} />
+              <span>Total Bank</span>
+            </div>
+            <div className="qm-stat-val">{crawlerStatus?.totalQuestions ?? questions.length}</div>
+            <div className="qm-stat-sub">P1: {part1Count} • P2: {part2Count} • P3: {part3Count}</div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('cueCards')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'cueCards'
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 shadow-[0_0_20px_rgba(245,158,11,0.35)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Cue Card Task Cards ({cueCardQuestions.length})</span>
-          </button>
+          <div className="qm-stat-box">
+            <div className="qm-stat-label">
+              <Layers size={13} style={{ color: '#A855F7' }} />
+              <span>Taxonomies</span>
+            </div>
+            <div className="qm-stat-val">{topics.length}</div>
+            <div className="qm-stat-sub">Active Topic Domains</div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('topics')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'topics'
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-400 text-white shadow-[0_0_20px_rgba(168,85,247,0.35)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span>Topic Taxonomies ({topics.length})</span>
-          </button>
+          <div className="qm-stat-box">
+            <div className="qm-stat-label">
+              <Cpu size={13} style={{ color: 'var(--success)' }} />
+              <span>Crawler Status</span>
+            </div>
+            <div className="qm-stat-val" style={{ color: 'var(--success)' }}>
+              {crawlerStatus?.latestLog?.status || 'READY'}
+            </div>
+            <div className="qm-stat-sub">{crawlerStatus?.latestLog?.durationMs ?? 0}ms last execution</div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('crawler')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'crawler'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.35)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Cpu className="w-4 h-4" />
-            <span>Crawler Engine &amp; Web Ingestion</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('bulkImport')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'bulkImport'
-                ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.35)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Upload className="w-4 h-4" />
-            <span>Bulk Import</span>
-          </button>
+          <div className="qm-stat-box">
+            <div className="qm-stat-label">
+              <Clock size={13} style={{ color: 'var(--warning)' }} />
+              <span>Exam Format</span>
+            </div>
+            <div className="qm-stat-val" style={{ color: 'var(--warning)' }}>2026 Forecast</div>
+            <div className="qm-stat-sub">Cambridge Recall Sets</div>
+          </div>
         </div>
       </div>
 
-      {/* 2. QUESTIONS REPOSITORY VIEW */}
+      {/* 2. SEGMENTED NAVIGATION TABS */}
+      <div className="qm-tabs-bar">
+        <button
+          type="button"
+          onClick={() => setActiveTab('questions')}
+          className={`qm-tab-pill ${activeTab === 'questions' ? 'active' : ''}`}
+        >
+          <BookOpen size={16} />
+          <span>Questions Library ({questions.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('cueCards')}
+          className={`qm-tab-pill ${activeTab === 'cueCards' ? 'active' : ''}`}
+        >
+          <Sparkles size={16} />
+          <span>Cue Card Task Cards ({cueCardQuestions.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('topics')}
+          className={`qm-tab-pill ${activeTab === 'topics' ? 'active' : ''}`}
+        >
+          <Layers size={16} />
+          <span>Topic Taxonomies ({topics.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('crawler')}
+          className={`qm-tab-pill ${activeTab === 'crawler' ? 'active' : ''}`}
+        >
+          <Cpu size={16} />
+          <span>Crawler Engine &amp; Web Sync</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('bulkImport')}
+          className={`qm-tab-pill ${activeTab === 'bulkImport' ? 'active' : ''}`}
+        >
+          <Upload size={16} />
+          <span>Bulk Ingestion</span>
+        </button>
+      </div>
+
+      {/* 3. QUESTIONS LIBRARY VIEW */}
       {activeTab === 'questions' && (
-        <div className="space-y-4">
-          {/* Filters, Search & Action Bar */}
-          <div className="bg-[#0C1222]/90 p-4 sm:p-5 border border-slate-800/90 rounded-2xl shadow-xl backdrop-blur-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 font-mono text-xs">
-            <div className="flex flex-wrap items-center gap-2.5 flex-1">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Controls Bar */}
+          <div className="qm-controls">
+            <div className="qm-controls-left">
+              {/* Search */}
+              <div className="qm-search-box">
+                <Search size={15} className="qm-search-icon" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search questions or keywords..."
-                  className="w-full pl-9 pr-8 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-colors"
+                  placeholder="Search questions by keyword..."
+                  className="qm-search-input"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300 p-0.5"
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                    }}
                   >
-                    <X className="w-4 h-4" />
+                    <X size={14} />
                   </button>
                 )}
               </div>
 
-              {/* Part Filter Buttons */}
-              <div className="flex items-center gap-1 bg-slate-950/80 p-1 border border-slate-800 rounded-xl">
+              {/* Part Filter Pills */}
+              <div className="qm-pill-group">
                 <button
                   type="button"
                   onClick={() => setFilterPart('all')}
-                  className={`px-2.5 py-1.5 rounded-lg font-bold transition-all ${
-                    filterPart === 'all' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  className={`qm-pill-item ${filterPart === 'all' ? 'active' : ''}`}
                 >
-                  All
+                  All ({questions.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilterPart('PART_1')}
-                  className={`px-2.5 py-1.5 rounded-lg font-bold transition-all ${
-                    filterPart === 'PART_1' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-cyan-300'
-                  }`}
+                  className={`qm-pill-item ${filterPart === 'PART_1' ? 'active' : ''}`}
+                  style={{ color: filterPart === 'PART_1' ? '#38BDF8' : undefined }}
                 >
                   Part 1 ({part1Count})
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilterPart('PART_2')}
-                  className={`px-2.5 py-1.5 rounded-lg font-bold transition-all ${
-                    filterPart === 'PART_2' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-slate-400 hover:text-amber-300'
-                  }`}
+                  className={`qm-pill-item ${filterPart === 'PART_2' ? 'active' : ''}`}
+                  style={{ color: filterPart === 'PART_2' ? '#F59E0B' : undefined }}
                 >
                   Part 2 ({part2Count})
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilterPart('PART_3')}
-                  className={`px-2.5 py-1.5 rounded-lg font-bold transition-all ${
-                    filterPart === 'PART_3' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'text-slate-400 hover:text-purple-300'
-                  }`}
+                  className={`qm-pill-item ${filterPart === 'PART_3' ? 'active' : ''}`}
+                  style={{ color: filterPart === 'PART_3' ? '#A855F7' : undefined }}
                 >
                   Part 3 ({part3Count})
                 </button>
               </div>
 
-              {/* Topic Filter Dropdown */}
+              {/* Topic Select */}
               <select
                 value={filterTopic}
                 onChange={(e) => setFilterTopic(e.target.value)}
-                className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-cyan-400 cursor-pointer"
+                className="qm-select-styled"
               >
                 <option value="all">All Topics ({topics.length})</option>
                 {topics.map((t) => (
@@ -574,11 +567,11 @@ export const QuestionManagement: React.FC = () => {
                 ))}
               </select>
 
-              {/* Status Filter */}
+              {/* Status Select */}
               <select
                 value={filterActive}
                 onChange={(e) => setFilterActive(e.target.value)}
-                className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-cyan-400 cursor-pointer"
+                className="qm-select-styled"
               >
                 <option value="all">All Statuses</option>
                 <option value="true">Active Only</option>
@@ -587,27 +580,23 @@ export const QuestionManagement: React.FC = () => {
             </div>
 
             {/* View Mode & Add Button */}
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-1 bg-slate-950/80 p-1 border border-slate-800 rounded-xl">
+            <div className="qm-controls-right">
+              <div className="qm-pill-group">
                 <button
                   type="button"
                   onClick={() => setViewMode('cards')}
                   title="Card View"
-                  className={`p-1.5 rounded-lg transition-all ${
-                    viewMode === 'cards' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-500 hover:text-slate-300'
-                  }`}
+                  className={`qm-pill-item ${viewMode === 'cards' ? 'active' : ''}`}
                 >
-                  <Grid className="w-4 h-4" />
+                  <Grid size={15} />
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
                   title="Table View"
-                  className={`p-1.5 rounded-lg transition-all ${
-                    viewMode === 'table' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-500 hover:text-slate-300'
-                  }`}
+                  className={`qm-pill-item ${viewMode === 'table' ? 'active' : ''}`}
                 >
-                  <List className="w-4 h-4" />
+                  <List size={15} />
                 </button>
               </div>
 
@@ -619,26 +608,27 @@ export const QuestionManagement: React.FC = () => {
                   setModalCueBullets('');
                   setShowQuestionModal(true);
                 }}
-                className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-black rounded-xl flex items-center gap-1.5 transition-all shadow-[0_0_20px_rgba(6,182,212,0.35)] cursor-pointer whitespace-nowrap"
+                className="btn-primary"
+                style={{ fontSize: '0.825rem', height: '34px' }}
               >
-                <Plus className="w-4 h-4" />
+                <Plus size={15} />
                 <span>New Question</span>
               </button>
             </div>
           </div>
 
-          {/* QUESTIONS CONTENT: CARDS VIEW */}
+          {/* Cards or Table */}
           {loading ? (
-            <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3 bg-[#0A0F1D]/80 border border-slate-800 rounded-3xl">
-              <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
-              <span className="font-mono text-xs">Loading simulator question bank...</span>
+            <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
+              <div>Loading questions...</div>
             </div>
           ) : questions.length === 0 ? (
-            <div className="p-16 text-center text-slate-500 bg-[#0A0F1D]/80 border border-slate-800 rounded-3xl font-mono text-xs">
-              No questions found matching the selected filter criteria.
+            <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No questions found matching your filter criteria.
             </div>
           ) : viewMode === 'cards' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="qm-cards-grid">
               {questions.map((q) => {
                 let parsedBullets: string[] = [];
                 if (q.cueCardBullets) {
@@ -653,67 +643,71 @@ export const QuestionManagement: React.FC = () => {
                 return (
                   <div
                     key={q.id}
-                    className={`p-5 rounded-3xl border transition-all flex flex-col justify-between shadow-lg relative overflow-hidden backdrop-blur-xl group ${
-                      q.part === 'PART_1'
-                        ? 'bg-gradient-to-br from-[#0B1220] to-[#080D1A] border-cyan-500/20 hover:border-cyan-500/40 hover:shadow-[0_4px_25px_rgba(6,182,212,0.15)]'
-                        : q.part === 'PART_2'
-                        ? 'bg-gradient-to-br from-[#181308] to-[#0F0D07] border-amber-500/25 hover:border-amber-500/45 hover:shadow-[0_4px_25px_rgba(245,158,11,0.15)]'
-                        : 'bg-gradient-to-br from-[#140D24] to-[#0A0713] border-purple-500/20 hover:border-purple-500/40 hover:shadow-[0_4px_25px_rgba(168,85,247,0.15)]'
+                    className={`qm-qcard ${
+                      q.part === 'PART_1' ? 'part-1' : q.part === 'PART_2' ? 'part-2' : 'part-3'
                     }`}
                   >
                     <div>
-                      {/* Top Badges */}
-                      <div className="flex items-center justify-between gap-2 mb-3">
+                      {/* Badges */}
+                      <div className="qm-qcard-header">
                         <span
-                          className={`px-2.5 py-1 rounded-xl text-[10px] font-mono font-black tracking-wider uppercase ${
+                          className={
                             q.part === 'PART_1'
-                              ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+                              ? 'qm-badge-p1'
                               : q.part === 'PART_2'
-                              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                              : 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
-                          }`}
+                              ? 'qm-badge-p2'
+                              : 'qm-badge-p3'
+                          }
                         >
                           {q.part === 'PART_1' && 'P1 • Intro'}
                           {q.part === 'PART_2' && 'P2 • Cue Card'}
                           {q.part === 'PART_3' && 'P3 • Discussion'}
                         </span>
 
-                        <span className="px-2.5 py-0.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-400">
+                        <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
                           {q.topic?.name || 'General'}
                         </span>
                       </div>
 
-                      {/* Question Text */}
-                      <p className="text-sm font-sans text-slate-100 leading-relaxed font-medium mb-3">
+                      {/* Question Prompt */}
+                      <p className="qm-qcard-prompt" style={{ marginTop: '0.75rem' }}>
                         {q.questionText}
                       </p>
 
-                      {/* Part 2 Cue Card Bullets Drawer */}
+                      {/* Part 2 Cue Bullets Drawer */}
                       {q.part === 'PART_2' && parsedBullets.length > 0 && (
-                        <div className="mt-2 mb-4">
+                        <div style={{ marginTop: '0.65rem' }}>
                           <button
                             type="button"
                             onClick={() => toggleCardExpansion(q.id)}
-                            className="text-[11px] font-mono text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer mb-2"
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--warning-text)',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
                           >
-                            <Sparkles className="w-3 h-3" />
+                            <Sparkles size={12} />
                             <span>{isExpanded ? 'Hide Task Card Prompts' : `View ${parsedBullets.length} Candidate Prompts`}</span>
                           </button>
 
                           {isExpanded && (
-                            <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-3.5 space-y-1.5 text-xs text-amber-200/90 font-sans shadow-inner">
-                              <div className="text-[10px] uppercase font-mono tracking-wider text-amber-400/80 font-bold mb-1">
-                                You should say:
-                              </div>
-                              {parsedBullets.map((bullet, idx) => (
-                                <div key={idx} className="flex items-start gap-2">
-                                  <span className="text-amber-400 font-bold">•</span>
-                                  <span className="leading-snug">{bullet}</span>
+                            <div className="qm-cue-box">
+                              <div className="qm-cue-title">You should say:</div>
+                              {parsedBullets.map((b, idx) => (
+                                <div key={idx} className="qm-cue-bullet">
+                                  <span style={{ color: 'var(--warning)', fontWeight: 'bold' }}>•</span>
+                                  <span>{b}</span>
                                 </div>
                               ))}
-                              <div className="pt-2 mt-2 border-t border-amber-500/15 text-[10px] font-mono text-amber-400/70 flex items-center gap-1.5">
-                                <Clock className="w-3 h-3" />
-                                <span>1-min preparation • 2-min speaking</span>
+                              <div style={{ marginTop: '0.5rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '0.7rem', color: 'rgba(253, 230, 138, 0.8)' }}>
+                                ⏱ 1 min prep • 2 min speak
                               </div>
                             </div>
                           )}
@@ -721,25 +715,22 @@ export const QuestionManagement: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Card Footer */}
-                    <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono">
-                      <div className="flex items-center gap-2">
+                    {/* Footer */}
+                    <div className="qm-qcard-footer">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <button
                           type="button"
                           onClick={() => handleToggleQuestionActive(q)}
-                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1 ${
-                            q.isActive
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-slate-800 text-slate-500 border border-slate-700'
-                          }`}
+                          className={`badge ${q.isActive ? 'badge-success' : 'badge-neutral'}`}
+                          style={{ cursor: 'pointer', border: 'none' }}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${q.isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                          <span className="dot" style={{ backgroundColor: q.isActive ? 'var(--success)' : 'var(--text-muted)' }} />
                           <span>{q.isActive ? 'ACTIVE' : 'OFF'}</span>
                         </button>
-                        <span className="text-[10px] text-slate-500 truncate max-w-[100px]">{q.source}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{q.source}</span>
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
                         <button
                           type="button"
                           onClick={() => {
@@ -755,18 +746,20 @@ export const QuestionManagement: React.FC = () => {
                             }
                             setShowQuestionModal(true);
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="btn-secondary"
+                          style={{ width: '30px', height: '30px', padding: 0 }}
                           title="Edit"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Edit2 size={13} />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteQuestion(q.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="btn-danger"
+                          style={{ width: '30px', height: '30px', padding: 0 }}
                           title="Delete"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
@@ -775,123 +768,116 @@ export const QuestionManagement: React.FC = () => {
               })}
             </div>
           ) : (
-            /* TABLE VIEW */
-            <div className="bg-[#0A0F1D]/90 border border-slate-800/80 rounded-2xl overflow-hidden font-mono text-xs shadow-xl backdrop-blur-md">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-950/90 border-b border-slate-800 text-slate-400 text-[10px] uppercase tracking-wider">
-                      <th className="py-3 px-4">Part</th>
-                      <th className="py-3 px-4">Topic</th>
-                      <th className="py-3 px-4">Question Prompt</th>
-                      <th className="py-3 px-4">Source</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {questions.map((q) => (
-                      <tr key={q.id} className="hover:bg-slate-800/30 transition-colors group">
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <span
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider ${
-                              q.part === 'PART_1'
-                                ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-                                : q.part === 'PART_2'
-                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                                : 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
-                            }`}
-                          >
-                            {q.part === 'PART_1' && 'P1 • Intro'}
-                            {q.part === 'PART_2' && 'P2 • Cue Card'}
-                            {q.part === 'PART_3' && 'P3 • Discussion'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-slate-300 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px]">
-                            {q.topic?.name || 'General'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-slate-200 max-w-md font-sans">
-                          <p className="line-clamp-2 leading-relaxed text-sm">{q.questionText}</p>
-                          {q.cueCardBullets && (
-                            <span className="text-[11px] text-amber-400 font-mono mt-0.5 flex items-center gap-1">
-                              <Sparkles className="w-3 h-3" />
-                              <span>Includes cue card preparation prompts</span>
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-slate-400 text-[11px] whitespace-nowrap">
-                          <span className="text-slate-500 font-mono">{q.source}</span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
+            /* Table View */
+            <div className="table-container">
+              <table className="table-modern">
+                <thead>
+                  <tr>
+                    <th>Part</th>
+                    <th>Topic</th>
+                    <th>Question Prompt</th>
+                    <th>Source</th>
+                    <th style={{ textAlign: 'center' }}>Status</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {questions.map((q) => (
+                    <tr key={q.id}>
+                      <td>
+                        <span
+                          className={
+                            q.part === 'PART_1'
+                              ? 'qm-badge-p1'
+                              : q.part === 'PART_2'
+                              ? 'qm-badge-p2'
+                              : 'qm-badge-p3'
+                          }
+                        >
+                          {q.part === 'PART_1' && 'P1'}
+                          {q.part === 'PART_2' && 'P2'}
+                          {q.part === 'PART_3' && 'P3'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge badge-neutral">{q.topic?.name || 'General'}</span>
+                      </td>
+                      <td style={{ maxWidth: '480px' }}>
+                        <div style={{ fontWeight: 600, color: '#FFFFFF', marginBottom: '0.2rem' }}>
+                          {q.questionText}
+                        </div>
+                        {q.cueCardBullets && (
+                          <div style={{ fontSize: '0.725rem', color: 'var(--warning-text)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Sparkles size={11} />
+                            <span>Includes cue card bullet prompts</span>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{q.source}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleQuestionActive(q)}
+                          className={`badge ${q.isActive ? 'badge-success' : 'badge-neutral'}`}
+                          style={{ cursor: 'pointer', border: 'none' }}
+                        >
+                          <span className="dot" style={{ backgroundColor: q.isActive ? 'var(--success)' : 'var(--text-muted)' }} />
+                          <span>{q.isActive ? 'ACTIVE' : 'OFF'}</span>
+                        </button>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '4px' }}>
                           <button
                             type="button"
-                            onClick={() => handleToggleQuestionActive(q)}
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1.5 mx-auto ${
-                              q.isActive
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-slate-800 text-slate-500 border border-slate-700'
-                            }`}
+                            onClick={() => {
+                              setEditingQuestion(q);
+                              setModalTopicId(q.topicId);
+                              setModalPart(q.part);
+                              setModalQuestionText(q.questionText);
+                              try {
+                                const bullets = q.cueCardBullets ? JSON.parse(q.cueCardBullets) : [];
+                                setModalCueBullets(Array.isArray(bullets) ? bullets.join('\n') : '');
+                              } catch {
+                                setModalCueBullets(q.cueCardBullets || '');
+                              }
+                              setShowQuestionModal(true);
+                            }}
+                            className="btn-secondary"
+                            style={{ width: '28px', height: '28px', padding: 0 }}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full ${q.isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                            <span>{q.isActive ? 'ACTIVE' : 'OFF'}</span>
+                            <Edit2 size={12} />
                           </button>
-                        </td>
-                        <td className="py-3 px-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingQuestion(q);
-                                setModalTopicId(q.topicId);
-                                setModalPart(q.part);
-                                setModalQuestionText(q.questionText);
-                                try {
-                                  const bullets = q.cueCardBullets ? JSON.parse(q.cueCardBullets) : [];
-                                  setModalCueBullets(Array.isArray(bullets) ? bullets.join('\n') : '');
-                                } catch {
-                                  setModalCueBullets(q.cueCardBullets || '');
-                                }
-                                setShowQuestionModal(true);
-                              }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                              title="Edit question"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteQuestion(q.id)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                              title="Delete question"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteQuestion(q.id)}
+                            className="btn-danger"
+                            style={{ width: '28px', height: '28px', padding: 0 }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       )}
 
-      {/* 3. AUTHENTIC CUE CARD TASK CARDS VIEW */}
+      {/* 4. CUE CARD TASK CARDS VIEW */}
       {activeTab === 'cueCards' && (
-        <div className="space-y-6">
-          <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/25 p-5 rounded-3xl flex items-center justify-between gap-4 font-mono text-xs">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div className="glass-panel" style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: '4px solid var(--warning)' }}>
             <div>
-              <h3 className="text-amber-300 font-bold text-sm flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--warning-text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={18} />
                 <span>Authentic IELTS Candidate Task Cards ({cueCardQuestions.length})</span>
-              </h3>
-              <p className="text-slate-400 text-xs mt-1 font-sans">
-                Real-exam simulation format rendered with candidate instructions, structured prompts, and in-call preparation timers.
-              </p>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                Simulates real examination cue cards with instructions, structured prompts, and 1-minute preparation timers.
+              </div>
             </div>
             <button
               type="button"
@@ -902,14 +888,14 @@ export const QuestionManagement: React.FC = () => {
                 setModalCueBullets('');
                 setShowQuestionModal(true);
               }}
-              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-xl flex items-center gap-1.5 transition-all shadow-[0_0_20px_rgba(245,158,11,0.35)] cursor-pointer whitespace-nowrap"
+              className="btn-primary"
             >
-              <Plus className="w-4 h-4" />
+              <Plus size={15} />
               <span>Add Cue Card</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
             {cueCardQuestions.map((q) => {
               let bullets: string[] = [];
               if (q.cueCardBullets) {
@@ -921,47 +907,40 @@ export const QuestionManagement: React.FC = () => {
               }
 
               return (
-                <div
-                  key={q.id}
-                  className="bg-[#100D06] border-2 border-amber-500/40 hover:border-amber-400 p-6 rounded-3xl shadow-[0_8px_30px_rgba(245,158,11,0.15)] flex flex-col justify-between relative transition-all group"
-                >
-                  <div className="space-y-4">
-                    {/* Exam Header */}
-                    <div className="flex items-center justify-between pb-3 border-b border-amber-500/20 text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <div key={q.id} className="qm-taskcard">
+                  <div>
+                    <div className="qm-taskcard-header">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="dot" style={{ backgroundColor: '#F59E0B' }} />
                         <span>Candidate Task Card</span>
                       </div>
                       <span>{q.topic?.name || 'Speaking Part 2'}</span>
                     </div>
 
-                    {/* Main Prompt */}
-                    <div className="text-base font-bold text-white font-sans leading-relaxed">
+                    <div className="qm-taskcard-prompt" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
                       {q.questionText}
                     </div>
 
-                    {/* Bullet Points */}
-                    <div className="bg-black/40 border border-amber-500/20 rounded-2xl p-4 space-y-2 text-xs font-sans text-amber-100 shadow-inner">
-                      <div className="text-[11px] font-mono text-amber-400 font-bold uppercase tracking-wide">
+                    <div className="qm-taskcard-box">
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.5rem', color: '#F59E0B' }}>
                         You should say:
                       </div>
                       {bullets.map((b, i) => (
-                        <div key={i} className="flex items-start gap-2 leading-relaxed">
-                          <span className="text-amber-400 font-bold">◆</span>
+                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '0.4rem', lineHeight: 1.4 }}>
+                          <span style={{ color: '#F59E0B', fontWeight: 'bold' }}>◆</span>
                           <span>{b}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Task Card Footer */}
-                  <div className="mt-5 pt-4 border-t border-amber-500/20 flex items-center justify-between text-xs font-mono">
-                    <div className="flex items-center gap-1.5 text-amber-300 text-[10px]">
-                      <Clock className="w-3.5 h-3.5" />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#FDE68A' }}>
+                      <Clock size={14} />
                       <span>Prep 1m • Speak 2m</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div style={{ display: 'flex', gap: '4px' }}>
                       <button
                         type="button"
                         onClick={() => {
@@ -972,16 +951,18 @@ export const QuestionManagement: React.FC = () => {
                           setModalCueBullets(bullets.join('\n'));
                           setShowQuestionModal(true);
                         }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                        className="btn-secondary"
+                        style={{ width: '28px', height: '28px', padding: 0 }}
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Edit2 size={12} />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteQuestion(q.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        className="btn-danger"
+                        style={{ width: '28px', height: '28px', padding: 0 }}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 size={12} />
                       </button>
                     </div>
                   </div>
@@ -992,48 +973,46 @@ export const QuestionManagement: React.FC = () => {
         </div>
       )}
 
-      {/* 4. TOPIC TAXONOMIES VIEW */}
+      {/* 5. TOPIC TAXONOMIES VIEW */}
       {activeTab === 'topics' && (
-        <div className="space-y-4 font-mono">
-          <div className="flex items-center justify-between bg-[#0C1222]/90 p-5 border border-slate-800 rounded-2xl shadow-lg">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div className="glass-panel" style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: '4px solid #A855F7' }}>
             <div>
-              <h3 className="font-bold text-white text-sm">IELTS Topic Taxonomies ({topics.length})</h3>
-              <p className="text-slate-400 text-xs mt-0.5 font-sans">
-                Semantic taxonomy domains used by the crawler classifier and in-call topic filter
-              </p>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#D8B4FE', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers size={18} />
+                <span>IELTS Topic Taxonomies ({topics.length})</span>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                Domain categories for automated question classification and in-call student topic filtering.
+              </div>
             </div>
             <button
               type="button"
               onClick={() => setShowTopicModal(true)}
-              className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-400 hover:from-purple-400 hover:to-indigo-300 text-white font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer"
+              className="btn-primary"
+              style={{ background: 'linear-gradient(135deg, #A855F7 0%, #6366F1 100%)' }}
             >
-              <Plus className="w-4 h-4" />
+              <Plus size={15} />
               <span>Create Topic</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
             {topics.map((t) => (
-              <div
-                key={t.id}
-                className="bg-[#0A0F1D]/90 border border-slate-800 p-5 rounded-3xl flex flex-col justify-between hover:border-purple-500/40 transition-all shadow-lg group"
-              >
+              <div key={t.id} className="glass-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-white text-sm group-hover:text-purple-400 transition-colors">
-                      {t.name}
-                    </span>
-                    <span className="px-2.5 py-0.5 bg-purple-500/10 border border-purple-500/30 text-purple-300 rounded-lg text-[10px] font-bold">
-                      Relevance {t.relevance}/10
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF' }}>{t.name}</div>
+                    <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>Freq {t.relevance}/10</span>
                   </div>
-                  <p className="text-xs text-slate-400 font-sans line-clamp-2 mb-4 leading-relaxed">
-                    {t.description || 'Topic domain for authentic IELTS candidate practice.'}
-                  </p>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                    {t.description || 'Topic domain for IELTS practice.'}
+                  </div>
                 </div>
-                <div className="pt-3 border-t border-slate-800/70 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500 font-mono">/{t.slug}</span>
-                  <span className="text-purple-400 font-bold px-2.5 py-0.5 rounded-lg bg-purple-500/10 border border-purple-500/25">
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>/{t.slug}</span>
+                  <span className="badge badge-neutral" style={{ fontWeight: 700 }}>
                     {t._count?.questions ?? 0} questions
                   </span>
                 </div>
@@ -1043,53 +1022,52 @@ export const QuestionManagement: React.FC = () => {
         </div>
       )}
 
-      {/* 5. CRAWLER COMMAND CENTER VIEW */}
+      {/* 6. CRAWLER COMMAND CENTER VIEW */}
       {activeTab === 'crawler' && (
-        <div className="space-y-6 font-mono text-xs">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Architecture Pipeline Flow Banner */}
-          <div className="bg-[#0A0F1D]/90 border border-cyan-500/20 p-6 rounded-3xl shadow-xl">
-            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-cyan-400" />
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
+              <Cpu size={18} style={{ color: 'var(--info)' }} />
               <span>Autonomous Crawler Architecture Pipeline</span>
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-center">
-              <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-cyan-400 font-bold text-[11px] mb-1">1. Web Fetcher</div>
-                <div className="text-[10px] text-slate-400 font-sans">Multi-source HTTP scraper with timeout &amp; bot safety headers</div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem' }}>
+              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
+                <div style={{ color: 'var(--info)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>1. Web Fetcher</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Multi-source HTTP scraper with safe timeout &amp; bot headers</div>
               </div>
-              <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-amber-400 font-bold text-[11px] mb-1">2. Pattern Extractor</div>
-                <div className="text-[10px] text-slate-400 font-sans">Regex &amp; DOM parser for P1, P2 cue cards &amp; P3 discussion</div>
+              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
+                <div style={{ color: 'var(--warning)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>2. Pattern Extractor</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>DOM &amp; regex parser for P1, P2 cue cards &amp; P3 discussion</div>
               </div>
-              <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-purple-400 font-bold text-[11px] mb-1">3. SHA-256 Deduplication</div>
-                <div className="text-[10px] text-slate-400 font-sans">Deterministic fingerprint prevents identical or rephrased duplicates</div>
+              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
+                <div style={{ color: '#A855F7', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>3. SHA-256 Deduplication</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Deterministic fingerprint prevents identical duplicates</div>
               </div>
-              <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-emerald-400 font-bold text-[11px] mb-1">4. Live Ingestion</div>
-                <div className="text-[10px] text-slate-400 font-sans">Populates in-call simulator drawer and updates candidate taxonomy</div>
+              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
+                <div style={{ color: 'var(--success)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>4. Live Ingestion</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Populates in-call student simulator drawer in real-time</div>
               </div>
             </div>
           </div>
 
-          {/* Interactive Crawler Actions Card */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Quick Trigger */}
-            <div className="bg-[#0C1222]/90 border border-slate-800 p-6 rounded-3xl space-y-4">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
+          {/* Actions: Trigger + Custom URL */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={16} style={{ color: 'var(--info)' }} />
                 <span>Run Ingestion Cycle</span>
               </div>
-              <p className="text-slate-400 font-sans text-xs leading-relaxed">
-                Executes the official 2026 Cambridge forecast ingestor (120+ verified questions). Optionally enable deep web crawl to reach external IELTS blogs.
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Ingests the official 2026 forecast bank (120+ verified questions) and synchronizes all topic categories.
               </p>
 
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-sans">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={deepCrawlEnabled}
                   onChange={(e) => setDeepCrawlEnabled(e.target.checked)}
-                  className="w-4 h-4 rounded text-cyan-500 bg-slate-950 border-slate-800 focus:ring-cyan-400"
                 />
                 <span>Include Deep Live Web Crawl (IELTS Liz, IELTS Material, Advantage)</span>
               </label>
@@ -1098,43 +1076,45 @@ export const QuestionManagement: React.FC = () => {
                 type="button"
                 disabled={isCrawling}
                 onClick={() => handleRunCrawl()}
-                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 active:scale-95 disabled:opacity-50 text-slate-950 font-black rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.35)] flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="btn-primary"
+                style={{ width: '100%', height: '40px' }}
               >
-                <RefreshCw className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`} />
-                <span>{isCrawling ? 'Crawling & Ingesting...' : 'Trigger Full Ingestion Now'}</span>
+                <RefreshCw size={15} style={{ animation: isCrawling ? 'spin 1s linear infinite' : 'none' }} />
+                <span>{isCrawling ? 'Ingesting Questions...' : 'Trigger Full Ingestion Now'}</span>
               </button>
             </div>
 
-            {/* Custom URL Crawl Form */}
-            <div className="bg-[#0C1222]/90 border border-slate-800 p-6 rounded-3xl space-y-4">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <Globe className="w-4 h-4 text-emerald-400" />
-                <span>Crawl Custom IELTS URL</span>
+            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Globe size={16} style={{ color: 'var(--success)' }} />
+                <span>Crawl Custom IELTS Webpage</span>
               </div>
-              <p className="text-slate-400 font-sans text-xs leading-relaxed">
-                Paste any webpage containing IELTS speaking questions. The engine will parse and ingest candidate questions on demand.
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Paste any IELTS speaking URL. The scraper will extract and ingest questions on demand.
               </p>
 
-              <div className="flex items-center gap-2">
+              <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="url"
                   value={customCrawlUrl}
                   onChange={(e) => setCustomCrawlUrl(e.target.value)}
                   placeholder="https://ieltsmaterial.com/..."
-                  className="flex-1 px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                  className="input-modern"
+                  style={{ flex: 1 }}
                 />
                 <button
                   type="button"
                   disabled={isCrawling || !customCrawlUrl.trim().startsWith('http')}
                   onClick={() => handleRunCrawl(customCrawlUrl)}
-                  className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 disabled:opacity-50 text-slate-950 font-black rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.35)]"
+                  className="btn-success"
+                  style={{ height: '36px' }}
                 >
                   Crawl URL
                 </button>
               </div>
 
               {crawlMessage && (
-                <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[11px]">
+                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', color: 'var(--info-text)', fontSize: '0.8rem' }}>
                   {crawlMessage}
                 </div>
               )}
@@ -1142,66 +1122,66 @@ export const QuestionManagement: React.FC = () => {
           </div>
 
           {/* Sync History Logs Table */}
-          <div className="bg-[#0A0F1D]/90 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-white text-sm">
-                <Clock className="w-4 h-4 text-cyan-400" />
+          <div className="glass-panel" style={{ overflow: 'hidden' }}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={16} style={{ color: 'var(--info)' }} />
                 <span>Crawler Execution &amp; Sync Audit History</span>
               </div>
               <button
                 type="button"
                 onClick={() => fetchCrawlerStatus()}
-                className="p-1 text-slate-400 hover:text-white"
-                title="Refresh history"
+                className="btn-secondary"
+                style={{ height: '28px', padding: '0 8px', fontSize: '0.75rem' }}
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw size={12} />
+                <span>Refresh</span>
               </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs font-mono">
+            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+              <table className="table-modern">
                 <thead>
-                  <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 text-[10px] uppercase tracking-wider">
-                    <th className="py-3 px-4">Started At</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-center">Discovered</th>
-                    <th className="py-3 px-4 text-center">Accepted</th>
-                    <th className="py-3 px-4 text-center">Duplicates</th>
-                    <th className="py-3 px-4 text-center">Topics</th>
-                    <th className="py-3 px-4 text-right">Duration</th>
+                  <tr>
+                    <th>Started At</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'center' }}>Discovered</th>
+                    <th style={{ textAlign: 'center' }}>Accepted</th>
+                    <th style={{ textAlign: 'center' }}>Duplicates</th>
+                    <th style={{ textAlign: 'center' }}>Topics</th>
+                    <th style={{ textAlign: 'right' }}>Duration</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody>
                   {syncLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-500 font-mono">
-                        No crawl runs recorded yet.
+                      <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No crawl history records found yet.
                       </td>
                     </tr>
                   ) : (
                     syncLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-3 px-4 text-slate-300 whitespace-nowrap">
-                          {new Date(log.startedAt).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4">
+                      <tr key={log.id}>
+                        <td style={{ color: 'var(--text-secondary)' }}>{new Date(log.startedAt).toLocaleString()}</td>
+                        <td>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            className={`badge ${
                               log.status === 'SUCCESS'
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                ? 'badge-success'
                                 : log.status === 'RUNNING'
-                                ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 animate-pulse'
-                                : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                ? 'badge-info'
+                                : 'badge-danger'
                             }`}
                           >
-                            {log.status}
+                            <span className="dot" style={{ backgroundColor: log.status === 'SUCCESS' ? 'var(--success)' : log.status === 'RUNNING' ? 'var(--info)' : 'var(--danger)' }} />
+                            <span>{log.status}</span>
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-center text-slate-300">{log.questionsDiscovered}</td>
-                        <td className="py-3 px-4 text-center text-emerald-400 font-bold">{log.questionsAccepted}</td>
-                        <td className="py-3 px-4 text-center text-slate-400">{log.duplicatesSkipped}</td>
-                        <td className="py-3 px-4 text-center text-purple-400">{log.topicsCreated}</td>
-                        <td className="py-3 px-4 text-right text-slate-400">{log.durationMs}ms</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{log.questionsDiscovered}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--success-text)', fontWeight: 700 }}>{log.questionsAccepted}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{log.duplicatesSkipped}</td>
+                        <td style={{ textAlign: 'center', color: '#D8B4FE', fontWeight: 600 }}>{log.topicsCreated}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{log.durationMs}ms</td>
                       </tr>
                     ))
                   )}
@@ -1212,18 +1192,18 @@ export const QuestionManagement: React.FC = () => {
         </div>
       )}
 
-      {/* 6. BULK QUESTIONS IMPORTER VIEW */}
+      {/* 7. BULK INGESTION VIEW */}
       {activeTab === 'bulkImport' && (
-        <div className="bg-[#0A0F1D]/90 border border-slate-800 p-6 sm:p-8 rounded-3xl space-y-6 font-mono text-xs shadow-2xl">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div className="glass-panel" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-card)', paddingBottom: '1rem' }}>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Upload className="w-5 h-5 text-cyan-400" />
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Upload size={20} style={{ color: 'var(--info)' }} />
                 <span>Bulk IELTS Question Ingestion Tool</span>
-              </h3>
-              <p className="text-slate-400 font-sans text-xs mt-1">
-                Paste JSON array or plain multi-line question text to quickly seed or import exam recall sets.
-              </p>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                Paste a JSON array or plain multi-line questions to bulk seed into the practice simulator.
+              </div>
             </div>
             <button
               type="button"
@@ -1247,43 +1227,41 @@ export const QuestionManagement: React.FC = () => {
                 ];
                 setBulkImportJson(JSON.stringify(sample, null, 2));
               }}
-              className="text-[11px] text-cyan-400 hover:underline cursor-pointer"
+              style={{ background: 'none', border: 'none', color: 'var(--info-text)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
             >
               Load Sample Template
             </button>
           </div>
 
-          <form onSubmit={handleBulkImport} className="space-y-4">
-            <div>
-              <label className="block text-slate-400 text-[11px] uppercase mb-1">Target Topic Domain</label>
+          <form onSubmit={handleBulkImport} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="qm-form-group">
+              <label className="qm-form-label">Target Topic Domain</label>
               <select
                 value={bulkImportTopicId}
                 onChange={(e) => setBulkImportTopicId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-cyan-400"
+                className="qm-select-styled"
+                style={{ width: '100%' }}
               >
                 {topics.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
+                  <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
             </div>
 
-            <div>
-              <label className="block text-slate-400 text-[11px] uppercase mb-1">
-                JSON Array or Plain Text (One question per line)
-              </label>
+            <div className="qm-form-group">
+              <label className="qm-form-label">JSON Array or Line-by-Line Questions</label>
               <textarea
-                rows={12}
+                rows={10}
                 value={bulkImportJson}
                 onChange={(e) => setBulkImportJson(e.target.value)}
                 placeholder='[ { "part": "PART_1", "questionText": "Do you like walking in the rain?" } ]'
-                className="w-full p-4 bg-slate-950 border border-slate-800 rounded-2xl text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-400"
+                className="qm-textarea"
+                style={{ fontFamily: 'var(--mono)', fontSize: '0.8rem' }}
               />
             </div>
 
             {bulkImportMessage && (
-              <div className="p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs">
+              <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.3)', color: 'var(--success-text)', fontSize: '0.85rem' }}>
                 {bulkImportMessage}
               </div>
             )}
@@ -1291,7 +1269,8 @@ export const QuestionManagement: React.FC = () => {
             <button
               type="submit"
               disabled={isBulkImporting || !bulkImportJson.trim()}
-              className="w-full py-3.5 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 disabled:opacity-50 text-slate-950 font-black rounded-xl transition-all cursor-pointer shadow-[0_0_20px_rgba(6,182,212,0.35)]"
+              className="btn-primary"
+              style={{ height: '42px', fontSize: '0.9rem' }}
             >
               {isBulkImporting ? 'Processing Bulk Ingestion...' : 'Import Questions Now'}
             </button>
@@ -1299,87 +1278,76 @@ export const QuestionManagement: React.FC = () => {
         </div>
       )}
 
-      {/* 7. QUESTION CREATE/EDIT MODAL */}
+      {/* 8. QUESTION CREATE/EDIT MODAL */}
       {showQuestionModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#090E1B] border border-cyan-500/40 rounded-3xl max-w-lg w-full p-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] font-mono text-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-cyan-400" />
+        <div className="qm-modal-overlay">
+          <div className="qm-modal">
+            <div className="qm-modal-header">
+              <div className="qm-modal-title">
+                <BookOpen size={18} style={{ color: 'var(--info)' }} />
                 <span>{editingQuestion ? 'Edit IELTS Question' : 'Add New IELTS Question'}</span>
-              </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowQuestionModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
-                <X className="w-4 h-4" />
+                <X size={18} />
               </button>
             </div>
 
             {modalError && (
-              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-rose-300 text-[11px]">
+              <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger-text)', fontSize: '0.8rem' }}>
                 {modalError}
               </div>
             )}
 
-            <form onSubmit={handleSaveQuestion} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1">Topic</label>
+            <form onSubmit={handleSaveQuestion} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="qm-form-group">
+                <label className="qm-form-label">Topic</label>
                 <select
                   value={modalTopicId}
                   onChange={(e) => setModalTopicId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+                  className="qm-select-styled"
                 >
                   {topics.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
+                    <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1.5">Exam Part</label>
-                <div className="grid grid-cols-3 gap-2">
+              <div className="qm-form-group">
+                <label className="qm-form-label">Exam Part</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
                   <button
                     type="button"
                     onClick={() => setModalPart('PART_1')}
-                    className={`py-2 rounded-xl text-center font-bold tracking-wider border cursor-pointer transition-all ${
-                      modalPart === 'PART_1'
-                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
+                    className={`qm-pill-item ${modalPart === 'PART_1' ? 'active' : ''}`}
+                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_1' ? '#38BDF8' : undefined }}
                   >
                     Part 1
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalPart('PART_2')}
-                    className={`py-2 rounded-xl text-center font-bold tracking-wider border cursor-pointer transition-all ${
-                      modalPart === 'PART_2'
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
+                    className={`qm-pill-item ${modalPart === 'PART_2' ? 'active' : ''}`}
+                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_2' ? '#F59E0B' : undefined }}
                   >
                     Part 2 (Cue Card)
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalPart('PART_3')}
-                    className={`py-2 rounded-xl text-center font-bold tracking-wider border cursor-pointer transition-all ${
-                      modalPart === 'PART_3'
-                        ? 'bg-purple-500/20 border-purple-400 text-purple-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
+                    className={`qm-pill-item ${modalPart === 'PART_3' ? 'active' : ''}`}
+                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_3' ? '#A855F7' : undefined }}
                   >
                     Part 3
                   </button>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1">
+              <div className="qm-form-group">
+                <label className="qm-form-label">
                   {modalPart === 'PART_2' ? 'Cue Card Main Prompt' : 'Question Prompt Text'}
                 </label>
                 <textarea
@@ -1392,37 +1360,33 @@ export const QuestionManagement: React.FC = () => {
                       ? 'Describe an ambitious project you worked on...'
                       : 'Do you prefer learning new skills online or in a classroom?'
                   }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs"
+                  className="qm-textarea"
                 />
               </div>
 
               {modalPart === 'PART_2' && (
-                <div>
-                  <label className="block text-slate-400 text-[11px] uppercase mb-1">
-                    Cue Card Bullet Points (One prompt per line)
-                  </label>
+                <div className="qm-form-group">
+                  <label className="qm-form-label">Cue Card Bullets (One prompt per line)</label>
                   <textarea
                     rows={4}
                     value={modalCueBullets}
                     onChange={(e) => setModalCueBullets(e.target.value)}
                     placeholder={`What this project was\nWhen you first decided to pursue it\nWhat challenges you faced\nAnd explain why it was meaningful`}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-amber-200 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 font-sans text-xs"
+                    className="qm-textarea"
+                    style={{ color: '#FDE68A' }}
                   />
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '0.75rem', borderTop: '1px solid var(--border-card)' }}>
                 <button
                   type="button"
                   onClick={() => setShowQuestionModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-800 text-slate-400 hover:text-white"
+                  className="btn-secondary"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 font-bold hover:from-cyan-400 hover:to-teal-300"
-                >
+                <button type="submit" className="btn-primary">
                   {editingQuestion ? 'Save Changes' : 'Create Question'}
                 </button>
               </div>
@@ -1431,27 +1395,27 @@ export const QuestionManagement: React.FC = () => {
         </div>
       )}
 
-      {/* 8. TOPIC CREATE MODAL */}
+      {/* 9. TOPIC CREATE MODAL */}
       {showTopicModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#090E1B] border border-cyan-500/40 rounded-3xl max-w-md w-full p-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] font-mono text-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-purple-400" />
+        <div className="qm-modal-overlay">
+          <div className="qm-modal" style={{ maxWidth: '440px' }}>
+            <div className="qm-modal-header">
+              <div className="qm-modal-title">
+                <Layers size={18} style={{ color: '#A855F7' }} />
                 <span>Create IELTS Topic Domain</span>
-              </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowTopicModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
-                <X className="w-4 h-4" />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveTopic} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1">Topic Name</label>
+            <form onSubmit={handleSaveTopic} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="qm-form-group">
+                <label className="qm-form-label">Topic Name</label>
                 <input
                   type="text"
                   required
@@ -1468,56 +1432,57 @@ export const QuestionManagement: React.FC = () => {
                     }
                   }}
                   placeholder="e.g. Artificial Intelligence & Robotics"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+                  className="input-modern"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1">URL Slug</label>
+              <div className="qm-form-group">
+                <label className="qm-form-label">URL Slug</label>
                 <input
                   type="text"
                   required
                   value={topicSlug}
                   onChange={(e) => setTopicSlug(e.target.value)}
                   placeholder="e.g. artificial-intelligence"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+                  className="input-modern"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1">Relevance Frequency (1-10)</label>
+              <div className="qm-form-group">
+                <label className="qm-form-label">Relevance Frequency (1-10)</label>
                 <input
                   type="number"
                   min={1}
                   max={10}
                   value={topicRelevance}
                   onChange={(e) => setTopicRelevance(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+                  className="input-modern"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-400 text-[11px] uppercase mb-1">Description</label>
+              <div className="qm-form-group">
+                <label className="qm-form-label">Description</label>
                 <textarea
                   rows={2}
                   value={topicDesc}
                   onChange={(e) => setTopicDesc(e.target.value)}
                   placeholder="Context for practice..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400 font-sans text-xs"
+                  className="qm-textarea"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '0.75rem', borderTop: '1px solid var(--border-card)' }}>
                 <button
                   type="button"
                   onClick={() => setShowTopicModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-800 text-slate-400 hover:text-white"
+                  className="btn-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-400 text-white font-bold"
+                  className="btn-primary"
+                  style={{ background: 'linear-gradient(135deg, #A855F7 0%, #6366F1 100%)' }}
                 >
                   Create Topic
                 </button>
