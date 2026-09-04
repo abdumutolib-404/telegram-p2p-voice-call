@@ -27,7 +27,6 @@ const curationResponseSchema: ResponseSchema = {
       },
       rejectionReason: {
         type: SchemaType.STRING,
-        nullable: true,
         description: 'Reason for rejection if isValidIeltsSpeaking is false, e.g. student_comment, faq, writing_task_guide, blog_commentary, or null if valid',
       },
       part: {
@@ -253,8 +252,8 @@ export class AiCurationService {
     const results: CuratedQuestionResult[] = candidates.map((c, i) => heuristicCuration(c, i));
 
     const rawApiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-    const apiKey = rawApiKey && rawApiKey !== 'undefined' && rawApiKey !== 'null' ? rawApiKey.trim() : undefined;
-    if (!apiKey) {
+    const apiKey = rawApiKey ? rawApiKey.trim().replace(/^["']|["']$/g, '').trim() : undefined;
+    if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
       logger.debug('GEMINI_API_KEY not configured. Using heuristic curation fallback.', {
         service: 'ai_curator',
         count: candidates.length,
@@ -264,16 +263,6 @@ export class AiCurationService {
 
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash',
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: curationResponseSchema,
-          temperature: 0.1,
-        },
-        systemInstruction: SYSTEM_INSTRUCTION,
-      });
-
       const promptPayload = JSON.stringify(
         candidates.map((c, idx) => ({
           index: idx,
@@ -285,8 +274,65 @@ export class AiCurationService {
 
       const prompt = `Evaluate and curate the following ${candidates.length} candidate questions for Cambridge IELTS Speaking:\n${promptPayload}`;
 
-      const response = await model.generateContent(prompt);
-      const responseText = response.response.text();
+      let responseText: string | null = null;
+      let lastError: unknown = null;
+
+      // Tier 1: Try Gemini models in priority order with structured schema
+      const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+      for (const modelName of modelsToTry) {
+        try {
+          const model = genAI.getGenerativeModel({
+            model: modelName,
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: curationResponseSchema,
+              temperature: 0.1,
+            },
+            systemInstruction: SYSTEM_INSTRUCTION,
+          });
+
+          const response = await model.generateContent(prompt);
+          responseText = response.response.text();
+          if (responseText) break;
+        } catch (modelErr: unknown) {
+          lastError = modelErr;
+          const errMsg = modelErr instanceof Error ? modelErr.message : String(modelErr);
+          logger.warn(`Gemini attempt with ${modelName} (structured schema) failed: ${errMsg}`, {
+            service: 'ai_curator',
+            model: modelName,
+            error: errMsg,
+          });
+
+          // If schema rejected by API (400 / INVALID_ARGUMENT), retry prompt-based JSON without schema
+          if (errMsg.includes('400') || errMsg.includes('schema') || errMsg.includes('INVALID_ARGUMENT')) {
+            try {
+              const promptJsonModel = genAI.getGenerativeModel({
+                model: modelName,
+                generationConfig: {
+                  responseMimeType: 'application/json',
+                  temperature: 0.1,
+                },
+                systemInstruction: `${SYSTEM_INSTRUCTION}\nOutput must be a valid JSON array of objects with keys: index (number), isValidIeltsSpeaking (boolean), rejectionReason (string or null), part (PART_1, PART_2, or PART_3), canonicalTopicSlug (string), cleanedText (string).`,
+              });
+              const response = await promptJsonModel.generateContent(prompt);
+              responseText = response.response.text();
+              if (responseText) break;
+            } catch (schemaFallbackErr: unknown) {
+              lastError = schemaFallbackErr;
+            }
+          }
+        }
+      }
+
+      if (!responseText) {
+        const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
+        logger.warn(`Gemini AI Curation failed (${errMsg}). Falling back to heuristic curation.`, {
+          service: 'ai_curator',
+          error: errMsg,
+        });
+        return results;
+      }
+
       const parsed = JSON.parse(cleanJsonText(responseText));
 
       if (Array.isArray(parsed)) {
@@ -331,9 +377,10 @@ export class AiCurationService {
       });
       return results;
     } catch (err: unknown) {
-      logger.warn('Gemini 2.0 Flash AI Curation failed. Falling back to heuristic curation.', {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn(`Gemini AI Curation failed (${errMsg}). Falling back to heuristic curation.`, {
         service: 'ai_curator',
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg,
       });
       return results;
     }
