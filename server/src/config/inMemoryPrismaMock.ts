@@ -426,7 +426,22 @@ export class InMemoryPrismaMock {
     findMany: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'>; include?: Record<string, boolean> }): Promise<any[]> => {
       let list = [...this.ieltsTopics.values()].filter((t) => {
         if (args?.where?.isActive !== undefined && t.isActive !== args.where.isActive) return false;
-        if (args?.where?.slug && t.slug !== args.where.slug) return false;
+        if (args?.where?.slug) {
+          if (typeof args.where.slug === 'string' && t.slug !== args.where.slug) return false;
+          if (typeof args.where.slug === 'object' && args.where.slug !== null) {
+            const sObj = args.where.slug as { in?: string[]; notIn?: string[] };
+            if (sObj.in && !sObj.in.includes(t.slug)) return false;
+            if (sObj.notIn && sObj.notIn.includes(t.slug)) return false;
+          }
+        }
+        if (args?.where?.id) {
+          if (typeof args.where.id === 'string' && t.id !== args.where.id) return false;
+          if (typeof args.where.id === 'object' && args.where.id !== null) {
+            const idObj = args.where.id as { in?: string[]; notIn?: string[] };
+            if (idObj.in && !idObj.in.includes(t.id)) return false;
+            if (idObj.notIn && idObj.notIn.includes(t.id)) return false;
+          }
+        }
         if (args?.where?.name && t.name !== args.where.name) return false;
         return true;
       });

@@ -7,128 +7,452 @@ export interface TopicDefinition {
   relevance: number;
 }
 
+/**
+ * The 15 Canonical Cambridge IELTS Topic Families.
+ * Every IELTS speaking prompt is systematically categorized into one of these 15 families.
+ */
 export const SEED_TOPICS: TopicDefinition[] = [
   {
-    name: 'Technology & AI',
-    slug: 'technology-ai',
-    description: 'Artificial intelligence, digital devices, internet, automation, and tech impacts on daily life.',
-    primaryKeywords: ['ai', 'artificial intelligence', 'robot', 'software', 'algorithm', 'computer', 'smartphone', 'automation'],
-    secondaryKeywords: ['technology', 'internet', 'app', 'online', 'digital', 'device', 'screen', 'electronic'],
+    name: 'Education & Learning',
+    slug: 'education-learning',
+    description: 'Schooling, university degrees, academic research, studying methods, online courses, teachers, exams, and lifelong learning.',
+    primaryKeywords: [
+      'education', 'school', 'schooling', 'university', 'college', 'degree', 'qualification',
+      'exam', 'examination', 'teacher', 'professor', 'curriculum', 'academic', 'study',
+      'studying', 'student', 'students', 'learn', 'learning', 'classroom', 'lecture',
+      'lectures', 'homework', 'tuition', 'scholarship', 'campus',
+    ],
+    secondaryKeywords: [
+      'course', 'courses', 'subject', 'subjects', 'class', 'classes', 'textbook', 'textbooks',
+      'library', 'diploma', 'major', 'grade', 'grades', 'assignment', 'assignments',
+      'lesson', 'lessons', 'educate', 'pedagogy', 'mathematics', 'math', 'maths', 'language learning',
+      'revision', 'knowledge', 'tutor', 'primary school', 'high school', 'secondary school',
+      'undergraduate', 'postgraduate', 'master', 'kindergarten', 'preschool', 'handwriting',
+      'classmate', 'classmates', 'schoolmate', 'schoolmates', 'educator', 'syllabus',
+      'thesis', 'dissertation', 'literacy',
+    ],
     relevance: 10,
   },
   {
-    name: 'Media & Entertainment',
-    slug: 'media-entertainment',
-    description: 'News media, newspapers, journalism, television, radio, podcasts, movies, cinema, and streaming.',
-    primaryKeywords: ['news', 'newspaper', 'journalism', 'journalist', 'headline', 'article', 'broadcast', 'podcast', 'radio', 'press', 'media'],
-    secondaryKeywords: ['movie', 'film', 'cinema', 'book', 'reading', 'tv', 'television', 'show', 'actor', 'entertainment', 'video', 'series', 'documentary'],
-    relevance: 9,
+    name: 'Work, Career & Ambition',
+    slug: 'work-career-ambition',
+    description: 'Employment, professions, career aspirations, workplace dynamics, leadership, colleagues, entrepreneurship, and professional ambitions.',
+    primaryKeywords: [
+      'career', 'careers', 'profession', 'professions', 'job', 'jobs', 'work', 'working',
+      'workplace', 'occupation', 'employee', 'employees', 'employer', 'employers', 'boss',
+      'bosses', 'colleague', 'colleagues', 'coworker', 'coworkers', 'ambition', 'ambitions',
+      'promotion', 'salary', 'wage', 'wages', 'employment', 'entrepreneur', 'business',
+      'resume', 'interview', 'professionals',
+    ],
+    secondaryKeywords: [
+      'office', 'offices', 'management', 'manager', 'managers', 'leader', 'leaders',
+      'leadership', 'teamwork', 'workload', 'career path', 'retire', 'retirement',
+      'internship', 'hiring', 'corporation', 'company', 'companies', 'overtime',
+      'vocational', 'freelance', 'self-employed', 'career choice', 'unemployment', 'co-worker',
+      'vocation', 'worker', 'workers', 'workforce', 'startup', 'startups', 'executive',
+      'resignation', 'part-time', 'full-time', 'remote work', 'career goal', 'career goals',
+      'entrepreneurship',
+    ],
+    relevance: 10,
   },
   {
-    name: 'Hometown & Urban Life',
+    name: 'Hometown, Cities & Urban Life',
     slug: 'hometown-urban-life',
-    description: 'Cities, hometowns, neighborhoods, architecture, public transport, and urban living.',
-    primaryKeywords: ['hometown', 'birthplace', 'native city', 'neighborhood', 'suburb', 'architecture'],
-    secondaryKeywords: ['city', 'town', 'village', 'street', 'building', 'traffic', 'crowded', 'hometowns', 'urban', 'rural'],
+    description: 'Cities, towns, hometowns, neighborhoods, architecture, public infrastructure, urban development, and local community life.',
+    primaryKeywords: [
+      'hometown', 'hometowns', 'city', 'cities', 'urban', 'town', 'towns', 'village',
+      'villages', 'neighborhood', 'neighborhoods', 'suburb', 'suburbs', 'architecture',
+      'downtown', 'metropolis', 'birthplace', 'native place', 'residential', 'accommodation',
+    ],
+    secondaryKeywords: [
+      'street', 'streets', 'building', 'buildings', 'skyscraper', 'skyscrapers', 'apartment',
+      'apartments', 'housing', 'infrastructure', 'public amenities', 'traffic', 'crowded',
+      'quiet neighborhood', 'rural', 'countryside', 'district', 'community living', 'local area',
+      'historic building', 'urbanization', 'facilities', 'living area', 'flat', 'flats',
+      'house', 'houses', 'residence', 'resident', 'residents', 'neighbourhood',
+      'neighbourhoods', 'suburban', 'locality', 'avenue', 'square', 'plaza', 'balcony',
+      'city center', 'city centre', 'inner city', 'real estate',
+    ],
     relevance: 9,
   },
   {
-    name: 'Environment & Sustainability',
-    slug: 'environment-sustainability',
-    description: 'Climate change, recycling, green energy, pollution, parks, weather, and conservation.',
-    primaryKeywords: ['pollution', 'recycle', 'recycling', 'climate', 'solar energy', 'renewable', 'conservation', 'eco-friendly'],
-    secondaryKeywords: ['environment', 'green', 'weather', 'rain', 'temperature', 'clean', 'waste', 'emissions', 'nature park'],
+    name: 'Family, Friends & People',
+    slug: 'family-friends-people',
+    description: 'Parents, siblings, relatives, childhood memories, close friends, mentorship, interpersonal relationships, and influential people.',
+    primaryKeywords: [
+      'family', 'families', 'parent', 'parents', 'mother', 'father', 'brother', 'sister',
+      'sibling', 'siblings', 'relative', 'relatives', 'friend', 'friends', 'friendship',
+      'best friend', 'childhood', 'mentor', 'companion', 'acquaintance', 'acquaintances',
+      'grandparents', 'grandmother', 'grandfather', 'name', 'names',
+    ],
+    secondaryKeywords: [
+      'people', 'person', 'relationship', 'relationships', 'neighbor', 'neighbors', 'roommate',
+      'roommates', 'cousin', 'cousins', 'uncle', 'aunt', 'family member', 'childhood memory',
+      'close friend', 'role model', 'peer', 'peers', 'social circle', 'elderly', 'children',
+      'upbringing', 'generation', 'interpersonal', 'companionship', 'psychology', 'human nature',
+      'child', 'kid', 'kids', 'son', 'daughter', 'nephew', 'niece', 'grandchild',
+      'grandchildren', 'grandpa', 'grandma', 'neighbour', 'neighbours', 'personality',
+      'character', 'stranger', 'strangers', 'friendly', 'elder', 'elders', 'teenager',
+      'teenagers',
+    ],
     relevance: 9,
   },
   {
-    name: 'Art & Culture',
-    slug: 'art-culture',
-    description: 'Museums, paintings, traditional festivals, literature, music, history, and cultural heritage.',
-    primaryKeywords: ['museum', 'gallery', 'painting', 'sculpture', 'heritage', 'festival', 'tradition'],
-    secondaryKeywords: ['art', 'artist', 'music', 'song', 'culture', 'history', 'cultural', 'dance', 'classical'],
-    relevance: 8,
-  },
-  {
-    name: 'Education & Career',
-    slug: 'education-career',
-    description: 'University, schooling, career goals, qualifications, studying methods, and teachers.',
-    primaryKeywords: ['university', 'college', 'degree', 'qualification', 'exam', 'teacher', 'professor', 'curriculum', 'schooling'],
-    secondaryKeywords: ['education', 'school', 'study', 'student', 'course', 'subject', 'career', 'profession', 'learn', 'skill'],
+    name: 'Technology, AI & Digital Life',
+    slug: 'technology-digital-life',
+    description: 'Artificial intelligence, smartphones, internet, software, digital automation, social media, algorithms, and tech impacts on daily life.',
+    primaryKeywords: [
+      'ai', 'artificial intelligence', 'robot', 'robots', 'robotics', 'automation', 'software',
+      'algorithm', 'algorithms', 'computer', 'computers', 'smartphone', 'smartphones',
+      'mobile phone', 'mobile phones', 'technology', 'technological', 'digital', 'internet',
+      'app', 'apps', 'application', 'applications', 'cyber',
+    ],
+    secondaryKeywords: [
+      'device', 'devices', 'screen', 'screens', 'online', 'electronic', 'electronics',
+      'gadget', 'gadgets', 'laptop', 'laptops', 'tablet', 'tablets', 'social media',
+      'website', 'websites', 'data', 'programming', 'tech', 'smart device', 'virtual',
+      'high-tech', 'cloud', 'network', 'hardware', 'virtual reality', 'digital device',
+      'cybersecurity', 'touchscreen', 'video game', 'video games', 'gaming', 'gamer',
+      'gamers', 'cell phone', 'cellphone', 'wi-fi', 'wifi', 'machine learning', 'chatgpt',
+      'digital age', 'e-book', 'ebook', 'smart home',
+    ],
     relevance: 10,
   },
   {
-    name: 'Family & Relationships',
-    slug: 'family-relationships',
-    description: 'Friends, parents, childhood, mentors, community connections, and interpersonal communication.',
-    primaryKeywords: ['family', 'parents', 'childhood', 'relative', 'brother', 'sister', 'friendship', 'mentor'],
-    secondaryKeywords: ['friend', 'relationship', 'neighbor', 'companion', 'advice', 'elderly', 'acquaintance'],
+    name: 'Media, Books & Entertainment',
+    slug: 'media-entertainment',
+    description: 'News journalism, broadcasting, television shows, movies, cinema, literature, reading books, podcasts, and streaming entertainment.',
+    primaryKeywords: [
+      'news', 'newspaper', 'newspapers', 'journalism', 'journalist', 'journalists',
+      'broadcast', 'media', 'podcast', 'podcasts', 'radio', 'television', 'tv', 'movie',
+      'movies', 'film', 'films', 'cinema', 'book', 'books', 'reading', 'literature',
+      'novel', 'novels', 'author', 'authors', 'magazine', 'magazines',
+    ],
+    secondaryKeywords: [
+      'entertainment', 'actor', 'actors', 'actress', 'actresses', 'show', 'shows',
+      'series', 'documentary', 'documentaries', 'streaming', 'video', 'videos', 'fiction',
+      'non-fiction', 'reading habit', 'headline', 'headlines', 'press', 'article',
+      'articles', 'story', 'stories', 'plot', 'comedy', 'drama', 'screening',
+      'favorite book', 'channel', 'tv program', 'mass media', 'editor', 'celebrity',
+      'celebrities', 'comic', 'comics', 'biography', 'movie theater', 'movie theatre',
+      'blockbuster', 'tv show', 'reporter', 'reporters', 'bookstore', 'printed book',
+    ],
     relevance: 9,
   },
   {
-    name: 'Travel & Tourism',
-    slug: 'travel-tourism',
-    description: 'Holidays, tourism, exploring foreign countries, memorable journeys, and transport.',
-    primaryKeywords: ['tourism', 'tourist', 'vacation', 'souvenir', 'foreign country', 'sightseeing'],
-    secondaryKeywords: ['travel', 'trip', 'journey', 'holiday', 'destination', 'flight', 'hotel', 'abroad', 'foreign'],
+    name: 'Travel, Tourism & Transport',
+    slug: 'travel-tourism-transport',
+    description: 'Holidays, domestic and international tourism, vacations, transport vehicles, airlines, public transit, journeys, and memorable trips.',
+    primaryKeywords: [
+      'travel', 'traveling', 'travelling', 'trip', 'trips', 'journey', 'journeys',
+      'tourism', 'tourist', 'tourists', 'vacation', 'vacations', 'holiday', 'holidays',
+      'transport', 'transportation', 'flight', 'flights', 'airplane', 'airplanes', 'plane',
+      'planes', 'train', 'trains', 'railway', 'subway', 'metro', 'bus', 'buses', 'car',
+      'cars', 'vehicle', 'vehicles', 'driving', 'bicycle', 'bicycles', 'cycling', 'bike', 'bikes',
+    ],
+    secondaryKeywords: [
+      'destination', 'destinations', 'abroad', 'foreign country', 'hotel', 'hotels',
+      'souvenir', 'souvenirs', 'sightseeing', 'commute', 'commuter', 'commuters', 'route',
+      'ticket', 'tickets', 'traffic jam', 'road', 'roads', 'highway', 'highways', 'airport',
+      'airports', 'passenger', 'passengers', 'luggage', 'explore', 'voyage', 'backpacking',
+      'rental car', 'public transit', 'drive', 'driver', 'drivers', 'motorcycle', 'motorbike',
+      'taxi', 'cab', 'cruise', 'boat', 'ship', 'ferry', 'rail', 'airline', 'traveller',
+      'travellers', 'traveler', 'travelers', 'itinerary', 'resort', 'hostel', 'map',
+      'maps', 'tour guide', 'passport', 'overseas',
+    ],
     relevance: 9,
   },
   {
-    name: 'Health & Lifestyle',
-    slug: 'health-lifestyle',
-    description: 'Exercise, physical fitness, mental health, diet, habits, and relaxation routines.',
-    primaryKeywords: ['exercise', 'fitness', 'gym', 'wellness', 'diet', 'nutrition', 'mental health', 'disease', 'workout'],
-    secondaryKeywords: ['health', 'sport', 'sleep', 'relax', 'doctor', 'hospital', 'routine', 'stress', 'energetic'],
+    name: 'Health, Fitness & Sports',
+    slug: 'health-fitness-sports',
+    description: 'Physical exercise, gym workouts, team and individual sports, balanced diet, mental wellness, medical care, and healthy habits.',
+    primaryKeywords: [
+      'health', 'healthy', 'fitness', 'exercise', 'exercises', 'exercising', 'gym',
+      'workout', 'workouts', 'sport', 'sports', 'athlete', 'athletes', 'athletics',
+      'football', 'soccer', 'basketball', 'swimming', 'running', 'jogging', 'tennis',
+      'yoga', 'wellness', 'nutrition', 'diet',
+    ],
+    secondaryKeywords: [
+      'doctor', 'doctors', 'hospital', 'hospitals', 'medicine', 'medical', 'illness',
+      'disease', 'diseases', 'mental health', 'stress', 'relaxation', 'sleep',
+      'physical activity', 'marathon', 'training', 'stadium', 'match', 'tournament',
+      'active', 'body', 'energetic', 'well-being', 'staying fit', 'fishing', 'workout routine',
+      'walk', 'walking', 'swimmer', 'runner', 'badminton', 'volleyball', 'weight loss',
+      'physical fitness', 'patient', 'patients', 'clinic', 'dentist', 'healthcare',
+    ],
     relevance: 9,
   },
   {
-    name: 'Food & Culinary',
-    slug: 'food-culinary',
-    description: 'Cooking, favorite dishes, restaurants, international cuisine, and dining habits.',
-    primaryKeywords: ['cooking', 'restaurant', 'cuisine', 'recipe', 'flavor', 'culinary', 'dietary'],
-    secondaryKeywords: ['food', 'cook', 'meal', 'dish', 'breakfast', 'lunch', 'dinner', 'taste', 'eating', 'fast food'],
+    name: 'Food, Dining & Culinary',
+    slug: 'food-dining-culinary',
+    description: 'Cooking, restaurants, dining out, international cuisines, recipes, dietary habits, food culture, snacks, and traditional beverages.',
+    primaryKeywords: [
+      'food', 'foods', 'cooking', 'cook', 'cooks', 'cooked', 'meal', 'meals', 'dish',
+      'dishes', 'cuisine', 'cuisines', 'restaurant', 'restaurants', 'dining', 'recipe',
+      'recipes', 'culinary', 'taste', 'eating', 'chef', 'chefs', 'dietary', 'pasta',
+    ],
+    secondaryKeywords: [
+      'breakfast', 'lunch', 'dinner', 'snack', 'snacks', 'dessert', 'desserts', 'fast food',
+      'street food', 'flavor', 'flavors', 'ingredient', 'ingredients', 'tea', 'coffee',
+      'cafe', 'cafes', 'beverage', 'beverages', 'baking', 'bake', 'rice', 'fruit',
+      'fruits', 'vegetable', 'vegetables', 'meat', 'seafood', 'delicacy', 'homemade meal',
+      'food market', 'dine', 'eat', 'eats', 'drink', 'drinks', 'drinking', 'water',
+      'juice', 'soup', 'bread', 'cake', 'cakes', 'pizza', 'noodle', 'noodles',
+      'kitchen', 'cookery', 'tasty', 'chocolate', 'refreshment',
+    ],
     relevance: 8,
   },
   {
-    name: 'Nature & Wildlife',
-    slug: 'nature-wildlife',
-    description: 'Animals, pets, countryside, oceans, forests, gardens, and botanical life.',
-    primaryKeywords: ['wildlife', 'animal', 'forest', 'botanical', 'species', 'ecosystem', 'ocean'],
-    secondaryKeywords: ['nature', 'pet', 'tree', 'garden', 'plant', 'flower', 'river', 'mountain', 'bird'],
-    relevance: 8,
-  },
-  {
-    name: 'Work & Ambition',
-    slug: 'work-ambition',
-    description: 'Professional aspirations, workplace environments, teamwork, leadership, and success.',
-    primaryKeywords: ['colleague', 'office', 'boss', 'company', 'workplace', 'ambition', 'promotion', 'salary', 'entrepreneur'],
-    secondaryKeywords: ['work', 'business', 'goal', 'achievement', 'leadership', 'teamwork', 'project', 'professional'],
+    name: 'Environment, Nature & Wildlife',
+    slug: 'environment-nature-wildlife',
+    description: 'Climate change, environmental protection, pollution, recycling, wildlife, animals, biodiversity, oceans, forests, weather, and agriculture.',
+    primaryKeywords: [
+      'environment', 'environmental', 'nature', 'wildlife', 'animal', 'animals', 'pet',
+      'pets', 'climate', 'climate change', 'pollution', 'recycle', 'recycling', 'conservation',
+      'eco-friendly', 'green energy', 'solar energy', 'forest', 'forests', 'ocean',
+      'oceans', 'species', 'ecosystem', 'agriculture', 'agricultural', 'farming', 'farm',
+      'farms', 'crop', 'crops', 'harvest',
+    ],
+    secondaryKeywords: [
+      'tree', 'trees', 'plant', 'plants', 'flower', 'flowers', 'garden', 'gardens',
+      'botanical', 'dog', 'dogs', 'cat', 'cats', 'bird', 'birds', 'creature', 'creatures',
+      'sea', 'river', 'rivers', 'mountain', 'mountains', 'weather', 'rain', 'temperature',
+      'clean energy', 'waste', 'emissions', 'biodiversity', 'natural park', 'global warming',
+      'wild nature', 'soil', 'season', 'seasons', 'sunny', 'snow', 'wind', 'storm',
+      'lake', 'lakes', 'beach', 'beaches', 'wilderness', 'habitat', 'habitats', 'ecology',
+      'insect', 'insects', 'marine life', 'national park', 'gardening', 'farmer',
+      'farmers', 'renewable energy',
+    ],
     relevance: 9,
   },
   {
-    name: 'Daily Life & Habits',
-    slug: 'daily-life-habits',
-    description: 'Morning routines, shopping habits, chores, personal schedules, and life organization.',
-    primaryKeywords: ['morning routine', 'daily routine', 'bedtime', 'daily schedule', 'shopping habit', 'household chore', 'waking up'],
-    secondaryKeywords: ['daily', 'habit', 'shopping', 'money', 'gift', 'weekend', 'celebration', 'hobby', 'free time', 'spare time'],
+    name: 'Art, Music & Cultural Heritage',
+    slug: 'art-music-culture',
+    description: 'Visual arts, museums, exhibitions, musical genres, musical instruments, traditional festivals, cultural heritage, history, and performances.',
+    primaryKeywords: [
+      'art', 'arts', 'artist', 'artists', 'artwork', 'artworks', 'painting', 'paintings',
+      'drawing', 'drawings', 'sculpture', 'sculptures', 'museum', 'museums', 'gallery',
+      'galleries', 'exhibition', 'exhibitions', 'music', 'musical', 'musician', 'musicians',
+      'song', 'songs', 'singer', 'singers', 'concert', 'concerts', 'band', 'bands',
+      'musical instrument', 'culture', 'cultural', 'heritage', 'tradition', 'traditions',
+      'traditional', 'festival', 'festivals',
+    ],
+    secondaryKeywords: [
+      'history', 'historic', 'historical', 'craft', 'crafts', 'handicraft', 'dance',
+      'dancing', 'classical music', 'pop music', 'performance', 'performances', 'theater',
+      'theatre', 'folklore', 'ceremony', 'ceremonies', 'celebration', 'cultural event',
+      'national custom', 'photography', 'photo', 'photos', 'camera', 'cameras',
+      'monument', 'ancient', 'color', 'colors', 'colour', 'colours', 'instrument',
+      'instruments', 'piano', 'guitar', 'violin', 'sing', 'singing', 'melody', 'opera',
+      'orchestra', 'sculptor', 'painter', 'portrait', 'draw', 'cultural heritage',
+      'national costume', 'historic site', 'monuments',
+    ],
     relevance: 8,
   },
   {
-    name: 'Science & Future Innovation',
-    slug: 'science-innovation',
-    description: 'Scientific breakthroughs, space exploration, medical discoveries, physics, and human longevity.',
-    primaryKeywords: ['science', 'scientific', 'discovery', 'experiment', 'biology', 'physics', 'space exploration', 'breakthrough'],
-    secondaryKeywords: ['space', 'medical', 'medicine', 'longevity', 'research', 'laboratory', 'innovation', 'astronomy'],
+    name: 'Fashion, Clothing & Accessories',
+    slug: 'fashion-clothing-accessories',
+    description: 'Clothing choices, fashion trends, personal styling, shopping for clothes, footwear, jewelry, perfumes, mirrors, watches, and accessories.',
+    primaryKeywords: [
+      'fashion', 'clothing', 'clothes', 'outfit', 'outfits', 'dress', 'dresses', 'wear',
+      'wearing', 'accessory', 'accessories', 'perfume', 'perfumes', 'scent', 'scents',
+      'fragrance', 'fragrances', 'cologne', 'jewelry', 'jewellery', 'mirror', 'mirrors',
+      'shoes', 'shoe', 'footwear', 'sneakers', 'boots', 'hat', 'hats', 'cap', 'caps',
+      'headwear', 'watch', 'watches', 'sunglasses', 'glasses',
+    ],
+    secondaryKeywords: [
+      'style', 'trend', 'trends', 'fashion trend', 'casual wear', 'formal wear', 'suit',
+      'suits', 'jacket', 'jackets', 'coat', 'coats', 't-shirt', 'jeans', 'uniform',
+      'fabric', 'brand', 'brands', 'designer', 'designers', 'wardrobe', 'necklace',
+      'necklaces', 'ring', 'rings', 'bracelet', 'bracelets', 'earrings', 'vanity',
+      'reflection', 'wrist watch', 'timepiece', 'personal appearance', 'shopping for clothes',
+      'bag', 'bags', 'handbag', 'handbags', 'purse', 'purses', 'wallet', 'wallets',
+      'backpack', 'backpacks', 'earring', 'sandals', 'scarf', 'scarves', 'gloves',
+      'belt', 'belts', 'shirt', 'shirts', 'trousers', 'pants', 'skirt', 'skirts',
+      'garment', 'garments', 'costume', 'costumes', 'wristwatches', 'stylish', 'fashionable',
+    ],
+    relevance: 8,
+  },
+  {
+    name: 'Leisure, Habits & Daily Routine',
+    slug: 'leisure-habits-daily',
+    description: 'Daily routines, morning and evening schedules, weekend activities, personal hobbies, shopping, chores, leisure time, and life organization.',
+    primaryKeywords: [
+      'routine', 'routines', 'daily routine', 'habit', 'habits', 'leisure', 'hobby',
+      'hobbies', 'free time', 'spare time', 'schedule', 'schedules', 'chores', 'shopping',
+      'gift', 'gifts', 'weekend', 'weekends', 'relaxation', 'pastime', 'pastimes', 'daily life',
+    ],
+    secondaryKeywords: [
+      'morning', 'evening', 'bedtime', 'waking up', 'relax', 'unwind', 'lifestyle',
+      'errands', 'household chore', 'cleaning', 'spending time', 'pocket money',
+      'money management', 'buy', 'buying', 'purchase', 'leisure activity', 'time management',
+      'personal plan', 'spare hour', 'day-to-day', 'daily', 'rest', 'resting', 'unwinding',
+      'free hour', 'housework', 'cleaning house', 'tidy', 'tidying', 'errand', 'presents',
+      'give gifts', 'receive gifts', 'morning routine', 'evening routine', 'daily habit',
+      'spend free time', 'recreation', 'recreational',
+    ],
+    relevance: 8,
+  },
+  {
+    name: 'Society, Law & Community',
+    slug: 'society-law-community',
+    description: 'Social rules, law enforcement, crime and justice, community volunteering, public services, civic responsibilities, government policies, and social welfare.',
+    primaryKeywords: [
+      'society', 'social', 'community', 'communities', 'law', 'laws', 'legal', 'police',
+      'crime', 'crimes', 'justice', 'court', 'courts', 'rule', 'rules', 'government',
+      'governments', 'volunteer', 'volunteers', 'volunteering', 'charity', 'citizen',
+      'citizens', 'citizenship', 'public service', 'civic',
+    ],
+    secondaryKeywords: [
+      'regulation', 'regulations', 'safety', 'security', 'social responsibility',
+      'community service', 'equality', 'human rights', 'poverty', 'welfare', 'public order',
+      'courtroom', 'lawyer', 'lawyers', 'judge', 'social issue', 'neighborhood community',
+      'civic duty', 'social development', 'legislation', 'illegal', 'policeman',
+      'policewoman', 'criminal', 'criminals', 'prison', 'jail', 'punishment', 'penalty',
+      'fine', 'fines', 'obey', 'obeying', 'law enforcement', 'public safety',
+      'community project', 'charitable', 'nonprofit', 'social welfare', 'policy', 'policies',
+    ],
     relevance: 9,
   },
   {
-    name: 'Psychology & Human Relationships',
-    slug: 'psychology-relationships',
-    description: 'Interpersonal friendships, mental resilience, anxiety, human nature, empathy, and social psychology.',
-    primaryKeywords: ['psychology', 'psychological', 'friendship', 'acquaintance', 'anxiety', 'pressure', 'mental health'],
-    secondaryKeywords: ['kindness', 'stranger', 'friend', 'relationship', 'emotion', 'calm', 'loneliness', 'social'],
-    relevance: 8,
+    name: 'Science, Space & Innovation',
+    slug: 'science-space-innovation',
+    description: 'Scientific research, discoveries, space exploration, astronomy, physics, biology, medical breakthroughs, and scientific innovation.',
+    primaryKeywords: [
+      'science', 'scientific', 'scientist', 'scientists', 'experiment', 'experiments',
+      'laboratory', 'laboratories', 'research', 'discovery', 'discoveries', 'invention',
+      'inventions', 'space', 'universe', 'planet', 'planets', 'astronomy', 'astronaut',
+      'astronauts', 'galaxy', 'space exploration', 'innovation', 'physics', 'biology', 'chemistry',
+    ],
+    secondaryKeywords: [
+      'scientific breakthrough', 'medical discovery', 'genetics', 'dna', 'spacecraft',
+      'satellite', 'satellites', 'rocket', 'rockets', 'solar system', 'stars',
+      'scientific method', 'future innovation', 'laboratory experiment', 'natural science',
+      'scientific theory', 'exploration', 'scientific advancement', 'telescope',
+      'astronomer', 'astronomers', 'physicist', 'chemist', 'biologist', 'scientific study',
+      'outer space', 'moon', 'mars', 'earth science', 'stem', 'breakthrough', 'innovative',
+      'innovations', 'space travel', 'space station', 'orbit',
+    ],
+    relevance: 9,
   },
 ];
+
+export const CANONICAL_TOPIC_SLUGS = [
+  'education-learning',
+  'work-career-ambition',
+  'hometown-urban-life',
+  'family-friends-people',
+  'technology-digital-life',
+  'media-entertainment',
+  'travel-tourism-transport',
+  'health-fitness-sports',
+  'food-dining-culinary',
+  'environment-nature-wildlife',
+  'art-music-culture',
+  'fashion-clothing-accessories',
+  'leisure-habits-daily',
+  'society-law-community',
+  'science-space-innovation',
+] as const;
+
+export type CanonicalTopicSlug = (typeof CANONICAL_TOPIC_SLUGS)[number];
+
+export const CANONICAL_SLUG_SET = new Set<string>(CANONICAL_TOPIC_SLUGS);
+
+/**
+ * Mapping of legacy or micro-topic aliases to the 15 Canonical Cambridge IELTS Topic Families.
+ */
+export const LEGACY_OR_ALIAS_SLUG_MAP: Record<string, CanonicalTopicSlug> = {
+  // Legacy seed slugs:
+  'technology-ai': 'technology-digital-life',
+  'media-entertainment': 'media-entertainment',
+  'hometown-urban-life': 'hometown-urban-life',
+  'environment-sustainability': 'environment-nature-wildlife',
+  'art-culture': 'art-music-culture',
+  'education-career': 'education-learning',
+  'family-relationships': 'family-friends-people',
+  'travel-tourism': 'travel-tourism-transport',
+  'health-lifestyle': 'health-fitness-sports',
+  'food-culinary': 'food-dining-culinary',
+  'nature-wildlife': 'environment-nature-wildlife',
+  'work-ambition': 'work-career-ambition',
+  'daily-life-habits': 'leisure-habits-daily',
+  'science-innovation': 'science-space-innovation',
+  'psychology-relationships': 'family-friends-people',
+
+  // Old micro-topics absorbed into Fashion, Clothing & Accessories:
+  'perfumes-scents': 'fashion-clothing-accessories',
+  'perfume': 'fashion-clothing-accessories',
+  'perfumes': 'fashion-clothing-accessories',
+  'scent': 'fashion-clothing-accessories',
+  'scents': 'fashion-clothing-accessories',
+  'mirrors': 'fashion-clothing-accessories',
+  'mirror': 'fashion-clothing-accessories',
+  'jewelry': 'fashion-clothing-accessories',
+  'jewellery': 'fashion-clothing-accessories',
+  'sunglasses': 'fashion-clothing-accessories',
+  'hats-headwear': 'fashion-clothing-accessories',
+  'hats': 'fashion-clothing-accessories',
+  'hat': 'fashion-clothing-accessories',
+  'shoes-footwear': 'fashion-clothing-accessories',
+  'shoes': 'fashion-clothing-accessories',
+  'shoe': 'fashion-clothing-accessories',
+  'watches': 'fashion-clothing-accessories',
+  'watch': 'fashion-clothing-accessories',
+  'clothing': 'fashion-clothing-accessories',
+  'clothes': 'fashion-clothing-accessories',
+  'fashion': 'fashion-clothing-accessories',
+
+  // Old micro-topics absorbed into Environment, Nature & Wildlife:
+  'agriculture-farming': 'environment-nature-wildlife',
+  'agriculture': 'environment-nature-wildlife',
+  'farming': 'environment-nature-wildlife',
+  'farm': 'environment-nature-wildlife',
+  'farms': 'environment-nature-wildlife',
+  'gardens-parks': 'environment-nature-wildlife',
+  'gardens': 'environment-nature-wildlife',
+  'gardening': 'environment-nature-wildlife',
+  'flowers-plants': 'environment-nature-wildlife',
+  'flowers': 'environment-nature-wildlife',
+
+  // Other absorbed topics:
+  'fishing': 'health-fitness-sports',
+  'tea-coffee': 'food-dining-culinary',
+  'tea': 'food-dining-culinary',
+  'coffee': 'food-dining-culinary',
+  'pasta': 'food-dining-culinary',
+  'pasta-dishes': 'food-dining-culinary',
+  'bicycles-cycling': 'travel-tourism-transport',
+  'bicycle': 'travel-tourism-transport',
+  'cycling': 'travel-tourism-transport',
+  'car': 'travel-tourism-transport',
+  'cars': 'travel-tourism-transport',
+  'photography': 'art-music-culture',
+  'photos': 'art-music-culture',
+  'photo': 'art-music-culture',
+  'gift': 'leisure-habits-daily',
+  'gifts': 'leisure-habits-daily',
+};
+
+export function normalizeToCanonicalSlug(rawSlugOrName?: string | null): CanonicalTopicSlug {
+  if (!rawSlugOrName) return 'leisure-habits-daily';
+  const clean = slugifyTopic(rawSlugOrName);
+  if (CANONICAL_SLUG_SET.has(clean)) {
+    return clean as CanonicalTopicSlug;
+  }
+  if (LEGACY_OR_ALIAS_SLUG_MAP[clean]) {
+    return LEGACY_OR_ALIAS_SLUG_MAP[clean];
+  }
+
+  // Also check if candidate name contains keywords matching any canonical topic
+  const candidateText = rawSlugOrName.replace(/[-_]+/g, ' ');
+  const sim = calculateSeedSimilarity(candidateText);
+  if (sim.bestScore > 0) {
+    return sim.bestSlug;
+  }
+
+  return 'leisure-habits-daily';
+}
 
 export interface EmergentTopicCandidate {
   name: string;
@@ -144,6 +468,10 @@ export interface EmergenceDecision {
   emergentTopic?: EmergentTopicCandidate;
 }
 
+/**
+ * Kept for heading & URL subject extraction backward-compatibility.
+ * Questions with these subjects are systematically absorbed into the 15 canonical families.
+ */
 export const EMERGING_TOPIC_ALIASES: Record<string, { name: string; slug: string; description: string }> = {
   perfume: {
     name: 'Perfumes & Scents',
@@ -314,9 +642,9 @@ const GENERIC_STOPWORDS = new Set([
   'yourself', 'yourselves', 'ielts', 'speaking', 'answer', 'answers', 'sample', 'cue', 'card', 'topic', 'topics', 'test',
   'describe', 'one', 'two', 'three', 'recent', 'actual', 'exam', 'forecast',
   'find', 'found', 'broad', 'easy', 'maintain', 'regular', 'circle', 'casual', 'small', 'group', 'close', 'early',
-  'exciting', 'studied', 'wearing', 'wear', 'wears', 'check', 'checking', 'piece', 'pieces', 'bought', 'buy', 'buying',
-  'going', 'leaving', 'leave', 'social', 'event', 'events', 'value', 'valuable', 'sentimental', 'essential',
-  'rooms', 'living', 'home', 'wall', 'walls', 'decorative', 'decoration'
+  'exciting', 'studied', 'check', 'checking', 'piece', 'pieces', 'bought', 'going', 'leaving', 'leave',
+  'social', 'event', 'events', 'value', 'valuable', 'sentimental', 'essential',
+  'rooms', 'living', 'home', 'wall', 'walls', 'decorative', 'decoration',
 ]);
 
 export function slugifyTopic(name: string): string {
@@ -365,8 +693,14 @@ export function cleanSubjectFromHeading(raw: string): string | null {
 
   for (const seg of segments) {
     const withoutNoise = seg
-      .replace(/\b(?:ielts|speaking|part\s*[123]|part\s*one|part\s*two|part\s*three|cue\s*card|topics?|questions?|answers?|sample|forecast|actual|recent|test|202[456]|model\s*answer)\b/gi, '')
-      .replace(/\b(?:describe\s+(?:a|an|the|someone|something)|talk\s+about|you\s+(?:own|like|have|would|prefer)|piece\s+of)\b/gi, '')
+      .replace(
+        /\b(?:ielts|speaking|part\s*[123]|part\s*one|part\s*two|part\s*three|cue\s*card|topics?|questions?|answers?|sample|forecast|actual|recent|test|202[456]|model\s*answer)\b/gi,
+        '',
+      )
+      .replace(
+        /\b(?:describe\s+(?:a|an|the|someone|something)|talk\s+about|you\s+(?:own|like|have|would|prefer)|piece\s+of)\b/gi,
+        '',
+      )
       .trim();
 
     if (withoutNoise.length >= 3 && withoutNoise.length < 50) {
@@ -377,7 +711,10 @@ export function cleanSubjectFromHeading(raw: string): string | null {
 
   if (!bestCandidate) {
     const stripped = cleaned
-      .replace(/\b(?:ielts|speaking|part\s*[123]|cue\s*card|topics?|questions?|answers?|test|202[456]|describe\s+(?:a|an|the)|piece\s+of|you\s+(?:own|like))\b/gi, '')
+      .replace(
+        /\b(?:ielts|speaking|part\s*[123]|cue\s*card|topics?|questions?|answers?|test|202[456]|describe\s+(?:a|an|the)|piece\s+of|you\s+(?:own|like))\b/gi,
+        '',
+      )
       .trim();
     if (stripped.length >= 3 && stripped.length < 50) {
       bestCandidate = stripped;
@@ -468,7 +805,6 @@ export function detectGroupStrongSubject(
   const sortedNouns = [...nounCounter.entries()].sort((a, b) => b[1] - a[1]);
   if (sortedNouns.length > 0) {
     const [topNoun, count] = sortedNouns[0];
-    // If noun occurs in >= 2 questions or >= 40% of questions in the group
     if (count >= 2 || (totalQuestions <= 2 && count >= 1)) {
       if (EMERGING_TOPIC_ALIASES[topNoun]) {
         return EMERGING_TOPIC_ALIASES[topNoun].name;
@@ -480,52 +816,109 @@ export function detectGroupStrongSubject(
   return null;
 }
 
-export function calculateSeedSimilarity(text: string, bullets?: string | null): { bestSlug: string; bestScore: number } {
-  const haystack = (text + ' ' + (bullets ?? '')).toLowerCase();
-  let bestSlug = 'daily-life-habits';
+export function buildKeywordRegex(kw: string): RegExp {
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (kw.endsWith('y') && !/[aeiou]y$/i.test(kw)) {
+    const base = escaped.slice(0, -1);
+    return new RegExp(`\\b${base}(?:y|ies)\\b`, 'i');
+  }
+  return new RegExp(`\\b${escaped}(?:s|es)?\\b`, 'i');
+}
+
+export function getCanonicalKeywords(keywords: string[]): string[] {
+  const sorted = [...new Set(keywords.map((k) => k.toLowerCase().trim()))].sort(
+    (a, b) => a.length - b.length,
+  );
+  const result: string[] = [];
+  for (const kw of sorted) {
+    const isPluralOfExisting = result.some((existing) => {
+      const r = buildKeywordRegex(existing);
+      return r.test(kw);
+    });
+    if (!isPluralOfExisting) {
+      result.push(kw);
+    }
+  }
+  return result;
+}
+
+const CANONICAL_TOPIC_KEYWORDS = SEED_TOPICS.map((topic) => ({
+  slug: topic.slug as CanonicalTopicSlug,
+  primaryRegexes: getCanonicalKeywords(topic.primaryKeywords).map((kw) => buildKeywordRegex(kw)),
+  secondaryRegexes: getCanonicalKeywords(topic.secondaryKeywords).map((kw) => buildKeywordRegex(kw)),
+}));
+
+export function getContextCanonicalCandidate(contextSubject?: string | null): CanonicalTopicSlug | null {
+  if (!contextSubject || contextSubject.trim().length < 3) return null;
+  const slugified = slugifyTopic(contextSubject);
+  if (CANONICAL_SLUG_SET.has(slugified)) {
+    return slugified as CanonicalTopicSlug;
+  }
+  if (LEGACY_OR_ALIAS_SLUG_MAP[slugified]) {
+    return LEGACY_OR_ALIAS_SLUG_MAP[slugified];
+  }
+  const norm = normalizeToCanonicalSlug(contextSubject);
+  if (norm && norm !== 'leisure-habits-daily') {
+    return norm;
+  }
+  const sim = calculateSeedSimilarity(contextSubject);
+  if (sim.bestScore > 0) {
+    return sim.bestSlug;
+  }
+  return null;
+}
+
+export function calculateSeedSimilarity(
+  text: string,
+  bullets?: string | null,
+  contextCandidate?: CanonicalTopicSlug | null,
+): { bestSlug: CanonicalTopicSlug; bestScore: number } {
+  const haystack = [text, bullets].filter(Boolean).join(' ').toLowerCase();
+  let bestSlug: CanonicalTopicSlug = 'leisure-habits-daily';
   let bestScore = 0;
 
-  for (const topic of SEED_TOPICS) {
+  for (const item of CANONICAL_TOPIC_KEYWORDS) {
     let score = 0;
 
-    // Primary keywords get 4x weight
-    for (const kw of topic.primaryKeywords) {
-      const regex = new RegExp(`\\b${kw}\\b`, 'i');
+    for (const regex of item.primaryRegexes) {
       if (regex.test(haystack)) {
         score += 4;
-      } else if (haystack.includes(kw)) {
+      }
+    }
+
+    for (const regex of item.secondaryRegexes) {
+      if (regex.test(haystack)) {
         score += 2;
       }
     }
 
-    // Secondary keywords get 2x weight
-    for (const kw of topic.secondaryKeywords) {
-      const regex = new RegExp(`\\b${kw}\\b`, 'i');
-      if (regex.test(haystack)) {
-        score += 2;
-      } else if (haystack.includes(kw)) {
-        score += 1;
-      }
+    if (contextCandidate && item.slug === contextCandidate && score > 0) {
+      score += 3;
     }
 
     if (score > bestScore) {
       bestScore = score;
-      bestSlug = topic.slug;
+      bestSlug = item.slug;
     }
   }
 
   return { bestSlug, bestScore };
 }
 
+/**
+ * Classifies an IELTS question into one of the 15 Canonical Cambridge Topic Families.
+ * Single-noun auto-emergence fallback is removed: no new micro-topics are spawned.
+ */
 export function evaluateTopicClassification(
   text: string,
   bullets?: string | null,
   contextSubject?: string | null,
 ): EmergenceDecision {
-  const { bestSlug, bestScore } = calculateSeedSimilarity(text, bullets);
+  const contextCandidate = getContextCanonicalCandidate(contextSubject);
+  const { bestSlug, bestScore } = calculateSeedSimilarity(text, bullets, contextCandidate);
 
-  // If score is 3 or higher, it aligns solidly with an existing seed topic
-  if (bestScore >= 3) {
+  // If score > 0, keyword dictionary matched a canonical family based on the actual question text
+  if (bestScore > 0) {
     return {
       slug: bestSlug,
       score: bestScore,
@@ -533,98 +926,19 @@ export function evaluateTopicClassification(
     };
   }
 
-  // Score is < 3: DO NOT default to 'daily-life-habits' if a strong unique subject exists!
-  // 1. Check contextSubject if passed
-  if (contextSubject && contextSubject.trim().length >= 3) {
-    const subjectTokens = contextSubject.toLowerCase().split(/[^a-z]+/);
-    for (const t of subjectTokens) {
-      if (EMERGING_TOPIC_ALIASES[t]) {
-        const alias = EMERGING_TOPIC_ALIASES[t];
-        return {
-          slug: alias.slug,
-          score: bestScore,
-          isEmergent: true,
-          emergentTopic: {
-            name: alias.name,
-            slug: alias.slug,
-            description: alias.description,
-            relevance: 6,
-          },
-        };
-      }
-    }
-  }
-
-  // 2. Check question text and bullets against known emerging topic aliases
-  const textTokens = (text + ' ' + (bullets ?? ''))
-    .toLowerCase()
-    .split(/[^a-z]+/);
-
-  for (const t of textTokens) {
-    if (EMERGING_TOPIC_ALIASES[t]) {
-      const alias = EMERGING_TOPIC_ALIASES[t];
-      return {
-        slug: alias.slug,
-        score: bestScore,
-        isEmergent: true,
-        emergentTopic: {
-          name: alias.name,
-          slug: alias.slug,
-          description: alias.description,
-          relevance: 6,
-        },
-      };
-    }
-  }
-
-  // 3. Extract custom strong subject if heading or context provided
-  let strongSubject: string | null = null;
-  if (contextSubject && contextSubject.trim().length >= 3) {
-    strongSubject = cleanSubjectFromHeading(contextSubject) || contextSubject.trim();
-  }
-
-  // 4. Fallback to prominent nouns in question text
-  if (!strongSubject) {
-    const prominentNouns = extractProminentNouns(text + ' ' + (bullets ?? ''));
-    if (prominentNouns.length > 0) {
-      const topNoun = prominentNouns[0];
-      if (EMERGING_TOPIC_ALIASES[topNoun]) {
-        strongSubject = EMERGING_TOPIC_ALIASES[topNoun].name;
-      } else {
-        strongSubject = formatCapitalizedTopicName(topNoun);
-      }
-    }
-  }
-
-  if (strongSubject) {
-    const lower = strongSubject.toLowerCase().replace(/[^a-z]/g, '');
-    let topicName = strongSubject;
-    let topicSlug = slugifyTopic(strongSubject);
-    let topicDescription = `IELTS speaking practice questions and discussion regarding ${strongSubject}.`;
-
-    if (EMERGING_TOPIC_ALIASES[lower]) {
-      topicName = EMERGING_TOPIC_ALIASES[lower].name;
-      topicSlug = EMERGING_TOPIC_ALIASES[lower].slug;
-      topicDescription = EMERGING_TOPIC_ALIASES[lower].description;
-    }
-
+  // Fallback when question text has 0 keyword matches: Resolve from context candidate if present
+  if (contextCandidate) {
     return {
-      slug: topicSlug,
-      score: bestScore,
-      isEmergent: true,
-      emergentTopic: {
-        name: topicName,
-        slug: topicSlug,
-        description: topicDescription,
-        relevance: 6,
-      },
+      slug: contextCandidate,
+      score: 3,
+      isEmergent: false,
     };
   }
 
-  // Fallback if truly generic without any identifiable subject
+  // Final Fallback: Leisure, Habits & Daily Routine
   return {
-    slug: 'daily-life-habits',
-    score: bestScore,
+    slug: 'leisure-habits-daily',
+    score: 0,
     isEmergent: false,
   };
 }

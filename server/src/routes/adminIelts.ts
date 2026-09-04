@@ -275,7 +275,10 @@ router.post('/questions/bulk', async (req: AdminAuthenticatedRequest, res: Respo
 
     let defaultTopic = defaultTopicId ? await prisma.ieltsTopic.findUnique({ where: { id: defaultTopicId } }) : null;
     if (!defaultTopic) {
-      defaultTopic = (await prisma.ieltsTopic.findFirst({ where: { slug: 'daily-life-habits' } })) || (await prisma.ieltsTopic.findFirst());
+      defaultTopic =
+        (await prisma.ieltsTopic.findFirst({ where: { slug: 'leisure-habits-daily' } })) ||
+        (await prisma.ieltsTopic.findFirst({ where: { slug: 'daily-life-habits' } })) ||
+        (await prisma.ieltsTopic.findFirst());
     }
 
     let importedCount = 0;

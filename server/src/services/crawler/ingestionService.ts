@@ -2,7 +2,7 @@ import { prisma } from '../../config/database';
 import { getRedis } from '../../config/redis';
 import { logger } from '../../utils/logger';
 import { generateQuestionFingerprint } from './fingerprint';
-import { SEED_TOPICS, classifyTopic, evaluateTopicClassification, formatCapitalizedTopicName } from './taxonomy';
+import { SEED_TOPICS, classifyTopic, evaluateTopicClassification, formatCapitalizedTopicName, normalizeToCanonicalSlug } from './taxonomy';
 import { OFFICIAL_2026_EXAM_FORECAST_BANK, RawCandidateQuestion, VERIFIED_CRAWLER_TARGETS } from './sources';
 import { webCrawlerService } from './webCrawlerService';
 import { generateCanonicalSemanticKey, isSemanticDuplicate } from './semanticMatcher';
@@ -80,27 +80,41 @@ export class QuestionIngestionService {
     const newlyCreatedTopics: string[] = [];
 
     try {
-      // 3. Ensure all SEED_TOPICS exist in database
+      // 3. Ensure all 15 Canonical Cambridge IELTS Topic Families exist in database
       const topicMap = new Map<string, string>(); // slug -> topicId
       for (const t of SEED_TOPICS) {
         let topic = await prisma.ieltsTopic.findUnique({ where: { slug: t.slug } });
         if (!topic) {
-          topic = await prisma.ieltsTopic.create({
-            data: {
-              name: t.name,
-              slug: t.slug,
-              description: t.description,
-              relevance: t.relevance,
-              isActive: true,
-            },
-          });
-          topicsCreated++;
-          newlyCreatedTopics.push(t.name);
+          // Guard against name uniqueness collision if legacy record has same name
+          topic = await prisma.ieltsTopic.findUnique({ where: { name: t.name } });
+          if (topic) {
+            topic = await prisma.ieltsTopic.update({
+              where: { id: topic.id },
+              data: {
+                slug: t.slug,
+                description: t.description,
+                relevance: t.relevance,
+                isActive: true,
+              },
+            });
+          } else {
+            topic = await prisma.ieltsTopic.create({
+              data: {
+                name: t.name,
+                slug: t.slug,
+                description: t.description,
+                relevance: t.relevance,
+                isActive: true,
+              },
+            });
+            topicsCreated++;
+            newlyCreatedTopics.push(t.name);
+          }
         }
         topicMap.set(t.slug, topic.id);
       }
 
-      // Also load any custom topics already created by admin
+      // Also load any existing custom topics already created in DB
       const allDbTopics = await prisma.ieltsTopic.findMany({ select: { id: true, slug: true } });
       for (const t of allDbTopics) {
         topicMap.set(t.slug, t.id);
@@ -175,68 +189,43 @@ export class QuestionIngestionService {
           continue;
         }
 
-        // Determine matching topic with dynamic emergence
+        // Determine matching topic aligned with the 15 Canonical Cambridge IELTS Families
         const classification = evaluateTopicClassification(text, bullets, item.extractedTopicName);
 
         let targetSlug: string;
-        if (item.source === 'IELTS_2026_EXAM_FORECAST' && item.suggestedTopicSlug && item.suggestedTopicSlug !== 'daily-life-habits') {
-          targetSlug = item.suggestedTopicSlug;
-        } else if (classification.isEmergent && classification.emergentTopic) {
-          targetSlug = classification.emergentTopic.slug;
-        } else if (classification.score >= 3) {
+        if (item.source === 'IELTS_2026_EXAM_FORECAST' && item.suggestedTopicSlug) {
+          targetSlug = normalizeToCanonicalSlug(item.suggestedTopicSlug);
+        } else if (classification.score > 0) {
           targetSlug = classification.slug;
-        } else if (item.suggestedTopicSlug && item.suggestedTopicSlug !== 'daily-life-habits') {
-          targetSlug = item.suggestedTopicSlug;
+        } else if (item.suggestedTopicSlug) {
+          targetSlug = normalizeToCanonicalSlug(item.suggestedTopicSlug);
         } else {
           targetSlug = classification.slug;
         }
+        targetSlug = normalizeToCanonicalSlug(targetSlug);
 
         let topicId = topicMap.get(targetSlug);
         if (!topicId) {
-          // Dynamically create a new IeltsTopic in PostgreSQL
-          const emergent = classification.emergentTopic;
-          const topicName = emergent ? emergent.name : formatCapitalizedTopicName(targetSlug);
-          const topicSlug = emergent ? emergent.slug : targetSlug;
-          const topicDescription = emergent
-            ? emergent.description
-            : `IELTS speaking practice questions and discussion regarding ${topicName}.`;
-          const topicRelevance = emergent ? emergent.relevance : 6;
-
-          try {
-            let dbTopic =
-              (await prisma.ieltsTopic.findUnique({ where: { slug: topicSlug } })) ||
-              (await prisma.ieltsTopic.findUnique({ where: { name: topicName } }));
-
-            if (!dbTopic) {
-              dbTopic = await prisma.ieltsTopic.create({
-                data: {
-                  name: topicName,
-                  slug: topicSlug,
-                  description: topicDescription,
-                  relevance: topicRelevance,
-                  isActive: true,
-                },
-              });
-              topicsCreated++;
-              newlyCreatedTopics.push(dbTopic.name);
-              logger.info('Dynamically created emergent IELTS topic in PostgreSQL', {
-                service: 'crawler',
-                name: dbTopic.name,
-                slug: dbTopic.slug,
-              });
-            }
-
-            topicId = dbTopic.id;
-            topicMap.set(dbTopic.slug, topicId);
-            topicMap.set(targetSlug, topicId);
-          } catch (err: unknown) {
-            logger.warn('Failed creating dynamic IELTS topic, falling back', {
-              service: 'crawler',
-              slug: targetSlug,
-              error: err instanceof Error ? err.message : String(err),
+          // Guaranteed to be one of SEED_TOPICS
+          const seed =
+            SEED_TOPICS.find((s) => s.slug === targetSlug) ||
+            SEED_TOPICS.find((s) => s.slug === 'leisure-habits-daily')!;
+          let dbTopic = await prisma.ieltsTopic.findUnique({ where: { slug: seed.slug } });
+          if (!dbTopic) {
+            dbTopic = await prisma.ieltsTopic.create({
+              data: {
+                name: seed.name,
+                slug: seed.slug,
+                description: seed.description,
+                relevance: seed.relevance,
+                isActive: true,
+              },
             });
-            topicId = topicMap.get('daily-life-habits')!;
+            topicsCreated++;
+            newlyCreatedTopics.push(dbTopic.name);
           }
+          topicId = dbTopic.id;
+          topicMap.set(seed.slug, topicId);
         }
 
         // Check Layer 2 & 3: Semantic Paraphrase Deduplication against same topic & part
