@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { app } from '../index';
@@ -68,7 +68,7 @@ describe('Admin IELTS Crawler & Gemini Check Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.gemini).toBeDefined();
       expect(res.body.gemini.status).toBe('NOT_CONFIGURED');
-      expect(res.body.gemini.model).toBe('gemini-2.0-flash');
+      expect(res.body.gemini.model).toBe('gemini-2.5-flash');
       expect(res.body.status.gemini).toBeDefined();
     });
   });
@@ -92,7 +92,7 @@ describe('Admin IELTS Crawler & Gemini Check Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.gemini).toBeDefined();
       expect(res.body.gemini.status).toBe('CONNECTED');
-      expect(res.body.gemini.model).toBe('gemini-2.0-flash');
+      expect(res.body.gemini.model).toBe('gemini-2.5-flash');
       expect(res.body.gemini.lastError).toBeNull();
       expect(typeof res.body.gemini.latencyMs).toBe('number');
       expect(mockGenerate).toHaveBeenCalledWith('ping');

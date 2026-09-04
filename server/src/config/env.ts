@@ -33,6 +33,7 @@ export interface EnvConfig {
   PRIVACY_POLICY_URL: string;
   COMMUNITY_GUIDELINES_URL: string;
   GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
 }
 
 function required(name: string): string {
@@ -116,5 +117,6 @@ export const env: EnvConfig = {
   PRIVACY_POLICY_URL: process.env.PRIVACY_POLICY_URL?.trim() || 'https://pairtalk.online/privacy',
   COMMUNITY_GUIDELINES_URL: process.env.COMMUNITY_GUIDELINES_URL?.trim() || 'https://pairtalk.online/community-guidelines',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY?.trim(),
+  GEMINI_MODEL: process.env.GEMINI_MODEL?.trim(),
 };
 

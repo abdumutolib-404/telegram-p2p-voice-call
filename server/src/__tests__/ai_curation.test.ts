@@ -581,6 +581,7 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
 
   describe('checkGeminiConnection & State Tracking Telemetry', () => {
     const originalEnv = process.env.GEMINI_API_KEY;
+    const originalModelEnv = process.env.GEMINI_MODEL;
 
     beforeEach(() => {
       aiCurationService._setCachedState(null);
@@ -592,6 +593,11 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       } else {
         delete process.env.GEMINI_API_KEY;
       }
+      if (originalModelEnv !== undefined) {
+        process.env.GEMINI_MODEL = originalModelEnv;
+      } else {
+        delete process.env.GEMINI_MODEL;
+      }
       aiCurationService._setCachedState(null);
       vi.restoreAllMocks();
     });
@@ -600,7 +606,7 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       delete process.env.GEMINI_API_KEY;
       const state1 = await aiCurationService.checkGeminiConnection(true);
       expect(state1.status).toBe('NOT_CONFIGURED');
-      expect(state1.model).toBe('gemini-2.0-flash');
+      expect(state1.model).toBe('gemini-2.5-flash');
       expect(state1.lastError).toBeNull();
       expect(typeof state1.lastChecked).toBe('string');
       expect(aiCurationService.getGeminiStatus().status).toBe('NOT_CONFIGURED');
@@ -623,10 +629,10 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
 
       const state = await aiCurationService.checkGeminiConnection(true);
 
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-2.0-flash' }));
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-2.5-flash' }));
       expect(generateContentMock).toHaveBeenCalledWith('ping');
       expect(state.status).toBe('CONNECTED');
-      expect(state.model).toBe('gemini-2.0-flash');
+      expect(state.model).toBe('gemini-2.5-flash');
       expect(state.lastError).toBeNull();
       expect(typeof state.latencyMs).toBe('number');
       expect(state.latencyMs).toBeGreaterThanOrEqual(0);
@@ -634,15 +640,33 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       // Cached status should match
       const cached = aiCurationService.getGeminiStatus();
       expect(cached.status).toBe('CONNECTED');
-      expect(cached.model).toBe('gemini-2.0-flash');
+      expect(cached.model).toBe('gemini-2.5-flash');
       expect(cached.lastError).toBeNull();
     });
 
-    it('falls back to gemini-1.5-flash when gemini-2.0-flash fails', async () => {
+    it('prioritizes GEMINI_MODEL env variable if configured', async () => {
+      process.env.GEMINI_API_KEY = 'valid_test_api_key_123';
+      process.env.GEMINI_MODEL = 'gemini-custom-enterprise';
+
+      const generateContentMock = vi.fn().mockResolvedValue({
+        response: { text: () => 'pong' },
+      });
+      const spy = vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockReturnValue({
+        generateContent: generateContentMock,
+      } as any);
+
+      const state = await aiCurationService.checkGeminiConnection(true);
+
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-custom-enterprise' }));
+      expect(state.status).toBe('CONNECTED');
+      expect(state.model).toBe('gemini-custom-enterprise');
+    });
+
+    it('falls back to gemini-2.5-flash-lite when gemini-2.5-flash fails', async () => {
       process.env.GEMINI_API_KEY = 'valid_test_api_key_123';
 
       const spy = vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation((opts: any) => {
-        if (opts.model === 'gemini-2.0-flash') {
+        if (opts.model === 'gemini-2.5-flash') {
           return {
             generateContent: vi.fn().mockRejectedValue(new Error('503 Service Unavailable: Model overloaded')),
           } as any;
@@ -656,11 +680,11 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
 
       expect(spy).toHaveBeenCalledTimes(2);
       expect(state.status).toBe('CONNECTED');
-      expect(state.model).toBe('gemini-1.5-flash');
+      expect(state.model).toBe('gemini-2.5-flash-lite');
       expect(state.lastError).toBeNull();
     });
 
-    it('returns FAILED when both models fail or API key is invalid', async () => {
+    it('returns FAILED when all candidate models fail or API key is invalid', async () => {
       process.env.GEMINI_API_KEY = 'invalid_key_xyz';
 
       const spy = vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation(() => {
@@ -672,7 +696,6 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       const state = await aiCurationService.checkGeminiConnection(true);
 
       expect(state.status).toBe('FAILED');
-      expect(state.model).toBe('gemini-2.0-flash');
       expect(state.lastError).toContain('API_KEY_INVALID');
       expect(typeof state.latencyMs).toBe('number');
 
@@ -817,7 +840,7 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       expect(state.lastError).toContain('REDACTED');
     });
 
-    it('records the actual fallback model (gemini-1.5-flash) in state when curateQuestionBatch uses fallback', async () => {
+    it('records the actual fallback model (gemini-2.5-flash-lite) in state when curateQuestionBatch uses fallback', async () => {
       process.env.GEMINI_API_KEY = 'curate_fallback_key';
 
       const mockAiResponse = JSON.stringify([
@@ -832,7 +855,7 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       ]);
 
       vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation((opts: any) => {
-        if (opts.model === 'gemini-2.0-flash') {
+        if (opts.model === 'gemini-2.5-flash') {
           return {
             generateContent: vi.fn().mockRejectedValue(new Error('503 Service Unavailable')),
           } as any;
@@ -850,8 +873,39 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
 
       const status = aiCurationService.getGeminiStatus();
       expect(status.status).toBe('CONNECTED');
-      expect(status.model).toBe('gemini-1.5-flash');
+      expect(status.model).toBe('gemini-2.5-flash-lite');
       expect(typeof status.latencyMs).toBe('number');
+    });
+
+    it('uses autonomous model discovery via ListModels when default candidate models fail with 404', async () => {
+      process.env.GEMINI_API_KEY = 'discovery_test_key';
+
+      // Mock fetch for ListModels endpoint
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          models: [
+            { name: 'models/gemini-future-frontier', supportedGenerationMethods: ['generateContent'] },
+          ],
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation((opts: any) => {
+        if (opts.model === 'gemini-future-frontier') {
+          return {
+            generateContent: vi.fn().mockResolvedValue({ response: { text: () => 'pong' } }),
+          } as any;
+        }
+        return {
+          generateContent: vi.fn().mockRejectedValue(new Error('404 Not Found: model is deprecated')),
+        } as any;
+      });
+
+      const state = await aiCurationService.checkGeminiConnection(true);
+      expect(state.status).toBe('CONNECTED');
+      expect(state.model).toBe('gemini-future-frontier');
+      expect(state.lastError).toBeNull();
     });
   });
 });
