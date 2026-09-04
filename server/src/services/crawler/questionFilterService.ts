@@ -156,15 +156,35 @@ export class QuestionFilterService {
         const cleaned = cleanTextArtifacts(q.questionText);
         let currentText = q.questionText;
         if (cleaned && cleaned !== q.questionText && cleaned.length >= 10) {
-          await prisma.ieltsQuestion.update({
-            where: { id: q.id },
-            data: {
-              questionText: cleaned,
-              sourceHash: generateQuestionFingerprint(q.part, cleaned, q.cueCardBullets),
-            },
-          });
-          cleanedCount++;
-          currentText = cleaned;
+          try {
+            await prisma.ieltsQuestion.update({
+              where: { id: q.id },
+              data: {
+                questionText: cleaned,
+                sourceHash: generateQuestionFingerprint(q.part, cleaned, q.cueCardBullets),
+              },
+            });
+            cleanedCount++;
+            currentText = cleaned;
+          } catch (updateErr: any) {
+            // Gracefully handle P2002 duplicate collisions when cleaned text matches an existing question
+            if (
+              updateErr?.code === 'P2002' ||
+              String(updateErr?.message).includes('sourceHash') ||
+              String(updateErr?.message).includes('Unique constraint failed')
+            ) {
+              logger.info('Pass A duplicate collision on cleaned question, gracefully removing duplicate', {
+                service: 'crawler_filter',
+                questionId: q.id,
+                duplicateHash: generateQuestionFingerprint(q.part, cleaned, q.cueCardBullets),
+              });
+              await prisma.ieltsQuestion.delete({ where: { id: q.id } }).catch(() => undefined);
+              duplicatesPrunedCount++;
+              continue;
+            } else {
+              throw updateErr;
+            }
+          }
         }
 
         // --- PASS B: Re-classify Question into the 15 Canonical Families ---

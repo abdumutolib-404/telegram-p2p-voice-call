@@ -3,9 +3,10 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { calculateOverallBand, generateUniqueAlias, getMainMenuKeyboard } from '../commands/start';
-import { getEffectiveEntitlement, getUserCallsUsedThisPeriod } from '../../services/plan';
+import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration } from '../../services/plan';
 import { escapeHtml } from '../../utils/sanitize';
 import { logger } from '../../utils/logger';
+import { scheduleAuthoritativeSessionTeardown } from '../../socket/signaling';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
@@ -456,6 +457,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         where: { id: session.id },
         data: { status: 'ACTIVE' },
       });
+
+      // Authoritative server session duration teardown timer
+      const durationMinutes = calculateEffectiveCallDuration(caller, callee);
+      const durationSeconds = durationMinutes * 60;
+      scheduleAuthoritativeSessionTeardown(session.roomName, durationSeconds, bot);
 
       await ctx.answerCallbackQuery({ text: 'Call accepted! Opening audio channel...' });
 

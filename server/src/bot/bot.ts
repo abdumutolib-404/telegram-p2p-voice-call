@@ -14,7 +14,30 @@ import { getRedis } from '../config/redis';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
-const memorySessions = new Map<string, SessionData>();
+interface MemorySessionEntry {
+  data: SessionData;
+  updatedAt: number;
+}
+
+const MAX_MEMORY_SESSIONS = 5000;
+const MEMORY_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const memorySessions = new Map<string, MemorySessionEntry>();
+
+function pruneMemorySessions(): void {
+  const now = Date.now();
+  for (const [k, v] of memorySessions.entries()) {
+    if (now - v.updatedAt > MEMORY_SESSION_TTL_MS) {
+      memorySessions.delete(k);
+    }
+  }
+  if (memorySessions.size > MAX_MEMORY_SESSIONS) {
+    const sorted = [...memorySessions.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt);
+    const toRemove = sorted.slice(0, memorySessions.size - MAX_MEMORY_SESSIONS);
+    for (const [k] of toRemove) {
+      memorySessions.delete(k);
+    }
+  }
+}
 
 function createRedisSessionStorage() {
   return {
@@ -28,10 +51,20 @@ function createRedisSessionStorage() {
       } catch {
         // Fallback to memory
       }
-      return memorySessions.get(key);
+      const entry = memorySessions.get(key);
+      if (!entry) return undefined;
+      if (Date.now() - entry.updatedAt > MEMORY_SESSION_TTL_MS) {
+        memorySessions.delete(key);
+        return undefined;
+      }
+      entry.updatedAt = Date.now();
+      return entry.data;
     },
     async write(key: string, value: SessionData): Promise<void> {
-      memorySessions.set(key, value);
+      memorySessions.set(key, { data: value, updatedAt: Date.now() });
+      if (memorySessions.size > MAX_MEMORY_SESSIONS) {
+        pruneMemorySessions();
+      }
       try {
         const redis = getRedis();
         await redis.set(`bot:session:${key}`, JSON.stringify(value), 'EX', 86400 * 7); // 7 days
@@ -102,6 +135,11 @@ export function createBot(token: string): Bot<MyContext> {
 
   // 1. Rate Limiting Middleware (Anti-Spam on Bot Commands & Buttons with 5-minute penalty lockout)
   bot.use(async (ctx, next) => {
+    // Immediate guard clause: never drop or delay payment webhooks
+    if (ctx.preCheckoutQuery || ctx.message?.successful_payment) {
+      return next();
+    }
+
     const fromId = ctx.from?.id;
     if (!fromId) return next();
 
@@ -139,6 +177,11 @@ export function createBot(token: string): Bot<MyContext> {
 
   // 2. Global Suspension Middleware (Restricts banned/suspended users to Support & Appeal only)
   bot.use(async (ctx, next) => {
+    // Immediate guard clause: never drop or delay payment webhooks
+    if (ctx.preCheckoutQuery || ctx.message?.successful_payment) {
+      return next();
+    }
+
     const telegramIdNum = ctx.from?.id;
     if (!telegramIdNum) return next();
 

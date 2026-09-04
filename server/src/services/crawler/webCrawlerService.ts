@@ -6,8 +6,8 @@ import { logger } from '../../utils/logger';
 
 function stripHtml(html: string): string {
   return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<p\b[^>]*>/gi, '\n')
     .replace(/<li\b[^>]*>/gi, '\n• ')
@@ -33,6 +33,9 @@ export class WebCrawlerService {
   private readonly userAgent = 'PairTalk-ExamCrawler/2.0 (+https://pairtalk.online)';
   private readonly visitedSetKey = 'pairtalk:crawler:visited_urls';
   private readonly inMemoryVisited = new Set<string>();
+  private readonly minDomainDelayMs = 750; // Polite 750ms spacing between requests to same domain
+  private readonly domainLastRequest = new Map<string, number>();
+  private readonly domainQueues = new Map<string, Promise<void>>();
 
   /**
    * Normalizes a URL by trimming trailing slashes, stripping hashes and tracking queries.
@@ -178,40 +181,109 @@ export class WebCrawlerService {
   }
 
   /**
-   * Fetches raw HTML from a given URL with timeout and user-agent.
+   * Serializes requests per target domain to cap concurrency at 1 and enforces polite spacing delay (750ms).
    */
-  public async fetchHtml(url: string): Promise<string | null> {
+  private async runWithDomainLimiter<T>(domain: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.domainQueues.get(domain) ?? Promise.resolve();
+    let release: (() => void) | undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.domainQueues.set(domain, current);
+
+    await previous.catch(() => undefined);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.defaultTimeoutMs);
-
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': this.userAgent,
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        logger.warn(`Crawler fetch returned HTTP status ${response.status}`, {
-          service: 'crawler',
-          url,
-          status: response.status,
-        });
-        return null;
+      const lastTime = this.domainLastRequest.get(domain) ?? 0;
+      const elapsed = Date.now() - lastTime;
+      if (elapsed < this.minDomainDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, this.minDomainDelayMs - elapsed));
       }
-
-      return await response.text();
-    } catch (error: any) {
-      logger.warn(`Crawler could not reach URL ${url}: ${error?.message || String(error)}`, {
-        service: 'crawler',
-        url,
-      });
-      return null;
+      this.domainLastRequest.set(domain, Date.now());
+      return await fn();
+    } finally {
+      this.domainLastRequest.set(domain, Date.now());
+      release?.();
+      if (this.domainQueues.get(domain) === current) {
+        this.domainQueues.delete(domain);
+      }
     }
+  }
+
+  /**
+   * Fetches raw HTML from a given URL with timeout, user-agent, polite domain-level rate limiting,
+   * concurrency caps, and exponential backoff on HTTP 429/503 responses.
+   */
+  public async fetchHtml(url: string, maxRetries = 2): Promise<string | null> {
+    let domain = 'unknown-target';
+    try {
+      domain = new URL(url).hostname.toLowerCase();
+    } catch {
+      // ignore
+    }
+
+    return await this.runWithDomainLimiter(domain, async () => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), this.defaultTimeoutMs);
+
+          const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent': this.userAgent,
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+          });
+          clearTimeout(timeoutId);
+
+          if (response.status === 429 || response.status === 503) {
+            const retryHeader = response.headers.get('retry-after');
+            let backoffMs = Math.min(10000, 1000 * Math.pow(2, attempt));
+            if (retryHeader) {
+              const parsed = parseInt(retryHeader, 10);
+              if (!isNaN(parsed) && parsed > 0) {
+                backoffMs = Math.min(30000, parsed * 1000);
+              }
+            }
+            logger.warn(`Crawler hit HTTP ${response.status} on ${domain}. Exponential backoff for ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries + 1})`, {
+              service: 'crawler',
+              url,
+              status: response.status,
+              backoffMs,
+            });
+            if (attempt < maxRetries) {
+              await new Promise((resolve) => setTimeout(resolve, backoffMs));
+              continue;
+            }
+            return null;
+          }
+
+          if (!response.ok) {
+            logger.warn(`Crawler fetch returned HTTP status ${response.status}`, {
+              service: 'crawler',
+              url,
+              status: response.status,
+            });
+            return null;
+          }
+
+          return await response.text();
+        } catch (error: any) {
+          if (attempt < maxRetries) {
+            const backoffMs = 1000 * Math.pow(2, attempt);
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            continue;
+          }
+          logger.warn(`Crawler could not reach URL ${url}: ${error?.message || String(error)}`, {
+            service: 'crawler',
+            url,
+          });
+          return null;
+        }
+      }
+      return null;
+    });
   }
 
   /**

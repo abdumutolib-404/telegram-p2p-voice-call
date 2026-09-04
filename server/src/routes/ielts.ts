@@ -37,7 +37,7 @@ router.get('/questions', async (req: Request, res: Response): Promise<void> => {
       where.part = String(part).toUpperCase() as IeltsPart;
     }
     if (topicId && typeof topicId === 'string' && topicId !== 'all') {
-      where.topicId = topicId;
+      where.OR = [{ topicId }, { topic: { slug: topicId } }];
     }
 
     const [questions, total] = await Promise.all([

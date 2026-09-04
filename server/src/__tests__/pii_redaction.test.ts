@@ -93,6 +93,17 @@ describe('PII Redaction Engine Unit Tests', () => {
     expect(redacted).toContain('[REDACTED_CARD]');
   });
 
+  it('does not redact 13-digit Unix millisecond timestamps or UUIDs as credit cards', () => {
+    const timestamp = '1725436800000';
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+    const rawMessage = `Order processed at ${timestamp} with session ${uuid}`;
+    const redacted = redactString(rawMessage);
+
+    expect(redacted).toContain(timestamp);
+    expect(redacted).toContain(uuid);
+    expect(redacted).not.toContain('[REDACTED_CARD]');
+  });
+
   it('safely handles circular references without throwing or hanging', () => {
     const circularObj: any = {
       name: 'CircularTest',

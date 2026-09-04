@@ -121,7 +121,7 @@ export async function generateLiveKitToken(
   if (!roomName || roomName.length > 128) throw new TypeError('Invalid roomName');
   if (!participantIdentity || participantIdentity.length > 128) throw new TypeError('Invalid participantIdentity');
   if (!participantName || participantName.length > 128) throw new TypeError('Invalid participantName');
-  if (!Number.isInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 3600) throw new RangeError('Invalid token TTL');
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 7200) throw new RangeError('Invalid token TTL');
 
   try {
     const accessToken = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {

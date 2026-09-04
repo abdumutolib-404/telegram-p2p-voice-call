@@ -138,7 +138,7 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
     const elapsedSeconds = Math.floor((Date.now() - session.createdAt.getTime()) / 1000);
     const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
 
-    const tokenTtlSeconds = Math.min(3600, Math.max(60, remainingSeconds + 300));
+    const tokenTtlSeconds = Math.min(7200, Math.max(60, remainingSeconds + 300));
     const livekitToken = await generateLiveKitToken(session.roomName, self.id, self.alias, tokenTtlSeconds);
 
     res.json({

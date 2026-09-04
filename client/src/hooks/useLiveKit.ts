@@ -46,14 +46,20 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const isConnectingRef = useRef<boolean>(false);
   const cancelConnectRef = useRef<boolean>(false);
   const attachedElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   // Handle mobile visibility change & resume audio on app wake
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && roomRef.current) {
-        roomRef.current.startAudio().catch(() => {});
-        for (const el of attachedElementsRef.current.values()) {
-          el.play().catch(() => {});
+      if (document.visibilityState === 'visible') {
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+          audioCtxRef.current.resume().catch(() => {});
+        }
+        if (roomRef.current) {
+          roomRef.current.startAudio().catch(() => {});
+          for (const el of attachedElementsRef.current.values()) {
+            el.play().catch(() => {});
+          }
         }
       }
     };
@@ -65,7 +71,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     };
   }, []);
 
-  // Teardown attached audio elements
+  // Teardown attached audio elements and audio context
   const cleanupAudio = useCallback(() => {
     for (const [, el] of attachedElementsRef.current) {
       try {
@@ -75,11 +81,22 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
       } catch {}
     }
     attachedElementsRef.current.clear();
+    if (audioCtxRef.current) {
+      try {
+        audioCtxRef.current.close().catch(() => {});
+      } catch {}
+      audioCtxRef.current = null;
+    }
     setAnalyserNode(null);
   }, []);
 
   // Explicit user-gesture trigger to unlock autoplay audio on mobile browsers
   const startAudio = useCallback(async () => {
+    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+      try {
+        await audioCtxRef.current.resume();
+      } catch {}
+    }
     const activeRoom = roomRef.current;
     if (activeRoom) {
       try {
@@ -176,6 +193,32 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           document.body.appendChild(el);
           attachedElementsRef.current.set(trackSid, el);
 
+          // Web Audio AnalyserNode setup for live waveform visualization
+          try {
+            const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+            if (AudioCtx) {
+              if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+                audioCtxRef.current = new AudioCtx();
+              }
+              const ctx = audioCtxRef.current;
+              if (ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
+              }
+              const stream = remoteAudioTrack.mediaStream || (remoteAudioTrack.mediaStreamTrack ? new MediaStream([remoteAudioTrack.mediaStreamTrack]) : null);
+              if (stream) {
+                const source = ctx.createMediaStreamSource(stream);
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.8;
+                source.connect(analyser);
+                // Note: Do not connect analyser to ctx.destination; attached <audio> plays audio
+                setAnalyserNode(analyser);
+              }
+            }
+          } catch (audioCtxErr) {
+            console.warn('[LiveKit] Failed to initialize Web Audio AnalyserNode:', audioCtxErr);
+          }
+
           if (livekitRoom) {
             livekitRoom.startAudio().catch(() => {});
           }
@@ -204,6 +247,15 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
               const elements = remoteAudioTrack.detach();
               elements.forEach((el) => el.remove());
             } catch {}
+          }
+          if (attachedElementsRef.current.size === 0) {
+            if (audioCtxRef.current) {
+              try {
+                audioCtxRef.current.close().catch(() => {});
+              } catch {}
+              audioCtxRef.current = null;
+            }
+            setAnalyserNode(null);
           }
         };
 

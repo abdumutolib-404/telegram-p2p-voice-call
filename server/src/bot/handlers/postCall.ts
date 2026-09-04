@@ -42,7 +42,8 @@ export async function sendPostCallReviewCard(
         `• <b>Partner</b>: ${partnerAlias}\n` +
         `• <b>Duration</b>: ${durationStr}` +
         `${retentionNotice}`,
-      { parse_mode: 'HTML', reply_markup: inlineKb }
+      { parse_mode: 'HTML', reply_markup: inlineKb },
+      true
     );
 
     // Check and notify if user has reached their monthly plan limit

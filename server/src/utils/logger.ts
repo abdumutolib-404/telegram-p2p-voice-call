@@ -87,7 +87,12 @@ const VALUE_PATTERNS = [
   { pattern: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\b/g, replacement: '[REDACTED_JWT]' },
   { pattern: /(?:query_id|user)=[^&\s]*(?:&[^&=\s]+=[^&\s]*)*&hash=[a-f0-9]{16,64}/gi, replacement: '[REDACTED_INIT_DATA]' },
   { pattern: /Bearer\s+[A-Za-z0-9-._~+/]+=*/gi, replacement: 'Bearer [REDACTED_TOKEN]' },
-  { pattern: /\b(?:\d[ -]*?){13,19}\b/g, replacement: '[REDACTED_CARD]' },
+  {
+    // Requires valid card prefixes (Visa 4, Mastercard 51-55/22-27, Amex 34/37, Discover 6011/64/65, Uzcard 8600, Humo 9860, etc.)
+    // and prevents matching 13-digit Unix millisecond timestamps (which start with 1) or UUIDs
+    pattern: /(?<![a-zA-Z0-9_-])(?:(?:4[0-9]{3}|5[1-5][0-9]{2}|2[2-7][0-9]{2}|6(?:011|5[0-9]{2}|4[4-9][0-9]|2[0-9]{2})|8600|9860)(?:[ -]?[0-9]{4}){3}|3[47][0-9]{2}(?:[ -]?[0-9]{6}[ -]?[0-9]{5}|(?:[ -]?[0-9]{4}){2}[ -]?[0-9]{3})|(?:4[0-9]|5[1-5]|2[2-7]|3[47]|6[045]|8600|9860)[0-9]{11,17})(?![a-zA-Z0-9_-])/g,
+    replacement: '[REDACTED_CARD]',
+  },
 ];
 
 /**

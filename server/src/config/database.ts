@@ -13,8 +13,43 @@ export const inMemoryPrisma = new InMemoryPrismaMock() as unknown as PrismaClien
 let useRealPrisma = false;
 let realPrismaClient: PrismaClient | null = null;
 
+function getDatabaseUrlWithPoolParams(): string | undefined {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return undefined;
+  try {
+    const url = new URL(dbUrl);
+    if (!url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', '20');
+    }
+    if (!url.searchParams.has('pool_timeout')) {
+      url.searchParams.set('pool_timeout', '10');
+    }
+    const withPool = url.toString();
+    process.env.DATABASE_URL = withPool;
+    return withPool;
+  } catch {
+    const sep = dbUrl.includes('?') ? '&' : '?';
+    let res = dbUrl;
+    if (!res.includes('connection_limit=')) res += `${sep}connection_limit=20`;
+    if (!res.includes('pool_timeout=')) res += `&pool_timeout=10`;
+    process.env.DATABASE_URL = res;
+    return res;
+  }
+}
+
 if (process.env.NODE_ENV !== 'test') {
-  realPrismaClient = new PrismaClient();
+  const dbUrl = getDatabaseUrlWithPoolParams();
+  realPrismaClient = new PrismaClient(
+    dbUrl
+      ? {
+          datasources: {
+            db: {
+              url: dbUrl,
+            },
+          },
+        }
+      : undefined
+  );
 }
 
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {

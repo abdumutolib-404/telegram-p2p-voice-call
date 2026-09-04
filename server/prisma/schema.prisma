@@ -79,6 +79,7 @@ model CallSession {
   @@index([egressId])
   @@index([status])
   @@index([recordingExpiresAt])
+  @@index([status, recordingUrl, createdAt])
 }
 
 model CallRating {
@@ -111,6 +112,9 @@ model UnblockAppeal {
   reviewedAt  DateTime?
 
   user        User      @relation(fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([userId])
 }
 
 model StarsTransaction {
@@ -151,6 +155,7 @@ model ManualPaymentRequest {
   user             User      @relation(fields: [userId], references: [id])
 
   @@index([userId, status])
+  @@index([status, createdAt])
 }
 
 model AuditLog {
@@ -162,6 +167,9 @@ model AuditLog {
   afterState  String?
   reason      String?
   createdAt   DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([targetId])
 }
 
 model FavoritePartner {
@@ -190,6 +198,7 @@ model ReferralReward {
   referredFriend   User         @relation("ReferredFriendRewards", fields: [referredUserId], references: [id])
 
   @@index([userId, status])
+  @@index([createdAt])
 }
 
 model Contest {

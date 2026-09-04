@@ -280,17 +280,18 @@ export const App: React.FC = () => {
           return;
         }
 
-        // Set verified user state using whole-band defaults (5, 6, 7, 8, 9)
-        const wholeBand = Math.max(5, Math.min(9, Math.round(data.user.band || 7)));
+        // Preserve authentic IELTS half-band scores (Math.round(band * 2) / 2)
+        const toHalfBand = (score: number) => Math.max(5, Math.min(9, Math.round(score * 2) / 2));
+        const authenticBand = toHalfBand(data.user.band || 7);
         setUserData({
           userId: data.user.id,
           telegramId: data.user.telegramId,
           alias: data.user.alias,
-          band: wholeBand,
-          subFC: data.user.subFC ? Math.round(data.user.subFC) : wholeBand,
-          subLR: data.user.subLR ? Math.round(data.user.subLR) : wholeBand,
-          subGRA: data.user.subGRA ? Math.round(data.user.subGRA) : wholeBand,
-          subP: data.user.subP ? Math.round(data.user.subP) : wholeBand,
+          band: authenticBand,
+          subFC: data.user.subFC ? toHalfBand(data.user.subFC) : authenticBand,
+          subLR: data.user.subLR ? toHalfBand(data.user.subLR) : authenticBand,
+          subGRA: data.user.subGRA ? toHalfBand(data.user.subGRA) : authenticBand,
+          subP: data.user.subP ? toHalfBand(data.user.subP) : authenticBand,
           weakSkill: data.user.weakSkill || 'P',
           strongSkill: data.user.strongSkill || 'FC',
           plan: data.user.plan || 'FREE',

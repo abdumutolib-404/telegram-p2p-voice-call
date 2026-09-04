@@ -82,13 +82,24 @@ export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' |
     if (user) {
       const profile = getPaidUserProfile(user);
       if (profile.isActivePaid) {
-        const msg = `You have an active paid plan — ${escapeHtml(profile.plan)}. Therefore, you cannot request or buy another plan. Wait until this one expires.`;
-        if (ctx.callbackQuery) {
-          await ctx.answerCallbackQuery({ text: `You have an active paid plan — ${profile.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`, show_alert: true });
-        } else {
-          await ctx.reply(`⚠️ <b>Active Subscription</b>\n\n${msg}`, { parse_mode: 'HTML' });
+        if (profile.plan === tier) {
+          const msg = `You already have an active ${escapeHtml(profile.plan)} plan. You cannot purchase the same tier again while it is active.`;
+          if (ctx.callbackQuery) {
+            await ctx.answerCallbackQuery({ text: `You already have an active ${profile.plan} plan. You cannot purchase the same tier again while it is active.`, show_alert: true });
+          } else {
+            await ctx.reply(`⚠️ <b>Active Subscription</b>\n\n${msg}`, { parse_mode: 'HTML' });
+          }
+          return;
         }
-        return;
+        if (isDowngrade(profile.plan, tier)) {
+          const msg = `You have an active ${escapeHtml(profile.plan)} plan. Downgrading to ${escapeHtml(tier)} is not supported while your current subscription is active.`;
+          if (ctx.callbackQuery) {
+            await ctx.answerCallbackQuery({ text: `You have an active ${profile.plan} plan. Downgrading to ${tier} is not supported while your current subscription is active.`, show_alert: true });
+          } else {
+            await ctx.reply(`⚠️ <b>Downgrade Not Supported</b>\n\n${msg}`, { parse_mode: 'HTML' });
+          }
+          return;
+        }
       }
 
       const pendingRequest = await prisma.manualPaymentRequest.findFirst({
@@ -258,11 +269,20 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
         const profile = getPaidUserProfile(user);
         if (profile.isActivePaid) {
-          await ctx.answerCallbackQuery({
-            text: `You have an active paid plan — ${profile.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`,
-            show_alert: true,
-          });
-          return;
+          if (profile.plan === tier) {
+            await ctx.answerCallbackQuery({
+              text: `You already have an active ${profile.plan} plan. You cannot purchase the same tier again while it is active.`,
+              show_alert: true,
+            });
+            return;
+          }
+          if (isDowngrade(profile.plan, tier)) {
+            await ctx.answerCallbackQuery({
+              text: `You have an active ${profile.plan} plan. Downgrading to ${tier} is not supported while your current subscription is active.`,
+              show_alert: true,
+            });
+            return;
+          }
         }
 
         const pendingRequest = await prisma.manualPaymentRequest.findFirst({
@@ -327,11 +347,20 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
     const profile = getPaidUserProfile(user);
     if (profile.isActivePaid) {
-      await ctx.answerCallbackQuery({
-        text: `You have an active paid plan — ${profile.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`,
-        show_alert: true,
-      });
-      return;
+      if (profile.plan === tier) {
+        await ctx.answerCallbackQuery({
+          text: `You already have an active ${profile.plan} plan. You cannot purchase the same tier again while it is active.`,
+          show_alert: true,
+        });
+        return;
+      }
+      if (isDowngrade(profile.plan, tier)) {
+        await ctx.answerCallbackQuery({
+          text: `You have an active ${profile.plan} plan. Downgrading to ${tier} is not supported while your current subscription is active.`,
+          show_alert: true,
+        });
+        return;
+      }
     }
 
     const pendingRequest = await prisma.manualPaymentRequest.findFirst({

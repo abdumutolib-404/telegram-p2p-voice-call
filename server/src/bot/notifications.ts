@@ -9,23 +9,46 @@ interface QueueItem {
   text: string;
   options?: SendMessageOptions;
   retries?: number;
+  isUrgent?: boolean;
 }
 
 export class NotificationQueue {
-  private queue: QueueItem[] = [];
+  private urgentQueue: QueueItem[] = [];
+  private bulkQueue: QueueItem[] = [];
   private isProcessing = false;
 
-  async enqueue(bot: Bot<MyContext>, telegramId: string, text: string, options?: SendMessageOptions) {
-    this.queue.push({ telegramId, text, options, retries: 0 });
+  async enqueue(
+    bot: Bot<MyContext>,
+    telegramId: string,
+    text: string,
+    options?: SendMessageOptions,
+    isUrgent = false
+  ) {
+    const item: QueueItem = { telegramId, text, options, retries: 0, isUrgent };
+    if (isUrgent) {
+      this.urgentQueue.push(item);
+    } else {
+      this.bulkQueue.push(item);
+    }
     this.process(bot);
+  }
+
+  async enqueueUrgent(
+    bot: Bot<MyContext>,
+    telegramId: string,
+    text: string,
+    options?: SendMessageOptions
+  ) {
+    return this.enqueue(bot, telegramId, text, options, true);
   }
 
   private async process(bot: Bot<MyContext>) {
     if (this.isProcessing) return;
     this.isProcessing = true;
 
-    while (this.queue.length > 0) {
-      const item = this.queue.shift();
+    while (this.urgentQueue.length > 0 || this.bulkQueue.length > 0) {
+      // Prioritize urgent post-call review cards ahead of bulk marketing broadcasts
+      const item = this.urgentQueue.shift() || this.bulkQueue.shift();
       if (!item) break;
 
       try {
@@ -46,8 +69,10 @@ export class NotificationQueue {
               telegramId: item.telegramId,
               attempt: currentRetries + 1,
               retryAfter,
+              isUrgent: item.isUrgent,
             });
-            this.queue.unshift({ ...item, retries: currentRetries + 1 });
+            const targetQueue = item.isUrgent ? this.urgentQueue : this.bulkQueue;
+            targetQueue.unshift({ ...item, retries: currentRetries + 1 });
             await new Promise((resolve) => setTimeout(resolve, retryAfter));
           } else {
             logger.error(`Max retries reached for message to ${item.telegramId}. Message dropped.`, {
@@ -66,7 +91,7 @@ export class NotificationQueue {
       }
 
       // Small delay between outgoing messages to respect rate limits (30 msgs/sec max)
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 35));
     }
 
     this.isProcessing = false;

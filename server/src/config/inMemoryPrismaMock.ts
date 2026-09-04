@@ -531,6 +531,17 @@ export class InMemoryPrismaMock {
     },
     findMany: async (args?: { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'>; take?: number; skip?: number; include?: Record<string, boolean> }): Promise<any[]> => {
       let list = [...this.ieltsQuestions.values()].filter((q) => {
+        if (Array.isArray(args?.where?.OR)) {
+          const matchOr = (args.where.OR as any[]).some((cond) => {
+            if (cond.topicId && q.topicId === cond.topicId) return true;
+            if (cond.topic?.slug) {
+              const topic = this.ieltsTopics.get(q.topicId);
+              if (topic && topic.slug === cond.topic.slug) return true;
+            }
+            return false;
+          });
+          if (!matchOr) return false;
+        }
         if (args?.where?.topicId && q.topicId !== args.where.topicId) return false;
         if (args?.where?.part && q.part !== args.where.part) return false;
         if (args?.where?.isActive !== undefined && q.isActive !== args.where.isActive) return false;
