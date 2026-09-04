@@ -9,6 +9,7 @@ import {
   isBroadcastActive,
   AnnouncementPayload,
 } from '../../services/announcement';
+import { aiCurationService } from '../../services/crawler/aiCurationService';
 import { logger } from '../../utils/logger';
 
 export const adminTokenStore = new Map<string, { telegramId: number; expiresAt: number }>();
@@ -114,6 +115,37 @@ export function setupAdminCommand(bot: Bot<MyContext>): void {
         `• <b>Plan</b>: <b>${user.plan}</b>\n` +
         `• <b>Monthly Calls</b>: ${user.dailyCallsUsed} / ${user.dailyLimit}\n` +
         `• <b>Status</b>: ${user.isPermanentlyBanned ? '⛔ Permanently Banned' : user.isBanned ? '🚫 Temporarily Suspended' : '✅ Active'}`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  bot.command('crawler', async (ctx) => {
+    const adminId = ctx.from?.id ? String(ctx.from.id) : undefined;
+    if (!adminId || !env.ADMIN_TELEGRAM_IDS.includes(adminId)) {
+      return;
+    }
+
+    const gemini = aiCurationService.getGeminiStatus();
+    const geminiPointer =
+      gemini.status === 'CONNECTED'
+        ? `Connected 🟢 (${gemini.model}, ${gemini.latencyMs ?? 0}ms)`
+        : gemini.status === 'FAILED'
+        ? `Failed 🔴 (${gemini.lastError || 'API Error'})`
+        : `Not Configured ⚪ (Heuristic Fallback)`;
+
+    const [latestLog, qCount, tCount] = await Promise.all([
+      prisma.crawlerSyncLog.findFirst({ orderBy: { startedAt: 'desc' } }),
+      prisma.ieltsQuestion.count(),
+      prisma.ieltsTopic.count(),
+    ]);
+
+    await ctx.reply(
+      `🤖 <b>IELTS Crawler & AI Telemetry</b>\n\n` +
+        `• <b>Gemini AI Status</b>: ${geminiPointer}\n` +
+        `• <b>Total Questions</b>: ${qCount}\n` +
+        `• <b>Active Topics</b>: ${tCount}\n` +
+        `• <b>Last Run Status</b>: ${latestLog?.status || 'READY'}\n` +
+        `• <b>Last Duration</b>: ${latestLog?.durationMs ?? 0}ms`,
       { parse_mode: 'HTML' }
     );
   });

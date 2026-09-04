@@ -5,6 +5,7 @@ import { IeltsPart } from '@prisma/client';
 import { generateQuestionFingerprint } from '../services/crawler/fingerprint';
 import { questionIngestionService } from '../services/crawler/ingestionService';
 import { questionFilterService } from '../services/crawler/questionFilterService';
+import { aiCurationService } from '../services/crawler/aiCurationService';
 import { topicNotificationService } from '../services/topicNotificationService';
 import { getAdminBot } from './admin';
 import { logger } from '../utils/logger';
@@ -416,15 +417,36 @@ router.get('/crawler/status', async (_req: AdminAuthenticatedRequest, res: Respo
       prisma.ieltsTopic.count(),
     ]);
 
+    const gemini = aiCurationService.getGeminiStatus();
+
     res.json({
       success: true,
       latestLog,
       totalQuestions,
       totalTopics,
+      gemini,
+      status: {
+        latestLog,
+        totalQuestions,
+        totalTopics,
+        gemini,
+      },
     });
   } catch (err: unknown) {
     logger.error('Admin fetch crawler status failed', { service: 'admin_ielts' }, err);
     res.status(500).json({ error: 'Internal server error fetching crawler status' });
+  }
+});
+
+// POST /api/admin/ielts/crawler/gemini-check
+router.post('/crawler/gemini-check', async (_req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    logger.info('Admin triggered manual Gemini connection check', { service: 'admin_ielts' });
+    const gemini = await aiCurationService.checkGeminiConnection(true);
+    res.json({ success: true, gemini });
+  } catch (err: unknown) {
+    logger.error('Admin Gemini connection check failed', { service: 'admin_ielts' }, err);
+    res.status(500).json({ error: 'Internal server error checking Gemini connection' });
   }
 });
 

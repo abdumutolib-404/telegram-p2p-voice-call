@@ -58,10 +58,19 @@ interface SyncLog {
   completedAt: string | null;
 }
 
+export interface GeminiConnectionState {
+  status: 'CONNECTED' | 'FAILED' | 'NOT_CONFIGURED';
+  model: string;
+  lastChecked: string;
+  lastError: string | null;
+  latencyMs?: number;
+}
+
 interface CrawlerStatus {
   latestLog: SyncLog | null;
   totalQuestions: number;
   totalTopics: number;
+  gemini?: GeminiConnectionState;
 }
 
 export const QuestionManagement: React.FC = () => {
@@ -102,6 +111,8 @@ export const QuestionManagement: React.FC = () => {
   const [crawlMessage, setCrawlMessage] = useState<string | null>(null);
   const [isFiltering, setIsFiltering] = useState(false);
   const [filterMessage, setFilterMessage] = useState<string | null>(null);
+  const [isCheckingGemini, setIsCheckingGemini] = useState(false);
+  const [geminiCheckMessage, setGeminiCheckMessage] = useState<string | null>(null);
 
   // Bulk import state
   const [bulkImportJson, setBulkImportJson] = useState('');
@@ -158,9 +169,25 @@ export const QuestionManagement: React.FC = () => {
 
   const fetchCrawlerStatus = useCallback(async () => {
     try {
-      const res = await adminFetch<{ success: boolean; status: CrawlerStatus }>('/api/admin/ielts/crawler/status');
+      const res = await adminFetch<{
+        success: boolean;
+        status?: CrawlerStatus;
+        latestLog?: SyncLog;
+        totalQuestions?: number;
+        totalTopics?: number;
+        gemini?: GeminiConnectionState;
+      }>('/api/admin/ielts/crawler/status');
       if (res.success) {
-        setCrawlerStatus(res.status);
+        if (res.status) {
+          setCrawlerStatus(res.status);
+        } else {
+          setCrawlerStatus({
+            latestLog: res.latestLog ?? null,
+            totalQuestions: res.totalQuestions ?? 0,
+            totalTopics: res.totalTopics ?? 0,
+            gemini: res.gemini,
+          });
+        }
       }
       const logsRes = await adminFetch<{ success: boolean; logs: SyncLog[] }>('/api/admin/ielts/crawler/logs');
       if (logsRes.success) {
@@ -170,6 +197,44 @@ export const QuestionManagement: React.FC = () => {
       // ignore
     }
   }, []);
+
+  const handleCheckGemini = async () => {
+    setIsCheckingGemini(true);
+    setGeminiCheckMessage(null);
+    try {
+      const res = await adminFetch<{
+        success: boolean;
+        gemini: GeminiConnectionState;
+      }>('/api/admin/ielts/crawler/gemini-check', {
+        method: 'POST',
+      });
+      if (res.success && res.gemini) {
+        setCrawlerStatus((prev) =>
+          prev
+            ? { ...prev, gemini: res.gemini }
+            : {
+                latestLog: null,
+                totalQuestions: questions.length,
+                totalTopics: topics.length,
+                gemini: res.gemini,
+              }
+        );
+        if (res.gemini.status === 'CONNECTED') {
+          setGeminiCheckMessage(`🟢 Connected to ${res.gemini.model} (${res.gemini.latencyMs ?? 0}ms)`);
+        } else if (res.gemini.status === 'FAILED') {
+          setGeminiCheckMessage(`🔴 Gemini AI: Failed - ${res.gemini.lastError || 'Unknown error'}`);
+        } else {
+          setGeminiCheckMessage('⚪ Gemini AI: Not Configured - Heuristic fallback active');
+        }
+      } else {
+        setGeminiCheckMessage('❌ Failed to check Gemini connection');
+      }
+    } catch (err: any) {
+      setGeminiCheckMessage(`❌ Error: ${err?.message || 'Check failed'}`);
+    } finally {
+      setIsCheckingGemini(false);
+    }
+  };
 
   useEffect(() => {
     void fetchTopics();
@@ -447,7 +512,13 @@ export const QuestionManagement: React.FC = () => {
             <div className="qm-stat-val" style={{ color: 'var(--success)' }}>
               {crawlerStatus?.latestLog?.status || 'READY'}
             </div>
-            <div className="qm-stat-sub">{crawlerStatus?.latestLog?.durationMs ?? 0}ms last execution</div>
+            <div className="qm-stat-sub">
+              {crawlerStatus?.gemini?.status === 'CONNECTED'
+                ? `Gemini: Connected 🟢 (${crawlerStatus.gemini.model})`
+                : crawlerStatus?.gemini?.status === 'FAILED'
+                ? 'Gemini: Failed 🔴'
+                : 'Gemini: Not Configured ⚪'}
+            </div>
           </div>
 
           <div className="qm-stat-box">
@@ -1052,6 +1123,146 @@ export const QuestionManagement: React.FC = () => {
       {/* 6. CRAWLER COMMAND CENTER VIEW */}
       {activeTab === 'crawler' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Gemini AI Status Pointer Card */}
+          <div
+            className="glass-panel"
+            style={{
+              padding: '1.25rem 1.5rem',
+              borderLeft: `4px solid ${
+                crawlerStatus?.gemini?.status === 'CONNECTED'
+                  ? 'var(--success)'
+                  : crawlerStatus?.gemini?.status === 'FAILED'
+                  ? 'var(--danger)'
+                  : '#94A3B8'
+              }`,
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div
+                  style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '12px',
+                    background:
+                      crawlerStatus?.gemini?.status === 'CONNECTED'
+                        ? 'rgba(34, 197, 94, 0.15)'
+                        : crawlerStatus?.gemini?.status === 'FAILED'
+                        ? 'rgba(239, 68, 68, 0.15)'
+                        : 'rgba(148, 163, 184, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color:
+                      crawlerStatus?.gemini?.status === 'CONNECTED'
+                        ? 'var(--success)'
+                        : crawlerStatus?.gemini?.status === 'FAILED'
+                        ? 'var(--danger)'
+                        : '#94A3B8',
+                  }}
+                >
+                  <Sparkles size={22} />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '1rem', fontWeight: 800, color: '#FFFFFF' }}>
+                      Google Gemini AI Status
+                    </span>
+
+                    {crawlerStatus?.gemini?.status === 'CONNECTED' ? (
+                      <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem' }}>
+                        <span className="dot" style={{ backgroundColor: 'var(--success)' }} />
+                        <span style={{ fontWeight: 700 }}>Gemini AI: Connected 🟢</span>
+                      </span>
+                    ) : crawlerStatus?.gemini?.status === 'FAILED' ? (
+                      <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem' }}>
+                        <span className="dot" style={{ backgroundColor: 'var(--danger)' }} />
+                        <span style={{ fontWeight: 700 }}>Gemini AI: Failed 🔴</span>
+                      </span>
+                    ) : (
+                      <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem', background: 'rgba(148, 163, 184, 0.2)', color: '#E2E8F0', border: '1px solid rgba(148, 163, 184, 0.3)' }}>
+                        <span className="dot" style={{ backgroundColor: '#94A3B8' }} />
+                        <span style={{ fontWeight: 700 }}>Gemini AI: Not Configured ⚪</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    {crawlerStatus?.gemini?.status === 'CONNECTED' && (
+                      <span>
+                        Model: <strong style={{ color: '#F1F5F9' }}>{crawlerStatus.gemini.model}</strong> • Latency:{' '}
+                        <strong style={{ color: 'var(--success-text)' }}>{crawlerStatus.gemini.latencyMs ?? 0}ms</strong> • Last Checked:{' '}
+                        {new Date(crawlerStatus.gemini.lastChecked).toLocaleTimeString()}
+                      </span>
+                    )}
+                    {crawlerStatus?.gemini?.status === 'FAILED' && (
+                      <span style={{ color: '#F87171' }}>
+                        Model: {crawlerStatus.gemini.model} • Error: {crawlerStatus.gemini.lastError || 'Connection failed'}
+                      </span>
+                    )}
+                    {(!crawlerStatus?.gemini || crawlerStatus?.gemini?.status === 'NOT_CONFIGURED') && (
+                      <span>
+                        Heuristic fallback active. Question validation and topic taxonomy run locally without external AI costs.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  disabled={isCheckingGemini}
+                  onClick={handleCheckGemini}
+                  className={crawlerStatus?.gemini?.status === 'FAILED' ? 'btn-danger' : 'btn-secondary'}
+                  style={{ height: '36px', padding: '0 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <RefreshCw size={13} style={{ animation: isCheckingGemini ? 'spin 1s linear infinite' : 'none' }} />
+                  <span>
+                    {isCheckingGemini
+                      ? 'Testing Gemini...'
+                      : crawlerStatus?.gemini?.status === 'FAILED'
+                      ? 'Retry / Test Connection'
+                      : 'Test Gemini Connection'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {geminiCheckMessage && (
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '8px',
+                  background:
+                    crawlerStatus?.gemini?.status === 'CONNECTED'
+                      ? 'rgba(34, 197, 94, 0.1)'
+                      : crawlerStatus?.gemini?.status === 'FAILED'
+                      ? 'rgba(239, 68, 68, 0.1)'
+                      : 'rgba(148, 163, 184, 0.1)',
+                  border: `1px solid ${
+                    crawlerStatus?.gemini?.status === 'CONNECTED'
+                      ? 'rgba(34, 197, 94, 0.3)'
+                      : crawlerStatus?.gemini?.status === 'FAILED'
+                      ? 'rgba(239, 68, 68, 0.3)'
+                      : 'rgba(148, 163, 184, 0.3)'
+                  }`,
+                  fontSize: '0.75rem',
+                  color:
+                    crawlerStatus?.gemini?.status === 'CONNECTED'
+                      ? 'var(--success-text)'
+                      : crawlerStatus?.gemini?.status === 'FAILED'
+                      ? '#FCA5A5'
+                      : '#E2E8F0',
+                }}
+              >
+                {geminiCheckMessage}
+              </div>
+            )}
+          </div>
+
           {/* Architecture Pipeline Flow Banner */}
           <div className="glass-panel" style={{ padding: '1.5rem' }}>
             <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>

@@ -3,6 +3,14 @@ import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { CANONICAL_TOPIC_SLUGS, classifyTopic, normalizeToCanonicalSlug } from './taxonomy';
 
+export interface GeminiConnectionState {
+  status: 'CONNECTED' | 'FAILED' | 'NOT_CONFIGURED';
+  model: string;
+  lastChecked: string;
+  lastError: string | null;
+  latencyMs?: number;
+}
+
 export interface CuratedQuestionResult {
   index: number;
   isValidIeltsSpeaking: boolean;
@@ -223,6 +231,165 @@ export function cleanJsonText(raw: string): string {
 }
 
 export class AiCurationService {
+  private geminiState: GeminiConnectionState | null = null;
+  private lastCheckTimestamp = 0;
+  private readonly CACHE_TTL_MS = 60 * 1000; // 60 seconds
+  private inFlightCheck: Promise<GeminiConnectionState> | null = null;
+
+  private sanitizeErrorMessage(err: unknown): string {
+    const raw = err instanceof Error ? err.message : String(err || 'Gemini ping failed');
+    return raw
+      .replace(/key=[^&\s]+/gi, 'key=[REDACTED]')
+      .replace(/AIza[0-9A-Za-z-_]{35}/g, 'AIza[REDACTED]');
+  }
+
+  public getSanitizedApiKey(): string | undefined {
+    const rawApiKey = process.env.GEMINI_API_KEY || env.GEMINI_API_KEY;
+    if (!rawApiKey) return undefined;
+    const apiKey = rawApiKey.trim().replace(/^["']+|["']+$/g, '').trim();
+    if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
+      return undefined;
+    }
+    return apiKey;
+  }
+
+  /**
+   * Directly tests Gemini connection with a minimal ping prompt ('ping').
+   * Caches successful or failed results for 60 seconds unless forceLive = true.
+   * Concurrently deduplicates live in-flight checks to prevent quota exhaustion.
+   */
+  public async checkGeminiConnection(forceLive = false): Promise<GeminiConnectionState> {
+    const apiKey = this.getSanitizedApiKey();
+    if (!apiKey) {
+      const state: GeminiConnectionState = {
+        status: 'NOT_CONFIGURED',
+        model: 'gemini-2.0-flash',
+        lastChecked: new Date().toISOString(),
+        lastError: null,
+      };
+      this.geminiState = state;
+      this.lastCheckTimestamp = Date.now();
+      return state;
+    }
+
+    const now = Date.now();
+    if (!forceLive && this.geminiState && now - this.lastCheckTimestamp < this.CACHE_TTL_MS) {
+      return this.geminiState;
+    }
+
+    if (this.inFlightCheck) {
+      return this.inFlightCheck;
+    }
+
+    this.inFlightCheck = (async (): Promise<GeminiConnectionState> => {
+      const startTime = Date.now();
+      const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+      let succeededModel: string | null = null;
+      let lastErr: unknown = null;
+
+      try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        for (const modelName of modelsToTry) {
+          let timeoutId: NodeJS.Timeout | undefined;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Gemini ping timed out after 10000ms')), 10000);
+            if (typeof timeoutId.unref === 'function') timeoutId.unref();
+          });
+
+          try {
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const response = await Promise.race([model.generateContent('ping'), timeoutPromise]);
+            if (response) {
+              succeededModel = modelName;
+              break;
+            }
+          } catch (err) {
+            lastErr = err;
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+          }
+        }
+      } catch (clientErr) {
+        lastErr = clientErr;
+      }
+
+      const latencyMs = Date.now() - startTime;
+
+      if (succeededModel) {
+        const state: GeminiConnectionState = {
+          status: 'CONNECTED',
+          model: succeededModel,
+          lastChecked: new Date().toISOString(),
+          lastError: null,
+          latencyMs,
+        };
+        this.geminiState = state;
+        this.lastCheckTimestamp = Date.now();
+        return state;
+      } else {
+        const errMsg = this.sanitizeErrorMessage(lastErr);
+        const state: GeminiConnectionState = {
+          status: 'FAILED',
+          model: 'gemini-2.0-flash',
+          lastChecked: new Date().toISOString(),
+          lastError: errMsg,
+          latencyMs,
+        };
+        this.geminiState = state;
+        this.lastCheckTimestamp = Date.now();
+        return state;
+      }
+    })();
+
+    try {
+      return await this.inFlightCheck;
+    } finally {
+      this.inFlightCheck = null;
+    }
+  }
+
+  /**
+   * Returns the latest cached Gemini connection state.
+   * If uninitialized and an API key is present, kicks off an in-flight check without poisoning the cache.
+   */
+  public getGeminiStatus(): GeminiConnectionState {
+    if (this.geminiState) {
+      return this.geminiState;
+    }
+    const apiKey = this.getSanitizedApiKey();
+    if (!apiKey) {
+      const state: GeminiConnectionState = {
+        status: 'NOT_CONFIGURED',
+        model: 'gemini-2.0-flash',
+        lastChecked: new Date().toISOString(),
+        lastError: null,
+      };
+      this.geminiState = state;
+      this.lastCheckTimestamp = Date.now();
+      return state;
+    }
+
+    // Trigger async background check so subsequent calls receive live verified state.
+    // Notice lastCheckTimestamp is left at 0 so checkGeminiConnection(false) is NOT cache-blocked.
+    void this.checkGeminiConnection(false).catch(() => undefined);
+
+    const state: GeminiConnectionState = {
+      status: 'CONNECTED',
+      model: 'gemini-2.0-flash',
+      lastChecked: new Date().toISOString(),
+      lastError: null,
+    };
+    this.geminiState = state;
+    this.lastCheckTimestamp = 0;
+    return state;
+  }
+
+  public _setCachedState(state: GeminiConnectionState | null): void {
+    this.geminiState = state;
+    this.lastCheckTimestamp = state ? Date.now() : 0;
+    this.inFlightCheck = null;
+  }
+
   /**
    * Curates a batch of candidate questions using Gemini 2.0 Flash with strict responseSchema.
    * Gracefully falls back to heuristic curation if GEMINI_API_KEY is not configured or network call fails.
@@ -251,9 +418,15 @@ export class AiCurationService {
     // Initialize with heuristic curation fallback results for guaranteed coverage
     const results: CuratedQuestionResult[] = candidates.map((c, i) => heuristicCuration(c, i));
 
-    const rawApiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-    const apiKey = rawApiKey ? rawApiKey.trim().replace(/^["']|["']$/g, '').trim() : undefined;
-    if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
+    const apiKey = this.getSanitizedApiKey();
+    if (!apiKey) {
+      this.geminiState = {
+        status: 'NOT_CONFIGURED',
+        model: 'gemini-2.0-flash',
+        lastChecked: new Date().toISOString(),
+        lastError: null,
+      };
+      this.lastCheckTimestamp = Date.now();
       logger.debug('GEMINI_API_KEY not configured. Using heuristic curation fallback.', {
         service: 'ai_curator',
         count: candidates.length,
@@ -261,6 +434,7 @@ export class AiCurationService {
       return results;
     }
 
+    const startTime = Date.now();
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const promptPayload = JSON.stringify(
@@ -276,6 +450,7 @@ export class AiCurationService {
 
       let responseText: string | null = null;
       let lastError: unknown = null;
+      let succeededModel: string | null = null;
 
       // Tier 1: Try Gemini models in priority order with structured schema
       const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash'];
@@ -293,7 +468,10 @@ export class AiCurationService {
 
           const response = await model.generateContent(prompt);
           responseText = response.response.text();
-          if (responseText) break;
+          if (responseText) {
+            succeededModel = modelName;
+            break;
+          }
         } catch (modelErr: unknown) {
           lastError = modelErr;
           const errMsg = modelErr instanceof Error ? modelErr.message : String(modelErr);
@@ -316,7 +494,10 @@ export class AiCurationService {
               });
               const response = await promptJsonModel.generateContent(prompt);
               responseText = response.response.text();
-              if (responseText) break;
+              if (responseText) {
+                succeededModel = modelName;
+                break;
+              }
             } catch (schemaFallbackErr: unknown) {
               lastError = schemaFallbackErr;
             }
@@ -325,7 +506,15 @@ export class AiCurationService {
       }
 
       if (!responseText) {
-        const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
+        const errMsg = this.sanitizeErrorMessage(lastError);
+        this.geminiState = {
+          status: 'FAILED',
+          model: 'gemini-2.0-flash',
+          lastChecked: new Date().toISOString(),
+          lastError: errMsg,
+          latencyMs: Date.now() - startTime,
+        };
+        this.lastCheckTimestamp = Date.now();
         logger.warn(`Gemini AI Curation failed (${errMsg}). Falling back to heuristic curation.`, {
           service: 'ai_curator',
           error: errMsg,
@@ -368,16 +557,40 @@ export class AiCurationService {
           }
         }
 
+        this.geminiState = {
+          status: 'CONNECTED',
+          model: succeededModel || 'gemini-2.0-flash',
+          lastChecked: new Date().toISOString(),
+          lastError: null,
+          latencyMs: Date.now() - startTime,
+        };
+        this.lastCheckTimestamp = Date.now();
         return results;
       }
 
+      this.geminiState = {
+        status: 'FAILED',
+        model: 'gemini-2.0-flash',
+        lastChecked: new Date().toISOString(),
+        lastError: 'AI Curation returned non-array JSON',
+        latencyMs: Date.now() - startTime,
+      };
+      this.lastCheckTimestamp = Date.now();
       logger.warn('AI Curation returned non-array JSON. Using heuristic fallback.', {
         service: 'ai_curator',
         expected: candidates.length,
       });
       return results;
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = this.sanitizeErrorMessage(err);
+      this.geminiState = {
+        status: 'FAILED',
+        model: 'gemini-2.0-flash',
+        lastChecked: new Date().toISOString(),
+        lastError: errMsg,
+        latencyMs: Date.now() - startTime,
+      };
+      this.lastCheckTimestamp = Date.now();
       logger.warn(`Gemini AI Curation failed (${errMsg}). Falling back to heuristic curation.`, {
         service: 'ai_curator',
         error: errMsg,

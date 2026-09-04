@@ -5,6 +5,7 @@ import {
   heuristicCuration,
   stripEmojisAndJunk,
   CuratedQuestionResult,
+  GeminiConnectionState,
 } from '../services/crawler/aiCurationService';
 import { webCrawlerService } from '../services/crawler/webCrawlerService';
 import { detectGarbageQuestion, JUNK_PATTERNS, run as runPurgeScript } from '../../scripts/purgeGarbageQuestions';
@@ -575,6 +576,282 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
         where: { questionText: { contains: 'Will these questions be asked' } },
       });
       expect(savedJunk).toBeNull();
+    });
+  });
+
+  describe('checkGeminiConnection & State Tracking Telemetry', () => {
+    const originalEnv = process.env.GEMINI_API_KEY;
+
+    beforeEach(() => {
+      aiCurationService._setCachedState(null);
+    });
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env.GEMINI_API_KEY = originalEnv;
+      } else {
+        delete process.env.GEMINI_API_KEY;
+      }
+      aiCurationService._setCachedState(null);
+      vi.restoreAllMocks();
+    });
+
+    it('returns NOT_CONFIGURED when GEMINI_API_KEY is not set or empty', async () => {
+      delete process.env.GEMINI_API_KEY;
+      const state1 = await aiCurationService.checkGeminiConnection(true);
+      expect(state1.status).toBe('NOT_CONFIGURED');
+      expect(state1.model).toBe('gemini-2.0-flash');
+      expect(state1.lastError).toBeNull();
+      expect(typeof state1.lastChecked).toBe('string');
+      expect(aiCurationService.getGeminiStatus().status).toBe('NOT_CONFIGURED');
+
+      process.env.GEMINI_API_KEY = '   ""   ';
+      const state2 = await aiCurationService.checkGeminiConnection(true);
+      expect(state2.status).toBe('NOT_CONFIGURED');
+      expect(state2.lastError).toBeNull();
+    });
+
+    it('returns CONNECTED with latency when Gemini ping succeeds', async () => {
+      process.env.GEMINI_API_KEY = 'valid_test_api_key_123';
+
+      const generateContentMock = vi.fn().mockResolvedValue({
+        response: { text: () => 'pong' },
+      });
+      const spy = vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockReturnValue({
+        generateContent: generateContentMock,
+      } as any);
+
+      const state = await aiCurationService.checkGeminiConnection(true);
+
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-2.0-flash' }));
+      expect(generateContentMock).toHaveBeenCalledWith('ping');
+      expect(state.status).toBe('CONNECTED');
+      expect(state.model).toBe('gemini-2.0-flash');
+      expect(state.lastError).toBeNull();
+      expect(typeof state.latencyMs).toBe('number');
+      expect(state.latencyMs).toBeGreaterThanOrEqual(0);
+
+      // Cached status should match
+      const cached = aiCurationService.getGeminiStatus();
+      expect(cached.status).toBe('CONNECTED');
+      expect(cached.model).toBe('gemini-2.0-flash');
+      expect(cached.lastError).toBeNull();
+    });
+
+    it('falls back to gemini-1.5-flash when gemini-2.0-flash fails', async () => {
+      process.env.GEMINI_API_KEY = 'valid_test_api_key_123';
+
+      const spy = vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation((opts: any) => {
+        if (opts.model === 'gemini-2.0-flash') {
+          return {
+            generateContent: vi.fn().mockRejectedValue(new Error('503 Service Unavailable: Model overloaded')),
+          } as any;
+        }
+        return {
+          generateContent: vi.fn().mockResolvedValue({ response: { text: () => 'pong' } }),
+        } as any;
+      });
+
+      const state = await aiCurationService.checkGeminiConnection(true);
+
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(state.status).toBe('CONNECTED');
+      expect(state.model).toBe('gemini-1.5-flash');
+      expect(state.lastError).toBeNull();
+    });
+
+    it('returns FAILED when both models fail or API key is invalid', async () => {
+      process.env.GEMINI_API_KEY = 'invalid_key_xyz';
+
+      const spy = vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation(() => {
+        return {
+          generateContent: vi.fn().mockRejectedValue(new Error('400 API_KEY_INVALID: API key not valid')),
+        } as any;
+      });
+
+      const state = await aiCurationService.checkGeminiConnection(true);
+
+      expect(state.status).toBe('FAILED');
+      expect(state.model).toBe('gemini-2.0-flash');
+      expect(state.lastError).toContain('API_KEY_INVALID');
+      expect(typeof state.latencyMs).toBe('number');
+
+      // Cached status should match
+      const cached = aiCurationService.getGeminiStatus();
+      expect(cached.status).toBe('FAILED');
+      expect(cached.lastError).toContain('API_KEY_INVALID');
+    });
+
+    it('returns cached state within 60 seconds when not forced', async () => {
+      process.env.GEMINI_API_KEY = 'cached_test_key';
+
+      const generateContentMock = vi.fn().mockResolvedValue({ response: { text: () => 'pong' } });
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockReturnValue({
+        generateContent: generateContentMock,
+      } as any);
+
+      // First check (live)
+      const state1 = await aiCurationService.checkGeminiConnection(true);
+      expect(state1.status).toBe('CONNECTED');
+      expect(generateContentMock).toHaveBeenCalledTimes(1);
+
+      // Second check (cached, not forced)
+      const state2 = await aiCurationService.checkGeminiConnection(false);
+      expect(state2.status).toBe('CONNECTED');
+      expect(generateContentMock).toHaveBeenCalledTimes(1); // No new call!
+
+      // Third check (forced)
+      const state3 = await aiCurationService.checkGeminiConnection(true);
+      expect(state3.status).toBe('CONNECTED');
+      expect(generateContentMock).toHaveBeenCalledTimes(2); // Live call made
+    });
+
+    it('updates cached state to CONNECTED during successful curateQuestionBatch', async () => {
+      process.env.GEMINI_API_KEY = 'curate_success_key';
+
+      const mockAiResponse = JSON.stringify([
+        {
+          index: 0,
+          isValidIeltsSpeaking: true,
+          rejectionReason: null,
+          part: 'PART_1',
+          canonicalTopicSlug: 'education-learning',
+          cleanedText: 'Do you prefer studying alone or in study groups?',
+        },
+      ]);
+
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockReturnValue({
+        generateContent: vi.fn().mockResolvedValue({
+          response: { text: () => mockAiResponse },
+        }),
+      } as any);
+
+      await aiCurationService.curateQuestionBatch([
+        { text: 'Do you prefer studying alone or in study groups?' },
+      ]);
+
+      const status = aiCurationService.getGeminiStatus();
+      expect(status.status).toBe('CONNECTED');
+      expect(status.lastError).toBeNull();
+    });
+
+    it('updates cached state to FAILED during failed curateQuestionBatch', async () => {
+      process.env.GEMINI_API_KEY = 'curate_fail_key';
+
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockReturnValue({
+        generateContent: vi.fn().mockRejectedValue(new Error('500 Internal Server Error: Gemini down')),
+      } as any);
+
+      await aiCurationService.curateQuestionBatch([
+        { text: 'What is your favorite book genre?' },
+      ]);
+
+      const status = aiCurationService.getGeminiStatus();
+      expect(status.status).toBe('FAILED');
+      expect(status.lastError).toContain('500 Internal Server Error');
+    });
+
+    it('does not poison cache on initial getGeminiStatus call and allows checkGeminiConnection to run live check', async () => {
+      process.env.GEMINI_API_KEY = 'init_unverified_key';
+
+      const generateContentMock = vi.fn().mockResolvedValue({
+        response: { text: () => 'pong' },
+      });
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockReturnValue({
+        generateContent: generateContentMock,
+      } as any);
+
+      // Call getGeminiStatus cold
+      const initial = aiCurationService.getGeminiStatus();
+      expect(initial.status).toBe('CONNECTED');
+
+      // Now call checkGeminiConnection(false) - it must NOT be blocked by cache!
+      const checked = await aiCurationService.checkGeminiConnection(false);
+      expect(generateContentMock).toHaveBeenCalledTimes(1);
+      expect(checked.status).toBe('CONNECTED');
+    });
+
+    it('deduplicates concurrent in-flight checks to prevent duplicate API calls', async () => {
+      process.env.GEMINI_API_KEY = 'concurrent_test_key';
+
+      let resolvePing!: (value: any) => void;
+      const delayedPromise = new Promise((resolve) => {
+        resolvePing = resolve;
+      });
+
+      const generateContentMock = vi.fn().mockImplementation(() => delayedPromise);
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockReturnValue({
+        generateContent: generateContentMock,
+      } as any);
+
+      // Launch 3 simultaneous live checks
+      const p1 = aiCurationService.checkGeminiConnection(true);
+      const p2 = aiCurationService.checkGeminiConnection(true);
+      const p3 = aiCurationService.checkGeminiConnection(true);
+
+      expect(generateContentMock).toHaveBeenCalledTimes(1);
+
+      resolvePing({ response: { text: () => 'pong' } });
+
+      const [r1, r2, r3] = await Promise.all([p1, p2, p3]);
+      expect(r1.status).toBe('CONNECTED');
+      expect(r2.status).toBe('CONNECTED');
+      expect(r3.status).toBe('CONNECTED');
+      expect(generateContentMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('redacts sensitive API keys and query parameters from error messages', async () => {
+      process.env.GEMINI_API_KEY = 'leaking_test_key';
+
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation(() => {
+        return {
+          generateContent: vi.fn().mockRejectedValue(
+            new Error('Failed request to https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyB1234567890abcdefghijklmnopqrstuvw: [400 Bad Request] key=AIzaSyB1234567890abcdefghijklmnopqrstuvw invalid')
+          ),
+        } as any;
+      });
+
+      const state = await aiCurationService.checkGeminiConnection(true);
+      expect(state.status).toBe('FAILED');
+      expect(state.lastError).not.toContain('AIzaSyB1234567890abcdefghijklmnopqrstuvw');
+      expect(state.lastError).toContain('REDACTED');
+    });
+
+    it('records the actual fallback model (gemini-1.5-flash) in state when curateQuestionBatch uses fallback', async () => {
+      process.env.GEMINI_API_KEY = 'curate_fallback_key';
+
+      const mockAiResponse = JSON.stringify([
+        {
+          index: 0,
+          isValidIeltsSpeaking: true,
+          rejectionReason: null,
+          part: 'PART_1',
+          canonicalTopicSlug: 'education-learning',
+          cleanedText: 'Do you prefer studying alone or in study groups?',
+        },
+      ]);
+
+      vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation((opts: any) => {
+        if (opts.model === 'gemini-2.0-flash') {
+          return {
+            generateContent: vi.fn().mockRejectedValue(new Error('503 Service Unavailable')),
+          } as any;
+        }
+        return {
+          generateContent: vi.fn().mockResolvedValue({
+            response: { text: () => mockAiResponse },
+          }),
+        } as any;
+      });
+
+      await aiCurationService.curateQuestionBatch([
+        { text: 'Do you prefer studying alone or in study groups?' },
+      ]);
+
+      const status = aiCurationService.getGeminiStatus();
+      expect(status.status).toBe('CONNECTED');
+      expect(status.model).toBe('gemini-1.5-flash');
+      expect(typeof status.latencyMs).toBe('number');
     });
   });
 });
