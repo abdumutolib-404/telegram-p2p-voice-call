@@ -32,6 +32,7 @@ export interface EnvConfig {
   S3_FORCE_PATH_STYLE?: boolean;
   PRIVACY_POLICY_URL: string;
   COMMUNITY_GUIDELINES_URL: string;
+  GEMINI_API_KEY?: string;
 }
 
 function required(name: string): string {
@@ -114,5 +115,6 @@ export const env: EnvConfig = {
   S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE === 'true' || process.env.S3_FORCE_PATH_STYLE === '1',
   PRIVACY_POLICY_URL: process.env.PRIVACY_POLICY_URL?.trim() || 'https://pairtalk.online/privacy',
   COMMUNITY_GUIDELINES_URL: process.env.COMMUNITY_GUIDELINES_URL?.trim() || 'https://pairtalk.online/community-guidelines',
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY?.trim(),
 };
 

@@ -1,3 +1,4 @@
+import * as cheerio from 'cheerio';
 import { IeltsPart } from '@prisma/client';
 import { RawCandidateQuestion, CrawlTargetSource, VERIFIED_CRAWLER_TARGETS } from './sources';
 import { classifyTopic, cleanSubjectFromHeading, extractSubjectFromUrl, detectGroupStrongSubject } from './taxonomy';
@@ -297,10 +298,19 @@ export class WebCrawlerService {
    * context inheritance for questions under subtopics, and merges dependent fragments (e.g. "And how?").
    */
   public parseHtmlContent(html: string, sourceUrl: string): RawCandidateQuestion[] {
-    const pageTopicName = this.extractTopicNameFromHtmlOrUrl(html, sourceUrl);
+    if (!html || typeof html !== 'string') {
+      return [];
+    }
+
+    // 1. Strip all non-article, sidebars, comments, and navigation DOM nodes with Cheerio
+    const $ = cheerio.load(html);
+    $('script, style, noscript, #comments, .comments, .comment-list, .comment-respond, .comment-body, .wp-block-comments, aside, .sidebar, footer, nav, .entry-meta, .author-box, .widget, .advertisement, .share-buttons').remove();
+    const sanitizedHtml = $.html();
+
+    const pageTopicName = this.extractTopicNameFromHtmlOrUrl(sanitizedHtml, sourceUrl);
 
     // Pre-process HTML to preserve section headings as structured markers before stripping HTML
-    const preprocessedHtml = html
+    const preprocessedHtml = sanitizedHtml
       .replace(/<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/gi, (_match, _tag, content) => {
         return `\n[[SECTION_HEADING: ${content.trim()}]]\n`;
       })
@@ -406,8 +416,13 @@ export class WebCrawlerService {
         }
       }
 
-      // Detect General and Discussion Questions (ends with '?')
-      if (line.endsWith('?')) {
+      // Detect General and Discussion Questions (ends with '?' or '?' followed by quotes/emojis)
+      const isQuestionLine =
+        line.endsWith('?') ||
+        /[?？]["'”’\s]*$/u.test(line) ||
+        /[?？].*(?:\p{Extended_Pictographic}|[\u{1F300}-\u{1FAFF}])/u.test(line);
+
+      if (isQuestionLine) {
         if (
           lower.includes('how to prepare') ||
           lower.includes('privacy') ||
@@ -419,7 +434,7 @@ export class WebCrawlerService {
           continue;
         }
 
-        const cleanQuestion = line.replace(/^[•\-\d.]+\s*/, '').trim();
+        const cleanQuestion = line.replace(/^(?:(?:q|question)\s*\d+[:.)\s]*|(?:[•\-\*]|\d+[:.)])\s*)+/i, '').trim();
         if (cleanQuestion.length < 5) continue;
 
         // Anaphoric / Dependent follow-up fragment detection

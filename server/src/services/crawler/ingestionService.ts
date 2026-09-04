@@ -6,6 +6,8 @@ import { SEED_TOPICS, classifyTopic, evaluateTopicClassification, formatCapitali
 import { OFFICIAL_2026_EXAM_FORECAST_BANK, RawCandidateQuestion, VERIFIED_CRAWLER_TARGETS } from './sources';
 import { webCrawlerService } from './webCrawlerService';
 import { generateCanonicalSemanticKey, isSemanticDuplicate } from './semanticMatcher';
+import { aiCurationService } from './aiCurationService';
+import { IeltsPart } from '@prisma/client';
 
 export interface IngestionResult {
   status: 'SUCCESS' | 'FAILED' | 'LOCKED';
@@ -172,37 +174,61 @@ export class QuestionIngestionService {
 
       questionsDiscovered = candidateQuestions.length;
 
-      for (const item of candidateQuestions) {
-        const text = item.questionText.trim();
-        if (!text || text.length < 10) continue;
+      // Pass raw candidate batches through aiCurationService.curateQuestionBatch
+      const curationInputs = candidateQuestions.map((item) => {
+        let bullets: string[] | undefined;
+        if (item.cueCardBullets) {
+          try {
+            const parsed = JSON.parse(item.cueCardBullets);
+            if (Array.isArray(parsed)) {
+              bullets = parsed;
+            }
+          } catch {
+            bullets = [item.cueCardBullets];
+          }
+        }
+        return {
+          text: item.questionText,
+          bullets,
+          contextTopic: item.extractedTopicName,
+        };
+      });
 
-        const bullets = item.cueCardBullets ? item.cueCardBullets.trim() : null;
-        const fingerprint = generateQuestionFingerprint(item.part, text, bullets);
+      const curatedResults = await aiCurationService.curateQuestionBatch(curationInputs);
 
-        // Check Layer 1: Exact SHA-256 fingerprint
-        const existing = await prisma.ieltsQuestion.findUnique({
-          where: { sourceHash: fingerprint },
-        });
+      for (let i = 0; i < candidateQuestions.length; i++) {
+        const item = candidateQuestions[i];
+        const curated = curatedResults[i];
 
-        if (existing) {
-          duplicatesSkipped++;
+        // Drop rejected candidates with structured logger info
+        if (curated && !curated.isValidIeltsSpeaking) {
+          logger.info('Dropped invalid candidate question during AI curation', {
+            service: 'crawler',
+            candidate: item.questionText,
+            rejectionReason: curated.rejectionReason,
+          });
           continue;
         }
 
-        // Determine matching topic aligned with the 15 Canonical Cambridge IELTS Families
-        const classification = evaluateTopicClassification(text, bullets, item.extractedTopicName);
+        const text = (curated?.cleanedText || item.questionText).trim();
+        if (!text || text.length < 10) continue;
 
+        const bullets = item.cueCardBullets ? item.cueCardBullets.trim() : null;
+        const part = (curated?.part || item.part) as IeltsPart;
+        const fingerprint = generateQuestionFingerprint(part, text, bullets);
+
+        // Determine matching topic aligned with the 15 Canonical Cambridge IELTS Families
         let targetSlug: string;
         if (item.source === 'IELTS_2026_EXAM_FORECAST' && item.suggestedTopicSlug) {
           targetSlug = normalizeToCanonicalSlug(item.suggestedTopicSlug);
-        } else if (classification.score > 0) {
-          targetSlug = classification.slug;
-        } else if (item.suggestedTopicSlug) {
-          targetSlug = normalizeToCanonicalSlug(item.suggestedTopicSlug);
+        } else if (curated?.canonicalTopicSlug) {
+          targetSlug = normalizeToCanonicalSlug(curated.canonicalTopicSlug);
         } else {
-          targetSlug = classification.slug;
+          const classification = evaluateTopicClassification(text, bullets, item.extractedTopicName);
+          targetSlug = normalizeToCanonicalSlug(
+            classification.score > 0 ? classification.slug : item.suggestedTopicSlug || classification.slug,
+          );
         }
-        targetSlug = normalizeToCanonicalSlug(targetSlug);
 
         let topicId = topicMap.get(targetSlug);
         if (!topicId) {
@@ -228,8 +254,31 @@ export class QuestionIngestionService {
           topicMap.set(seed.slug, topicId);
         }
 
+        // Check Layer 1: Exact SHA-256 fingerprint
+        const existing = await prisma.ieltsQuestion.findUnique({
+          where: { sourceHash: fingerprint },
+        });
+
+        if (existing) {
+          if (existing.topicId !== topicId || !existing.isActive || existing.part !== part) {
+            await prisma.ieltsQuestion.update({
+              where: { id: existing.id },
+              data: {
+                topicId,
+                part,
+                isActive: true,
+                questionType: item.questionType || (part === 'PART_2' ? 'CUE_CARD' : 'GENERAL'),
+              },
+            });
+            questionsAccepted++;
+          } else {
+            duplicatesSkipped++;
+          }
+          continue;
+        }
+
         // Check Layer 2 & 3: Semantic Paraphrase Deduplication against same topic & part
-        const groupKey = `${topicId}_${item.part}`;
+        const groupKey = `${topicId}_${part}`;
         const groupQuestions = semanticBankMap.get(groupKey) || [];
 
         const semanticCheck = isSemanticDuplicate(text, groupQuestions, 0.75);
@@ -244,14 +293,23 @@ export class QuestionIngestionService {
           continue;
         }
 
-        // Insert new verified question into DB
-        await prisma.ieltsQuestion.create({
-          data: {
+        // Upsert accepted candidates into their respective canonical topic family with clean text and verified Part
+        await prisma.ieltsQuestion.upsert({
+          where: { sourceHash: fingerprint },
+          update: {
             topicId,
-            part: item.part,
+            part,
             questionText: text,
             cueCardBullets: bullets,
-            questionType: item.questionType || (item.part === 'PART_2' ? 'CUE_CARD' : 'GENERAL'),
+            questionType: item.questionType || (part === 'PART_2' ? 'CUE_CARD' : 'GENERAL'),
+            isActive: true,
+          },
+          create: {
+            topicId,
+            part,
+            questionText: text,
+            cueCardBullets: bullets,
+            questionType: item.questionType || (part === 'PART_2' ? 'CUE_CARD' : 'GENERAL'),
             source: item.source || 'WEB_CRAWLER',
             sourceUrl: item.sourceUrl || null,
             sourceHash: fingerprint,
