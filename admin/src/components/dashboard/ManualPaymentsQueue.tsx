@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ManualPaymentRequestItem } from '../../types/index.ts';
-import { adminFetch } from '../../api/client.ts';
+import { adminFetch, getAdminToken } from '../../api/client.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { StatusBadge } from '../ui/StatusBadge.tsx';
 import { LoadingSkeleton } from '../ui/LoadingSkeleton.tsx';
@@ -28,6 +28,17 @@ export function ManualPaymentsQueue() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const resolveReceiptUrl = (proof?: string | null, reqId?: string): string => {
+    if (!proof) return '';
+    const trimmed = proof.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+      return trimmed;
+    }
+    const token = getAdminToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    return `/api/admin/payments/manual/${reqId}/receipt${tokenParam}`;
+  };
 
   // Receipt Preview Modal
   const [inspectReceiptUrl, setInspectReceiptUrl] = useState<{ url: string; order: string; user: string; title?: string } | null>(null);
@@ -445,7 +456,7 @@ export function ManualPaymentsQueue() {
                         <td>
                           {req.paymentProof ? (
                             <button
-                              onClick={() => setInspectReceiptUrl({ url: req.paymentProof!, order: orderDisplay, user: req.alias, title: 'Original Purchase Receipt' })}
+                              onClick={() => setInspectReceiptUrl({ url: resolveReceiptUrl(req.paymentProof, req.id), order: orderDisplay, user: req.alias, title: 'Original Purchase Receipt' })}
                               className="btn-secondary"
                               style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
                             >
@@ -463,7 +474,7 @@ export function ManualPaymentsQueue() {
                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                             {req.paymentProof && (
                               <button
-                                onClick={() => setInspectReceiptUrl({ url: req.paymentProof!, order: orderDisplay, user: req.alias, title: 'Payment Receipt' })}
+                                onClick={() => setInspectReceiptUrl({ url: resolveReceiptUrl(req.paymentProof, req.id), order: orderDisplay, user: req.alias, title: 'Payment Receipt' })}
                                 className="btn-secondary"
                                 style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
                               >
@@ -472,7 +483,7 @@ export function ManualPaymentsQueue() {
                             )}
                             {req.refundProof && (
                               <button
-                                onClick={() => setInspectReceiptUrl({ url: req.refundProof!, order: orderDisplay, user: req.alias, title: 'Refund Transfer Bill' })}
+                                onClick={() => setInspectReceiptUrl({ url: resolveReceiptUrl(req.refundProof, req.id), order: orderDisplay, user: req.alias, title: 'Refund Transfer Bill' })}
                                 className="btn-secondary"
                                 style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--success)' }}
                               >
@@ -633,12 +644,24 @@ export function ManualPaymentsQueue() {
                 padding: '1rem',
               }}
             >
-              {inspectReceiptUrl.url.startsWith('http') || inspectReceiptUrl.url.startsWith('data:') ? (
-                <img
-                  src={inspectReceiptUrl.url}
-                  alt="Payment Receipt"
-                  style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '4px' }}
-                />
+              {inspectReceiptUrl.url.startsWith('http') || inspectReceiptUrl.url.startsWith('data:') || inspectReceiptUrl.url.startsWith('/') ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                  <img
+                    src={inspectReceiptUrl.url}
+                    alt="Payment Receipt"
+                    style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '4px' }}
+                  />
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <a
+                      href={inspectReceiptUrl.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '0.75rem', color: 'var(--primary-light)', textDecoration: 'underline' }}
+                    >
+                      Open in new tab ↗
+                    </a>
+                  </div>
+                </div>
               ) : (
                 <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   <FileText size={32} style={{ margin: '0 auto 0.5rem auto', color: 'var(--primary-light)' }} />

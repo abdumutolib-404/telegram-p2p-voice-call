@@ -892,15 +892,35 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         });
         if (res.success && res.request) {
           pendingRequest = res.request as any;
+        } else {
+          ctx.session.pendingPaymentPlan = undefined;
+          ctx.session.step = 'idle';
+          logger.warn('Manual payment request rejected', {
+            service: 'bot',
+            event: 'manual_payment_rejected',
+            userId: user.id,
+            error: res.error,
+          });
+          await ctx.reply(
+            `⚠️ <b>Unable to Process Payment Request</b>\n\n` +
+              `${escapeHtml(res.error?.message || 'Failed to submit payment request.')}`,
+            { parse_mode: 'HTML' }
+          );
+          return;
         }
       }
 
-      if (pendingRequest) {
-        await prisma.manualPaymentRequest.update({
-          where: { id: pendingRequest.id },
-          data: { paymentProof: JSON.stringify(proofMeta), orderNumber },
-        });
+      if (!pendingRequest) {
+        ctx.session.pendingPaymentPlan = undefined;
+        ctx.session.step = 'idle';
+        await ctx.reply(`⚠️ <b>Unable to Process Receipt</b>\n\nFailed to create payment record in database.`, { parse_mode: 'HTML' });
+        return;
       }
+
+      await prisma.manualPaymentRequest.update({
+        where: { id: pendingRequest.id },
+        data: { paymentProof: JSON.stringify(proofMeta), orderNumber },
+      });
 
       ctx.session.pendingPaymentPlan = undefined;
       ctx.session.step = 'idle';

@@ -255,20 +255,38 @@ export class MatchmakingService {
     });
   }
 
-  public async restoreQueue(userId: string, bucketKey: string): Promise<void> {
+  public async restoreQueue(userId: string, bucketKey: string, options?: { band?: number; plan?: string }): Promise<void> {
     this.validateUserId(userId);
     if (!bucketKey.startsWith(MATCH_QUEUE_PREFIX)) throw new TypeError('Invalid queue bucket');
 
     return this.withUserLock(userId, async () => {
       try {
-        const globalPoolKey = this.getGlobalPoolKey();
+        const poolsToRegister: string[] = [bucketKey];
+
+        // Parse band from bucketKey if not explicitly provided
+        let band = options?.band;
+        if (band === undefined) {
+          const match = bucketKey.match(/match_queue:([0-9.]+)/);
+          if (match) band = parseFloat(match[1]);
+        }
+
+        if (band !== undefined && Number.isFinite(band) && band >= 0 && band <= 9) {
+          poolsToRegister.push(this.getBandPoolKey(band));
+        }
+
+        if (options?.plan) {
+          const tier = options.plan.toUpperCase();
+          if (['PLUS', 'PRO', 'BOSS'].includes(tier)) {
+            poolsToRegister.push(this.getPriorityPoolKey(tier));
+          }
+        }
+
+        const saddOperations = poolsToRegister.map((pool) => this.redis.sadd(pool, userId));
+        const expireOperations = poolsToRegister.map((pool) => this.redis.expire(pool, QUEUE_TTL_SECONDS * 2));
+
         await Promise.all([
-          this.redis.sadd(bucketKey, userId),
-          this.redis.sadd(globalPoolKey, userId),
-        ]);
-        await Promise.all([
-          this.redis.expire(bucketKey, QUEUE_TTL_SECONDS * 2),
-          this.redis.expire(globalPoolKey, QUEUE_TTL_SECONDS * 2),
+          ...saddOperations,
+          ...expireOperations,
           this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS),
         ]);
       } catch (error: unknown) {

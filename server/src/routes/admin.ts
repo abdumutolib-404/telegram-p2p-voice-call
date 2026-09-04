@@ -1,5 +1,6 @@
 import { Router, type Response } from 'express';
 import crypto from 'node:crypto';
+import { Readable } from 'node:stream';
 import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { Bot, InputFile } from 'grammy';
@@ -657,6 +658,93 @@ router.get('/payments/manual', adminAuthMiddleware, async (req, res) => {
       event: 'fetch_manual_payments_failed',
     }, err);
     res.status(500).json({ error: 'Failed to retrieve manual payment requests.' });
+  }
+});
+
+// GET /api/admin/payments/manual/:id/receipt (Protected)
+router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: AdminAuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  try {
+    const paymentReq = await prisma.manualPaymentRequest.findUnique({
+      where: { id },
+    });
+
+    if (!paymentReq || !paymentReq.paymentProof) {
+      res.status(404).send('Receipt not found');
+      return;
+    }
+
+    const rawProof = paymentReq.paymentProof.trim();
+
+    // 1. Direct HTTP/HTTPS URL
+    if (rawProof.startsWith('http://') || rawProof.startsWith('https://')) {
+      res.redirect(rawProof);
+      return;
+    }
+
+    // 2. Base64 Data URL
+    if (rawProof.startsWith('data:')) {
+      const matches = rawProof.match(/^data:([A-Za-z0-9-+/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const mimeType = matches[1];
+        const buffer = Buffer.from(matches[2], 'base64');
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Length', buffer.length);
+        res.end(buffer);
+        return;
+      }
+    }
+
+    // 3. Parsed JSON metadata containing Telegram fileId
+    let fileId: string | undefined;
+    let mimeType = 'image/jpeg';
+
+    try {
+      const parsed = JSON.parse(rawProof);
+      fileId = parsed.fileId;
+      if (parsed.mimeType) mimeType = parsed.mimeType;
+    } catch {
+      if (/^[A-Za-z0-9_-]{20,}$/.test(rawProof)) {
+        fileId = rawProof;
+      }
+    }
+
+    if (!fileId) {
+      res.status(400).send('Receipt file reference is unavailable');
+      return;
+    }
+
+    const botToUse = adminBotInstance || (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token' ? new Bot<MyContext>(env.BOT_TOKEN) : null);
+    if (!botToUse) {
+      res.status(503).send('Telegram bot service is not connected to stream receipts');
+      return;
+    }
+
+    const fileInfo = await botToUse.api.getFile(fileId);
+    if (!fileInfo.file_path) {
+      res.status(404).send('Receipt file path could not be resolved from Telegram');
+      return;
+    }
+
+    const telegramFileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${fileInfo.file_path}`;
+    const upstreamRes = await fetch(telegramFileUrl);
+
+    if (!upstreamRes.ok || !upstreamRes.body) {
+      res.status(upstreamRes.status).send('Failed to fetch receipt from Telegram servers');
+      return;
+    }
+
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+
+    Readable.fromWeb(upstreamRes.body as any).pipe(res);
+  } catch (err) {
+    logger.error('Failed to stream manual payment receipt', {
+      service: 'admin',
+      event: 'stream_manual_receipt_failed',
+      requestId: id,
+    }, err);
+    res.status(500).send('Internal error while streaming receipt');
   }
 });
 

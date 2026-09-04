@@ -35,6 +35,11 @@ export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Respons
     }
   }
 
+  // 3. Fall back to query parameter token for authenticated media/receipt streaming
+  if (!token && typeof req.query?.token === 'string' && req.query.token.trim()) {
+    token = req.query.token.trim();
+  }
+
   if (!token) {
     res.status(401).json({ error: 'Unauthorized: Missing session cookie or Bearer token.' });
     return;

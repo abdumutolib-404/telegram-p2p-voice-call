@@ -329,6 +329,21 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
+      // Invalidate stale PENDING calls older than 60s before checking active call invariant
+      await prisma.callSession.updateMany({
+        where: {
+          status: 'PENDING',
+          createdAt: { lt: new Date(Date.now() - 60_000) },
+          OR: [
+            { userAId: caller.id },
+            { userBId: caller.id },
+            { userAId: partner.id },
+            { userBId: partner.id },
+          ],
+        },
+        data: { status: 'CANCELLED', endedAt: new Date() },
+      });
+
       // Single active call invariant check
       const activeCall = await prisma.callSession.findFirst({
         where: {
@@ -362,6 +377,32 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           status: 'PENDING',
         },
       });
+
+      // Schedule 60-second timeout to cleanly cancel unanswered direct calls
+      setTimeout(async () => {
+        try {
+          const check = await prisma.callSession.findUnique({
+            where: { id: session.id },
+          });
+          if (check && check.status === 'PENDING') {
+            await prisma.callSession.update({
+              where: { id: session.id },
+              data: { status: 'CANCELLED', endedAt: new Date() },
+            });
+            await ctx.api.sendMessage(
+              caller.telegramId.toString(),
+              `📞 <b>Direct Call Request Expired</b>\n\n<b>${escapeHtml(partner.alias)}</b> did not answer your call invitation in time.`,
+              { parse_mode: 'HTML' }
+            ).catch(() => undefined);
+          }
+        } catch (timeoutErr) {
+          logger.warn('Direct call expiration timeout error', {
+            service: 'bot',
+            event: 'direct_call_timeout_error',
+            sessionId: session.id,
+          }, timeoutErr);
+        }
+      }, 60_000);
 
       const callerKb = new InlineKeyboard().text('✖️ Cancel Call', `cancel_direct:${session.id}`);
 

@@ -354,7 +354,7 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
 
   bot.hears(/⭐ (?:Upgrade|Subscription|Plans)/i, sendPlansOverview);
   if (typeof (bot as any).command === 'function') {
-    (bot as any).command('plans', sendPlansOverview);
+    (bot as any).command(['plans', 'plan', 'buy', 'upgrade'], sendPlansOverview);
   }
 
   // 📞 Direct Call / 👥 Favorites

@@ -631,11 +631,37 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               });
               clearSessionTimer(activeCall.roomName);
             } else {
-              socket.emit('error', {
-                code: 'CALL_ALREADY_ACTIVE',
-                message: 'Another session is currently in an active call from this account. Please try again later.',
-              });
-              return;
+              // Check if any sockets are actually connected to this activeCall room
+              let roomHasLiveSockets = false;
+              try {
+                const sockets = await io.in(activeCall.roomName).fetchSockets();
+                roomHasLiveSockets = sockets.length > 0;
+              } catch {
+                const userASockets = userSockets.get(activeCall.userAId)?.size ?? 0;
+                const userBSockets = userSockets.get(activeCall.userBId)?.size ?? 0;
+                roomHasLiveSockets = (userASockets + userBSockets) > 0;
+              }
+
+              if (!roomHasLiveSockets) {
+                logger.info('Auto-clearing orphaned active call session on join_queue', {
+                  service: 'signaling',
+                  event: 'auto_cleared_orphaned_call',
+                  sessionId: activeCall.id,
+                  roomName: activeCall.roomName,
+                  userId: user.id,
+                });
+                await prisma.callSession.updateMany({
+                  where: { id: activeCall.id, status: 'ACTIVE' },
+                  data: { status: 'CANCELLED', endedAt: new Date(), duration: 0 },
+                });
+                clearSessionTimer(activeCall.roomName);
+              } else {
+                socket.emit('error', {
+                  code: 'CALL_ALREADY_ACTIVE',
+                  message: 'Another session is currently in an active call from this account. Please try again later.',
+                });
+                return;
+              }
             }
           }
 
@@ -676,7 +702,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           if (!partner || !partnerSocket) {
             if (partner) await matchmakingService.cancelQueue(partner.id).catch(() => undefined);
             const ownBucket = getUserBucket(user);
-            await matchmakingService.restoreQueue(user.id, ownBucket).catch((error: unknown) => {
+            await matchmakingService.restoreQueue(user.id, ownBucket, { band: user.band, plan: user.plan }).catch((error: unknown) => {
               logger.error('Match requeue failed for user', {
                 service: 'signaling',
                 event: 'match_requeue_failed',
@@ -761,7 +787,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const userStillConnected = getConnectedSocket(user.id);
             if (userStillConnected) {
               const ownBucket = getUserBucket(user);
-              await matchmakingService.restoreQueue(user.id, ownBucket).catch((restoreError: unknown) => {
+              await matchmakingService.restoreQueue(user.id, ownBucket, { band: user.band, plan: user.plan }).catch((restoreError: unknown) => {
                 logger.error('Own restore queue failed', {
                   service: 'signaling',
                   event: 'own_restore_failed',
@@ -774,7 +800,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const partnerStillConnected = getConnectedSocket(partner.id);
             if (partnerStillConnected) {
               const partnerBucket = getUserBucket(partner);
-              await matchmakingService.restoreQueue(partner.id, partnerBucket).catch((restoreError: unknown) => {
+              await matchmakingService.restoreQueue(partner.id, partnerBucket, { band: partner.band, plan: partner.plan }).catch((restoreError: unknown) => {
                 logger.error('Partner restore queue failed', {
                   service: 'signaling',
                   event: 'partner_restore_failed',
@@ -1318,15 +1344,38 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
   const effectiveBot = bot ?? globalBot;
 
   try {
+    const now = Date.now();
+    let sweptCount = 0;
+
+    // 0. Sweep stale PENDING direct call sessions older than 2 minutes
+    try {
+      const stalePendingSessions = await prisma.callSession.findMany({
+        where: {
+          status: 'PENDING',
+          createdAt: { lt: new Date(now - 2 * 60 * 1000) },
+        },
+      });
+
+      for (const pending of stalePendingSessions) {
+        const updated = await prisma.callSession.updateMany({
+          where: { id: pending.id, status: 'PENDING' },
+          data: { status: 'CANCELLED', endedAt: new Date(), duration: 0 },
+        });
+        if (updated.count > 0) sweptCount++;
+      }
+    } catch (pendingErr) {
+      logger.warn('Failed to sweep stale pending sessions', {
+        service: 'signaling',
+        event: 'sweep_pending_failed',
+      }, pendingErr);
+    }
+
     const activeSessions = await prisma.callSession.findMany({
       where: { status: 'ACTIVE' },
       include: { userA: true, userB: true },
     });
 
-    if (activeSessions.length === 0) return 0;
-
-    const now = Date.now();
-    let sweptCount = 0;
+    if (activeSessions.length === 0) return sweptCount;
 
     for (const session of activeSessions) {
       try {
@@ -1374,8 +1423,9 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
           if (!current || current.status !== 'ACTIVE') return;
 
           const endedAt = new Date();
-          // If past max duration or call lasted at least 15 seconds before both dropped, mark COMPLETED. Otherwise CANCELLED.
-          const isCompleted = isPastMaxDurationWithMargin || elapsedSeconds >= 15;
+          // If past max duration with margin, call completed full entitlement -> COMPLETED.
+          // Otherwise, if both dropped, call was interrupted/abandoned -> CANCELLED to protect call quotas.
+          const isCompleted = isPastMaxDurationWithMargin;
           const targetStatus = isCompleted ? 'COMPLETED' : 'CANCELLED';
           const finalDuration = isCompleted ? Math.min(elapsedSeconds, maxDurationMinutes * 60) : 0;
 

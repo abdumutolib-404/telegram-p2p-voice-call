@@ -449,13 +449,17 @@ export async function createManualPaymentRequest(params: {
   if (user) {
     const isExpired = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) < new Date() : false;
     if (user.subscriptionStatus === 'ACTIVE' && !isExpired && user.plan !== 'FREE') {
-      return {
-        success: false,
-        error: createCanonicalError(
-          'ACTIVE_SUBSCRIPTION_EXISTS',
-          `You have an active paid plan — ${user.plan}. Therefore, you cannot request or buy another plan. Wait until this one expires.`
-        ),
-      };
+      const targetPlan = (params.plan || '').toUpperCase();
+      const currentPlan = (user.plan || '').toUpperCase();
+      if (currentPlan === targetPlan || isDowngrade(currentPlan, targetPlan)) {
+        return {
+          success: false,
+          error: createCanonicalError(
+            'ACTIVE_SUBSCRIPTION_EXISTS',
+            `You already have an active ${user.plan} plan. You cannot repurchase the same tier or downgrade while active. Wait until this one expires.`
+          ),
+        };
+      }
     }
   }
 
