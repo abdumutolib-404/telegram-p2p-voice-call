@@ -28,6 +28,7 @@ import { botLeaderLock } from './services/leaderLock';
 import { questionIngestionService } from './services/crawler/ingestionService';
 import { startCrawlerLifecycleCron } from './services/crawler/crawlerScheduler';
 import { topicNotificationService } from './services/topicNotificationService';
+import { surgeAlertService } from './services/surgeAlertService';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
 import { requestIdMiddleware } from './middleware/requestId';
 import { logger } from './utils/logger';
@@ -1059,6 +1060,9 @@ async function bootstrap(): Promise<void> {
 
     // Start Two-Tier Scheduled Lifecycle (Weekly Searcher & Daily Filter)
     startCrawlerLifecycleCron(() => bot);
+
+    // Start Peak-Hour Surge Alert Scheduler (10-minute liquidity monitor)
+    surgeAlertService.startScheduler(() => bot);
 
     if (env.NODE_ENV !== 'test') {
       await new Promise<void>((resolve, reject) => {

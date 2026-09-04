@@ -205,6 +205,40 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
     }
   });
 
+  // Callback: mute_surge_alerts
+  bot.callbackQuery('mute_surge_alerts', async (ctx) => {
+    const telegramId = BigInt(ctx.from.id);
+    try {
+      await prisma.user.updateMany({
+        where: { telegramId },
+        data: { dnd: true },
+      });
+
+      await ctx.answerCallbackQuery({
+        text: '🔕 Peak surge alerts have been muted! You can re-enable alerts anytime in 👤 Profile.',
+        show_alert: true,
+      });
+
+      try {
+        await ctx.editMessageReplyMarkup({
+          reply_markup: new InlineKeyboard()
+            .webApp('🎙️ Open Web App', env.MINI_APP_URL || 'https://t.me/PairTalkBot/call')
+            .row()
+            .text('🔔 Unmute Alerts', 'toggle_dnd'),
+        });
+      } catch {
+        // ignore if message editing is disallowed or old
+      }
+    } catch (err) {
+      logger.error('mute_surge_alerts error', {
+        service: 'bot',
+        event: 'mute_surge_alerts_failed',
+        telegramId: telegramId.toString(),
+      }, err);
+      await ctx.answerCallbackQuery({ text: 'Failed to mute surge alerts.' });
+    }
+  });
+
   // Callback: favorite_partner:<partnerOrSessionId>
   bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {
     const partnerOrSessionId = ctx.match[1];

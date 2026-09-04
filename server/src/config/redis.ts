@@ -359,6 +359,18 @@ class InMemoryRedisMock {
     return count;
   }
 
+  async keys(pattern: string): Promise<string[]> {
+    const allKeys = new Set([...this.kv.keys(), ...this.sets.keys()]);
+    if (pattern === '*' || !pattern) return [...allKeys];
+    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    return [...allKeys].filter((k) => regex.test(k));
+  }
+
+  async scard(key: string): Promise<number> {
+    const set = this.sets.get(key);
+    return set ? set.size : 0;
+  }
+
   async flushall(): Promise<'OK'> {
     this.sets.clear();
     this.kv.clear();
@@ -372,6 +384,7 @@ export interface RedisClientInterface {
   spop(key: string): Promise<string | null>;
   srem(key: string, ...members: string[]): Promise<number>;
   smembers(key: string): Promise<string[]>;
+  scard(key: string): Promise<number>;
   get(key: string): Promise<string | null>;
   set(
     key: string,
@@ -385,6 +398,7 @@ export interface RedisClientInterface {
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
   del(...keys: string[]): Promise<number>;
+  keys(pattern: string): Promise<string[]>;
   eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<any>;
   flushall?(): Promise<'OK'>;
 }
