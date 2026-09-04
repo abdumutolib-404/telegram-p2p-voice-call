@@ -2,8 +2,19 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { IeltsPart } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { getRedis } from '../config/redis';
 
 const router = Router();
+
+export async function invalidateIeltsQuestionCache(): Promise<void> {
+  try {
+    const redis = getRedis();
+    const keys = await redis.keys('cache:ielts:questions:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } catch {}
+}
 
 // GET /api/ielts/topics
 router.get('/topics', async (_req: Request, res: Response): Promise<void> => {
@@ -32,6 +43,22 @@ router.get('/questions', async (req: Request, res: Response): Promise<void> => {
     const parsedPage = Math.max(1, parseInt(String(page), 10) || 1);
     const skip = (parsedPage - 1) * parsedLimit;
 
+    const cacheKey = `cache:ielts:questions:${topicId || 'all'}:${part || 'all'}:${parsedPage}:${parsedLimit}`;
+    const bypassCache = req.headers['x-bypass-cache'] === 'true' || req.query.fresh === 'true';
+
+    if (!bypassCache) {
+      try {
+        const redis = getRedis();
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          res.json(JSON.parse(cached));
+          return;
+        }
+      } catch {
+        // Fallback to database query on cache miss or error
+      }
+    }
+
     const where: any = { isActive: true };
     if (part && ['PART_1', 'PART_2', 'PART_3'].includes(String(part).toUpperCase())) {
       where.part = String(part).toUpperCase() as IeltsPart;
@@ -53,7 +80,7 @@ router.get('/questions', async (req: Request, res: Response): Promise<void> => {
       prisma.ieltsQuestion.count({ where }),
     ]);
 
-    res.json({
+    const result = {
       success: true,
       questions,
       pagination: {
@@ -62,7 +89,14 @@ router.get('/questions', async (req: Request, res: Response): Promise<void> => {
         total,
         totalPages: Math.ceil(total / parsedLimit),
       },
-    });
+    };
+
+    try {
+      const redis = getRedis();
+      await redis.set(cacheKey, JSON.stringify(result), 'EX', 300); // 5-minute TTL
+    } catch {}
+
+    res.json(result);
   } catch (err: unknown) {
     logger.error('Failed fetching IELTS questions', { service: 'ielts_api' }, err);
     res.status(500).json({ error: 'Internal server error fetching questions' });

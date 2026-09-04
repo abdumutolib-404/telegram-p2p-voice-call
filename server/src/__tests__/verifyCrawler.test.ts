@@ -1,11 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   parseClientIp,
   isIpInCidr,
   verifyCrawler,
 } from '../services/crawler/verifyCrawler';
+import { getRedis } from '../config/redis';
 
 describe('Crawler Verification Engine', () => {
+  beforeAll(async () => {
+    const redis = getRedis();
+    await redis.set('pairtalk:crawler:prefixes:OpenAI-GPTBot', JSON.stringify(['20.171.207.0/28']), 'EX', 3600);
+    await redis.set('pairtalk:crawler:prefixes:Anthropic-ClaudeBot', JSON.stringify(['160.79.104.0/23']), 'EX', 3600);
+  });
   describe('IP Parsing and CIDR matching', () => {
     it('correctly parses IPv4, IPv6, and IPv4-mapped IPv6', () => {
       const v4 = parseClientIp('192.168.1.5');

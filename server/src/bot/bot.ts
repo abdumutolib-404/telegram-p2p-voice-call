@@ -39,19 +39,27 @@ function pruneMemorySessions(): void {
   }
 }
 
+const HOT_SESSION_TTL_MS = 60 * 1000; // 60 seconds hot cache
+
 function createRedisSessionStorage() {
   return {
     async read(key: string): Promise<SessionData | undefined> {
+      const entry = memorySessions.get(key);
+      if (entry && Date.now() - entry.updatedAt < HOT_SESSION_TTL_MS) {
+        entry.updatedAt = Date.now();
+        return entry.data;
+      }
       try {
         const redis = getRedis();
         const data = await redis.get(`bot:session:${key}`);
         if (data) {
-          return JSON.parse(data);
+          const parsed = JSON.parse(data);
+          memorySessions.set(key, { data: parsed, updatedAt: Date.now() });
+          return parsed;
         }
       } catch {
         // Fallback to memory
       }
-      const entry = memorySessions.get(key);
       if (!entry) return undefined;
       if (Date.now() - entry.updatedAt > MEMORY_SESSION_TTL_MS) {
         memorySessions.delete(key);
@@ -82,6 +90,34 @@ function createRedisSessionStorage() {
       }
     },
   };
+}
+
+export function isModalAlertCallback(data: string | undefined): boolean {
+  if (!data) return false;
+  return (
+    data === 'mute_surge_alerts' ||
+    data.startsWith('direct_call:') ||
+    data.startsWith('call_favorite:') ||
+    data.startsWith('accept_direct:') ||
+    data.startsWith('decline_direct:') ||
+    data.startsWith('cancel_direct:') ||
+    data.startsWith('play_rec:') ||
+    data.startsWith('play_rec_') ||
+    data.startsWith('play_recording:') ||
+    data.startsWith('play_recording_') ||
+    data.startsWith('plan:') ||
+    data.startsWith('pay_stars:') ||
+    data.startsWith('pay_card:') ||
+    data.startsWith('pay_click:') ||
+    data.startsWith('pay_payme:') ||
+    data.startsWith('pay_uzcard:') ||
+    data.startsWith('cancel_pay:')
+  );
+}
+
+export function isStandardNavigationCallback(data: string | undefined): boolean {
+  if (!data) return false;
+  return !isModalAlertCallback(data);
 }
 
 export function createBot(token: string): Bot<MyContext> {
@@ -125,6 +161,14 @@ export function createBot(token: string): Bot<MyContext> {
     return prev(method, payload, signal);
   });
 
+  // Early Fast-ACK Middleware: immediately acknowledge inline button clicks for standard navigation & non-alert actions (<30ms)
+  bot.use(async (ctx, next) => {
+    if (ctx.callbackQuery && isStandardNavigationCallback(ctx.callbackQuery.data)) {
+      void ctx.answerCallbackQuery().catch(() => undefined);
+    }
+    return next();
+  });
+
   // Persistent Redis Session middleware (persists across container restarts)
   bot.use(
     session({
@@ -133,7 +177,7 @@ export function createBot(token: string): Bot<MyContext> {
     })
   );
 
-  // 1. Rate Limiting Middleware (Anti-Spam on Bot Commands & Buttons with 5-minute penalty lockout)
+  // Consolidated Middleware: Parallel Rate Limiting and Ban Check
   bot.use(async (ctx, next) => {
     // Immediate guard clause: never drop or delay payment webhooks
     if (ctx.preCheckoutQuery || ctx.message?.successful_payment) {
@@ -143,19 +187,32 @@ export function createBot(token: string): Bot<MyContext> {
     const fromId = ctx.from?.id;
     if (!fromId) return next();
 
-    // Admins are strictly exempt from rate limiting
-    if (env.ADMIN_TELEGRAM_IDS.includes(String(fromId))) {
-      return next();
-    }
+    const text = ctx.message?.text || '';
+    const callbackData = ctx.callbackQuery?.data || '';
 
-    // Active multi-step inputs (e.g. entering card number, appeal text, receipt upload) are exempt from command rate limiting
-    if (ctx.session?.step && ctx.session.step !== 'idle') {
-      return next();
-    }
+    // Determine exemptions
+    const isAdmin = env.ADMIN_TELEGRAM_IDS.includes(String(fromId));
+    const isRateLimitExempt = isAdmin || (Boolean(ctx.session?.step) && ctx.session.step !== 'idle');
+    const isBanExempt =
+      text.startsWith('/start') ||
+      text.startsWith('/appeal') ||
+      text === '💬 Support' ||
+      callbackData === 'submit_appeal' ||
+      callbackData.startsWith('appeal_');
 
     const action = ctx.callbackQuery ? 'BOT_BUTTON' : 'BOT_COMMAND';
-    const rl = await checkRateLimit(action, String(fromId));
+    const redis = getRedis();
+    const banCacheKey = `bot:ban_check:${fromId}`;
 
+    // Consolidate Redis lookups concurrently (1 roundtrip instead of sequential roundtrips)
+    const [rl, cachedBan] = await Promise.all([
+      isRateLimitExempt
+        ? Promise.resolve<{ allowed: boolean; retryAfterSeconds?: number; remaining?: number }>({ allowed: true, remaining: 999 })
+        : checkRateLimit(action, String(fromId)),
+      isBanExempt ? Promise.resolve('CLEAN') : redis.get(banCacheKey).catch(() => null),
+    ]);
+
+    // Check rate limit failure (preserves show_alert: true modal popup for button taps)
     if (!rl.allowed) {
       const waitTime = rl.retryAfterSeconds || 300;
       if (ctx.callbackQuery) {
@@ -172,110 +229,76 @@ export function createBot(token: string): Bot<MyContext> {
       return;
     }
 
-    return next();
-  });
-
-  // 2. Global Suspension Middleware (Restricts banned/suspended users to Support & Appeal only)
-  bot.use(async (ctx, next) => {
-    // Immediate guard clause: never drop or delay payment webhooks
-    if (ctx.preCheckoutQuery || ctx.message?.successful_payment) {
-      return next();
-    }
-
-    const telegramIdNum = ctx.from?.id;
-    if (!telegramIdNum) return next();
-
-    const text = ctx.message?.text || '';
-    const callbackData = ctx.callbackQuery?.data || '';
-
-    // Allow Start, Support, and Appeal flows unconditionally
-    const isExemptAction =
-      text.startsWith('/start') ||
-      text.startsWith('/appeal') ||
-      text === '💬 Support' ||
-      callbackData === 'submit_appeal' ||
-      callbackData.startsWith('appeal_');
-
-    if (isExemptAction) {
-      return next();
-    }
-
-    const redis = getRedis();
-    const cacheKey = `bot:ban_check:${telegramIdNum}`;
-
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached === 'CLEAN') {
-        return next();
-      }
-      if (cached && cached !== 'CLEAN') {
+    // Check suspension if not exempt (preserves show_alert: true modal popup)
+    if (!isBanExempt) {
+      if (cachedBan && cachedBan !== 'CLEAN') {
         try {
-          const banInfo = JSON.parse(cached);
+          const banInfo = JSON.parse(cachedBan);
           const banTimeStr = banInfo.banTimeStr || 'temporarily';
           if (ctx.callbackQuery) {
             await ctx.answerCallbackQuery({
               text: `🚫 Account suspended ${banTimeStr}. You can only use Support / Appeals.`,
               show_alert: true,
-            });
+            }).catch(() => undefined);
           } else {
             await ctx.reply(
               `🚫 <b>Account Suspended (${banTimeStr})</b>\n\n` +
                 `Your account is currently restricted from matchmaking and practicing.\n\n` +
                 `To submit an appeal to our moderation team, please type:\n<code>/appeal &lt;your reason or explanation&gt;</code> or tap <b>💬 Support</b>.`,
               { parse_mode: 'HTML' }
-            );
+            ).catch(() => undefined);
           }
           return;
         } catch {
           // parse error, fallback to DB
         }
       }
-    } catch {
-      // Redis error, fallback to DB
-    }
 
-    try {
-      const user = await prisma.user.findUnique({
-        where: { telegramId: BigInt(telegramIdNum) },
-      });
+      if (!cachedBan) {
+        try {
+          const user = await prisma.user.findUnique({
+            where: { telegramId: BigInt(fromId) },
+          });
 
-      if (user) {
-        const isSuspended =
-          user.isBanned ||
-          user.isPermanentlyBanned ||
-          Boolean(user.bannedUntil && new Date(user.bannedUntil) > new Date());
+          if (user) {
+            const isSuspended =
+              user.isBanned ||
+              user.isPermanentlyBanned ||
+              Boolean(user.bannedUntil && new Date(user.bannedUntil) > new Date());
 
-        if (isSuspended) {
-          const banTimeStr = user.bannedUntil
-            ? `until ${new Date(user.bannedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC`
-            : 'permanently';
+            if (isSuspended) {
+              const banTimeStr = user.bannedUntil
+                ? `until ${new Date(user.bannedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC`
+                : 'permanently';
 
-          await redis.set(cacheKey, JSON.stringify({ isSuspended: true, banTimeStr }), 'EX', 60).catch(() => undefined);
+              await redis.set(banCacheKey, JSON.stringify({ isSuspended: true, banTimeStr }), 'EX', 60).catch(() => undefined);
 
-          if (ctx.callbackQuery) {
-            await ctx.answerCallbackQuery({
-              text: `🚫 Account suspended ${banTimeStr}. You can only use Support / Appeals.`,
-              show_alert: true,
-            });
-          } else {
-            await ctx.reply(
-              `🚫 <b>Account Suspended (${banTimeStr})</b>\n\n` +
-                `Your account is currently restricted from matchmaking and practicing.\n\n` +
-                `To submit an appeal to our moderation team, please type:\n<code>/appeal &lt;your reason or explanation&gt;</code> or tap <b>💬 Support</b>.`,
-              { parse_mode: 'HTML' }
-            );
+              if (ctx.callbackQuery) {
+                await ctx.answerCallbackQuery({
+                  text: `🚫 Account suspended ${banTimeStr}. You can only use Support / Appeals.`,
+                  show_alert: true,
+                }).catch(() => undefined);
+              } else {
+                await ctx.reply(
+                  `🚫 <b>Account Suspended (${banTimeStr})</b>\n\n` +
+                    `Your account is currently restricted from matchmaking and practicing.\n\n` +
+                    `To submit an appeal to our moderation team, please type:\n<code>/appeal &lt;your reason or explanation&gt;</code> or tap <b>💬 Support</b>.`,
+                  { parse_mode: 'HTML' }
+                ).catch(() => undefined);
+              }
+              return;
+            }
           }
-          return;
+
+          // User is clean: cache for 600s (10 minutes)
+          await redis.set(banCacheKey, 'CLEAN', 'EX', 600).catch(() => undefined);
+        } catch (err) {
+          logger.error('Bot auth suspension check failed', {
+            service: 'bot',
+            event: 'bot_suspension_check_failed',
+          }, err);
         }
       }
-
-      // User is clean: cache for 600s (10 minutes)
-      await redis.set(cacheKey, 'CLEAN', 'EX', 600).catch(() => undefined);
-    } catch (err) {
-      logger.error('Bot auth suspension check failed', {
-        service: 'bot',
-        event: 'bot_suspension_check_failed',
-      }, err);
     }
 
     return next();

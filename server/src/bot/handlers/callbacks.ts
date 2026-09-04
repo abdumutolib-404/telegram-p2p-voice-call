@@ -100,6 +100,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: confirm_subscores
   bot.callbackQuery('confirm_subscores', async (ctx) => {
+    void ctx.answerCallbackQuery().catch(() => undefined);
     const telegramId = BigInt(ctx.from.id);
     const fc = ctx.session.fc || 6.0;
     const lr = ctx.session.lr || 6.0;
@@ -171,6 +172,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: toggle_dnd
   bot.callbackQuery('toggle_dnd', async (ctx) => {
+    void ctx.answerCallbackQuery().catch(() => undefined);
     const telegramId = BigInt(ctx.from.id);
     try {
       const user = await prisma.user.findUnique({ where: { telegramId } });
@@ -241,6 +243,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: favorite_partner:<partnerOrSessionId>
   bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {
+    void ctx.answerCallbackQuery().catch(() => undefined);
     const partnerOrSessionId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
 
@@ -301,6 +304,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: remove_favorite:<partnerId>
   bot.callbackQuery(/^remove_favorite:(.+)$/, async (ctx) => {
+    void ctx.answerCallbackQuery().catch(() => undefined);
     const partnerId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
     try {
@@ -791,14 +795,14 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: submit_appeal
   bot.callbackQuery('submit_appeal', async (ctx) => {
+    void ctx.answerCallbackQuery().catch(() => undefined);
     const telegramId = BigInt(ctx.from.id);
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user || !user.isPermanentlyBanned) {
-      await ctx.answerCallbackQuery({ text: 'Appeals are available only to permanently banned accounts.' });
+      await ctx.answerCallbackQuery({ text: 'Appeals are available only to permanently banned accounts.' }).catch(() => undefined);
       return;
     }
 
-    await ctx.answerCallbackQuery();
     await ctx.reply(
       `⚖️ <b>Submit Unban Appeal:</b>\n\n` +
         `Please send your appeal message using the <code>/appeal</code> command.\n\n` +

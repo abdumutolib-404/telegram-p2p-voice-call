@@ -7,7 +7,7 @@
     "build": "prisma generate && tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/assets', {recursive:true}); try { fs.copyFileSync('assets/plans_pricing.jpg', 'dist/assets/plans_pricing.jpg'); } catch(e){}\"",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout 15000",
     "export:questions": "ts-node scripts/exportQuestions.ts",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"

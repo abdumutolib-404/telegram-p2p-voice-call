@@ -302,7 +302,11 @@ export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any
     const targetUser = user || (await prisma.user.findUnique({ where: { id: userId } }));
     if (!targetUser) return 0;
 
-    if (targetUser.lastCallDate && targetUser.lastCallDate.startsWith(currentMonth) && typeof targetUser.recordingsUsed === 'number') {
+    if (
+      targetUser.lastCallDate &&
+      targetUser.lastCallDate.startsWith(currentMonth) &&
+      typeof targetUser.recordingsUsed === 'number'
+    ) {
       return Math.max(0, targetUser.recordingsUsed);
     }
 
@@ -318,15 +322,17 @@ export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any
       where: {
         OR: [
           { recordedByUserId: userId },
-          { recordedByUserId: { contains: userId } },
           { recordedByUserId: 'BOTH' },
           { recordedByUserId: null, userAId: userId },
           { recordedByUserId: null, userBId: userId },
+          { userAId: userId, recordedByUserId: { contains: ',' } },
+          { userBId: userId, recordedByUserId: { contains: ',' } },
         ],
         recordingUrl: { not: null },
         createdAt: { gte: periodStart },
       },
     });
+
     return count;
   } catch {
     return 0;

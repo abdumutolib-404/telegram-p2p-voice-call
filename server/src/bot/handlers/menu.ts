@@ -28,6 +28,29 @@ const cachedPlansImagePath: string | null = (() => {
   return null;
 })();
 
+let cachedPlansFileId: string | null = null;
+
+async function getPlansPricingFileId(): Promise<string | null> {
+  if (cachedPlansFileId) return cachedPlansFileId;
+  try {
+    const redis = getRedis();
+    const stored = await redis.get('bot:file_id:plans_pricing');
+    if (stored) {
+      cachedPlansFileId = stored;
+      return stored;
+    }
+  } catch {}
+  return null;
+}
+
+async function setPlansPricingFileId(fileId: string): Promise<void> {
+  cachedPlansFileId = fileId;
+  try {
+    const redis = getRedis();
+    await redis.set('bot:file_id:plans_pricing', fileId, 'EX', 86400 * 30).catch(() => undefined);
+  } catch {}
+}
+
 function getPlansImagePath(): string | null {
   return cachedPlansImagePath;
 }
@@ -332,14 +355,42 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
       (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose your payment method (Telegram Stars or Card):`);
 
-    const imagePath = getPlansImagePath();
-    if (imagePath && typeof ctx.replyWithPhoto === 'function') {
+    const cachedFileId = await getPlansPricingFileId();
+    if (cachedFileId && typeof ctx.replyWithPhoto === 'function') {
       try {
-        await ctx.replyWithPhoto(new InputFile(imagePath), {
+        await ctx.replyWithPhoto(cachedFileId, {
           caption,
           parse_mode: 'HTML',
           reply_markup: inlineKb,
         });
+        return;
+      } catch (cachedErr) {
+        cachedPlansFileId = null;
+        try {
+          const redis = getRedis();
+          await redis.del('bot:file_id:plans_pricing').catch(() => undefined);
+        } catch {}
+        logger.warn('Cached plans file_id failed, falling back to disk image', {
+          service: 'bot',
+          event: 'plans_photo_cached_failed',
+        }, cachedErr);
+      }
+    }
+
+    const imagePath = getPlansImagePath();
+    if (imagePath && typeof ctx.replyWithPhoto === 'function') {
+      try {
+        const sentMessage = await ctx.replyWithPhoto(new InputFile(imagePath), {
+          caption,
+          parse_mode: 'HTML',
+          reply_markup: inlineKb,
+        });
+        if (sentMessage?.photo && sentMessage.photo.length > 0) {
+          const fileId = sentMessage.photo[sentMessage.photo.length - 1].file_id;
+          if (fileId) {
+            void setPlansPricingFileId(fileId);
+          }
+        }
         return;
       } catch (err) {
         logger.warn('Failed to send plans photo, falling back to text', {
