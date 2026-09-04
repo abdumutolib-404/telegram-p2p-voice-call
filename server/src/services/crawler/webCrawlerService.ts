@@ -291,25 +291,42 @@ export class WebCrawlerService {
    * Eliminates defaultTopicSlug override: Always executes classifyTopic(text, bullets)
    * so questions are evaluated by their actual content.
    */
+  /**
+   * Parses HTML content and extracts IELTS questions.
+   * Utilizes hierarchical section heading extraction (h2, h3, h4, strong),
+   * context inheritance for questions under subtopics, and merges dependent fragments (e.g. "And how?").
+   */
   public parseHtmlContent(html: string, sourceUrl: string): RawCandidateQuestion[] {
     const pageTopicName = this.extractTopicNameFromHtmlOrUrl(html, sourceUrl);
-    const text = stripHtml(html);
+
+    // Pre-process HTML to preserve section headings as structured markers before stripping HTML
+    const preprocessedHtml = html
+      .replace(/<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/gi, (_match, _tag, content) => {
+        return `\n[[SECTION_HEADING: ${content.trim()}]]\n`;
+      })
+      .replace(/<p\b[^>]*>\s*<strong\b[^>]*>([\s\S]*?)<\/strong>\s*<\/p>/gi, (_match, content) => {
+        return `\n[[SECTION_HEADING: ${content.trim()}]]\n`;
+      });
+
+    const text = stripHtml(preprocessedHtml);
     const lines = text
       .split('\n')
       .map((l) => l.trim())
-      .filter((l) => l.length > 5);
+      .filter((l) => l.length > 2);
 
     interface IntermediateQuestion {
       part: IeltsPart;
       questionText: string;
       cueCardBullets?: string | null;
       questionType?: string;
+      sectionTopic?: string | null;
     }
 
     const intermediateList: IntermediateQuestion[] = [];
     let currentPart: IeltsPart = 'PART_1';
     let currentCuePrompt: string | null = null;
     let currentCueBullets: string[] = [];
+    let currentSectionTopic: string | null = null;
 
     const flushCueCard = () => {
       if (currentCuePrompt) {
@@ -318,6 +335,7 @@ export class WebCrawlerService {
           questionText: currentCuePrompt,
           cueCardBullets: currentCueBullets.length > 0 ? JSON.stringify(currentCueBullets) : null,
           questionType: 'CUE_CARD',
+          sectionTopic: currentSectionTopic || pageTopicName,
         });
       }
       currentCuePrompt = null;
@@ -327,6 +345,17 @@ export class WebCrawlerService {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const lower = line.toLowerCase();
+
+      // Detect and record Section Headings (e.g. [[SECTION_HEADING: Accommodation]])
+      if (line.startsWith('[[SECTION_HEADING:') && line.endsWith(']]')) {
+        flushCueCard();
+        const rawHeading = line.slice(18, -2).trim();
+        const cleanedHeading = cleanSubjectFromHeading(rawHeading);
+        if (cleanedHeading && cleanedHeading.length >= 3) {
+          currentSectionTopic = cleanedHeading;
+        }
+        continue;
+      }
 
       // Section markers
       if (lower.includes('part 1') || lower.includes('speaking part one')) {
@@ -343,6 +372,15 @@ export class WebCrawlerService {
         flushCueCard();
         currentPart = 'PART_3';
         continue;
+      }
+
+      // Standalone short section headers that might appear without headings
+      if (!line.endsWith('?') && line.length >= 3 && line.length <= 40 && !line.startsWith('•') && !line.startsWith('-')) {
+        const potentialTopic = cleanSubjectFromHeading(line);
+        if (potentialTopic && potentialTopic.length >= 3) {
+          currentSectionTopic = potentialTopic;
+          continue;
+        }
       }
 
       // Detect Part 2 Cue Card starting prompts: "Describe a...", "Describe an...", "Talk about..."
@@ -369,7 +407,7 @@ export class WebCrawlerService {
       }
 
       // Detect General and Discussion Questions (ends with '?')
-      if (line.endsWith('?') && line.length >= 20 && line.length <= 250) {
+      if (line.endsWith('?')) {
         if (
           lower.includes('how to prepare') ||
           lower.includes('privacy') ||
@@ -382,11 +420,44 @@ export class WebCrawlerService {
         }
 
         const cleanQuestion = line.replace(/^[•\-\d.]+\s*/, '').trim();
+        if (cleanQuestion.length < 5) continue;
+
+        // Anaphoric / Dependent follow-up fragment detection
+        // e.g. "And how?", "Why?", "Why or why not?", "In what way?", "And why?"
+        const isDependentFragment =
+          /^(?:and\s+(?:how|why|where|when|who|what|in\s+what\s+way)|why\s+or\s+why\s+not|how\s+come|why\?|why\s+not\?)\b/i.test(cleanQuestion) ||
+          (cleanQuestion.length < 25 && /^(?:and\s+how|why|how\s+so|in\s+what\s+way)\??$/i.test(cleanQuestion));
+
+        if (isDependentFragment && intermediateList.length > 0) {
+          const prev = intermediateList[intermediateList.length - 1];
+          let appendix = cleanQuestion.replace(/\?+$/, '').trim();
+          if (/^and\b/i.test(appendix)) {
+            appendix = appendix.charAt(0).toLowerCase() + appendix.slice(1);
+            prev.questionText = prev.questionText.replace(/\?+$/, '').trim() + ', ' + appendix + '?';
+          } else {
+            prev.questionText = prev.questionText.replace(/\?+$/, '').trim() + '? ' + appendix + '?';
+          }
+          continue;
+        }
+
+        // Filter out excessively short non-fragment noise
+        if (cleanQuestion.length < 20 && !cleanQuestion.includes(' ')) {
+          continue;
+        }
+
+        // Normalize compound question strings within a single line
+        // e.g. "Who helps you the most? And How?" -> "Who helps you the most, and how?"
+        const normalizedQuestion = cleanQuestion
+          .replace(/\?\s+and\s+how\?/gi, ', and how?')
+          .replace(/\?\s+why\s+or\s+why\s+not\?/gi, '? Why or why not?')
+          .replace(/\?\s+and\s+why\?/gi, ', and why?');
+
         const part = currentPart === 'PART_2' ? 'PART_3' : currentPart;
         intermediateList.push({
           part,
-          questionText: cleanQuestion,
+          questionText: normalizedQuestion,
           questionType: part === 'PART_3' ? 'DISCUSSION' : 'GENERAL',
+          sectionTopic: currentSectionTopic || pageTopicName,
         });
       }
     }
@@ -396,16 +467,17 @@ export class WebCrawlerService {
     // Group-level emergence detection across the questions on this page
     const groupSubject = detectGroupStrongSubject(intermediateList, pageTopicName, sourceUrl) || pageTopicName;
 
-    // Convert to RawCandidateQuestion by evaluating each question's actual content
+    // Convert to RawCandidateQuestion by evaluating each question's actual content and inherited section topic
     const finalQuestions: RawCandidateQuestion[] = intermediateList.map((item) => {
-      const topicSlug = classifyTopic(item.questionText, item.cueCardBullets, groupSubject);
+      const topicSubject = item.sectionTopic || groupSubject || pageTopicName;
+      const topicSlug = classifyTopic(item.questionText, item.cueCardBullets, topicSubject);
       return {
         part: item.part,
         questionText: item.questionText,
         cueCardBullets: item.cueCardBullets ?? null,
         questionType: item.questionType || (item.part === 'PART_2' ? 'CUE_CARD' : 'GENERAL'),
         suggestedTopicSlug: topicSlug,
-        extractedTopicName: groupSubject || undefined,
+        extractedTopicName: topicSubject || undefined,
         source: 'WEB_CRAWLER',
         sourceUrl,
       };

@@ -36,6 +36,9 @@ function cleanTextArtifacts(raw: string): string {
     .replace(/&ndash;/g, '-')
     .replace(/&mdash;/g, '--')
     .replace(/^[•\-\d.]+\s*/, '')
+    .replace(/\?\s+and\s+how\?/gi, ', and how?')
+    .replace(/\?\s+why\s+or\s+why\s+not\?/gi, '? Why or why not?')
+    .replace(/\?\s+and\s+why\?/gi, ', and why?')
     .replace(/\s+/g, ' ')
     .trim();
 }

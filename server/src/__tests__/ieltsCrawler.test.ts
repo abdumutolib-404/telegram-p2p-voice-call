@@ -498,5 +498,78 @@ describe('IELTS Crawler & Ingestion Pipeline', () => {
       });
       expect(purgedLegacy).toBeNull();
     });
+
+    it('accurately classifies user-reported IELTS questions without fallback dumping', () => {
+      // 1. Living & Home questions -> Hometown, Cities & Urban Life
+      expect(classifyTopic('Where are you living now?')).toBe('hometown-urban-life');
+      expect(classifyTopic('How long have you lived there?')).toBe('hometown-urban-life');
+      expect(classifyTopic('Do you live in a house or an apartment?')).toBe('hometown-urban-life');
+
+      // 2. Interview & Career questions -> Work, Career & Ambition
+      expect(classifyTopic('What qualities make a good interviewer?')).toBe('work-career-ambition');
+      expect(classifyTopic('Have you ever had a job interview for a new career?')).toBe('work-career-ambition');
+
+      // 3. Mentorship & Helping questions -> Family, Friends & People
+      expect(classifyTopic('Who helps you the most, and how?')).toBe('family-friends-people');
+      expect(classifyTopic('Who helps you the most? And How?')).toBe('family-friends-people');
+      expect(classifyTopic('Do you prefer to help your friends or ask for assistance?')).toBe('family-friends-people');
+
+      // 4. Punctuality & Time Habit questions -> Leisure, Habits & Daily Routine (with positive score)
+      expect(classifyTopic('How do you remind yourself to be on time?')).toBe('leisure-habits-daily');
+      expect(classifyTopic('How do you feel when others are late?')).toBe('leisure-habits-daily');
+      expect(classifyTopic('Do you think it is important to be on time?')).toBe('leisure-habits-daily');
+    });
+
+    it('inherits section headings and resolves context for ambiguous questions', () => {
+      const mockHtml = `
+        <html>
+          <body>
+            <h1>IELTS Speaking Part 1 Topics 2026</h1>
+            <h2>Accommodation</h2>
+            <p>1. Where are you living now?</p>
+            <p>2. How long have you lived there?</p>
+            <p>3. Do you like it?</p>
+            <h2>Punctuality</h2>
+            <p>4. Do you think it is important to be on time?</p>
+            <p>5. How do you feel when others are late?</p>
+          </body>
+        </html>
+      `;
+
+      const questions = webCrawlerService.parseHtmlContent(mockHtml, 'https://ieltsliz.com/speaking-part-1');
+      expect(questions.length).toBe(5);
+
+      // Questions under Accommodation section
+      expect(questions[0].suggestedTopicSlug).toBe('hometown-urban-life');
+      expect(questions[1].suggestedTopicSlug).toBe('hometown-urban-life');
+      expect(questions[2].suggestedTopicSlug).toBe('hometown-urban-life');
+
+      // Questions under Punctuality section
+      expect(questions[3].suggestedTopicSlug).toBe('leisure-habits-daily');
+      expect(questions[4].suggestedTopicSlug).toBe('leisure-habits-daily');
+    });
+
+    it('merges dependent follow-up fragments into antecedent questions', () => {
+      const mockHtml = `
+        <html>
+          <body>
+            <h2>Helping Others</h2>
+            <p>Who helps you the most?</p>
+            <p>And how?</p>
+            <h2>Work & Career</h2>
+            <p>Do you like your job?</p>
+            <p>Why or why not?</p>
+          </body>
+        </html>
+      `;
+
+      const questions = webCrawlerService.parseHtmlContent(mockHtml, 'https://ieltsliz.com/helping-others');
+      expect(questions.length).toBe(2);
+      expect(questions[0].questionText).toBe('Who helps you the most, and how?');
+      expect(questions[0].suggestedTopicSlug).toBe('family-friends-people');
+
+      expect(questions[1].questionText).toBe('Do you like your job? Why or why not?');
+      expect(questions[1].suggestedTopicSlug).toBe('work-career-ambition');
+    });
   });
 });

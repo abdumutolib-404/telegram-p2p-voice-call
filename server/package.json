@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "vitest run",
+    "export:questions": "ts-node scripts/exportQuestions.ts",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"
   },

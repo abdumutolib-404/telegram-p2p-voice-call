@@ -263,6 +263,82 @@ router.delete('/questions/:id', async (req: AdminAuthenticatedRequest, res: Resp
   }
 });
 
+// GET /api/admin/ielts/questions/export
+router.get('/questions/export', async (req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { topicId, part, format = 'json' } = req.query;
+    const where: any = { isActive: true };
+
+    if (part && ['PART_1', 'PART_2', 'PART_3'].includes(String(part).toUpperCase())) {
+      where.part = String(part).toUpperCase() as IeltsPart;
+    }
+
+    if (topicId && typeof topicId === 'string' && topicId !== 'all') {
+      where.OR = [{ topicId }, { topic: { slug: topicId } }];
+    }
+
+    const questions = await prisma.ieltsQuestion.findMany({
+      where,
+      orderBy: [{ topic: { name: 'asc' } }, { part: 'asc' }, { createdAt: 'desc' }],
+      include: { topic: true },
+    });
+
+    const isCsv = String(format).toLowerCase() === 'csv';
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filenameTopic = topicId ? String(topicId).replace(/[^a-z0-9_-]/gi, '_') : 'all';
+
+    if (isCsv) {
+      const escapeCsv = (val: unknown) => {
+        if (val === null || val === undefined) return '""';
+        return `"${String(val).replace(/"/g, '""')}"`;
+      };
+
+      const headers = [
+        'ID',
+        'Part',
+        'Topic Name',
+        'Topic Slug',
+        'Question Text',
+        'Cue Card Bullets',
+        'Question Type',
+        'Source',
+        'Created At',
+      ];
+
+      const rows = questions.map((q) => [
+        escapeCsv(q.id),
+        escapeCsv(q.part),
+        escapeCsv(q.topic?.name ?? ''),
+        escapeCsv(q.topic?.slug ?? ''),
+        escapeCsv(q.questionText),
+        escapeCsv(q.cueCardBullets ?? ''),
+        escapeCsv(q.questionType),
+        escapeCsv(q.source),
+        escapeCsv(q.createdAt.toISOString()),
+      ]);
+
+      const csvData = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="ielts_questions_${filenameTopic}_${timestamp}.csv"`);
+      res.send(csvData);
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="ielts_questions_${filenameTopic}_${timestamp}.json"`);
+    res.json({
+      success: true,
+      total: questions.length,
+      exportedAt: new Date().toISOString(),
+      filter: { topicId: topicId || 'all', part: part || 'all' },
+      questions,
+    });
+  } catch (err: unknown) {
+    logger.error('Admin export questions failed', { service: 'admin_ielts' }, err);
+    res.status(500).json({ error: 'Internal server error exporting questions' });
+  }
+});
+
 // --- BULK QUESTIONS IMPORT ---
 // POST /api/admin/ielts/questions/bulk
 router.post('/questions/bulk', async (req: AdminAuthenticatedRequest, res: Response): Promise<void> => {

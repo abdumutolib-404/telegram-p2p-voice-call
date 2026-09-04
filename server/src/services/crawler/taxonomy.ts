@@ -42,16 +42,17 @@ export const SEED_TOPICS: TopicDefinition[] = [
       'workplace', 'occupation', 'employee', 'employees', 'employer', 'employers', 'boss',
       'bosses', 'colleague', 'colleagues', 'coworker', 'coworkers', 'ambition', 'ambitions',
       'promotion', 'salary', 'wage', 'wages', 'employment', 'entrepreneur', 'business',
-      'resume', 'interview', 'professionals',
+      'resume', 'interview', 'interviewer', 'interviewers', 'interviewee', 'interviewees',
+      'interviewing', 'job interview', 'candidate', 'hiring', 'recruitment', 'professionals',
     ],
     secondaryKeywords: [
       'office', 'offices', 'management', 'manager', 'managers', 'leader', 'leaders',
       'leadership', 'teamwork', 'workload', 'career path', 'retire', 'retirement',
-      'internship', 'hiring', 'corporation', 'company', 'companies', 'overtime',
+      'internship', 'corporation', 'company', 'companies', 'overtime',
       'vocational', 'freelance', 'self-employed', 'career choice', 'unemployment', 'co-worker',
       'vocation', 'worker', 'workers', 'workforce', 'startup', 'startups', 'executive',
       'resignation', 'part-time', 'full-time', 'remote work', 'career goal', 'career goals',
-      'entrepreneurship',
+      'entrepreneurship', 'job hunt', 'recruiter',
     ],
     relevance: 10,
   },
@@ -63,15 +64,17 @@ export const SEED_TOPICS: TopicDefinition[] = [
       'hometown', 'hometowns', 'city', 'cities', 'urban', 'town', 'towns', 'village',
       'villages', 'neighborhood', 'neighborhoods', 'suburb', 'suburbs', 'architecture',
       'downtown', 'metropolis', 'birthplace', 'native place', 'residential', 'accommodation',
+      'accommodations', 'live', 'living', 'lived', 'lives', 'reside', 'resides', 'resided',
+      'residing', 'residence', 'house', 'houses', 'housing',
     ],
     secondaryKeywords: [
-      'street', 'streets', 'building', 'buildings', 'skyscraper', 'skyscrapers', 'apartment',
-      'apartments', 'housing', 'infrastructure', 'public amenities', 'traffic', 'crowded',
+      'home', 'homes', 'street', 'streets', 'building', 'buildings', 'skyscraper', 'skyscrapers', 'apartment',
+      'apartments', 'infrastructure', 'public amenities', 'traffic', 'crowded',
       'quiet neighborhood', 'rural', 'countryside', 'district', 'community living', 'local area',
       'historic building', 'urbanization', 'facilities', 'living area', 'flat', 'flats',
-      'house', 'houses', 'residence', 'resident', 'residents', 'neighbourhood',
-      'neighbourhoods', 'suburban', 'locality', 'avenue', 'square', 'plaza', 'balcony',
-      'city center', 'city centre', 'inner city', 'real estate',
+      'resident', 'residents', 'neighbourhood', 'neighbourhoods', 'suburban', 'locality',
+      'avenue', 'square', 'plaza', 'balcony', 'city center', 'city centre', 'inner city',
+      'real estate', 'staying', 'roommate', 'landlord', 'tenant', 'move house',
     ],
     relevance: 9,
   },
@@ -83,9 +86,12 @@ export const SEED_TOPICS: TopicDefinition[] = [
       'family', 'families', 'parent', 'parents', 'mother', 'father', 'brother', 'sister',
       'sibling', 'siblings', 'relative', 'relatives', 'friend', 'friends', 'friendship',
       'best friend', 'childhood', 'mentor', 'companion', 'acquaintance', 'acquaintances',
-      'grandparents', 'grandmother', 'grandfather', 'name', 'names',
+      'grandparents', 'grandmother', 'grandfather', 'name', 'names', 'who helps you',
+      'helping others', 'help others', 'helper', 'helpers', 'support', 'supporting', 'assist',
+      'assistance',
     ],
     secondaryKeywords: [
+      'help', 'helping', 'helped', 'helps', 'give help', 'ask for help',
       'people', 'person', 'relationship', 'relationships', 'neighbor', 'neighbors', 'roommate',
       'roommates', 'cousin', 'cousins', 'uncle', 'aunt', 'family member', 'childhood memory',
       'close friend', 'role model', 'peer', 'peers', 'social circle', 'elderly', 'children',
@@ -93,7 +99,7 @@ export const SEED_TOPICS: TopicDefinition[] = [
       'child', 'kid', 'kids', 'son', 'daughter', 'nephew', 'niece', 'grandchild',
       'grandchildren', 'grandpa', 'grandma', 'neighbour', 'neighbours', 'personality',
       'character', 'stranger', 'strangers', 'friendly', 'elder', 'elders', 'teenager',
-      'teenagers',
+      'teenagers', 'advice', 'give advice', 'care for',
     ],
     relevance: 9,
   },
@@ -170,12 +176,12 @@ export const SEED_TOPICS: TopicDefinition[] = [
       'health', 'healthy', 'fitness', 'exercise', 'exercises', 'exercising', 'gym',
       'workout', 'workouts', 'sport', 'sports', 'athlete', 'athletes', 'athletics',
       'football', 'soccer', 'basketball', 'swimming', 'running', 'jogging', 'tennis',
-      'yoga', 'wellness', 'nutrition', 'diet',
+      'yoga', 'wellness', 'nutrition', 'diet', 'physical activity',
     ],
     secondaryKeywords: [
       'doctor', 'doctors', 'hospital', 'hospitals', 'medicine', 'medical', 'illness',
       'disease', 'diseases', 'mental health', 'stress', 'relaxation', 'sleep',
-      'physical activity', 'marathon', 'training', 'stadium', 'match', 'tournament',
+      'recover', 'recovery', 'marathon', 'training', 'stadium', 'match', 'tournament',
       'active', 'body', 'energetic', 'well-being', 'staying fit', 'fishing', 'workout routine',
       'walk', 'walking', 'swimmer', 'runner', 'badminton', 'volleyball', 'weight loss',
       'physical fitness', 'patient', 'patients', 'clinic', 'dentist', 'healthcare',
@@ -276,20 +282,23 @@ export const SEED_TOPICS: TopicDefinition[] = [
   {
     name: 'Leisure, Habits & Daily Routine',
     slug: 'leisure-habits-daily',
-    description: 'Daily routines, morning and evening schedules, weekend activities, personal hobbies, shopping, chores, leisure time, and life organization.',
+    description: 'Daily routines, morning and evening schedules, weekend activities, personal hobbies, shopping, chores, leisure time, punctuality, and life organization.',
     primaryKeywords: [
       'routine', 'routines', 'daily routine', 'habit', 'habits', 'leisure', 'hobby',
       'hobbies', 'free time', 'spare time', 'schedule', 'schedules', 'chores', 'shopping',
       'gift', 'gifts', 'weekend', 'weekends', 'relaxation', 'pastime', 'pastimes', 'daily life',
+      'punctual', 'punctuality', 'on time', 'being on time', 'being late', 'late', 'lateness',
+      'delay', 'delays', 'time management', 'remind yourself',
     ],
     secondaryKeywords: [
       'morning', 'evening', 'bedtime', 'waking up', 'relax', 'unwind', 'lifestyle',
       'errands', 'household chore', 'cleaning', 'spending time', 'pocket money',
-      'money management', 'buy', 'buying', 'purchase', 'leisure activity', 'time management',
+      'money management', 'buy', 'buying', 'purchase', 'leisure activity',
       'personal plan', 'spare hour', 'day-to-day', 'daily', 'rest', 'resting', 'unwinding',
       'free hour', 'housework', 'cleaning house', 'tidy', 'tidying', 'errand', 'presents',
       'give gifts', 'receive gifts', 'morning routine', 'evening routine', 'daily habit',
-      'spend free time', 'recreation', 'recreational',
+      'spend free time', 'recreation', 'recreational', 'alarm', 'alarms', 'appointment',
+      'appointments', 'be late', 'keep time', 'manage time',
     ],
     relevance: 8,
   },
@@ -429,9 +438,24 @@ export const LEGACY_OR_ALIAS_SLUG_MAP: Record<string, CanonicalTopicSlug> = {
   'cars': 'travel-tourism-transport',
   'photography': 'art-music-culture',
   'photos': 'art-music-culture',
-  'photo': 'art-music-culture',
   'gift': 'leisure-habits-daily',
   'gifts': 'leisure-habits-daily',
+  'accommodation': 'hometown-urban-life',
+  'accommodations': 'hometown-urban-life',
+  'home': 'hometown-urban-life',
+  'homes': 'hometown-urban-life',
+  'house': 'hometown-urban-life',
+  'living': 'hometown-urban-life',
+  'punctuality': 'leisure-habits-daily',
+  'on-time': 'leisure-habits-daily',
+  'time-management': 'leisure-habits-daily',
+  'help': 'family-friends-people',
+  'helping': 'family-friends-people',
+  'helping-others': 'family-friends-people',
+  'interview': 'work-career-ambition',
+  'interviews': 'work-career-ambition',
+  'job-interview': 'work-career-ambition',
+  'job-interviews': 'work-career-ambition',
 };
 
 export function normalizeToCanonicalSlug(rawSlugOrName?: string | null): CanonicalTopicSlug {
@@ -643,8 +667,7 @@ const GENERIC_STOPWORDS = new Set([
   'describe', 'one', 'two', 'three', 'recent', 'actual', 'exam', 'forecast',
   'find', 'found', 'broad', 'easy', 'maintain', 'regular', 'circle', 'casual', 'small', 'group', 'close', 'early',
   'exciting', 'studied', 'check', 'checking', 'piece', 'pieces', 'bought', 'going', 'leaving', 'leave',
-  'social', 'event', 'events', 'value', 'valuable', 'sentimental', 'essential',
-  'rooms', 'living', 'home', 'wall', 'walls', 'decorative', 'decoration',
+  'wall', 'walls', 'decorative', 'decoration',
 ]);
 
 export function slugifyTopic(name: string): string {
@@ -818,9 +841,28 @@ export function detectGroupStrongSubject(
 
 export function buildKeywordRegex(kw: string): RegExp {
   const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (kw === 'punctual') {
+    return new RegExp(`\\bpunctual(?:ity)?\\b`, 'i');
+  }
+  if (kw === 'late') {
+    return new RegExp(`\\blate(?:r|st|ness)?\\b`, 'i');
+  }
+  if (kw === 'help') {
+    return new RegExp(`\\bhelp(?:s|ed|ing|er|ers|ful)?\\b`, 'i');
+  }
   if (kw.endsWith('y') && !/[aeiou]y$/i.test(kw)) {
     const base = escaped.slice(0, -1);
-    return new RegExp(`\\b${base}(?:y|ies)\\b`, 'i');
+    return new RegExp(`\\b${base}(?:y|ies|ied|ying)?\\b`, 'i');
+  }
+  if (kw.endsWith('e') && !/[aeiou]e$/i.test(kw)) {
+    const base = escaped.slice(0, -1);
+    return new RegExp(`\\b${base}(?:e|es|ed|ing)?\\b`, 'i');
+  }
+  if (/(?:interview|employ|work|teach|learn|read|assist|govern|manage|perform|paint|sing|cook|clean|travel|visit|train)$/i.test(kw)) {
+    return new RegExp(`\\b${escaped}(?:s|es|ed|ing|er|ers|ee|ees|ment|ance|ence)?\\b`, 'i');
+  }
+  if (kw.includes(' ')) {
+    return new RegExp(`\\b${escaped}(?:s|es)?\\b`, 'i');
   }
   return new RegExp(`\\b${escaped}(?:s|es)?\\b`, 'i');
 }
@@ -892,8 +934,9 @@ export function calculateSeedSimilarity(
       }
     }
 
-    if (contextCandidate && item.slug === contextCandidate && score > 0) {
-      score += 3;
+    // Context candidate from section header or page topic grants an authoritative anchor boost (+8 points)
+    if (contextCandidate && item.slug === contextCandidate) {
+      score += 8;
     }
 
     if (score > bestScore) {
