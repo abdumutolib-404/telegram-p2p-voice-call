@@ -20,6 +20,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
   const dimensionsRef = useRef<{ width: number; height: number }>({ width: 300, height });
+  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -54,9 +55,14 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       window.addEventListener('resize', updateDimensions);
     }
 
-    const dataArray = analyserNode
-      ? new Uint8Array(analyserNode.frequencyBinCount)
-      : null;
+    let dataArray: Uint8Array<ArrayBuffer> | null = null;
+    if (analyserNode) {
+      const binCount = analyserNode.frequencyBinCount;
+      if (!dataArrayRef.current || dataArrayRef.current.length !== binCount) {
+        dataArrayRef.current = new Uint8Array(binCount) as Uint8Array<ArrayBuffer>;
+      }
+      dataArray = dataArrayRef.current;
+    }
 
     let phase = 0;
     const TARGET_FPS = 30;

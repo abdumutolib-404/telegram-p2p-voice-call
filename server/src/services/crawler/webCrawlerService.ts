@@ -228,15 +228,19 @@ export class WebCrawlerService {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), this.defaultTimeoutMs);
 
-          const response = await fetch(url, {
-            signal: controller.signal,
-            headers: {
-              'User-Agent': this.userAgent,
-              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-            },
-          });
-          clearTimeout(timeoutId);
+          let response: Response;
+          try {
+            response = await fetch(url, {
+              signal: controller.signal,
+              headers: {
+                'User-Agent': this.userAgent,
+                Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+              },
+            });
+          } finally {
+            clearTimeout(timeoutId);
+          }
 
           if (response.status === 429 || response.status === 503) {
             const retryHeader = response.headers.get('retry-after');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { adminFetch } from '../../api/client';
 import './QuestionManagement.css';
 import {
@@ -82,9 +82,17 @@ export const QuestionManagement: React.FC = () => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [filterPart, setFilterPart] = useState<string>('all');
   const [filterTopic, setFilterTopic] = useState<string>('all');
   const [filterActive, setFilterActive] = useState<string>('all');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Modals state
   const [showQuestionModal, setShowQuestionModal] = useState(false);
@@ -151,7 +159,7 @@ export const QuestionManagement: React.FC = () => {
       if (filterPart !== 'all') params.append('part', filterPart);
       if (filterTopic !== 'all') params.append('topicId', filterTopic);
       if (filterActive !== 'all') params.append('isActive', filterActive);
-      if (searchQuery.trim()) params.append('search', searchQuery.trim());
+      if (debouncedSearchQuery.trim()) params.append('search', debouncedSearchQuery.trim());
       params.append('limit', '150');
 
       const res = await adminFetch<{ success: boolean; questions: Question[] }>(
@@ -165,7 +173,7 @@ export const QuestionManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterPart, filterTopic, filterActive, searchQuery]);
+  }, [filterPart, filterTopic, filterActive, debouncedSearchQuery]);
 
   const fetchCrawlerStatus = useCallback(async () => {
     try {
@@ -442,10 +450,20 @@ export const QuestionManagement: React.FC = () => {
     }
   };
 
-  const part1Count = questions.filter((q) => q.part === 'PART_1').length;
-  const part2Count = questions.filter((q) => q.part === 'PART_2').length;
-  const part3Count = questions.filter((q) => q.part === 'PART_3').length;
-  const cueCardQuestions = questions.filter((q) => q.part === 'PART_2');
+  const { part1Count, part2Count, part3Count, cueCardQuestions } = useMemo(() => {
+    let p1 = 0;
+    let p2 = 0;
+    let p3 = 0;
+    const cueCards: Question[] = [];
+    for (const q of questions) {
+      if (q.part === 'PART_1') p1++;
+      else if (q.part === 'PART_2') {
+        p2++;
+        cueCards.push(q);
+      } else if (q.part === 'PART_3') p3++;
+    }
+    return { part1Count: p1, part2Count: p2, part3Count: p3, cueCardQuestions: cueCards };
+  }, [questions]);
 
   return (
     <div className="qm-container">
@@ -599,7 +617,10 @@ export const QuestionManagement: React.FC = () => {
                 {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => {
+                      setSearchQuery('');
+                      setDebouncedSearchQuery('');
+                    }}
                     style={{
                       position: 'absolute',
                       right: '8px',

@@ -65,7 +65,7 @@ export async function checkS3ObjectExists(
       Bucket: env.S3_BUCKET!,
       Key: storageKey,
     });
-    const res = await client.send(command);
+    const res = await client.send(command, { abortSignal: AbortSignal.timeout(5000) });
     return {
       exists: true,
       size: res.ContentLength,
@@ -121,7 +121,7 @@ export async function getS3ObjectBuffer(
     Bucket: env.S3_BUCKET!,
     Key: storageKey,
   });
-  const res = await client.send(command);
+  const res = await client.send(command, { abortSignal: AbortSignal.timeout(15000) });
 
   if (!res.Body) {
     throw new Error(`S3 object body empty for key: ${storageKey}`);
@@ -150,7 +150,7 @@ export async function deleteS3Object(storageKey: string): Promise<void> {
       Bucket: env.S3_BUCKET!,
       Key: storageKey,
     });
-    await client.send(command);
+    await client.send(command, { abortSignal: AbortSignal.timeout(5000) });
     logger.info('Recording object deleted from S3', {
       service: 'storage',
       event: 's3_object_deleted',

@@ -934,9 +934,10 @@ export function calculateSeedSimilarity(
       }
     }
 
-    // Context candidate from section header or page topic grants an authoritative anchor boost (+8 points)
-    if (contextCandidate && item.slug === contextCandidate) {
-      score += 8;
+    // Context candidate from section header or page topic grants a secondary tie-breaker bonus (+2 points)
+    // Never grant context bonus to generic catch-alls like 'leisure-habits-daily', ensuring specific subject matter keywords always win
+    if (contextCandidate && item.slug === contextCandidate && contextCandidate !== 'leisure-habits-daily') {
+      score += 2;
     }
 
     if (score > bestScore) {

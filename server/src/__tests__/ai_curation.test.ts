@@ -187,6 +187,38 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       expect(essayResult.rejectionReason).toBe('writing_task_guide');
     });
 
+    it('rejects sample candidate answers, transcripts, and model responses', () => {
+      const sampleAnswerCandidate = {
+        text: 'Well, in my personal view, I believe technology has both pros and cons.',
+      };
+      const result = heuristicCuration(sampleAnswerCandidate, 0);
+      expect(result.isValidIeltsSpeaking).toBe(false);
+      expect(result.rejectionReason).toBe('sample_answer_or_transcript');
+
+      const modelCandidate = {
+        text: 'Model answer: When I was a child, I used to live in a small coastal town.',
+      };
+      const modelResult = heuristicCuration(modelCandidate, 1);
+      expect(modelResult.isValidIeltsSpeaking).toBe(false);
+      expect(modelResult.rejectionReason).toBe('sample_answer_or_transcript');
+    });
+
+    it('rejects study tips, vocabulary advice, and grammar rules', () => {
+      const tipCandidate = {
+        text: 'Tip: Use idiomatic collocations for IELTS speaking band 8.',
+      };
+      const result = heuristicCuration(tipCandidate, 0);
+      expect(result.isValidIeltsSpeaking).toBe(false);
+      expect(result.rejectionReason).toBe('study_tip_or_vocabulary');
+
+      const grammarCandidate = {
+        text: 'Phrases to score band 9 in IELTS speaking interview questions.',
+      };
+      const grammarResult = heuristicCuration(grammarCandidate, 1);
+      expect(grammarResult.isValidIeltsSpeaking).toBe(false);
+      expect(grammarResult.rejectionReason).toBe('study_tip_or_vocabulary');
+    });
+
     it('accepts authentic IELTS speaking questions and categorizes to canonical topic slugs', () => {
       const techPrompt = {
         text: 'Do you frequently use artificial intelligence tools and mobile apps in your daily routine?',
@@ -214,6 +246,44 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       expect(part3Result.isValidIeltsSpeaking).toBe(true);
       expect(part3Result.part).toBe('PART_3');
       expect(part3Result.canonicalTopicSlug).toBe('technology-digital-life');
+    });
+
+    it('overrides generic contextTopic (e.g. Daily Habits) when question contains specific domain keywords', () => {
+      // Question about perfume with scraper tag 'Daily Habits'
+      const perfumePrompt = {
+        text: 'Do you enjoy wearing perfume on special occasions?',
+        contextTopic: 'Daily Habits',
+      };
+      const perfumeResult = heuristicCuration(perfumePrompt, 0);
+      expect(perfumeResult.isValidIeltsSpeaking).toBe(true);
+      expect(perfumeResult.canonicalTopicSlug).toBe('fashion-clothing-accessories');
+
+      // Question about mirrors with scraper tag 'Daily Habits'
+      const mirrorPrompt = {
+        text: 'How often do you look at yourself in a mirror before leaving home?',
+        contextTopic: 'Daily Habits',
+      };
+      const mirrorResult = heuristicCuration(mirrorPrompt, 1);
+      expect(mirrorResult.isValidIeltsSpeaking).toBe(true);
+      expect(mirrorResult.canonicalTopicSlug).toBe('fashion-clothing-accessories');
+
+      // Question about subway/train with scraper tag 'Daily Routine'
+      const transportPrompt = {
+        text: 'Do you prefer taking the subway or cycling when commuting to work?',
+        contextTopic: 'Daily Routine',
+      };
+      const transportResult = heuristicCuration(transportPrompt, 2);
+      expect(transportResult.isValidIeltsSpeaking).toBe(true);
+      expect(transportResult.canonicalTopicSlug).toBe('travel-tourism-transport');
+
+      // Question about smartphones with scraper tag 'Daily Life'
+      const techPrompt = {
+        text: 'How many hours a day do you spend on your smartphone or computer?',
+        contextTopic: 'Daily Life',
+      };
+      const techResult = heuristicCuration(techPrompt, 3);
+      expect(techResult.isValidIeltsSpeaking).toBe(true);
+      expect(techResult.canonicalTopicSlug).toBe('technology-digital-life');
     });
 
     it('strips emojis from authentic questions during curation', () => {

@@ -142,14 +142,28 @@ export async function generateLiveKitToken(
   }
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Starts audio-only RoomComposite Egress for two-way mixed call recording.
  */
 export async function startAudioEgress(roomName: string): Promise<EgressResult> {
   if (!roomName || roomName.length > 128) throw new TypeError('Invalid roomName');
   if (!egressClient) {
-    const err = new Error('LiveKit Egress client is uninitialized or unavailable');
-    err.name = 'RECORDING_UNAVAILABLE';
+    const err = new Error('LiveKit Egress is disabled (no credentials configured).');
+    err.name = 'EGRESS_DISABLED';
     throw err;
   }
 
@@ -170,12 +184,10 @@ export async function startAudioEgress(roomName: string): Promise<EgressResult> 
       await fs.mkdir(env.RECORDINGS_DIR, { recursive: true });
     }
 
-    const info = await egressClient.startRoomCompositeEgress(
-      roomName,
-      output,
-      {
-        audioOnly: true,
-      }
+    const info = await withTimeout(
+      egressClient.startRoomCompositeEgress(roomName, output, { audioOnly: true }),
+      10000,
+      'LiveKit startRoomCompositeEgress timeout (10s)'
     );
 
     logger.info('LiveKit Egress started', {
@@ -203,7 +215,11 @@ export async function startAudioEgress(roomName: string): Promise<EgressResult> 
 export async function stopAudioEgress(egressId: string): Promise<EgressInfo | null> {
   if (!egressId || !egressClient) return null;
   try {
-    const info = await egressClient.stopEgress(egressId);
+    const info = await withTimeout(
+      egressClient.stopEgress(egressId),
+      5000,
+      'LiveKit stopEgress timeout (5s)'
+    );
     logger.info('LiveKit Egress stopped', {
       service: 'livekit',
       event: 'egress_stopped',
@@ -227,7 +243,11 @@ export async function stopAudioEgress(egressId: string): Promise<EgressInfo | nu
 export async function getAudioEgressInfo(egressId: string): Promise<EgressInfo | null> {
   if (!egressId || !egressClient) return null;
   try {
-    const list = await egressClient.listEgress({ egressId });
+    const list = await withTimeout(
+      egressClient.listEgress({ egressId }),
+      5000,
+      'LiveKit listEgress timeout (5s)'
+    );
     return list && list.length > 0 ? list[0] : null;
   } catch (error: unknown) {
     logger.warn('LiveKit get Egress info failed', {

@@ -789,7 +789,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         event: 'play_recording_failed',
         sessionId,
       }, err);
-      await ctx.answerCallbackQuery({ text: 'An error occurred sending audio.' });
+      await ctx.answerCallbackQuery({ text: 'An error occurred sending audio.' }).catch(() => undefined);
+      await ctx.reply('❌ Unable to retrieve audio recording. Please try again later.').catch(() => undefined);
     }
   });
 
