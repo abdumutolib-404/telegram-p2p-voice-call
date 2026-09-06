@@ -335,7 +335,12 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 	}
 
 	// Turning record OFF
-	newRecorders, recordersLeft := removeSessionRecorder(session.RecordedByUserID, requesterID)
+	recordedBy := session.RecordedByUserID
+	if recordedBy != nil && (*recordedBy == "BOTH" || *recordedBy == "ALL") {
+		bothRec := session.UserAID + "," + session.UserBID
+		recordedBy = &bothRec
+	}
+	newRecorders, recordersLeft := removeSessionRecorder(recordedBy, requesterID)
 	if recordersLeft {
 		// Partner is still recording
 		_ = h.DB.UpdateSessionRecorders(ctx, session.ID, &newRecorders)
@@ -400,6 +405,13 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 	durationSeconds := int(time.Since(session.CreatedAt).Seconds())
 	if durationSeconds < 1 {
 		durationSeconds = 1
+	}
+	if session.UserA != nil && session.UserB != nil {
+		limitMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
+		limitSeconds := limitMinutes * 60
+		if durationSeconds > limitSeconds {
+			durationSeconds = limitSeconds
+		}
 	}
 
 	egress := h.GetActiveEgress(req.RoomName)
@@ -522,19 +534,15 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		return
 	}
 
-	h.mu.RLock()
-	remaining := len(h.userSockets[socket.UserID])
-	h.mu.RUnlock()
-
-	if remaining > 0 {
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Cancel queue for this user
-	if h.Matchmaking != nil {
+	h.mu.RLock()
+	remainingTotal := len(h.userSockets[socket.UserID])
+	h.mu.RUnlock()
+
+	// Cancel queue for this user if no sockets left at all
+	if remainingTotal == 0 && h.Matchmaking != nil {
 		_, _ = h.Matchmaking.CancelQueue(ctx, socket.UserID)
 	}
 
@@ -544,6 +552,22 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 
 	activeCall, err := h.DB.GetActiveCallForUser(ctx, socket.UserID)
 	if err != nil || activeCall == nil {
+		return
+	}
+
+	// Check if user still has a socket in this specific call room
+	h.mu.RLock()
+	roomSocketsRemaining := 0
+	if rSockets, ok := h.roomSockets[activeCall.RoomName]; ok {
+		for _, s := range rSockets {
+			if s.UserID == socket.UserID {
+				roomSocketsRemaining++
+			}
+		}
+	}
+	h.mu.RUnlock()
+
+	if roomSocketsRemaining > 0 {
 		return
 	}
 
@@ -589,6 +613,13 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		durationSeconds := int(disconnectTimestamp.Sub(current.CreatedAt).Seconds())
 		if durationSeconds < 0 {
 			durationSeconds = 0
+		}
+		if current.UserA != nil && current.UserB != nil {
+			limitMinutes := database.CalculateEffectiveCallDuration(current.UserA, current.UserB, h.AdminTelegramIDs)
+			limitSeconds := limitMinutes * 60
+			if durationSeconds > limitSeconds {
+				durationSeconds = limitSeconds
+			}
 		}
 		isCancelled := durationSeconds < 5
 
@@ -708,7 +739,8 @@ func isUserSessionRecorder(recordedBy *string, userID string) bool {
 		return true
 	}
 	for _, id := range strings.Split(*recordedBy, ",") {
-		if strings.TrimSpace(id) == userID {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == userID || trimmed == "BOTH" || trimmed == "ALL" {
 			return true
 		}
 	}

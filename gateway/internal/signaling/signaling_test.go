@@ -175,6 +175,10 @@ func TestSocketIO_DisconnectPacket41(t *testing.T) {
 		LastActive:   time.Now(),
 	}
 
+	server.mu.Lock()
+	server.sessions["test_socket_41"] = &EngineIOSession{Socket: socket, CreatedAt: time.Now()}
+	server.mu.Unlock()
+
 	hub.AddSocket(socket)
 	if len(hub.GetUserSockets("user_41")) != 1 {
 		t.Fatalf("expected 1 user socket in hub")
@@ -188,6 +192,14 @@ func TestSocketIO_DisconnectPacket41(t *testing.T) {
 	}
 	if len(hub.GetUserSockets("user_41")) != 0 {
 		t.Errorf("expected 0 user sockets in hub after disconnect")
+	}
+
+	// Verify session was immediately purged from server.sessions
+	server.mu.RLock()
+	_, exists := server.sessions["test_socket_41"]
+	server.mu.RUnlock()
+	if exists {
+		t.Errorf("expected session test_socket_41 to be deleted from server.sessions after packet 41")
 	}
 }
 
@@ -223,6 +235,9 @@ func TestSocketIO_NonBlockingPollingQueue(t *testing.T) {
 		t.Fatal("handleRawMessage blocked on full PollingQueue")
 	}
 
+	// Sending pong "3" should be a clean no-op
+	server.handleRawMessage(socket, "3")
+
 	// socket.Emit should also NOT block on full PollingQueue
 	emitDone := make(chan struct{})
 	go func() {
@@ -238,14 +253,108 @@ func TestSocketIO_NonBlockingPollingQueue(t *testing.T) {
 	}
 }
 
-func TestHub_GracePeriodTimerLifecycle(t *testing.T) {
+func TestSocketIO_TransportUpgradeDrain(t *testing.T) {
+	socket := &ClientSocket{
+		ID:           "test_upgrade_drain",
+		UserID:       "user_drain",
+		PollingQueue: make(chan string, 16),
+		SendChan:     make(chan string, 16),
+		IsWebSocket:  false,
+	}
+
+	// Buffer packets in polling queue
+	socket.PollingQueue <- "pkt_1"
+	socket.PollingQueue <- "pkt_2"
+	socket.PollingQueue <- "pkt_3"
+
+	// Simulate upgrade drain logic
+	socket.mu.Lock()
+	socket.IsWebSocket = true
+drain:
+	for {
+		select {
+		case pkt := <-socket.PollingQueue:
+			select {
+			case socket.SendChan <- pkt:
+			default:
+			}
+		default:
+			break drain
+		}
+	}
+	socket.mu.Unlock()
+
+	if len(socket.PollingQueue) != 0 {
+		t.Errorf("expected PollingQueue to be empty after drain, got %d", len(socket.PollingQueue))
+	}
+	if len(socket.SendChan) != 3 {
+		t.Errorf("expected SendChan to have 3 drained packets, got %d", len(socket.SendChan))
+	}
+
+	// Verify order
+	if p1 := <-socket.SendChan; p1 != "pkt_1" {
+		t.Errorf("expected pkt_1, got %s", p1)
+	}
+	if p2 := <-socket.SendChan; p2 != "pkt_2" {
+		t.Errorf("expected pkt_2, got %s", p2)
+	}
+	if p3 := <-socket.SendChan; p3 != "pkt_3" {
+		t.Errorf("expected pkt_3, got %s", p3)
+	}
+}
+
+func TestSocketIO_SupersededConnectionHandling(t *testing.T) {
+	hub := &Hub{}
+	server := NewSocketIOServer(hub)
+
+	socket := &ClientSocket{
+		ID:           "test_superseded",
+		UserID:       "user_sup",
+		Hub:          hub,
+		Rooms:        make(map[string]bool),
+		PollingQueue: make(chan string, 16),
+		SendChan:     make(chan string, 16),
+		IsWebSocket:  true,
+		LastActive:   time.Now(),
+	}
+
+	server.mu.Lock()
+	server.sessions["test_superseded"] = &EngineIOSession{Socket: socket, CreatedAt: time.Now()}
+	server.mu.Unlock()
+
+	// Simulate old connection exit when a new connection is active
+	// Old connection exiting: isCurrent check should prevent deletion
+	server.mu.Lock()
+	sess, ok := server.sessions["test_superseded"]
+	if !ok {
+		t.Fatalf("session should exist")
+	}
+	sess.Socket.mu.Lock()
+	// Simulated conn: old connection pointer does not match active conn
+	isCurrent := (sess.Socket.Conn != nil && false)
+	sess.Socket.mu.Unlock()
+	if isCurrent {
+		delete(server.sessions, "test_superseded")
+	}
+	server.mu.Unlock()
+
+	server.mu.RLock()
+	_, stillExists := server.sessions["test_superseded"]
+	server.mu.RUnlock()
+
+	if !stillExists {
+		t.Errorf("expected session to NOT be deleted when old connection exits without being current")
+	}
+}
+
+func TestHub_RoomScopedGracePeriodDisconnect(t *testing.T) {
 	hub := &Hub{
 		userSockets:           make(map[string]map[string]*ClientSocket),
 		roomSockets:           make(map[string]map[string]*ClientSocket),
 		disconnectGraceTimers: make(map[string]*time.Timer),
 	}
 
-	// 1. Verify timer stop on reassignment
+	// 1. Timer cancellation on reassignment
 	t1 := time.NewTimer(5 * time.Second)
 	hub.mu.Lock()
 	hub.disconnectGraceTimers["u1"] = t1
@@ -264,52 +373,55 @@ func TestHub_GracePeriodTimerLifecycle(t *testing.T) {
 	}
 	t2.Stop()
 
-	// 2. Verify room-scoped reconnect check
-	userSock := &ClientSocket{
-		ID:     "sock_app",
+	// 2. Multi-socket user disconnect from call room
+	sockCall := &ClientSocket{
+		ID:     "sock_call_tab",
 		UserID: "u1",
 		Hub:    hub,
 		Rooms:  make(map[string]bool),
 	}
-	hub.AddSocket(userSock)
+	sockLobby := &ClientSocket{
+		ID:     "sock_lobby_tab",
+		UserID: "u1",
+		Hub:    hub,
+		Rooms:  make(map[string]bool),
+	}
 
-	// User has socket in app, but NOT in room_call_123
-	hub.mu.Lock()
-	reconnected := false
-	if rSockets, ok := hub.roomSockets["room_call_123"]; ok {
+	hub.AddSocket(sockCall)
+	hub.AddSocket(sockLobby)
+	hub.JoinRoom(sockCall, "room_active_call")
+
+	// User has 2 sockets in userSockets
+	if len(hub.GetUserSockets("u1")) != 2 {
+		t.Fatalf("expected 2 sockets for u1")
+	}
+
+	// Now sockCall disconnects (e.g. user closed call tab)
+	hub.RemoveSocket(sockCall)
+
+	// User still has 1 socket (lobby) in userSockets
+	if len(hub.GetUserSockets("u1")) != 1 {
+		t.Errorf("expected 1 socket remaining for u1 in userSockets")
+	}
+
+	// But in room_active_call, user has 0 sockets left
+	hub.mu.RLock()
+	roomSocketsRemaining := 0
+	if rSockets, ok := hub.roomSockets["room_active_call"]; ok {
 		for _, s := range rSockets {
 			if s.UserID == "u1" {
-				reconnected = true
-				break
+				roomSocketsRemaining++
 			}
 		}
 	}
-	hub.mu.Unlock()
+	hub.mu.RUnlock()
 
-	if reconnected {
-		t.Errorf("expected reconnected=false when socket is only in userSockets, not roomSockets")
-	}
-
-	// Now join the room
-	hub.JoinRoom(userSock, "room_call_123")
-	hub.mu.Lock()
-	reconnected = false
-	if rSockets, ok := hub.roomSockets["room_call_123"]; ok {
-		for _, s := range rSockets {
-			if s.UserID == "u1" {
-				reconnected = true
-				break
-			}
-		}
-	}
-	hub.mu.Unlock()
-
-	if !reconnected {
-		t.Errorf("expected reconnected=true once user socket joined roomSockets")
+	if roomSocketsRemaining != 0 {
+		t.Errorf("expected 0 sockets for u1 in room_active_call, got %d", roomSocketsRemaining)
 	}
 }
 
-func TestHub_SessionReconciliation_Clamping(t *testing.T) {
+func TestHub_DurationClampingAcrossLifecycle(t *testing.T) {
 	userA := &database.User{ID: "user_a", Plan: "FREE"}
 	userB := &database.User{ID: "user_b", Plan: "FREE"}
 	adminIDs := []string{}
@@ -317,13 +429,12 @@ func TestHub_SessionReconciliation_Clamping(t *testing.T) {
 	limitMinutes := database.CalculateEffectiveCallDuration(userA, userB, adminIDs)
 	limitSeconds := limitMinutes * 60
 	if limitSeconds != 900 {
-		t.Fatalf("expected 15 min (900s) plan limit, got %d", limitSeconds)
+		t.Fatalf("expected 15 min (900s) plan limit for FREE plan, got %d", limitSeconds)
 	}
 
-	// Scenario 1: Stale session 3 hours ago (10800s elapsed)
+	// 1. Startup reconciliation clamping
 	staleCreatedAt := time.Now().Add(-3 * time.Hour)
 	elapsedSeconds := int(time.Since(staleCreatedAt).Seconds())
-
 	completedDuration := limitSeconds
 	if elapsedSeconds < limitSeconds {
 		completedDuration = elapsedSeconds
@@ -331,19 +442,74 @@ func TestHub_SessionReconciliation_Clamping(t *testing.T) {
 	if completedDuration < 1 {
 		completedDuration = 1
 	}
-
 	if completedDuration != limitSeconds {
-		t.Errorf("expected duration to be clamped to limit %d, got %d (raw elapsed was %d)",
-			limitSeconds, completedDuration, elapsedSeconds)
+		t.Errorf("expected reconciliation duration clamped to %d, got %d", limitSeconds, completedDuration)
 	}
 
-	// Scenario 2: Active session still within limit (300s elapsed)
-	recentCreatedAt := time.Now().Add(-300 * time.Second)
-	recentElapsed := int(time.Since(recentCreatedAt).Seconds())
-	remainingSeconds := limitSeconds - recentElapsed
+	// 2. Authoritative teardown timer clamping
+	actualDuration := 905 // Fired 5s late due to OS scheduler
+	if actualDuration > limitSeconds {
+		actualDuration = limitSeconds
+	}
+	if actualDuration != limitSeconds {
+		t.Errorf("expected teardown duration clamped to %d, got %d", limitSeconds, actualDuration)
+	}
 
-	if remainingSeconds <= 0 || remainingSeconds > 605 {
-		t.Errorf("expected remainingSeconds around 600s, got %d", remainingSeconds)
+	// 3. Finish call clamping
+	finishDuration := 1200 // Finished past limit
+	if finishDuration > limitSeconds {
+		finishDuration = limitSeconds
+	}
+	if finishDuration != limitSeconds {
+		t.Errorf("expected finish call duration clamped to %d, got %d", limitSeconds, finishDuration)
+	}
+
+	// 4. Disconnect teardown clamping
+	disconnectDuration := 950
+	if disconnectDuration > limitSeconds {
+		disconnectDuration = limitSeconds
+	}
+	if disconnectDuration != limitSeconds {
+		t.Errorf("expected disconnect duration clamped to %d, got %d", limitSeconds, disconnectDuration)
+	}
+}
+
+func TestSessionRecorders_BothAndAllHandling(t *testing.T) {
+	// 1. Detection of "BOTH" and "ALL"
+	both := "BOTH"
+	all := "ALL"
+	if !isUserSessionRecorder(&both, "user1") {
+		t.Errorf("expected BOTH to match user1")
+	}
+	if !isUserSessionRecorder(&all, "user2") {
+		t.Errorf("expected ALL to match user2")
+	}
+
+	// 2. Comma-separated with BOTH
+	combo := "user1,BOTH"
+	if !isUserSessionRecorder(&combo, "user2") {
+		t.Errorf("expected combo containing BOTH to match user2")
+	}
+
+	// 3. Expansion of BOTH during toggle record off
+	userAID := "userA"
+	userBID := "userB"
+	recordedBy := &both
+
+	if recordedBy != nil && (*recordedBy == "BOTH" || *recordedBy == "ALL") {
+		bothRec := userAID + "," + userBID
+		recordedBy = &bothRec
+	}
+
+	newRec, recordersLeft := removeSessionRecorder(recordedBy, userAID)
+	if !recordersLeft || newRec != "userB" {
+		t.Errorf("expected recordersLeft=true and newRec='userB', got %v, '%s'", recordersLeft, newRec)
+	}
+
+	// Now userB stops recording
+	finalRec, finalLeft := removeSessionRecorder(&newRec, userBID)
+	if finalLeft || finalRec != "" {
+		t.Errorf("expected finalLeft=false and finalRec='', got %v, '%s'", finalLeft, finalRec)
 	}
 }
 

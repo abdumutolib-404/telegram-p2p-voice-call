@@ -244,6 +244,14 @@ func (h *Hub) RemoveSocket(socket *ClientSocket) {
 }
 
 func (h *Hub) JoinRoom(socket *ClientSocket, roomName string) {
+	if socket != nil {
+		socket.mu.Lock()
+		if socket.Rooms != nil {
+			socket.Rooms[roomName] = true
+		}
+		socket.mu.Unlock()
+	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -256,6 +264,14 @@ func (h *Hub) JoinRoom(socket *ClientSocket, roomName string) {
 }
 
 func (h *Hub) LeaveRoom(socket *ClientSocket, roomName string) {
+	if socket != nil {
+		socket.mu.Lock()
+		if socket.Rooms != nil {
+			delete(socket.Rooms, roomName)
+		}
+		socket.mu.Unlock()
+	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 

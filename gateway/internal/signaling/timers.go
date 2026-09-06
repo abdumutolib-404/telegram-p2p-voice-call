@@ -28,6 +28,13 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 		if actualDuration < 1 {
 			actualDuration = 1
 		}
+		if session.UserA != nil && session.UserB != nil {
+			limitMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
+			limitSeconds := limitMinutes * 60
+			if actualDuration > limitSeconds {
+				actualDuration = limitSeconds
+			}
+		}
 
 		egress := h.GetActiveEgress(roomName)
 		var egressID *string

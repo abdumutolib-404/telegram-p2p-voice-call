@@ -52,6 +52,7 @@ func (s *ClientSocket) writeTextMessage(msg string) error {
 	if closed || conn == nil {
 		return errors.New("socket closed or conn is nil")
 	}
+	_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return conn.WriteMessage(websocket.TextMessage, []byte(msg))
 }
 
@@ -247,6 +248,7 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 		if ok {
 			socket = sess.Socket
 			socket.mu.Lock()
+			oldConn := socket.Conn
 			socket.Conn = conn
 			socket.IsWebSocket = true
 			// Drain PollingQueue into SendChan
@@ -263,6 +265,9 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 				}
 			}
 			socket.mu.Unlock()
+			if oldConn != nil && oldConn != conn {
+				_ = oldConn.Close()
+			}
 		}
 		s.mu.Unlock()
 	}
@@ -327,7 +332,14 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 	defer func() {
 		if sessionID != "" {
 			s.mu.Lock()
-			delete(s.sessions, sessionID)
+			if sess, ok := s.sessions[sessionID]; ok {
+				sess.Socket.mu.Lock()
+				isCurrent := (sess.Socket.Conn == conn)
+				sess.Socket.mu.Unlock()
+				if isCurrent {
+					delete(s.sessions, sessionID)
+				}
+			}
 			s.mu.Unlock()
 		}
 	}()
@@ -357,12 +369,33 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 		for {
 			select {
 			case <-done:
-				socket.Disconnect()
+				socket.mu.Lock()
+				isCurrent := (socket.Conn == conn)
+				socket.mu.Unlock()
+				if isCurrent {
+					socket.Disconnect()
+				}
 				return
 			case pkt := <-socket.SendChan:
-				_ = socket.writeTextMessage(pkt)
+				if err := socket.writeTextMessage(pkt); err != nil {
+					socket.mu.Lock()
+					isCurrent := (socket.Conn == conn)
+					socket.mu.Unlock()
+					if isCurrent {
+						socket.Disconnect()
+					}
+					return
+				}
 			case <-ticker.C:
-				_ = socket.writeTextMessage("2") // Engine.IO ping
+				if err := socket.writeTextMessage("2"); err != nil {
+					socket.mu.Lock()
+					isCurrent := (socket.Conn == conn)
+					socket.mu.Unlock()
+					if isCurrent {
+						socket.Disconnect()
+					}
+					return
+				}
 			}
 		}
 	}()
@@ -477,6 +510,11 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 		return
 	}
 
+	// Engine.IO pong
+	if msg == "3" {
+		return
+	}
+
 	// WebSocket probe handshake: "2probe" -> "3probe"
 	if msg == "2probe" {
 		if socket.IsWS() {
@@ -493,6 +531,9 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 	// Socket.IO Disconnect packet: "41"
 	if msg == "41" || strings.HasPrefix(msg, "41") {
 		socket.Disconnect()
+		s.mu.Lock()
+		delete(s.sessions, socket.ID)
+		s.mu.Unlock()
 		return
 	}
 
