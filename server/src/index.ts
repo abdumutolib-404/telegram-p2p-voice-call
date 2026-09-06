@@ -29,6 +29,7 @@ import { questionIngestionService } from './services/crawler/ingestionService';
 import { startCrawlerLifecycleCron } from './services/crawler/crawlerScheduler';
 import { topicNotificationService } from './services/topicNotificationService';
 import { surgeAlertService } from './services/surgeAlertService';
+import { startEventSubscriber, EventSubscriberHandle } from './services/eventSubscriber';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
 import { requestIdMiddleware } from './middleware/requestId';
 import { logger } from './utils/logger';
@@ -927,6 +928,7 @@ if (pubClient && subClient) {
 }
 
 let bot: Bot<MyContext> | null = null;
+let eventSubscriberHandle: EventSubscriberHandle | null = null;
 
 async function startBotWithRetry(botInstance: Bot<MyContext>): Promise<void> {
   let isRunning = true;
@@ -1048,6 +1050,7 @@ async function bootstrap(): Promise<void> {
 
     setupSocketSignaling(io, bot ?? undefined);
     startZombieSessionCleaner(io, bot ?? undefined);
+    eventSubscriberHandle = startEventSubscriber(() => bot);
     startStoragePurgeCron();
     startSubscriptionExpiryCron(() => bot);
 
@@ -1116,6 +1119,9 @@ const gracefulShutdown = async (signal: string) => {
     signal,
   });
   try {
+    if (eventSubscriberHandle) {
+      await eventSubscriberHandle.stop().catch(() => undefined);
+    }
     if (bot) await bot.stop().catch(() => undefined);
     io.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

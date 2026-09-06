@@ -7,6 +7,7 @@ import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, calculateEffective
 import { escapeHtml } from '../../utils/sanitize';
 import { logger } from '../../utils/logger';
 import { scheduleAuthoritativeSessionTeardown } from '../../socket/signaling';
+import { publishGatewayCommand } from '../../config/redis';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
@@ -541,6 +542,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       const durationMinutes = calculateEffectiveCallDuration(caller, callee);
       const durationSeconds = durationMinutes * 60;
       scheduleAuthoritativeSessionTeardown(session.roomName, durationSeconds, bot);
+      void publishGatewayCommand({
+        command: 'SCHEDULE_CALL_TEARDOWN',
+        roomName: session.roomName,
+        durationSeconds,
+      });
 
       await ctx.answerCallbackQuery({ text: 'Call accepted! Opening audio channel...' });
 

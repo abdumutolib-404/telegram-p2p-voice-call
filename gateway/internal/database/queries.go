@@ -1,0 +1,745 @@
+package database
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type User struct {
+	ID                       string
+	TelegramID               int64
+	Alias                    string
+	Band                     float64
+	SubFC                    float64
+	SubLR                    float64
+	SubGRA                   float64
+	SubP                     float64
+	Plan                     string
+	WarningCount             int
+	IsBanned                 bool
+	IsPermanentlyBanned      bool
+	BannedUntil              *time.Time
+	DailyCallsUsed           int
+	LastCallDate             *string
+	DailyLimit               *int
+	MaxDuration              *int
+	RecordingLimit           *int
+	RetentionOverride        *int
+	CustomPlanName           *string
+	SubscriptionStatus       *string
+	SubscriptionExpiresAt    *time.Time
+	SubscriptionDurationDays *int
+}
+
+type CallSession struct {
+	ID                 string
+	RoomName           string
+	Status             string
+	UserAID            string
+	UserBID            string
+	CreatedAt          time.Time
+	EndedAt            *time.Time
+	Duration           *int
+	EgressID           *string
+	RecordingURL       *string
+	RecordedByUserID   *string
+	RecordingExpiresAt *time.Time
+	UserA              *User
+	UserB              *User
+}
+
+type PlanConfig struct {
+	Name           string
+	MaxDuration    int
+	DailyLimit     int
+	RecordingLimit int
+	RetentionDays  int
+}
+
+var DefaultPlans = map[string]PlanConfig{
+	"FREE": {Name: "Free", MaxDuration: 15, DailyLimit: 3, RecordingLimit: 1, RetentionDays: 1},
+	"PLUS": {Name: "Plus", MaxDuration: 30, DailyLimit: 10, RecordingLimit: 3, RetentionDays: 7},
+	"PRO":  {Name: "Pro", MaxDuration: 60, DailyLimit: 25, RecordingLimit: 7, RetentionDays: 30},
+	"BOSS": {Name: "Boss", MaxDuration: 90, DailyLimit: 50, RecordingLimit: 15, RetentionDays: 90},
+}
+
+type Entitlement struct {
+	Plan               string
+	CallLimit          int
+	MaxDurationMinutes int
+	RecordingLimit     int
+	RetentionDays      int
+	IsAdmin            bool
+	Source             string // "PLAN_DEFAULT" or "ADMIN_OVERRIDE" or "CUSTOM_PLAN"
+}
+
+func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement {
+	isAdmin := false
+	if user != nil {
+		tgStr := fmt.Sprintf("%d", user.TelegramID)
+		for _, a := range adminTelegramIDs {
+			if a == tgStr {
+				isAdmin = true
+				break
+			}
+		}
+	}
+
+	planKey := "FREE"
+	if user != nil && user.Plan != "" {
+		upper := strings.ToUpper(user.Plan)
+		if _, ok := DefaultPlans[upper]; ok {
+			planKey = upper
+		}
+	}
+
+	if planKey != "FREE" && !isAdmin && user != nil {
+		isExpiredStatus := user.SubscriptionStatus != nil && (*user.SubscriptionStatus == "EXPIRED" || *user.SubscriptionStatus == "CANCELLED")
+		isPastDate := user.SubscriptionExpiresAt != nil && user.SubscriptionExpiresAt.Before(time.Now())
+		if isExpiredStatus || isPastDate {
+			planKey = "FREE"
+		}
+	}
+
+	defaultTier := DefaultPlans[planKey]
+	dailyLimit := defaultTier.DailyLimit
+	isCustomLimit := false
+	if user != nil && user.DailyLimit != nil && *user.DailyLimit != defaultTier.DailyLimit {
+		dailyLimit = *user.DailyLimit
+		isCustomLimit = true
+	}
+	if isAdmin {
+		dailyLimit = 999
+	}
+
+	maxDurationMinutes := defaultTier.MaxDuration
+	isCustomDuration := false
+	if user != nil && user.MaxDuration != nil && *user.MaxDuration != defaultTier.MaxDuration {
+		maxDurationMinutes = *user.MaxDuration
+		isCustomDuration = true
+	}
+
+	recordingLimit := defaultTier.RecordingLimit
+	isCustomRecordingLimit := false
+	if user != nil && user.RecordingLimit != nil && *user.RecordingLimit > 0 {
+		recordingLimit = *user.RecordingLimit
+		isCustomRecordingLimit = true
+	}
+
+	retentionDays := defaultTier.RetentionDays
+	retentionSource := "PLAN_DEFAULT"
+	if user != nil && user.RetentionOverride != nil && *user.RetentionOverride > 0 {
+		retentionDays = *user.RetentionOverride
+		retentionSource = "ADMIN_OVERRIDE"
+	}
+
+	source := "PLAN_DEFAULT"
+	if isCustomLimit || isCustomDuration || isCustomRecordingLimit || retentionSource == "ADMIN_OVERRIDE" {
+		source = "ADMIN_OVERRIDE"
+	}
+	if user != nil && user.CustomPlanName != nil && *user.CustomPlanName != "" {
+		source = "CUSTOM_PLAN"
+	}
+
+	return Entitlement{
+		Plan:               planKey,
+		CallLimit:          dailyLimit,
+		MaxDurationMinutes: maxDurationMinutes,
+		RecordingLimit:     recordingLimit,
+		RetentionDays:      retentionDays,
+		IsAdmin:            isAdmin,
+		Source:             source,
+	}
+}
+
+func CalculateEffectiveCallDuration(userA, userB *User, adminTelegramIDs []string) int {
+	entA := GetEffectiveEntitlement(userA, adminTelegramIDs)
+	entB := GetEffectiveEntitlement(userB, adminTelegramIDs)
+
+	if entA.Source == "ADMIN_OVERRIDE" || entB.Source == "ADMIN_OVERRIDE" {
+		if entA.MaxDurationMinutes < entB.MaxDurationMinutes {
+			return entA.MaxDurationMinutes
+		}
+		return entB.MaxDurationMinutes
+	}
+
+	if entA.MaxDurationMinutes > entB.MaxDurationMinutes {
+		return entA.MaxDurationMinutes
+	}
+	return entB.MaxDurationMinutes
+}
+
+func CalculateMixedPlanDuration(planA, planB string) int {
+	cfgA, okA := DefaultPlans[strings.ToUpper(planA)]
+	if !okA {
+		cfgA = DefaultPlans["FREE"]
+	}
+	cfgB, okB := DefaultPlans[strings.ToUpper(planB)]
+	if !okB {
+		cfgB = DefaultPlans["FREE"]
+	}
+
+	if cfgA.MaxDuration > cfgB.MaxDuration {
+		return cfgA.MaxDuration
+	}
+	return cfgB.MaxDuration
+}
+
+const userSelectColumns = `
+	id, "telegramId", alias, band, "subFC", "subLR", "subGRA", "subP",
+	plan, "warningCount", "isBanned", "isPermanentlyBanned", "bannedUntil",
+	"dailyCallsUsed", "lastCallDate", "dailyLimit", "maxDuration",
+	"recordingLimit", "retentionOverride", "customPlanName",
+	"subscriptionStatus", "subscriptionExpiresAt", "subscriptionDurationDays"
+`
+
+func scanUser(row pgx.Row) (*User, error) {
+	u := &User{}
+	var (
+		bannedUntil              sql.NullTime
+		lastCallDate             sql.NullString
+		dailyLimit               sql.NullInt64
+		maxDuration              sql.NullInt64
+		recordingLimit           sql.NullInt64
+		retentionOverride        sql.NullInt64
+		customPlanName           sql.NullString
+		subscriptionStatus       sql.NullString
+		subscriptionExpiresAt    sql.NullTime
+		subscriptionDurationDays sql.NullInt64
+	)
+
+	err := row.Scan(
+		&u.ID,
+		&u.TelegramID,
+		&u.Alias,
+		&u.Band,
+		&u.SubFC,
+		&u.SubLR,
+		&u.SubGRA,
+		&u.SubP,
+		&u.Plan,
+		&u.WarningCount,
+		&u.IsBanned,
+		&u.IsPermanentlyBanned,
+		&bannedUntil,
+		&u.DailyCallsUsed,
+		&lastCallDate,
+		&dailyLimit,
+		&maxDuration,
+		&recordingLimit,
+		&retentionOverride,
+		&customPlanName,
+		&subscriptionStatus,
+		&subscriptionExpiresAt,
+		&subscriptionDurationDays,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if bannedUntil.Valid {
+		u.BannedUntil = &bannedUntil.Time
+	}
+	if lastCallDate.Valid {
+		u.LastCallDate = &lastCallDate.String
+	}
+	if dailyLimit.Valid {
+		v := int(dailyLimit.Int64)
+		u.DailyLimit = &v
+	}
+	if maxDuration.Valid {
+		v := int(maxDuration.Int64)
+		u.MaxDuration = &v
+	}
+	if recordingLimit.Valid {
+		v := int(recordingLimit.Int64)
+		u.RecordingLimit = &v
+	}
+	if retentionOverride.Valid {
+		v := int(retentionOverride.Int64)
+		u.RetentionOverride = &v
+	}
+	if customPlanName.Valid {
+		u.CustomPlanName = &customPlanName.String
+	}
+	if subscriptionStatus.Valid {
+		u.SubscriptionStatus = &subscriptionStatus.String
+	}
+	if subscriptionExpiresAt.Valid {
+		u.SubscriptionExpiresAt = &subscriptionExpiresAt.Time
+	}
+	if subscriptionDurationDays.Valid {
+		v := int(subscriptionDurationDays.Int64)
+		u.SubscriptionDurationDays = &v
+	}
+
+	return u, nil
+}
+
+func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
+	query := `SELECT ` + userSelectColumns + ` FROM "User" WHERE id = $1`
+	return scanUser(db.Pool.QueryRow(ctx, query, id))
+}
+
+func (db *DB) GetUserByTelegramID(ctx context.Context, telegramID int64) (*User, error) {
+	query := `SELECT ` + userSelectColumns + ` FROM "User" WHERE "telegramId" = $1`
+	return scanUser(db.Pool.QueryRow(ctx, query, telegramID))
+}
+
+func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSession, error) {
+	query := `
+		SELECT
+			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt"
+		FROM "CallSession" cs
+		WHERE cs.status = 'ACTIVE' AND (cs."userAId" = $1 OR cs."userBId" = $1)
+		ORDER BY cs."createdAt" DESC
+		LIMIT 1
+	`
+	row := db.Pool.QueryRow(ctx, query, userID)
+	s := &CallSession{}
+	var (
+		endedAt            sql.NullTime
+		duration           sql.NullInt64
+		egressID           sql.NullString
+		recordingURL       sql.NullString
+		recordedByUserID   sql.NullString
+		recordingExpiresAt sql.NullTime
+	)
+
+	err := row.Scan(
+		&s.ID,
+		&s.RoomName,
+		&s.Status,
+		&s.UserAID,
+		&s.UserBID,
+		&s.CreatedAt,
+		&endedAt,
+		&duration,
+		&egressID,
+		&recordingURL,
+		&recordedByUserID,
+		&recordingExpiresAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if endedAt.Valid {
+		s.EndedAt = &endedAt.Time
+	}
+	if duration.Valid {
+		d := int(duration.Int64)
+		s.Duration = &d
+	}
+	if egressID.Valid {
+		s.EgressID = &egressID.String
+	}
+	if recordingURL.Valid {
+		s.RecordingURL = &recordingURL.String
+	}
+	if recordedByUserID.Valid {
+		s.RecordedByUserID = &recordedByUserID.String
+	}
+	if recordingExpiresAt.Valid {
+		s.RecordingExpiresAt = &recordingExpiresAt.Time
+	}
+
+	// Fetch both users
+	uA, errA := db.GetUserByID(ctx, s.UserAID)
+	if errA == nil {
+		s.UserA = uA
+	}
+	uB, errB := db.GetUserByID(ctx, s.UserBID)
+	if errB == nil {
+		s.UserB = uB
+	}
+
+	return s, nil
+}
+
+func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*CallSession, error) {
+	query := `
+		SELECT
+			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt"
+		FROM "CallSession" cs
+		WHERE cs."roomName" = $1
+		LIMIT 1
+	`
+	row := db.Pool.QueryRow(ctx, query, roomName)
+	s := &CallSession{}
+	var (
+		endedAt            sql.NullTime
+		duration           sql.NullInt64
+		egressID           sql.NullString
+		recordingURL       sql.NullString
+		recordedByUserID   sql.NullString
+		recordingExpiresAt sql.NullTime
+	)
+
+	err := row.Scan(
+		&s.ID,
+		&s.RoomName,
+		&s.Status,
+		&s.UserAID,
+		&s.UserBID,
+		&s.CreatedAt,
+		&endedAt,
+		&duration,
+		&egressID,
+		&recordingURL,
+		&recordedByUserID,
+		&recordingExpiresAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if endedAt.Valid {
+		s.EndedAt = &endedAt.Time
+	}
+	if duration.Valid {
+		d := int(duration.Int64)
+		s.Duration = &d
+	}
+	if egressID.Valid {
+		s.EgressID = &egressID.String
+	}
+	if recordingURL.Valid {
+		s.RecordingURL = &recordingURL.String
+	}
+	if recordedByUserID.Valid {
+		s.RecordedByUserID = &recordedByUserID.String
+	}
+	if recordingExpiresAt.Valid {
+		s.RecordingExpiresAt = &recordingExpiresAt.Time
+	}
+
+	uA, errA := db.GetUserByID(ctx, s.UserAID)
+	if errA == nil {
+		s.UserA = uA
+	}
+	uB, errB := db.GetUserByID(ctx, s.UserBID)
+	if errB == nil {
+		s.UserB = uB
+	}
+
+	return s, nil
+}
+
+func (db *DB) CreateCallSession(ctx context.Context, id, roomName, userAID, userBID string) error {
+	query := `
+		INSERT INTO "CallSession" (id, "roomName", "userAId", "userBId", status, "createdAt", "updatedAt")
+		VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
+	`
+	_, err := db.Pool.Exec(ctx, query, id, roomName, userAID, userBID)
+	return err
+}
+
+func (db *DB) CompleteCallSession(ctx context.Context, id string, duration int, egressID, recordingURL *string, recordingExpiresAt *time.Time) (bool, error) {
+	query := `
+		UPDATE "CallSession"
+		SET status = 'COMPLETED', "endedAt" = NOW(), duration = $1, "egressId" = $2, "recordingUrl" = $3, "recordingExpiresAt" = $4, "updatedAt" = NOW()
+		WHERE id = $5 AND status = 'ACTIVE'
+	`
+	tag, err := db.Pool.Exec(ctx, query, duration, egressID, recordingURL, recordingExpiresAt, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
+	query := `
+		UPDATE "CallSession"
+		SET status = 'CANCELLED', "endedAt" = NOW(), duration = 0, "updatedAt" = NOW()
+		WHERE id = $1 AND (status = 'ACTIVE' OR status = 'PENDING')
+	`
+	tag, err := db.Pool.Exec(ctx, query, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() >= 1, nil
+}
+
+func (db *DB) UpdateSessionRecorders(ctx context.Context, id string, recorders *string) error {
+	query := `
+		UPDATE "CallSession"
+		SET "recordedByUserId" = $1, "updatedAt" = NOW()
+		WHERE id = $2 AND status = 'ACTIVE'
+	`
+	_, err := db.Pool.Exec(ctx, query, recorders, id)
+	return err
+}
+
+// UpdateSessionEgressAtomic implements optimistic concurrency control on toggle_record
+// WHERE id = $1 AND status = 'ACTIVE' AND "egressId" IS NULL
+func (db *DB) UpdateSessionEgressAtomic(ctx context.Context, id, egressID, recordingURL, recorders string) (bool, error) {
+	query := `
+		UPDATE "CallSession"
+		SET "egressId" = $1, "recordingUrl" = $2, "recordedByUserId" = $3, "updatedAt" = NOW()
+		WHERE id = $4 AND status = 'ACTIVE' AND "egressId" IS NULL
+	`
+	tag, err := db.Pool.Exec(ctx, query, egressID, recordingURL, recorders, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+func (db *DB) ClearSessionEgress(ctx context.Context, id string) error {
+	query := `
+		UPDATE "CallSession"
+		SET "egressId" = NULL, "recordedByUserId" = NULL, "updatedAt" = NOW()
+		WHERE id = $1 AND status = 'ACTIVE'
+	`
+	_, err := db.Pool.Exec(ctx, query, id)
+	return err
+}
+
+func (db *DB) RecordCompletedCallCredits(ctx context.Context, userAID, userBID string, durationSeconds int) error {
+	if durationSeconds < 5 {
+		return nil
+	}
+
+	currentMonth := time.Now().UTC().Format("2006-01")
+
+	recordUserCredit := func(userID string) error {
+		u, err := db.GetUserByID(ctx, userID)
+		if err != nil || u == nil {
+			return err
+		}
+
+		ent := GetEffectiveEntitlement(u, nil)
+		callsUsed, _ := db.GetUserCallsUsedThisPeriod(ctx, userID, u)
+		if !ent.IsAdmin && callsUsed >= ent.CallLimit {
+			consumed, _ := db.ConsumeOldestBonusCall(ctx, userID)
+			if consumed {
+				return nil
+			}
+		}
+
+		if u.LastCallDate != nil && *u.LastCallDate == currentMonth {
+			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "dailyCallsUsed" = "dailyCallsUsed" + 1 WHERE id = $1 AND "lastCallDate" = $2`, userID, currentMonth)
+		} else {
+			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "lastCallDate" = $1, "dailyCallsUsed" = 1 WHERE id = $2`, currentMonth, userID)
+		}
+		return err
+	}
+
+	_ = recordUserCredit(userAID)
+	_ = recordUserCredit(userBID)
+	return nil
+}
+
+func (db *DB) GetActiveBonusCallsCount(ctx context.Context, userID string) (int, error) {
+	query := `SELECT COUNT(*) FROM "ReferralReward" WHERE "userId" = $1 AND status = 'AVAILABLE'`
+	var count int
+	err := db.Pool.QueryRow(ctx, query, userID).Scan(&count)
+	return count, err
+}
+
+func (db *DB) ConsumeOldestBonusCall(ctx context.Context, userID string) (bool, error) {
+	query := `
+		UPDATE "ReferralReward"
+		SET status = 'CONSUMED', "usedAt" = NOW()
+		WHERE id = (
+			SELECT id FROM "ReferralReward"
+			WHERE "userId" = $1 AND status = 'AVAILABLE'
+			ORDER BY "createdAt" ASC
+			LIMIT 1
+		)
+	`
+	tag, err := db.Pool.Exec(ctx, query, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+func (db *DB) GetUserCallsUsedThisPeriod(ctx context.Context, userID string, user *User) (int, error) {
+	currentMonth := time.Now().UTC().Format("2006-01")
+	targetUser := user
+	var err error
+	if targetUser == nil {
+		targetUser, err = db.GetUserByID(ctx, userID)
+		if err != nil || targetUser == nil {
+			return 0, err
+		}
+	}
+
+	if targetUser.LastCallDate != nil && strings.HasPrefix(*targetUser.LastCallDate, currentMonth) {
+		return int(math.Max(0, float64(targetUser.DailyCallsUsed))), nil
+	}
+
+	periodStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.UTC)
+	if targetUser.SubscriptionExpiresAt != nil && targetUser.SubscriptionExpiresAt.After(time.Now()) {
+		durationDays := 30
+		if targetUser.SubscriptionDurationDays != nil && *targetUser.SubscriptionDurationDays > 0 {
+			durationDays = *targetUser.SubscriptionDurationDays
+		}
+		periodStart = targetUser.SubscriptionExpiresAt.Add(-time.Duration(durationDays) * 24 * time.Hour)
+	}
+
+	query := `
+		SELECT COUNT(*)
+		FROM "CallSession"
+		WHERE ("userAId" = $1 OR "userBId" = $1)
+		  AND status = 'COMPLETED'
+		  AND duration >= 5
+		  AND "createdAt" >= $2
+	`
+	var count int
+	err = db.Pool.QueryRow(ctx, query, userID, periodStart).Scan(&count)
+	return count, err
+}
+
+func (db *DB) GetUserRecordingsUsedThisPeriod(ctx context.Context, userID string, user *User) (int, error) {
+	targetUser := user
+	var err error
+	if targetUser == nil {
+		targetUser, err = db.GetUserByID(ctx, userID)
+		if err != nil || targetUser == nil {
+			return 0, err
+		}
+	}
+
+	periodStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.UTC)
+	if targetUser.SubscriptionExpiresAt != nil && targetUser.SubscriptionExpiresAt.After(time.Now()) {
+		durationDays := 30
+		if targetUser.SubscriptionDurationDays != nil && *targetUser.SubscriptionDurationDays > 0 {
+			durationDays = *targetUser.SubscriptionDurationDays
+		}
+		periodStart = targetUser.SubscriptionExpiresAt.Add(-time.Duration(durationDays) * 24 * time.Hour)
+	}
+
+	query := `
+		SELECT COUNT(*)
+		FROM "CallSession"
+		WHERE ("recordedByUserId" = $1
+		   OR "recordedByUserId" = 'BOTH'
+		   OR ("recordedByUserId" IS NULL AND "userAId" = $1)
+		   OR ("recordedByUserId" IS NULL AND "userBId" = $1)
+		   OR ("userAId" = $1 AND "recordedByUserId" LIKE '%,%')
+		   OR ("userBId" = $1 AND "recordedByUserId" LIKE '%,%'))
+		  AND "recordingUrl" IS NOT NULL
+		  AND "createdAt" >= $2
+	`
+	var count int
+	err = db.Pool.QueryRow(ctx, query, userID, periodStart).Scan(&count)
+	return count, err
+}
+
+func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSession, error) {
+	query := `
+		SELECT
+			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt"
+		FROM "CallSession" cs
+		WHERE cs.status = 'ACTIVE'
+	`
+	rows, err := db.Pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*CallSession
+	for rows.Next() {
+		s := &CallSession{}
+		var (
+			endedAt            sql.NullTime
+			duration           sql.NullInt64
+			egressID           sql.NullString
+			recordingURL       sql.NullString
+			recordedByUserID   sql.NullString
+			recordingExpiresAt sql.NullTime
+		)
+
+		if err := rows.Scan(
+			&s.ID,
+			&s.RoomName,
+			&s.Status,
+			&s.UserAID,
+			&s.UserBID,
+			&s.CreatedAt,
+			&endedAt,
+			&duration,
+			&egressID,
+			&recordingURL,
+			&recordedByUserID,
+			&recordingExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if endedAt.Valid {
+			s.EndedAt = &endedAt.Time
+		}
+		if duration.Valid {
+			d := int(duration.Int64)
+			s.Duration = &d
+		}
+		if egressID.Valid {
+			s.EgressID = &egressID.String
+		}
+		if recordingURL.Valid {
+			s.RecordingURL = &recordingURL.String
+		}
+		if recordedByUserID.Valid {
+			s.RecordedByUserID = &recordedByUserID.String
+		}
+		if recordingExpiresAt.Valid {
+			s.RecordingExpiresAt = &recordingExpiresAt.Time
+		}
+
+		sessions = append(sessions, s)
+	}
+
+	for _, s := range sessions {
+		s.UserA, _ = db.GetUserByID(ctx, s.UserAID)
+		s.UserB, _ = db.GetUserByID(ctx, s.UserBID)
+	}
+
+	return sessions, nil
+}
+
+func (db *DB) GetStalePendingSessions(ctx context.Context, olderThan time.Time) ([]*CallSession, error) {
+	query := `
+		SELECT id, "roomName", status, "userAId", "userBId", "createdAt"
+		FROM "CallSession"
+		WHERE status = 'PENDING' AND "createdAt" < $1
+	`
+	rows, err := db.Pool.Query(ctx, query, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*CallSession
+	for rows.Next() {
+		s := &CallSession{}
+		if err := rows.Scan(&s.ID, &s.RoomName, &s.Status, &s.UserAID, &s.UserBID, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, nil
+}

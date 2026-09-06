@@ -477,6 +477,31 @@ export function createRedisDuplicates(): { pubClient: Redis; subClient: Redis } 
 
 export const getRedisDuplicates = createRedisDuplicates;
 
+export function createRedisSubscriber(): Redis | null {
+  if (env.NODE_ENV === 'test' || !realRedisInstance) return null;
+  const client = realRedisInstance.duplicate();
+  client.on('error', (error: Error) => {
+    logger.error('Redis event subscriber client error', {
+      service: 'redis',
+      event: 'redis_event_sub_error',
+    }, error);
+  });
+  return client;
+}
+
+export async function publishGatewayCommand(command: Record<string, unknown>): Promise<void> {
+  if (env.NODE_ENV === 'test' || !pubClient) return;
+  try {
+    const payload = JSON.stringify(command);
+    await pubClient.publish('pairtalk:commands', payload);
+  } catch (err: unknown) {
+    logger.warn('Failed to publish command to Go gateway', {
+      service: 'redis',
+      event: 'publish_command_failed',
+    }, err);
+  }
+}
+
 export function isRedisReady(): boolean {
   if (env.NODE_ENV === 'test') return true;
   if (env.NODE_ENV === 'development') return true;
