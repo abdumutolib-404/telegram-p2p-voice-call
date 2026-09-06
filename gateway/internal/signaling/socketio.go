@@ -39,6 +39,26 @@ type ClientSocket struct {
 	Closed       bool
 	LastActive   time.Time
 	mu           sync.Mutex
+	writeMu      sync.Mutex
+}
+
+func (s *ClientSocket) writeTextMessage(msg string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	s.mu.Lock()
+	conn := s.Conn
+	closed := s.Closed
+	s.mu.Unlock()
+	if closed || conn == nil {
+		return errors.New("socket closed or conn is nil")
+	}
+	return conn.WriteMessage(websocket.TextMessage, []byte(msg))
+}
+
+func (s *ClientSocket) IsWS() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.IsWebSocket
 }
 
 func (s *ClientSocket) Emit(event string, payload interface{}) {
@@ -155,7 +175,12 @@ func NewSocketIOServer(hub *Hub) *SocketIOServer {
 			s.mu.Lock()
 			now := time.Now()
 			for sid, sess := range s.sessions {
-				if now.Sub(sess.Socket.LastActive) > 2*time.Minute && !sess.Socket.IsWebSocket {
+				sess.Socket.mu.Lock()
+				lastActive := sess.Socket.LastActive
+				isWS := sess.Socket.IsWebSocket
+				sess.Socket.mu.Unlock()
+
+				if now.Sub(lastActive) > 2*time.Minute && !isWS {
 					sess.Socket.Disconnect()
 					delete(s.sessions, sid)
 				}
@@ -206,15 +231,38 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 		return
 	}
 
+	// Configure read deadline (45s Engine.IO heartbeat window) and pong handler
+	_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
+		return nil
+	})
+
 	var socket *ClientSocket
+	sessionID := sid
 
 	if sid != "" {
 		s.mu.Lock()
 		sess, ok := s.sessions[sid]
 		if ok {
 			socket = sess.Socket
+			socket.mu.Lock()
 			socket.Conn = conn
 			socket.IsWebSocket = true
+			// Drain PollingQueue into SendChan
+		drain:
+			for {
+				select {
+				case pkt := <-socket.PollingQueue:
+					select {
+					case socket.SendChan <- pkt:
+					default:
+					}
+				default:
+					break drain
+				}
+			}
+			socket.mu.Unlock()
 		}
 		s.mu.Unlock()
 	}
@@ -236,6 +284,7 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 		}
 
 		newSID := uuid.NewString()
+		sessionID = newSID
 		socket = &ClientSocket{
 			ID:           newSID,
 			TraceID:      traceID,
@@ -265,14 +314,23 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 
 		// Send Engine.IO Open packet
 		openPacket := fmt.Sprintf(`0{"sid":"%s","upgrades":[],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}`, newSID)
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(openPacket))
+		_ = socket.writeTextMessage(openPacket)
 
 		// If authenticated immediately via header/query, send Socket.IO connect ACK
 		if socket.UserID != "" {
 			connectPacket := fmt.Sprintf(`40{"sid":"%s"}`, newSID)
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(connectPacket))
+			_ = socket.writeTextMessage(connectPacket)
 		}
 	}
+
+	// Defer cleanup of session when connection closes to eliminate memory leak
+	defer func() {
+		if sessionID != "" {
+			s.mu.Lock()
+			delete(s.sessions, sessionID)
+			s.mu.Unlock()
+		}
+	}()
 
 	// Reader and writer goroutines
 	done := make(chan struct{})
@@ -284,6 +342,7 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 			if err != nil {
 				return
 			}
+			_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
 			socket.mu.Lock()
 			socket.LastActive = time.Now()
 			socket.mu.Unlock()
@@ -301,12 +360,14 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 				socket.Disconnect()
 				return
 			case pkt := <-socket.SendChan:
-				_ = conn.WriteMessage(websocket.TextMessage, []byte(pkt))
+				_ = socket.writeTextMessage(pkt)
 			case <-ticker.C:
-				_ = conn.WriteMessage(websocket.TextMessage, []byte("2")) // Engine.IO ping
+				_ = socket.writeTextMessage("2") // Engine.IO ping
 			}
 		}
 	}()
+
+	<-done
 }
 
 func (s *SocketIOServer) handlePollingGet(c *gin.Context, sid string) {
@@ -405,24 +466,33 @@ func (s *SocketIOServer) handlePollingPost(c *gin.Context, sid string) {
 func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 	// Engine.IO ping -> pong
 	if msg == "2" {
-		if socket.IsWebSocket && socket.Conn != nil {
-			_ = socket.Conn.WriteMessage(websocket.TextMessage, []byte("3"))
+		if socket.IsWS() {
+			_ = socket.writeTextMessage("3")
 		} else {
-			socket.PollingQueue <- "3"
+			select {
+			case socket.PollingQueue <- "3":
+			default:
+			}
 		}
 		return
 	}
 
 	// WebSocket probe handshake: "2probe" -> "3probe"
 	if msg == "2probe" {
-		if socket.IsWebSocket && socket.Conn != nil {
-			_ = socket.Conn.WriteMessage(websocket.TextMessage, []byte("3probe"))
+		if socket.IsWS() {
+			_ = socket.writeTextMessage("3probe")
 		}
 		return
 	}
 
 	// Upgrade confirmation: "5"
 	if msg == "5" {
+		return
+	}
+
+	// Socket.IO Disconnect packet: "41"
+	if msg == "41" || strings.HasPrefix(msg, "41") {
+		socket.Disconnect()
 		return
 	}
 
@@ -444,11 +514,14 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 			user, valid := s.Hub.Authenticate(context.Background(), initData)
 			if !valid || user == nil {
 				errMsg := `44{"message":"Authentication failed: Invalid initData signature."}`
-				if socket.IsWebSocket && socket.Conn != nil {
-					_ = socket.Conn.WriteMessage(websocket.TextMessage, []byte(errMsg))
+				if socket.IsWS() {
+					_ = socket.writeTextMessage(errMsg)
 					socket.Disconnect()
 				} else {
-					socket.PollingQueue <- errMsg
+					select {
+					case socket.PollingQueue <- errMsg:
+					default:
+					}
 				}
 				return
 			}
@@ -458,10 +531,13 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 		}
 
 		connPkt := fmt.Sprintf(`40{"sid":"%s"}`, socket.ID)
-		if socket.IsWebSocket && socket.Conn != nil {
-			_ = socket.Conn.WriteMessage(websocket.TextMessage, []byte(connPkt))
+		if socket.IsWS() {
+			_ = socket.writeTextMessage(connPkt)
 		} else {
-			socket.PollingQueue <- connPkt
+			select {
+			case socket.PollingQueue <- connPkt:
+			default:
+			}
 		}
 		return
 	}

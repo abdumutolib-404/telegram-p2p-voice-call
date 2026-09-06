@@ -9,7 +9,8 @@ import (
 )
 
 type DB struct {
-	Pool *pgxpool.Pool
+	Pool             *pgxpool.Pool
+	AdminTelegramIDs []string
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*DB, error) {

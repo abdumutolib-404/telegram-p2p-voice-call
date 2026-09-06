@@ -72,6 +72,10 @@ func (h *Hub) getRoomMutex(roomName string) *sync.Mutex {
 	return v.(*sync.Mutex)
 }
 
+func (h *Hub) DeleteRoomMutex(roomName string) {
+	h.roomMutexes.Delete(roomName)
+}
+
 func (h *Hub) getUserMutex(userID string) *sync.Mutex {
 	v, _ := h.userMutexes.LoadOrStore(userID, &sync.Mutex{})
 	return v.(*sync.Mutex)
@@ -126,7 +130,7 @@ func (h *Hub) AddSocket(socket *ClientSocket) {
 	}
 	h.mu.Unlock()
 
-	if hasGrace {
+	if hasGrace && h.DB != nil {
 		// Notify active call sessions of reconnection
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -142,10 +146,15 @@ func (h *Hub) AddSocket(socket *ClientSocket) {
 	}
 
 	// Auto-reconnect active call on socket connect
-	go h.checkAutoReconnect(socket)
+	if h.DB != nil {
+		go h.checkAutoReconnect(socket)
+	}
 }
 
 func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
+	if h.DB == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -205,6 +214,13 @@ func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
 }
 
 func (h *Hub) RemoveSocket(socket *ClientSocket) {
+	socket.mu.Lock()
+	roomNames := make([]string, 0, len(socket.Rooms))
+	for roomName := range socket.Rooms {
+		roomNames = append(roomNames, roomName)
+	}
+	socket.mu.Unlock()
+
 	h.mu.Lock()
 	if sockets, ok := h.userSockets[socket.UserID]; ok {
 		delete(sockets, socket.ID)
@@ -213,7 +229,7 @@ func (h *Hub) RemoveSocket(socket *ClientSocket) {
 		}
 	}
 
-	for roomName := range socket.Rooms {
+	for _, roomName := range roomNames {
 		if rSockets, ok := h.roomSockets[roomName]; ok {
 			delete(rSockets, socket.ID)
 			if len(rSockets) == 0 {

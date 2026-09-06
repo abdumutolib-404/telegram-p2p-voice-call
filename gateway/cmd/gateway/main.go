@@ -34,11 +34,11 @@ func main() {
 	// Initialize PostgreSQL pool
 	db, err := database.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Printf("[Gateway] Warning: database connection failed: %v", err)
-	} else {
-		defer db.Close()
-		log.Println("[Gateway] Connected to PostgreSQL pool")
+		log.Fatalf("[Gateway] Fatal: database connection failed: %v", err)
 	}
+	defer db.Close()
+	db.AdminTelegramIDs = cfg.AdminTelegramIDs
+	log.Println("[Gateway] Connected to PostgreSQL pool")
 
 	// Initialize Redis client
 	redisOpts, err := redis.ParseURL(cfg.RedisURL)
@@ -151,6 +151,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	cancel() // Stop background loops immediately during drain
 	log.Println("[Gateway] Shutting down gateway gracefully...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

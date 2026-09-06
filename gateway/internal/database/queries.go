@@ -521,7 +521,7 @@ func (db *DB) RecordCompletedCallCredits(ctx context.Context, userAID, userBID s
 			return err
 		}
 
-		ent := GetEffectiveEntitlement(u, nil)
+		ent := GetEffectiveEntitlement(u, db.AdminTelegramIDs)
 		callsUsed, _ := db.GetUserCallsUsedThisPeriod(ctx, userID, u)
 		if !ent.IsAdmin && callsUsed >= ent.CallLimit {
 			consumed, _ := db.ConsumeOldestBonusCall(ctx, userID)
@@ -530,8 +530,8 @@ func (db *DB) RecordCompletedCallCredits(ctx context.Context, userAID, userBID s
 			}
 		}
 
-		if u.LastCallDate != nil && *u.LastCallDate == currentMonth {
-			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "dailyCallsUsed" = "dailyCallsUsed" + 1, "updatedAt" = NOW() WHERE id = $1 AND "lastCallDate" = $2`, userID, currentMonth)
+		if u.LastCallDate != nil && strings.HasPrefix(*u.LastCallDate, currentMonth) {
+			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "dailyCallsUsed" = "dailyCallsUsed" + 1, "updatedAt" = NOW() WHERE id = $1 AND "lastCallDate" = $2`, userID, *u.LastCallDate)
 		} else {
 			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "lastCallDate" = $1, "dailyCallsUsed" = 1, "updatedAt" = NOW() WHERE id = $2`, currentMonth, userID)
 		}
@@ -629,10 +629,10 @@ func (db *DB) GetUserRecordingsUsedThisPeriod(ctx context.Context, userID string
 		FROM "CallSession"
 		WHERE ("recordedByUserId" = $1
 		   OR "recordedByUserId" = 'BOTH'
+		   OR "recordedByUserId" = 'ALL'
 		   OR ("recordedByUserId" IS NULL AND "userAId" = $1)
 		   OR ("recordedByUserId" IS NULL AND "userBId" = $1)
-		   OR ("userAId" = $1 AND "recordedByUserId" LIKE '%,%')
-		   OR ("userBId" = $1 AND "recordedByUserId" LIKE '%,%'))
+		   OR ($1 = ANY(string_to_array("recordedByUserId", ','))))
 		  AND "recordingUrl" IS NOT NULL
 		  AND "createdAt" >= $2
 	`
@@ -707,6 +707,10 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 		sessions = append(sessions, s)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	for _, s := range sessions {
 		s.UserA, _ = db.GetUserByID(ctx, s.UserAID)
 		s.UserB, _ = db.GetUserByID(ctx, s.UserBID)
@@ -735,5 +739,10 @@ func (db *DB) GetStalePendingSessions(ctx context.Context, olderThan time.Time) 
 		}
 		sessions = append(sessions, s)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return sessions, nil
 }

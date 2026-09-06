@@ -98,12 +98,13 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 
 		_ = h.LiveKit.DeleteRoom(ctx, session.RoomName)
 
+		var isRecA, isRecB bool
+		var retA, retB int
+
 		if targetStatus == "COMPLETED" {
 			var expiresAt *time.Time
-			isRecA := recordingURL != nil && isUserSessionRecorder(current.RecordedByUserID, current.UserAID)
-			isRecB := recordingURL != nil && isUserSessionRecorder(current.RecordedByUserID, current.UserBID)
-			retA := 0
-			retB := 0
+			isRecA = recordingURL != nil && isUserSessionRecorder(current.RecordedByUserID, current.UserAID)
+			isRecB = recordingURL != nil && isUserSessionRecorder(current.RecordedByUserID, current.UserBID)
 			if isRecA && current.UserA != nil {
 				retA = database.GetEffectiveEntitlement(current.UserA, h.AdminTelegramIDs).RetentionDays
 			}
@@ -153,6 +154,15 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 				userBAlias = current.UserB.Alias
 			}
 
+			var rA *int
+			var rB *int
+			if isRecA {
+				rA = &retA
+			}
+			if isRecB {
+				rB = &retB
+			}
+
 			_ = h.PubSub.PublishCallFinished(ctx, CallFinishedPubSubMessage{
 				Type:            "CALL_FINISHED",
 				SessionID:       current.ID,
@@ -165,11 +175,14 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 				UserBAlias:      userBAlias,
 				DurationSeconds: finalDuration,
 				RecordingURL:    recordingURL,
+				RetentionDaysA:  rA,
+				RetentionDaysB:  rB,
 				Reason:          reason,
 			})
 		}
 
 		roomLock.Unlock()
+		h.DeleteRoomMutex(session.RoomName)
 	}
 
 	return sweptCount, nil

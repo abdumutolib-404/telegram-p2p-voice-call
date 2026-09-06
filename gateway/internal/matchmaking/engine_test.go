@@ -1,6 +1,7 @@
 package matchmaking
 
 import (
+	"math"
 	"testing"
 )
 
@@ -120,5 +121,61 @@ func TestNewService(t *testing.T) {
 	key, err := svc.GetBandKey(6.5)
 	if err != nil || key != "6.5" {
 		t.Errorf("expected 6.5, got %s, err: %v", key, err)
+	}
+}
+
+func TestMatchmaking_BandRounding(t *testing.T) {
+	engine := NewEngine(nil)
+
+	tests := []struct {
+		input    float64
+		expected string
+	}{
+		{5.24, "5.0"},
+		{5.25, "5.5"},
+		{5.74, "5.5"},
+		{5.75, "6.0"},
+		{0.0, "0.0"},
+		{0.24, "0.0"},
+		{0.25, "0.5"},
+		{8.74, "8.5"},
+		{8.75, "9.0"},
+		{9.0, "9.0"},
+	}
+
+	for _, tc := range tests {
+		got, err := engine.GetBandKey(tc.input)
+		if err != nil {
+			t.Errorf("unexpected error for band %f: %v", tc.input, err)
+		}
+		if got != tc.expected {
+			t.Errorf("GetBandKey(%f): expected %s, got %s", tc.input, tc.expected, got)
+		}
+	}
+}
+
+func TestMatchmaking_InvalidBands(t *testing.T) {
+	engine := NewEngine(nil)
+
+	invalidInputs := []struct {
+		name  string
+		value float64
+	}{
+		{"negative band", -0.1},
+		{"large negative band", -5.0},
+		{"greater than 9.0", 9.1},
+		{"band 10.0", 10.0},
+		{"NaN", math.NaN()},
+		{"+Inf", math.Inf(1)},
+		{"-Inf", math.Inf(-1)},
+	}
+
+	for _, tc := range invalidInputs {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := engine.GetBandKey(tc.value)
+			if err == nil {
+				t.Errorf("expected error for invalid band %f (%s), got %s", tc.value, tc.name, got)
+			}
+		})
 	}
 }

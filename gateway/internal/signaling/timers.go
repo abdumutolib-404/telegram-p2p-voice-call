@@ -75,6 +75,7 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 
 		_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, actualDuration)
 		_ = h.LiveKit.DeleteRoom(ctx, roomName)
+		h.DeleteRoomMutex(roomName)
 
 		h.EmitToRoom(roomName, "call_finished", CallFinishedEvent{
 			Duration: actualDuration,

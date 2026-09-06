@@ -235,8 +235,7 @@ func (h *Hub) handleCancelQueue(socket *ClientSocket) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	userSockets := h.GetUserSockets(socket.UserID)
-	if len(userSockets) <= 1 {
+	if h.Matchmaking != nil {
 		_, _ = h.Matchmaking.CancelQueue(ctx, socket.UserID)
 	}
 
@@ -310,6 +309,20 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 		if err != nil || !updated {
 			// Optimistic concurrency lost: another participant started egress concurrently. Stop ours!
 			_ = h.LiveKit.StopAudioEgress(ctx, egress.EgressID)
+			freshSession, freshErr := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
+			if freshErr == nil && freshSession != nil {
+				combinedRecorders := addSessionRecorder(freshSession.RecordedByUserID, requesterID)
+				_ = h.DB.UpdateSessionRecorders(ctx, freshSession.ID, &combinedRecorders)
+				if freshSession.EgressID != nil {
+					h.SetActiveEgress(req.RoomName, &ActiveEgress{
+						EgressID:    *freshSession.EgressID,
+						RelativeURL: safeString(freshSession.RecordingURL),
+					})
+				}
+				socket.Emit("record_status", RecordStatusEvent{Record: true})
+			} else {
+				socket.Emit("record_status", RecordStatusEvent{Record: false})
+			}
 			return
 		}
 
@@ -434,13 +447,16 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		return
 	}
 
-	_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, durationSeconds)
+	isMicDenied := req.Reason == "microphone_permission_denied"
+	if !isMicDenied {
+		_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, durationSeconds)
+	}
 	_ = h.LiveKit.DeleteRoom(ctx, req.RoomName)
+	h.DeleteRoomMutex(req.RoomName)
 
 	h.EmitToRoom(req.RoomName, "call_finished", CallFinishedEvent{Duration: durationSeconds})
 
 	// Publish CALL_FINISHED to Redis pairtalk:events
-	isMicDenied := req.Reason == "microphone_permission_denied"
 	if h.PubSub != nil && (durationSeconds >= 5 || isMicDenied) {
 		userATG := ""
 		userBTG := ""
@@ -518,7 +534,13 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 	defer cancel()
 
 	// Cancel queue for this user
-	_, _ = h.Matchmaking.CancelQueue(ctx, socket.UserID)
+	if h.Matchmaking != nil {
+		_, _ = h.Matchmaking.CancelQueue(ctx, socket.UserID)
+	}
+
+	if h.DB == nil {
+		return
+	}
 
 	activeCall, err := h.DB.GetActiveCallForUser(ctx, socket.UserID)
 	if err != nil || activeCall == nil {
@@ -537,7 +559,15 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 	graceTimer := time.AfterFunc(15*time.Second, func() {
 		h.mu.Lock()
 		delete(h.disconnectGraceTimers, socket.UserID)
-		reconnected := len(h.userSockets[socket.UserID]) > 0
+		reconnected := false
+		if rSockets, ok := h.roomSockets[activeCall.RoomName]; ok {
+			for _, s := range rSockets {
+				if s.UserID == socket.UserID {
+					reconnected = true
+					break
+				}
+			}
+		}
 		h.mu.Unlock()
 
 		if reconnected {
@@ -581,6 +611,7 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		h.SetActiveEgress(current.RoomName, nil)
 
 		_ = h.LiveKit.DeleteRoom(teardownCtx, current.RoomName)
+		h.DeleteRoomMutex(current.RoomName)
 
 		if isCancelled {
 			_, _ = h.DB.CancelCallSession(teardownCtx, current.ID)
@@ -662,6 +693,9 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 	})
 
 	h.mu.Lock()
+	if existing, ok := h.disconnectGraceTimers[socket.UserID]; ok {
+		existing.Stop()
+	}
 	h.disconnectGraceTimers[socket.UserID] = graceTimer
 	h.mu.Unlock()
 }
