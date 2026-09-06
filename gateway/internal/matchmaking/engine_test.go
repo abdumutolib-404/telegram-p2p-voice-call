@@ -111,3 +111,14 @@ func TestBandAndBucketKeys(t *testing.T) {
 		t.Errorf("expected globalKey 'match_queue:global', got '%s'", globalKey)
 	}
 }
+
+func TestNewService(t *testing.T) {
+	svc := NewService(nil)
+	if svc == nil {
+		t.Fatal("expected non-nil Service")
+	}
+	key, err := svc.GetBandKey(6.5)
+	if err != nil || key != "6.5" {
+		t.Errorf("expected 6.5, got %s, err: %v", key, err)
+	}
+}

@@ -20,6 +20,8 @@ export interface CallFinishedEventMessage {
   retentionDaysA?: number | null;
   retentionDaysB?: number | null;
   reason?: string | null;
+  requesterId?: string | null;
+  deniedUserId?: string | null;
 }
 
 export async function handleCallFinishedEvent(
@@ -39,6 +41,8 @@ export async function handleCallFinishedEvent(
     retentionDaysA,
     retentionDaysB,
     reason,
+    requesterId,
+    deniedUserId,
   } = msg;
 
   // 1. Referral reward processing (requires min duration handled internally by service)
@@ -62,16 +66,20 @@ export async function handleCallFinishedEvent(
 
   // 2. Microphone access denied notification
   if (reason === 'microphone_permission_denied') {
+    const isUserBDenied = deniedUserId === userBId || requesterId === userBId;
+    const deniedTgId = isUserBDenied ? userBTelegramId : userATelegramId;
+    const partnerTgId = isUserBDenied ? userATelegramId : userBTelegramId;
+
     await Promise.allSettled([
       bot.api.sendMessage(
-        userATelegramId,
+        deniedTgId,
         `🎙️ <b>Call Ended: Microphone Access Denied</b>\n\n` +
           `Microphone access was not granted after 3 attempts. Speaking practice requires a working microphone so your partner can hear you.\n\n` +
           `💡 <i>Please allow microphone permissions in your browser / Telegram settings before starting your next session.</i>`,
         { parse_mode: 'HTML' }
       ),
       bot.api.sendMessage(
-        userBTelegramId,
+        partnerTgId,
         `⚠️ <b>Call Disconnected</b>\n\n` +
           `Your practice partner was unable to grant microphone permissions. No call limits were consumed for this session.`,
         { parse_mode: 'HTML' }

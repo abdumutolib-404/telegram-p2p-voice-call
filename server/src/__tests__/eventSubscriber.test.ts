@@ -130,4 +130,37 @@ describe('eventSubscriber service', () => {
       expect.any(Object)
     );
   });
+
+  it('correctly attributes microphone permission denial to user B when requesterId is user B', async () => {
+    const msg: CallFinishedEventMessage = {
+      type: 'CALL_FINISHED',
+      sessionId: 'sess-mic-b',
+      roomName: 'room-mic-b',
+      userAId: 'user-a',
+      userBId: 'user-b',
+      userATelegramId: '111111',
+      userBTelegramId: '222222',
+      userAAlias: 'Candidate A',
+      userBAlias: 'Candidate B',
+      durationSeconds: 1,
+      reason: 'microphone_permission_denied',
+      requesterId: 'user-b',
+    };
+
+    await handleCallFinishedEvent(msg, mockBot as Bot<MyContext>);
+
+    expect(mockBot.api?.sendMessage).toHaveBeenCalledTimes(2);
+    // User B receives the denial warning
+    expect(mockBot.api?.sendMessage).toHaveBeenCalledWith(
+      '222222',
+      expect.stringContaining('Microphone Access Denied'),
+      expect.any(Object)
+    );
+    // User A receives the disconnected notice
+    expect(mockBot.api?.sendMessage).toHaveBeenCalledWith(
+      '111111',
+      expect.stringContaining('Call Disconnected'),
+      expect.any(Object)
+    );
+  });
 });

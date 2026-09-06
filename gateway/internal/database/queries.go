@@ -196,23 +196,22 @@ const userSelectColumns = `
 	id, "telegramId", alias, band, "subFC", "subLR", "subGRA", "subP",
 	plan, "warningCount", "isBanned", "isPermanentlyBanned", "bannedUntil",
 	"dailyCallsUsed", "lastCallDate", "dailyLimit", "maxDuration",
-	"recordingLimit", "retentionOverride", "customPlanName",
-	"subscriptionStatus", "subscriptionExpiresAt", "subscriptionDurationDays"
+	"recordingLimitOverride", "retentionOverride", "customPlanName",
+	"subscriptionStatus", "subscriptionExpiresAt"
 `
 
 func scanUser(row pgx.Row) (*User, error) {
 	u := &User{}
 	var (
-		bannedUntil              sql.NullTime
-		lastCallDate             sql.NullString
-		dailyLimit               sql.NullInt64
-		maxDuration              sql.NullInt64
-		recordingLimit           sql.NullInt64
-		retentionOverride        sql.NullInt64
-		customPlanName           sql.NullString
-		subscriptionStatus       sql.NullString
-		subscriptionExpiresAt    sql.NullTime
-		subscriptionDurationDays sql.NullInt64
+		bannedUntil            sql.NullTime
+		lastCallDate           sql.NullString
+		dailyLimit             sql.NullInt64
+		maxDuration            sql.NullInt64
+		recordingLimitOverride sql.NullInt64
+		retentionOverride      sql.NullInt64
+		customPlanName         sql.NullString
+		subscriptionStatus     sql.NullString
+		subscriptionExpiresAt  sql.NullTime
 	)
 
 	err := row.Scan(
@@ -233,12 +232,11 @@ func scanUser(row pgx.Row) (*User, error) {
 		&lastCallDate,
 		&dailyLimit,
 		&maxDuration,
-		&recordingLimit,
+		&recordingLimitOverride,
 		&retentionOverride,
 		&customPlanName,
 		&subscriptionStatus,
 		&subscriptionExpiresAt,
-		&subscriptionDurationDays,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -261,8 +259,8 @@ func scanUser(row pgx.Row) (*User, error) {
 		v := int(maxDuration.Int64)
 		u.MaxDuration = &v
 	}
-	if recordingLimit.Valid {
-		v := int(recordingLimit.Int64)
+	if recordingLimitOverride.Valid {
+		v := int(recordingLimitOverride.Int64)
 		u.RecordingLimit = &v
 	}
 	if retentionOverride.Valid {
@@ -277,10 +275,6 @@ func scanUser(row pgx.Row) (*User, error) {
 	}
 	if subscriptionExpiresAt.Valid {
 		u.SubscriptionExpiresAt = &subscriptionExpiresAt.Time
-	}
-	if subscriptionDurationDays.Valid {
-		v := int(subscriptionDurationDays.Int64)
-		u.SubscriptionDurationDays = &v
 	}
 
 	return u, nil
@@ -446,8 +440,8 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 
 func (db *DB) CreateCallSession(ctx context.Context, id, roomName, userAID, userBID string) error {
 	query := `
-		INSERT INTO "CallSession" (id, "roomName", "userAId", "userBId", status, "createdAt", "updatedAt")
-		VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
+		INSERT INTO "CallSession" (id, "roomName", "userAId", "userBId", status, "createdAt")
+		VALUES ($1, $2, $3, $4, 'ACTIVE', NOW())
 	`
 	_, err := db.Pool.Exec(ctx, query, id, roomName, userAID, userBID)
 	return err
@@ -456,7 +450,7 @@ func (db *DB) CreateCallSession(ctx context.Context, id, roomName, userAID, user
 func (db *DB) CompleteCallSession(ctx context.Context, id string, duration int, egressID, recordingURL *string, recordingExpiresAt *time.Time) (bool, error) {
 	query := `
 		UPDATE "CallSession"
-		SET status = 'COMPLETED', "endedAt" = NOW(), duration = $1, "egressId" = $2, "recordingUrl" = $3, "recordingExpiresAt" = $4, "updatedAt" = NOW()
+		SET status = 'COMPLETED', "endedAt" = NOW(), duration = $1, "egressId" = $2, "recordingUrl" = $3, "recordingExpiresAt" = $4
 		WHERE id = $5 AND status = 'ACTIVE'
 	`
 	tag, err := db.Pool.Exec(ctx, query, duration, egressID, recordingURL, recordingExpiresAt, id)
@@ -469,7 +463,7 @@ func (db *DB) CompleteCallSession(ctx context.Context, id string, duration int, 
 func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
 	query := `
 		UPDATE "CallSession"
-		SET status = 'CANCELLED', "endedAt" = NOW(), duration = 0, "updatedAt" = NOW()
+		SET status = 'CANCELLED', "endedAt" = NOW(), duration = 0
 		WHERE id = $1 AND (status = 'ACTIVE' OR status = 'PENDING')
 	`
 	tag, err := db.Pool.Exec(ctx, query, id)
@@ -482,7 +476,7 @@ func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
 func (db *DB) UpdateSessionRecorders(ctx context.Context, id string, recorders *string) error {
 	query := `
 		UPDATE "CallSession"
-		SET "recordedByUserId" = $1, "updatedAt" = NOW()
+		SET "recordedByUserId" = $1
 		WHERE id = $2 AND status = 'ACTIVE'
 	`
 	_, err := db.Pool.Exec(ctx, query, recorders, id)
@@ -494,7 +488,7 @@ func (db *DB) UpdateSessionRecorders(ctx context.Context, id string, recorders *
 func (db *DB) UpdateSessionEgressAtomic(ctx context.Context, id, egressID, recordingURL, recorders string) (bool, error) {
 	query := `
 		UPDATE "CallSession"
-		SET "egressId" = $1, "recordingUrl" = $2, "recordedByUserId" = $3, "updatedAt" = NOW()
+		SET "egressId" = $1, "recordingUrl" = $2, "recordedByUserId" = $3
 		WHERE id = $4 AND status = 'ACTIVE' AND "egressId" IS NULL
 	`
 	tag, err := db.Pool.Exec(ctx, query, egressID, recordingURL, recorders, id)
@@ -507,7 +501,7 @@ func (db *DB) UpdateSessionEgressAtomic(ctx context.Context, id, egressID, recor
 func (db *DB) ClearSessionEgress(ctx context.Context, id string) error {
 	query := `
 		UPDATE "CallSession"
-		SET "egressId" = NULL, "recordedByUserId" = NULL, "updatedAt" = NOW()
+		SET "egressId" = NULL, "recordedByUserId" = NULL
 		WHERE id = $1 AND status = 'ACTIVE'
 	`
 	_, err := db.Pool.Exec(ctx, query, id)
@@ -537,9 +531,9 @@ func (db *DB) RecordCompletedCallCredits(ctx context.Context, userAID, userBID s
 		}
 
 		if u.LastCallDate != nil && *u.LastCallDate == currentMonth {
-			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "dailyCallsUsed" = "dailyCallsUsed" + 1 WHERE id = $1 AND "lastCallDate" = $2`, userID, currentMonth)
+			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "dailyCallsUsed" = "dailyCallsUsed" + 1, "updatedAt" = NOW() WHERE id = $1 AND "lastCallDate" = $2`, userID, currentMonth)
 		} else {
-			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "lastCallDate" = $1, "dailyCallsUsed" = 1 WHERE id = $2`, currentMonth, userID)
+			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "lastCallDate" = $1, "dailyCallsUsed" = 1, "updatedAt" = NOW() WHERE id = $2`, currentMonth, userID)
 		}
 		return err
 	}
@@ -559,7 +553,7 @@ func (db *DB) GetActiveBonusCallsCount(ctx context.Context, userID string) (int,
 func (db *DB) ConsumeOldestBonusCall(ctx context.Context, userID string) (bool, error) {
 	query := `
 		UPDATE "ReferralReward"
-		SET status = 'CONSUMED', "usedAt" = NOW()
+		SET status = 'USED', "usedAt" = NOW()
 		WHERE id = (
 			SELECT id FROM "ReferralReward"
 			WHERE "userId" = $1 AND status = 'AVAILABLE'

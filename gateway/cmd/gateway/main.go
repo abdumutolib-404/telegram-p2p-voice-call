@@ -74,8 +74,8 @@ func main() {
 	// Initialize PubSub Client
 	pubsubClient := signaling.NewPubSubClient(rdb)
 
-	// Admin Telegram IDs (e.g. from env if configured)
-	adminIDs := []string{}
+	// Admin Telegram IDs parsed from environment
+	adminIDs := cfg.AdminTelegramIDs
 
 	// Initialize Signaling Hub
 	hub := signaling.NewHub(

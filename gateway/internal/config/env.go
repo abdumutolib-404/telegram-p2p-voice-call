@@ -23,6 +23,7 @@ type Config struct {
 	S3Region         string
 	S3Endpoint       string
 	S3ForcePathStyle bool
+	AdminTelegramIDs []string
 	RecordingsDir    string
 	NodeEnv          string
 }
@@ -40,6 +41,23 @@ func getBoolEnv(key string, defaultVal bool) bool {
 		return lower == "true" || lower == "1" || lower == "yes"
 	}
 	return defaultVal
+}
+
+func parseStringSliceEnv(key string) []string {
+	val, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(val) == "" {
+		return []string{}
+	}
+	raw := strings.ReplaceAll(val, " ", ",")
+	parts := strings.Split(raw, ",")
+	var result []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func LoadConfig() *Config {
@@ -61,6 +79,7 @@ func LoadConfig() *Config {
 	s3Region := getEnv("S3_REGION", "eu-north-1")
 	s3Endpoint := getEnv("S3_ENDPOINT", "")
 	s3ForcePathStyle := getBoolEnv("S3_FORCE_PATH_STYLE", false)
+	adminTelegramIDs := parseStringSliceEnv("ADMIN_TELEGRAM_IDS")
 	recordingsDir := getEnv("RECORDINGS_DIR", "recordings")
 	nodeEnv := getEnv("NODE_ENV", "development")
 
@@ -85,6 +104,7 @@ func LoadConfig() *Config {
 		S3Region:         s3Region,
 		S3Endpoint:       s3Endpoint,
 		S3ForcePathStyle: s3ForcePathStyle,
+		AdminTelegramIDs: adminTelegramIDs,
 		RecordingsDir:    recordingsDir,
 		NodeEnv:          nodeEnv,
 	}

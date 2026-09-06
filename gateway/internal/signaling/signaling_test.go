@@ -34,6 +34,35 @@ func TestParseSocketIOPacket(t *testing.T) {
 		}
 	})
 
+	t.Run("Event with namespace and ack ID", func(t *testing.T) {
+		msg := `42/admin,15["toggle_record",{"roomName":"room_123","record":true}]`
+		evt, payload, err := ParseSocketIOPacket(msg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if evt != "toggle_record" {
+			t.Errorf("expected toggle_record, got %s", evt)
+		}
+		expectedPayload := `{"roomName":"room_123","record":true}`
+		if string(payload) != expectedPayload {
+			t.Errorf("expected payload %s, got %s", expectedPayload, string(payload))
+		}
+	})
+
+	t.Run("Event with root namespace prefix", func(t *testing.T) {
+		msg := `42/,["join_queue"]`
+		evt, payload, err := ParseSocketIOPacket(msg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if evt != "join_queue" {
+			t.Errorf("expected join_queue, got %s", evt)
+		}
+		if payload != nil {
+			t.Errorf("expected nil payload, got %s", string(payload))
+		}
+	})
+
 	t.Run("Invalid packet", func(t *testing.T) {
 		_, _, err := ParseSocketIOPacket("invalid")
 		if err == nil {
@@ -92,3 +121,34 @@ func TestSessionRecorders(t *testing.T) {
 		}
 	})
 }
+
+func TestHubAuthenticate(t *testing.T) {
+	hub := &Hub{BotToken: "mock-token"}
+
+	t.Run("Empty initData fails", func(t *testing.T) {
+		u, ok := hub.Authenticate(nil, "")
+		if ok || u != nil {
+			t.Errorf("expected failure for empty initData")
+		}
+	})
+
+	t.Run("test-allowed in test environment succeeds", func(t *testing.T) {
+		t.Setenv("NODE_ENV", "test")
+		u, ok := hub.Authenticate(nil, "test-allowed")
+		if !ok || u == nil {
+			t.Fatalf("expected success for test-allowed in test mode")
+		}
+		if u.ID != "test_user_id" || u.TelegramID != 12345678 {
+			t.Errorf("unexpected user: %+v", u)
+		}
+	})
+
+	t.Run("test-allowed in production environment is rejected", func(t *testing.T) {
+		t.Setenv("NODE_ENV", "production")
+		u, ok := hub.Authenticate(nil, "test-allowed")
+		if ok || u != nil {
+			t.Errorf("expected failure for test-allowed in production mode")
+		}
+	})
+}
+

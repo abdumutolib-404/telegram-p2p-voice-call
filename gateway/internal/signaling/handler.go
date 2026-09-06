@@ -440,7 +440,8 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 	h.EmitToRoom(req.RoomName, "call_finished", CallFinishedEvent{Duration: durationSeconds})
 
 	// Publish CALL_FINISHED to Redis pairtalk:events
-	if h.PubSub != nil && durationSeconds >= 5 {
+	isMicDenied := req.Reason == "microphone_permission_denied"
+	if h.PubSub != nil && (durationSeconds >= 5 || isMicDenied) {
 		userATG := ""
 		userBTG := ""
 		userAAlias := ""
@@ -463,6 +464,11 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 			rB = &retB
 		}
 
+		deniedUserID := ""
+		if isMicDenied {
+			deniedUserID = requesterID
+		}
+
 		_ = h.PubSub.PublishCallFinished(ctx, CallFinishedPubSubMessage{
 			Type:            "CALL_FINISHED",
 			SessionID:       session.ID,
@@ -478,6 +484,8 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 			RetentionDaysA:  rA,
 			RetentionDaysB:  rB,
 			Reason:          req.Reason,
+			RequesterID:     requesterID,
+			DeniedUserID:    deniedUserID,
 		})
 	}
 }

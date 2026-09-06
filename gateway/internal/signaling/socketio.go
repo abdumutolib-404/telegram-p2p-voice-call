@@ -103,7 +103,11 @@ func (s *ClientSocket) Disconnect() {
 // "42["event", payload]"
 func ParseSocketIOPacket(msg string) (event string, payload []byte, err error) {
 	if strings.HasPrefix(msg, "42") {
-		content := msg[2:]
+		bracketIdx := strings.Index(msg, "[")
+		if bracketIdx == -1 {
+			return "", nil, errors.New("malformed socket.io packet: missing '['")
+		}
+		content := msg[bracketIdx:]
 		var rawList []json.RawMessage
 		if err := json.Unmarshal([]byte(content), &rawList); err != nil {
 			return "", nil, err
@@ -164,6 +168,20 @@ func NewSocketIOServer(hub *Hub) *SocketIOServer {
 }
 
 func (s *SocketIOServer) HandleRequest(c *gin.Context) {
+	origin := c.GetHeader("Origin")
+	if origin == "" {
+		origin = "*"
+	}
+	c.Header("Access-Control-Allow-Origin", origin)
+	c.Header("Access-Control-Allow-Credentials", "true")
+	c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Telegram-Init-Data, X-Trace-Id, X-Request-Id")
+
+	if c.Request.Method == http.MethodOptions {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
 	transport := c.Query("transport")
 	sid := c.Query("sid")
 
@@ -217,19 +235,9 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 			initData = token
 		}
 
-		user, valid := s.Hub.Authenticate(c.Request.Context(), initData)
-		if !valid || user == nil {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`0{"sid":"`+uuid.NewString()+`","upgrades":[],"pingInterval":25000,"pingTimeout":20000}`))
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`44{"message":"Authentication failed: Invalid initData signature."}`))
-			_ = conn.Close()
-			return
-		}
-
 		newSID := uuid.NewString()
 		socket = &ClientSocket{
 			ID:           newSID,
-			UserID:       user.ID,
-			TelegramID:   fmt.Sprintf("%d", user.TelegramID),
 			TraceID:      traceID,
 			Hub:          s.Hub,
 			Conn:         conn,
@@ -240,22 +248,30 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 			LastActive:   time.Now(),
 		}
 
+		if initData != "" {
+			if user, valid := s.Hub.Authenticate(c.Request.Context(), initData); valid && user != nil {
+				socket.UserID = user.ID
+				socket.TelegramID = fmt.Sprintf("%d", user.TelegramID)
+			}
+		}
+
 		s.mu.Lock()
 		s.sessions[newSID] = &EngineIOSession{Socket: socket, CreatedAt: time.Now()}
 		s.mu.Unlock()
 
-		s.Hub.AddSocket(socket)
+		if socket.UserID != "" {
+			s.Hub.AddSocket(socket)
+		}
 
-		// Send Engine.IO Open + Socket.IO Connect
+		// Send Engine.IO Open packet
 		openPacket := fmt.Sprintf(`0{"sid":"%s","upgrades":[],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}`, newSID)
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(openPacket))
-		connectPacket := fmt.Sprintf(`40{"sid":"%s"}`, newSID)
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(connectPacket))
-	} else {
-		// Existing polling upgraded to websocket
-		// Send 40 if needed
-		connectPacket := fmt.Sprintf(`40{"sid":"%s"}`, socket.ID)
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(connectPacket))
+
+		// If authenticated immediately via header/query, send Socket.IO connect ACK
+		if socket.UserID != "" {
+			connectPacket := fmt.Sprintf(`40{"sid":"%s"}`, newSID)
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(connectPacket))
+		}
 	}
 
 	// Reader and writer goroutines
@@ -339,7 +355,17 @@ func (s *SocketIOServer) handlePollingGet(c *gin.Context, sid string) {
 	// Wait for packets or timeout after 20s
 	select {
 	case pkt := <-socket.PollingQueue:
-		c.Data(http.StatusOK, "text/plain; charset=UTF-8", []byte(pkt))
+		allPkts := []string{pkt}
+	drain:
+		for {
+			select {
+			case nextPkt := <-socket.PollingQueue:
+				allPkts = append(allPkts, nextPkt)
+			default:
+				break drain
+			}
+		}
+		c.Data(http.StatusOK, "text/plain; charset=UTF-8", []byte(strings.Join(allPkts, "\x1e")))
 	case <-time.After(20 * time.Second):
 		c.Data(http.StatusOK, "text/plain; charset=UTF-8", []byte("6")) // noop
 	case <-c.Request.Context().Done():
@@ -367,7 +393,12 @@ func (s *SocketIOServer) handlePollingPost(c *gin.Context, sid string) {
 	socket.LastActive = time.Now()
 	socket.mu.Unlock()
 
-	s.handleRawMessage(socket, string(body))
+	packets := strings.Split(string(body), "\x1e")
+	for _, pkt := range packets {
+		if pkt != "" {
+			s.handleRawMessage(socket, pkt)
+		}
+	}
 	c.Data(http.StatusOK, "text/plain; charset=UTF-8", []byte("ok"))
 }
 
@@ -395,13 +426,14 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 		return
 	}
 
-	// Socket.IO Connect packet: "40" or "40{...}"
+	// Socket.IO Connect packet: "40" or "40{...}" or "40,{"token":"..."}"
 	if strings.HasPrefix(msg, "40") {
 		// Authenticate socket if not already authenticated
 		if socket.UserID == "" {
 			initData := ""
-			authPayload := msg[2:]
-			if strings.HasPrefix(authPayload, "{") {
+			idx := strings.Index(msg, "{")
+			if idx != -1 {
+				authPayload := msg[idx:]
 				var authMap map[string]interface{}
 				if err := json.Unmarshal([]byte(authPayload), &authMap); err == nil {
 					if t, ok := authMap["token"].(string); ok {
@@ -411,9 +443,13 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 			}
 			user, valid := s.Hub.Authenticate(context.Background(), initData)
 			if !valid || user == nil {
-				socket.Emit("error", SocketErrorEvent{
-					Message: "Authentication failed: Invalid initData signature.",
-				})
+				errMsg := `44{"message":"Authentication failed: Invalid initData signature."}`
+				if socket.IsWebSocket && socket.Conn != nil {
+					_ = socket.Conn.WriteMessage(websocket.TextMessage, []byte(errMsg))
+					socket.Disconnect()
+				} else {
+					socket.PollingQueue <- errMsg
+				}
 				return
 			}
 			socket.UserID = user.ID
@@ -432,6 +468,13 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 
 	// Socket.IO Event packet: "42[...]"
 	if strings.HasPrefix(msg, "42") {
+		if socket.UserID == "" {
+			socket.Emit("error", SocketErrorEvent{
+				Message: "Unauthenticated socket session.",
+			})
+			return
+		}
+
 		evt, payload, err := ParseSocketIOPacket(msg)
 		if err != nil {
 			return

@@ -87,6 +87,8 @@ type CallFinishedPubSubMessage struct {
 	RetentionDaysA  *int    `json:"retentionDaysA,omitempty"`
 	RetentionDaysB  *int    `json:"retentionDaysB,omitempty"`
 	Reason          string  `json:"reason,omitempty"`
+	RequesterID     string  `json:"requesterId,omitempty"`
+	DeniedUserID    string  `json:"deniedUserId,omitempty"`
 }
 
 type CommandPubSubMessage struct {
