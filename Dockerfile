@@ -3,7 +3,15 @@ FROM node:20-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache ffmpeg openssl libssl3
 
-# --- Stage 1: Build Server ---
+# --- Stage 1: Build Go Gateway ---
+FROM golang:alpine AS gateway-builder
+WORKDIR /app/gateway
+COPY gateway/go.mod gateway/go.sum ./
+RUN go mod download
+COPY gateway/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /gateway-bin ./cmd/gateway
+
+# --- Stage 2: Build Server ---
 FROM base AS server-builder
 WORKDIR /app/server
 COPY server/package*.json ./
@@ -43,6 +51,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3001
+
+# Copy compiled Go Gateway
+COPY --from=gateway-builder /gateway-bin /usr/local/bin/gateway
 
 # Copy compiled backend & assets
 COPY --from=server-builder /app/server/dist ./server/dist
