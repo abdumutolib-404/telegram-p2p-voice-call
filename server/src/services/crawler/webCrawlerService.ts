@@ -182,6 +182,52 @@ export class WebCrawlerService {
   }
 
   /**
+   * SSRF Protection: Validates whether a target URL is safe for external crawling:
+   * 1. Protocol must strictly be HTTP or HTTPS.
+   * 2. Hostname must NOT resolve to localhost, private IP (10/8, 172.16/12, 192.168/16),
+   *    loopback (127/8), or cloud metadata services (169.254.169.254).
+   */
+  public isSafeCrawlerUrl(urlStr: string): boolean {
+    if (!urlStr || typeof urlStr !== 'string') return false;
+    try {
+      const parsed = new URL(urlStr.trim());
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return false;
+      }
+      const host = parsed.hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
+      if (
+        !host ||
+        host === 'localhost' ||
+        host === '::1' ||
+        host === '0.0.0.0' ||
+        host.endsWith('.localhost') ||
+        host.endsWith('.local') ||
+        host.endsWith('.internal') ||
+        host === 'metadata.google.internal' ||
+        host === 'instance-data'
+      ) {
+        return false;
+      }
+
+      // Check IPv4 ranges: private, loopback, link-local / metadata (169.254.169.254)
+      const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+      if (ipv4Match) {
+        const octets = ipv4Match.slice(1, 5).map(Number);
+        if (octets.some((o) => o < 0 || o > 255)) return false;
+        const [o0, o1] = octets;
+        if (o0 === 127 || o0 === 10 || o0 === 0) return false;
+        if (o0 === 172 && o1 >= 16 && o1 <= 31) return false;
+        if (o0 === 192 && o1 === 168) return false;
+        if (o0 === 169 && o1 === 254) return false;
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Serializes requests per target domain to cap concurrency at 1 and enforces polite spacing delay (750ms).
    */
   private async runWithDomainLimiter<T>(domain: string, fn: () => Promise<T>): Promise<T> {
@@ -215,6 +261,14 @@ export class WebCrawlerService {
    * concurrency caps, and exponential backoff on HTTP 429/503 responses.
    */
   public async fetchHtml(url: string, maxRetries = 2): Promise<string | null> {
+    if (!this.isSafeCrawlerUrl(url)) {
+      logger.warn('SSRF protection: Crawler blocked request to unsafe or private target', {
+        service: 'crawler',
+        event: 'crawler_ssrf_blocked',
+        url,
+      });
+      return null;
+    }
     let domain = 'unknown-target';
     try {
       domain = new URL(url).hostname.toLowerCase();

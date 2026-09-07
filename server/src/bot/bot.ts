@@ -190,9 +190,9 @@ export function createBot(token: string): Bot<MyContext> {
     const text = ctx.message?.text || '';
     const callbackData = ctx.callbackQuery?.data || '';
 
-    // Determine exemptions
+    // Determine exemptions: Only whitelisted administrators are rate-limit exempt
     const isAdmin = env.ADMIN_TELEGRAM_IDS.includes(String(fromId));
-    const isRateLimitExempt = isAdmin || (Boolean(ctx.session?.step) && ctx.session.step !== 'idle');
+    const isRateLimitExempt = isAdmin;
     const isBanExempt =
       text.startsWith('/start') ||
       text.startsWith('/appeal') ||

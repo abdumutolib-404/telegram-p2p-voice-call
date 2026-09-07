@@ -21,28 +21,42 @@ function isAdminJwtPayload(value: string | JwtPayload): value is AdminJwtPayload
 
 export function adminAuthMiddleware(req: AdminAuthenticatedRequest, res: Response, next: NextFunction): void {
   let token: string | undefined;
+  let fromCookieOnly = false;
 
-  // 1. Prefer HttpOnly Cookie
-  if (req.cookies && typeof req.cookies.admin_session === 'string' && req.cookies.admin_session.trim()) {
+  // 1. Authorization Bearer header takes precedence (explicit non-ambient token)
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice('Bearer '.length).trim();
+  }
+
+  // 2. Fall back to HttpOnly Cookie
+  if (!token && req.cookies && typeof req.cookies.admin_session === 'string' && req.cookies.admin_session.trim()) {
     token = req.cookies.admin_session.trim();
+    fromCookieOnly = true;
   }
 
-  // 2. Fall back to Authorization Bearer header
-  if (!token) {
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-      token = authHeader.slice('Bearer '.length).trim();
-    }
-  }
-
-  // 3. Fall back to query parameter token for authenticated media/receipt streaming
+  // 3. Fall back to query parameter token ONLY for read-only GET requests (e.g. receipt streaming)
   if (!token && typeof req.query?.token === 'string' && req.query.token.trim()) {
+    if (req.method !== 'GET') {
+      res.status(403).json({ error: 'Forbidden: Query parameter tokens are prohibited on state-changing requests.' });
+      return;
+    }
     token = req.query.token.trim();
   }
 
   if (!token) {
     res.status(401).json({ error: 'Unauthorized: Missing session cookie or Bearer token.' });
     return;
+  }
+
+  // 4. Anti-CSRF protection on state-changing methods when authenticated via ambient cookie only
+  const isMutatingMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase());
+  if (isMutatingMethod && fromCookieOnly) {
+    const customHeader = req.headers['x-requested-with'] || req.headers['x-admin-csrf'];
+    if (!customHeader && env.NODE_ENV !== 'test') {
+      res.status(403).json({ error: 'Forbidden: CSRF protection failed. Custom header required for state-changing operations.' });
+      return;
+    }
   }
 
   try {

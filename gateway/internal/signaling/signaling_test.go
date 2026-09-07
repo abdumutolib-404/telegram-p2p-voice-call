@@ -1,7 +1,9 @@
 package signaling
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -547,4 +549,84 @@ func TestSessionRecorders_Concurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestHandleWebRTCSignal_CrossRoomPrevention(t *testing.T) {
+	hub := NewHub(nil, nil, nil, nil, "", "", "", "", nil)
+
+	// Receiver socket enrolled in target_room
+	receiver := &ClientSocket{
+		ID:          "sock_target",
+		UserID:      "user_target",
+		Rooms:       map[string]bool{"target_room": true},
+		SendChan:    make(chan string, 10),
+		IsWebSocket: true,
+	}
+
+	// Attacker socket enrolled ONLY in attacker_room
+	attacker := &ClientSocket{
+		ID:          "sock_attacker",
+		UserID:      "user_attacker",
+		Rooms:       map[string]bool{"attacker_room": true},
+		SendChan:    make(chan string, 10),
+		IsWebSocket: true,
+	}
+
+	// Legitimate sender enrolled in target_room
+	legitSender := &ClientSocket{
+		ID:          "sock_legit",
+		UserID:      "user_legit",
+		Rooms:       map[string]bool{"target_room": true},
+		SendChan:    make(chan string, 10),
+		IsWebSocket: true,
+	}
+
+	hub.mu.Lock()
+	hub.roomSockets["target_room"] = map[string]*ClientSocket{
+		receiver.ID:    receiver,
+		legitSender.ID: legitSender,
+	}
+	hub.roomSockets["attacker_room"] = map[string]*ClientSocket{
+		attacker.ID: attacker,
+	}
+	hub.mu.Unlock()
+
+	// 1. Attacker tries to inject a signal into target_room
+	attackPayload, err := json.Marshal(WebRTCSignalPayload{
+		RoomName: "target_room",
+		SDP:      "malicious_sdp",
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal attack payload: %v", err)
+	}
+	hub.handleWebRTCSignal(attacker, "signal", attackPayload)
+
+	// Check if receiver got anything: should be empty!
+	select {
+	case msg := <-receiver.SendChan:
+		t.Fatalf("Security Violation: receiver got injected signal from non-member socket: %s", msg)
+	default:
+		// Passed, signal was dropped because attacker is not in target_room
+	}
+
+	// 2. Legitimate member sends signal into target_room
+	legitPayload, err := json.Marshal(WebRTCSignalPayload{
+		RoomName: "target_room",
+		SDP:      "valid_sdp",
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal legit payload: %v", err)
+	}
+	hub.handleWebRTCSignal(legitSender, "signal", legitPayload)
+
+	// Check if receiver got the message
+	select {
+	case msg := <-receiver.SendChan:
+		if !strings.Contains(msg, "valid_sdp") {
+			t.Errorf("Expected valid_sdp in message, got: %s", msg)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Timed out waiting for legitimate signal to reach receiver")
+	}
+}
+
 

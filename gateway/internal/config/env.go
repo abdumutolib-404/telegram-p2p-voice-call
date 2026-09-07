@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -87,6 +88,15 @@ func LoadConfig() *Config {
 	port = strings.TrimPrefix(port, ":")
 	if _, err := strconv.Atoi(port); err != nil {
 		port = "3001"
+	}
+
+	if nodeEnv == "production" {
+		if botToken == "" {
+			log.Fatal("[Gateway] Production error: BOT_TOKEN is required in production")
+		}
+		if lkKey == "" || lkSecret == "" || lkKey == "devkey" || lkSecret == "secret" {
+			log.Fatal("[Gateway] Production error: LIVEKIT_API_KEY and LIVEKIT_API_SECRET are required in production")
+		}
 	}
 
 	return &Config{

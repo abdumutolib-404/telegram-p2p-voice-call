@@ -35,5 +35,9 @@ func NewReverseProxy(targetURL string) (*ReverseProxy, error) {
 }
 
 func (rp *ReverseProxy) Handle(c *gin.Context) {
+	clientIP := c.ClientIP()
+	if clientIP != "" {
+		c.Request.Header.Set("X-Real-IP", clientIP)
+	}
 	rp.proxy.ServeHTTP(c.Writer, c.Request)
 }

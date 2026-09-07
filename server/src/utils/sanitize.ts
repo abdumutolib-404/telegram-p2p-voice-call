@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import net from 'node:net';
 
 /**
  * Escapes HTML control characters in dynamic strings to prevent HTML injection / XSS
@@ -143,7 +144,10 @@ export function sanitizeUrl(urlOrData: string): string | null {
 export function extractClientIp(req: Request): string {
   const cfIp = req.headers['cf-connecting-ip'];
   if (typeof cfIp === 'string' && cfIp.trim()) {
-    return cfIp.trim();
+    const trimmed = cfIp.trim();
+    if (net.isIP(trimmed) !== 0 && !isPrivateOrReservedHost(trimmed)) {
+      return trimmed;
+    }
   }
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }

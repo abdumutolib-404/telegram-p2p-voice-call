@@ -9,10 +9,25 @@ const router = Router();
 export async function invalidateIeltsQuestionCache(): Promise<void> {
   try {
     const redis = getRedis();
-    const keys = await redis.keys('cache:ielts:questions:*');
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
+    // Non-blocking iterative SCAN cursor to prevent blocking Redis single-threaded event loop
+    let cursor = '0';
+    do {
+      if (typeof (redis as any).scan === 'function') {
+        const res = await (redis as any).scan(cursor, 'MATCH', 'cache:ielts:questions:*', 'COUNT', 100);
+        cursor = Array.isArray(res) ? res[0] : '0';
+        const keys = Array.isArray(res) && Array.isArray(res[1]) ? res[1] : [];
+        if (keys.length > 0) {
+          await redis.del(...keys);
+        }
+      } else {
+        // Fallback for test harness / in-memory mock
+        const keys = await redis.keys('cache:ielts:questions:*');
+        if (keys.length > 0) {
+          await redis.del(...keys);
+        }
+        break;
+      }
+    } while (cursor !== '0');
   } catch {}
 }
 

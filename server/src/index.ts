@@ -99,6 +99,10 @@ app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '0');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(self "https://web.telegram.org" "https://webk.telegram.org" "https://webz.telegram.org"), geolocation=(), payment=()'
+  );
   if (env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
@@ -112,7 +116,19 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data', 'Cookie', 'X-Request-ID', 'x-request-id', 'x-correlation-id'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-telegram-init-data',
+    'Cookie',
+    'X-Request-ID',
+    'x-request-id',
+    'x-correlation-id',
+    'X-Requested-With',
+    'x-requested-with',
+    'X-Admin-CSRF',
+    'x-admin-csrf',
+  ],
   exposedHeaders: ['X-Request-ID'],
 }));
 
@@ -123,8 +139,13 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
 // --- Static Path Resolvers & Pre-Rendered SEO HTML ---
+let memoLandingDistPath: string | null | undefined;
+let memoClientDistPath: string | null | undefined;
+let memoAdminDistPath: string | null | undefined;
+
 const getLandingDistPath = (): string | null => {
   if (process.env.NODE_ENV === 'test') return null;
+  if (memoLandingDistPath !== undefined) return memoLandingDistPath;
   const candidates = [
     path.resolve(__dirname, '../public/landing'),
     path.resolve(__dirname, '../../landing/dist'),
@@ -134,13 +155,16 @@ const getLandingDistPath = (): string | null => {
   ];
   for (const c of candidates) {
     if (fs.existsSync(c) && fs.existsSync(path.join(c, 'index.html'))) {
+      memoLandingDistPath = c;
       return c;
     }
   }
+  memoLandingDistPath = null;
   return null;
 };
 
 const getClientDistPath = (): string | null => {
+  if (memoClientDistPath !== undefined) return memoClientDistPath;
   const candidates = [
     path.resolve(__dirname, '../public/client'),
     path.resolve(__dirname, '../../client/dist'),
@@ -150,13 +174,16 @@ const getClientDistPath = (): string | null => {
   ];
   for (const c of candidates) {
     if (fs.existsSync(c) && fs.existsSync(path.join(c, 'index.html'))) {
+      memoClientDistPath = c;
       return c;
     }
   }
+  memoClientDistPath = null;
   return null;
 };
 
 const getAdminDistPath = (): string | null => {
+  if (memoAdminDistPath !== undefined) return memoAdminDistPath;
   const candidates = [
     path.resolve(__dirname, '../public/admin'),
     path.resolve(__dirname, '../../admin/dist'),
@@ -166,9 +193,11 @@ const getAdminDistPath = (): string | null => {
   ];
   for (const c of candidates) {
     if (fs.existsSync(c) && fs.existsSync(path.join(c, 'index.html'))) {
+      memoAdminDistPath = c;
       return c;
     }
   }
+  memoAdminDistPath = null;
   return null;
 };
 

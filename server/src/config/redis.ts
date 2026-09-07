@@ -59,6 +59,18 @@ class InMemoryRedisMock {
     return entry.value;
   }
 
+  async mget(...keys: (string | string[])[]): Promise<(string | null)[]> {
+    const flatKeys: string[] = [];
+    for (const k of keys) {
+      if (Array.isArray(k)) {
+        flatKeys.push(...k);
+      } else {
+        flatKeys.push(k);
+      }
+    }
+    return Promise.all(flatKeys.map((k) => this.get(k)));
+  }
+
   async set(
     key: string,
     value: string,
@@ -303,6 +315,53 @@ class InMemoryRedisMock {
       });
     }
 
+    if (script.includes('RATE_LIMIT_EVAL')) {
+      const penaltyKey = keys[0];
+      const lockKey = keys[1];
+      const rateKey = keys[2];
+      const checkLock = args[0] === '1';
+      const windowSeconds = Number(args[1]);
+      const maxRequests = Number(args[2]);
+      const penaltySeconds = Number(args[3]);
+
+      let penaltyTtl = await this.ttl(penaltyKey);
+      if (penaltyTtl <= 0) {
+        // Fallback for tests setting legacy penalty keys like penalty:direct_call:user
+        const match = penaltyKey.match(/^\{([^}]+)\}:penalty:(.+)$/);
+        if (match) {
+          penaltyTtl = await this.ttl(`penalty:${match[2]}:${match[1]}`);
+        }
+      }
+      if (penaltyTtl > 0) {
+        return [0, 'RATE_LIMITED', penaltyTtl, 0];
+      }
+
+      if (checkLock) {
+        let lockExists = await this.exists(lockKey);
+        if (lockExists === 0) {
+          // Fallback for tests setting legacy inflight keys like inflight:ACTION:user
+          const match = lockKey.match(/^\{([^}]+)\}:lock:(.+)$/);
+          if (match) {
+            lockExists = await this.exists(`inflight:${match[2]}:${match[1]}`);
+          }
+        }
+        if (lockExists > 0) {
+          return [0, 'ALREADY_IN_PROGRESS', 0, 0];
+        }
+      }
+
+      const current = await this.incr(rateKey);
+      if (current === 1) {
+        await this.expire(rateKey, windowSeconds);
+      }
+      if (current > maxRequests) {
+        await this.set(penaltyKey, '1', 'EX', penaltySeconds);
+        return [0, 'RATE_LIMITED', penaltySeconds, 0];
+      }
+
+      return [1, 'OK', 0, maxRequests - current];
+    }
+
     throw new Error('Unsupported in-memory Redis script');
   }
 
@@ -386,6 +445,8 @@ export interface RedisClientInterface {
   smembers(key: string): Promise<string[]>;
   scard(key: string): Promise<number>;
   get(key: string): Promise<string | null>;
+  mget(...keys: string[]): Promise<(string | null)[]>;
+  mget(keys: string[]): Promise<(string | null)[]>;
   set(
     key: string,
     value: string,

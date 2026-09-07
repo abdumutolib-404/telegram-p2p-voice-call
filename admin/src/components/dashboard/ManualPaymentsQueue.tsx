@@ -32,7 +32,14 @@ export function ManualPaymentsQueue() {
   const resolveReceiptUrl = (proof?: string | null, reqId?: string): string => {
     if (!proof) return '';
     const trimmed = proof.trim();
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+    if (trimmed.startsWith('data:')) {
+      // Strictly allow safe raster images only; reject text/html, svg, and arbitrary files
+      if (/^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
+        return trimmed;
+      }
+      return '';
+    }
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
     }
     const token = getAdminToken();

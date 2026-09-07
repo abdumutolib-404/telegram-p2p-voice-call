@@ -7,6 +7,7 @@ import { questionIngestionService } from '../services/crawler/ingestionService';
 import { questionFilterService } from '../services/crawler/questionFilterService';
 import { aiCurationService } from '../services/crawler/aiCurationService';
 import { topicNotificationService } from '../services/topicNotificationService';
+import { webCrawlerService } from '../services/crawler/webCrawlerService';
 import { getAdminBot } from './admin';
 import { logger } from '../utils/logger';
 
@@ -468,10 +469,16 @@ router.get('/crawler/logs', async (_req: AdminAuthenticatedRequest, res: Respons
 router.post('/crawler/run', async (req: AdminAuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { customUrl, deepCrawl } = req.body || {};
-    logger.info('Admin triggered manual crawler ingestion run', { service: 'admin_ielts', customUrl, deepCrawl });
+    const cleanCustomUrl = typeof customUrl === 'string' && customUrl.startsWith('http') ? customUrl.trim() : undefined;
+    if (cleanCustomUrl && !webCrawlerService.isSafeCrawlerUrl(cleanCustomUrl)) {
+      res.status(400).json({ error: 'Unsafe custom URL: Target must be a public HTTP/HTTPS URL and cannot target private or cloud-metadata IPs.' });
+      return;
+    }
+
+    logger.info('Admin triggered manual crawler ingestion run', { service: 'admin_ielts', customUrl: cleanCustomUrl, deepCrawl });
     const result = await questionIngestionService.runIngestion({
       force: true,
-      customUrl: typeof customUrl === 'string' && customUrl.startsWith('http') ? customUrl.trim() : undefined,
+      customUrl: cleanCustomUrl,
       deepCrawl: Boolean(deepCrawl),
       onNewTopics: async (newCount, topics) => {
         const bot = getAdminBot();

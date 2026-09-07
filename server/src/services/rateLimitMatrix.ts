@@ -60,6 +60,35 @@ const MATRIX_RULES: Record<RateLimitAction, MatrixRule> = {
   ADMIN_OTP: { maxRequests: 10, windowSeconds: 900, penaltySeconds: 900 },
 };
 
+const RATE_LIMIT_LUA = `
+-- RATE_LIMIT_EVAL
+local penaltyTtl = redis.call('TTL', KEYS[1])
+if penaltyTtl > 0 then
+  return { 0, 'RATE_LIMITED', penaltyTtl, 0 }
+end
+
+if ARGV[1] == '1' then
+  local lockExists = redis.call('EXISTS', KEYS[2])
+  if lockExists == 1 then
+    return { 0, 'ALREADY_IN_PROGRESS', 0, 0 }
+  end
+end
+
+local current = redis.call('INCR', KEYS[3])
+if current == 1 then
+  redis.call('EXPIRE', KEYS[3], tonumber(ARGV[2]))
+end
+
+local maxRequests = tonumber(ARGV[3])
+if current > maxRequests then
+  local penaltySec = tonumber(ARGV[4])
+  redis.call('SET', KEYS[1], '1', 'EX', penaltySec)
+  return { 0, 'RATE_LIMITED', penaltySec, 0 }
+end
+
+return { 1, 'OK', 0, maxRequests - current }
+`;
+
 const LOCK_RELEASE_LUA = `
 if redis.call('GET', KEYS[1]) == ARGV[1] then
   return redis.call('DEL', KEYS[1])
@@ -85,95 +114,76 @@ export async function checkRateLimit(
   const rule = MATRIX_RULES[action] || { maxRequests: 10, windowSeconds: 60, penaltySeconds: 300 };
   const now = Date.now();
   const poolCategory = rule.poolCategory || action.toLowerCase();
-  const key = `rl:${poolCategory}:${identifier}`;
-  const penaltyKey = `penalty:${poolCategory}:${identifier}`;
-
-  // 1. Check Active Abuse Penalty Block (Redis first, then fallback to local memory)
-  try {
-    const redis = getRedis();
-    const ttl = await redis.ttl(penaltyKey);
-    if (ttl > 0) {
-      return {
-        allowed: false,
-        remaining: 0,
-        retryAfterSeconds: ttl,
-        error: createCanonicalError('RATE_LIMITED', `Too many requests. Please wait ${ttl} seconds before trying again.`),
-      };
-    }
-  } catch {
-    // Redis unavailable: fallback to local memory check below
-  }
-
-  const penaltyExpires = penaltyBlocks.get(penaltyKey);
-  if (penaltyExpires && now < penaltyExpires) {
-    const retryAfter = Math.ceil((penaltyExpires - now) / 1000);
-    return {
-      allowed: false,
-      remaining: 0,
-      retryAfterSeconds: retryAfter,
-      error: createCanonicalError('RATE_LIMITED', `Too many requests. Please wait ${retryAfter} seconds before trying again.`),
-    };
-  }
-
-  // 2. Check In-Flight Lock (Redis first, then fallback to local memory)
-  if (rule.inFlightLockSeconds) {
-    const lockKey = `inflight:${action}:${identifier}`;
-    let isLocked = false;
-    try {
-      const redis = getRedis();
-      const exists = await redis.exists(lockKey);
-      if (exists) {
-        isLocked = true;
-      }
-    } catch {
-      // Redis unavailable: fallback to local map check
-    }
-
-    if (!isLocked) {
-      const lockExpires = inFlightLocks.get(lockKey);
-      if (lockExpires && now < lockExpires) {
-        isLocked = true;
-      }
-    }
-
-    if (isLocked) {
-      return {
-        allowed: false,
-        remaining: 0,
-        error: createCanonicalError('ALREADY_IN_PROGRESS', 'Your previous request is still being processed.'),
-      };
-    }
-  }
-
-  // 3. Rate Limit Evaluation with Redis or Memory Fallback
+  // Cluster-safe hash tags ensure all keys for an identifier map to the same Redis shard
+  const penaltyKey = `{${identifier}}:penalty:${poolCategory}`;
+  const lockKey = `{${identifier}}:lock:${action}`;
+  const rateKey = `{${identifier}}:rate:${poolCategory}`;
   const penaltySec = rule.penaltySeconds || 300;
 
   try {
     const redis = getRedis();
-    const current = await redis.incr(key);
-    if (current === 1) {
-      await redis.expire(key, rule.windowSeconds);
-    }
-    if (current > rule.maxRequests) {
-      // Trigger abuse penalty block in Redis and local memory
-      penaltyBlocks.set(penaltyKey, now + penaltySec * 1000);
-      try {
-        await redis.set(penaltyKey, '1', 'EX', penaltySec);
-      } catch {}
+    const res = await redis.eval(
+      RATE_LIMIT_LUA,
+      3,
+      penaltyKey,
+      lockKey,
+      rateKey,
+      rule.inFlightLockSeconds ? '1' : '0',
+      String(rule.windowSeconds),
+      String(rule.maxRequests),
+      String(penaltySec)
+    );
+
+    const allowed = Number(res[0]) === 1;
+    const status = String(res[1]);
+    const ttlOrRetry = Number(res[2]);
+    const remaining = Number(res[3]);
+
+    if (!allowed) {
+      if (status === 'ALREADY_IN_PROGRESS') {
+        return {
+          allowed: false,
+          remaining: 0,
+          error: createCanonicalError('ALREADY_IN_PROGRESS', 'Your previous request is still being processed.'),
+        };
+      }
       return {
         allowed: false,
         remaining: 0,
-        retryAfterSeconds: penaltySec,
-        error: createCanonicalError('RATE_LIMITED', `Rate limit exceeded. You are temporarily paused for ${penaltySec / 60} minutes.`),
+        retryAfterSeconds: ttlOrRetry,
+        error: createCanonicalError('RATE_LIMITED', `Too many requests. Please wait ${ttlOrRetry} seconds before trying again.`),
       };
     }
-    return { allowed: true, remaining: rule.maxRequests - current };
+
+    return { allowed: true, remaining };
   } catch {
-    // In-memory sliding counter
-    let entry = memoryCounters.get(key);
+    // In-memory fallback if Redis is unavailable
+    const penaltyExpires = penaltyBlocks.get(penaltyKey);
+    if (penaltyExpires && now < penaltyExpires) {
+      const retryAfter = Math.ceil((penaltyExpires - now) / 1000);
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: retryAfter,
+        error: createCanonicalError('RATE_LIMITED', `Too many requests. Please wait ${retryAfter} seconds before trying again.`),
+      };
+    }
+
+    if (rule.inFlightLockSeconds) {
+      const lockExpires = inFlightLocks.get(lockKey);
+      if (lockExpires && now < lockExpires) {
+        return {
+          allowed: false,
+          remaining: 0,
+          error: createCanonicalError('ALREADY_IN_PROGRESS', 'Your previous request is still being processed.'),
+        };
+      }
+    }
+
+    let entry = memoryCounters.get(rateKey);
     if (!entry || now > entry.resetAt) {
       entry = { count: 0, resetAt: now + rule.windowSeconds * 1000 };
-      memoryCounters.set(key, entry);
+      memoryCounters.set(rateKey, entry);
     }
     entry.count += 1;
     if (entry.count > rule.maxRequests) {
@@ -189,26 +199,26 @@ export async function checkRateLimit(
   }
 }
 
-export function setInFlightLock(action: RateLimitAction, identifier: string, token: string = '1'): void {
+export function setInFlightLock(action: RateLimitAction, identifier: string, token: string | number = '1'): void {
   const rule = MATRIX_RULES[action];
   if (!rule?.inFlightLockSeconds) return;
-  const lockKey = `inflight:${action}:${identifier}`;
+  const lockKey = `{${identifier}}:lock:${action}`;
   const ttlMs = rule.inFlightLockSeconds * 1000;
   try {
     const redis = getRedis();
-    redis.set(lockKey, token, 'PX', ttlMs).catch(() => undefined);
+    redis.set(lockKey, String(token), 'PX', ttlMs).catch(() => undefined);
   } catch {
     // Fallback to in-memory
   }
   inFlightLocks.set(lockKey, Date.now() + ttlMs);
 }
 
-export function releaseInFlightLock(action: RateLimitAction, identifier: string, token?: string): void {
-  const lockKey = `inflight:${action}:${identifier}`;
+export function releaseInFlightLock(action: RateLimitAction, identifier: string, token?: string | number): void {
+  const lockKey = `{${identifier}}:lock:${action}`;
   try {
     const redis = getRedis();
-    if (token) {
-      redis.eval(LOCK_RELEASE_LUA, 1, lockKey, token).catch(() => undefined);
+    if (token !== undefined) {
+      redis.eval(LOCK_RELEASE_LUA, 1, lockKey, String(token)).catch(() => undefined);
     } else {
       redis.del(lockKey).catch(() => undefined);
     }

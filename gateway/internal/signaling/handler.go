@@ -523,6 +523,16 @@ func (h *Hub) handleWebRTCSignal(socket *ClientSocket, event string, payload []b
 	if err := json.Unmarshal(payload, &sig); err != nil || sig.RoomName == "" {
 		return
 	}
+
+	// Strictly verify that socket is enrolled in the target room to prevent cross-room signal injection
+	socket.mu.Lock()
+	inRoom := socket.Rooms != nil && socket.Rooms[sig.RoomName]
+	socket.mu.Unlock()
+
+	if !inRoom {
+		return
+	}
+
 	sig.SenderID = socket.UserID
 	sig.TraceID = socket.TraceID
 

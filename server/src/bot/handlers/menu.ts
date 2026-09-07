@@ -510,6 +510,14 @@ export function setupMenuHandlers(bot: Bot<MyContext>) {
       return;
     }
 
+    if (appealText.length > 1000) {
+      await ctx.reply(
+        '⚠️ <b>Appeal Too Long:</b>\n\nPlease keep your explanation concise (maximum 1,000 characters).',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
     try {
       const outcome = await withUserAppealLock(user.id, async () => {
         return await prisma.$transaction(async (tx) => {

@@ -532,11 +532,16 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      // Mark session ACTIVE
-      await prisma.callSession.update({
-        where: { id: session.id },
+      // Atomically mark session ACTIVE only if still PENDING (prevents double-activation race condition)
+      const claimed = await prisma.callSession.updateMany({
+        where: { id: session.id, status: 'PENDING' },
         data: { status: 'ACTIVE' },
       });
+
+      if (claimed.count !== 1) {
+        await ctx.answerCallbackQuery({ text: 'Call invitation has already been processed.', show_alert: true });
+        return;
+      }
 
       // Authoritative server session duration teardown timer
       const durationMinutes = calculateEffectiveCallDuration(caller, callee);

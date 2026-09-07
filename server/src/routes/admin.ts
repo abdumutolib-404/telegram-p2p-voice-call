@@ -676,23 +676,49 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
 
     const rawProof = paymentReq.paymentProof.trim();
 
-    // 1. Direct HTTP/HTTPS URL
+    // 1. Direct HTTP/HTTPS URL (Must strictly pass isSafeStorageUrl)
     if (rawProof.startsWith('http://') || rawProof.startsWith('https://')) {
+      if (!isSafeStorageUrl(rawProof)) {
+        logger.warn('SSRF / open redirect blocked on receipt retrieval', {
+          service: 'admin',
+          event: 'receipt_unsafe_redirect_blocked',
+          url: rawProof,
+          requestId: id,
+        });
+        res.status(400).send('Unsafe receipt storage URL blocked');
+        return;
+      }
       res.redirect(rawProof);
       return;
     }
 
-    // 2. Base64 Data URL
+    // 2. Base64 Data URL (Strict Image MIME Whitelist to prevent Stored XSS)
     if (rawProof.startsWith('data:')) {
       const matches = rawProof.match(/^data:([A-Za-z0-9-+/]+);base64,(.+)$/);
       if (matches && matches.length === 3) {
-        const mimeType = matches[1];
+        const mimeType = matches[1].toLowerCase().trim();
+        const allowedImageMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+        if (!allowedImageMimes.includes(mimeType)) {
+          logger.warn('Blocked unsafe receipt MIME type in data URL', {
+            service: 'admin',
+            event: 'receipt_unsafe_mime_blocked',
+            mimeType,
+            requestId: id,
+          });
+          res.status(400).send('Receipt format is not an allowed image format');
+          return;
+        }
+
         const buffer = Buffer.from(matches[2], 'base64');
         res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Length', buffer.length);
+        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         res.end(buffer);
         return;
       }
+      res.status(400).send('Invalid data URL format for receipt');
+      return;
     }
 
     // 3. Parsed JSON metadata containing Telegram fileId
@@ -702,7 +728,7 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
     try {
       const parsed = JSON.parse(rawProof);
       fileId = parsed.fileId;
-      if (parsed.mimeType) mimeType = parsed.mimeType;
+      if (parsed.mimeType) mimeType = parsed.mimeType.toLowerCase().trim();
     } catch {
       if (/^[A-Za-z0-9_-]{20,}$/.test(rawProof)) {
         fileId = rawProof;
@@ -712,6 +738,12 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
     if (!fileId) {
       res.status(400).send('Receipt file reference is unavailable');
       return;
+    }
+
+    // Sanitize mimeType for Telegram streamed files too
+    const allowedStreamMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
+    if (!allowedStreamMimes.includes(mimeType)) {
+      mimeType = 'image/jpeg';
     }
 
     const botToUse = adminBotInstance || (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token' ? new Bot<MyContext>(env.BOT_TOKEN) : null);
@@ -736,6 +768,9 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
 
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
 
     Readable.fromWeb(upstreamRes.body as any).pipe(res);
   } catch (err) {
