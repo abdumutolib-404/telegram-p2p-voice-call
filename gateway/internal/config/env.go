@@ -71,7 +71,7 @@ func LoadConfig() *Config {
 	dbURL := getEnv("DATABASE_URL", "postgresql://postgres:postgres@127.0.0.1:5432/pairtalk?sslmode=disable")
 	redisURL := getEnv("REDIS_URL", "redis://127.0.0.1:6379")
 	botToken := getEnv("BOT_TOKEN", "")
-	lkHost := getEnv("LIVEKIT_HOST", "")
+	lkHost := getEnv("LIVEKIT_HOST", getEnv("LIVEKIT_URL", ""))
 	lkKey := getEnv("LIVEKIT_API_KEY", "")
 	lkSecret := getEnv("LIVEKIT_API_SECRET", "")
 	s3Key := getEnv("S3_KEY", "")
