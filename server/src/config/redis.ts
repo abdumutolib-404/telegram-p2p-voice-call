@@ -74,11 +74,12 @@ class InMemoryRedisMock {
   async set(
     key: string,
     value: string,
-    mode?: 'EX' | 'PX',
+    mode?: 'EX' | 'PX' | 'NX',
     duration?: number,
     condition?: 'NX',
   ): Promise<string | null> {
-    if (condition === 'NX' && (await this.get(key)) !== null) return null;
+    const isNX = condition === 'NX' || (mode as string) === 'NX';
+    if (isNX && (await this.get(key)) !== null) return null;
 
     let expiresAt: number | undefined;
     if (mode === 'EX' && duration !== undefined) expiresAt = Date.now() + duration * 1000;
@@ -450,7 +451,7 @@ export interface RedisClientInterface {
   set(
     key: string,
     value: string,
-    mode?: 'EX' | 'PX',
+    mode?: 'EX' | 'PX' | 'NX',
     duration?: number,
     condition?: 'NX',
   ): Promise<string | null>;

@@ -796,7 +796,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       const planTier = pendingPlan || pendingRequest?.plan || 'PLUS';
       const plans = getPlansConfig();
       const config = plans[planTier as keyof typeof plans] || plans.PLUS;
-      const orderNumber = pendingRequest?.orderNumber || await generateOrderNumber('A');
+      let orderNumber = pendingRequest?.orderNumber;
 
       const isPhoto = Boolean(ctx.message?.photo && ctx.message.photo.length > 0);
       let fileId = '';
@@ -811,7 +811,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         fileUniqueId = highestRes.file_unique_id;
         fileSize = highestRes.file_size || 0;
         mimeType = 'image/jpeg';
-        fileName = `receipt_${orderNumber}.jpg`;
+        fileName = `receipt_${orderNumber || 'pending'}.jpg`;
       } else if (ctx.message?.document) {
         const doc = ctx.message.document;
         fileId = doc.file_id;
@@ -828,7 +828,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       logger.info('Payment receipt received', {
         service: 'bot',
         event: 'receipt_received',
-        orderNumber,
+        orderNumber: orderNumber || 'pending',
         userId: user.id,
         telegramId: ctx.from.id,
         mimeType: mimeType || 'unknown',
@@ -850,7 +850,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         logger.info('Payment receipt rejected', {
           service: 'bot',
           event: 'receipt_rejected',
-          orderNumber,
+          orderNumber: orderNumber || 'pending',
           category: validation.category,
           reason: validation.reason,
         });
@@ -862,25 +862,13 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       logger.info('Payment receipt validated', {
         service: 'bot',
         event: 'receipt_validated',
-        orderNumber,
+        orderNumber: orderNumber || 'pending',
         category: validation.category,
         fileId,
         fileUniqueId,
         mimeType: validation.mimeType,
         fileName: validation.fileName,
       });
-
-      const proofMeta = {
-        fileId,
-        fileUniqueId,
-        fileName: validation.fileName,
-        mimeType: validation.mimeType,
-        fileSize: validation.fileSize,
-        messageId: ctx.message?.message_id,
-        telegramId: ctx.from.id,
-        orderNumber,
-        uploadedAt: new Date().toISOString(),
-      };
 
       if (!pendingRequest) {
         const res = await createManualPaymentRequest({
@@ -910,15 +898,34 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         }
       }
 
-      if (!pendingRequest) {
+      const authoritativeRequest = pendingRequest;
+      if (!authoritativeRequest || !authoritativeRequest.orderNumber) {
         ctx.session.pendingPaymentPlan = undefined;
         ctx.session.step = 'idle';
         await ctx.reply(`⚠️ <b>Unable to Process Receipt</b>\n\nFailed to create payment record in database.`, { parse_mode: 'HTML' });
         return;
       }
 
+      orderNumber = authoritativeRequest.orderNumber;
+
+      const receiptFileName = validation.category === 'PHOTO'
+        ? `receipt_${orderNumber}.jpg`
+        : (validation.fileName || `receipt_${orderNumber}.pdf`);
+
+      const proofMeta = {
+        fileId,
+        fileUniqueId,
+        fileName: receiptFileName,
+        mimeType: validation.mimeType,
+        fileSize: validation.fileSize,
+        messageId: ctx.message?.message_id,
+        telegramId: ctx.from.id,
+        orderNumber,
+        uploadedAt: new Date().toISOString(),
+      };
+
       await prisma.manualPaymentRequest.update({
-        where: { id: pendingRequest.id },
+        where: { id: authoritativeRequest.id },
         data: { paymentProof: JSON.stringify(proofMeta), orderNumber },
       });
 
@@ -934,7 +941,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
 
       await ctx.reply(
         `✅ <b>Payment Receipt Received!</b>\n\n` +
-          `Your receipt (<b>${escapeHtml(validation.fileName)}</b>) has been submitted for Order #<b>${escapeHtml(orderNumber)}</b>.\n` +
+          `Your receipt (<b>${escapeHtml(receiptFileName)}</b>) has been submitted for Order #<b>${escapeHtml(orderNumber)}</b>.\n` +
           `Our administration team will verify your payment and activate your <b>${escapeHtml(planTier)} Plan</b> subscription shortly.\n\n` +
           `Thank you for practicing with us!`,
         { parse_mode: 'HTML' }
@@ -957,7 +964,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           uzsAmount: config.uzsPrice,
           paymentMethod: 'MANUAL_UZS',
           receiptBuffer: downloadedReceipt?.buffer || null,
-          receiptFileName: validation.fileName,
+          receiptFileName: receiptFileName,
           receiptMimeType: validation.mimeType,
           createdAt: pendingRequest?.createdAt || new Date(),
           status: 'PENDING',

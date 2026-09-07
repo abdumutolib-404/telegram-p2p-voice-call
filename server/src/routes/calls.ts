@@ -121,6 +121,7 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
         status: 'ACTIVE',
         OR: [{ userA: { telegramId: requesterId } }, { userB: { telegramId: requesterId } }],
       },
+      orderBy: { createdAt: 'desc' },
       include: { userA: true, userB: true },
     });
 

@@ -28,6 +28,7 @@ import { botLeaderLock } from './services/leaderLock';
 import { questionIngestionService } from './services/crawler/ingestionService';
 import { startCrawlerLifecycleCron } from './services/crawler/crawlerScheduler';
 import { topicNotificationService } from './services/topicNotificationService';
+import { initializeOrderSequence } from './services/plan';
 import { surgeAlertService } from './services/surgeAlertService';
 import { startEventSubscriber, EventSubscriberHandle } from './services/eventSubscriber';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
@@ -1067,6 +1068,7 @@ async function bootstrap(): Promise<void> {
   try {
     await connectDB();
     await connectRedis();
+    void initializeOrderSequence().catch(() => undefined);
     setAdminBot(bot);
 
     // Start bot polling under distributed leader election only after Redis and DB are ready

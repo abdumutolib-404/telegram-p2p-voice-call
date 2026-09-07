@@ -25,6 +25,8 @@ func NewReverseProxy(targetURL string) (*ReverseProxy, error) {
 	origDirector := p.Director
 	p.Director = func(req *http.Request) {
 		origDirector(req)
+		req.Header.Set("X-Forwarded-Host", req.Host)
+		req.Header.Set("X-Forwarded-Proto", "https")
 		req.Host = u.Host
 	}
 

@@ -119,7 +119,7 @@ model UnblockAppeal {
 
 model StarsTransaction {
   id                String    @id @default(uuid())
-  orderNumber       String?
+  orderNumber       String?   @unique
   userId            String
   telegramPaymentId String    @unique
   starsAmount       Int
@@ -132,11 +132,12 @@ model StarsTransaction {
   user              User      @relation(fields: [userId], references: [id])
 
   @@index([userId, status])
+  @@index([orderNumber])
 }
 
 model ManualPaymentRequest {
   id               String    @id @default(uuid())
-  orderNumber      String    @default("A0")
+  orderNumber      String    @unique @default("A0")
   userId           String
   telegramId       BigInt
   alias            String
@@ -156,6 +157,7 @@ model ManualPaymentRequest {
 
   @@index([userId, status])
   @@index([status, createdAt])
+  @@index([orderNumber])
 }
 
 model AuditLog {

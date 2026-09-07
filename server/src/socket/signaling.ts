@@ -443,6 +443,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               status: 'ACTIVE',
               OR: [{ userAId: userId }, { userBId: userId }],
             },
+            orderBy: { createdAt: 'desc' },
             include: { userA: true, userB: true },
           });
 
@@ -466,6 +467,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 partnerBand: partnerUser.band,
                 token,
                 livekitToken: token,
+                livekitUrl: env.LIVEKIT_HOST,
                 callDurationLimit: remainingSeconds,
                 maxDurationSeconds: callDurationLimitSeconds,
               });

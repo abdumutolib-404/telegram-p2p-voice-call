@@ -57,6 +57,7 @@ export const App: React.FC = () => {
   });
 
   const [matchData, setMatchData] = useState<MatchFoundPayload | null>(null);
+  const [pendingDirectCall, setPendingDirectCall] = useState<MatchFoundPayload | null>(null);
 
   // 3. Refs (unconditional)
   const appStateRef = useRef<AppState>(appState);
@@ -91,6 +92,7 @@ export const App: React.FC = () => {
   const {
     connect: connectLiveKit,
     disconnect: disconnectLiveKit,
+    room: livekitRoom,
     isMicMuted,
     canPlaybackAudio,
     micError,
@@ -313,16 +315,15 @@ export const App: React.FC = () => {
           if (activeRes.ok) {
             const activeData = await activeRes.json();
             if (activeData.hasActiveCall) {
-              handleMatchFound(
-                {
-                  roomName: activeData.roomName,
-                  livekitToken: activeData.livekitToken,
-                  partnerAlias: activeData.partnerAlias,
-                  partnerBand: activeData.partnerBand,
-                  callDurationLimit: activeData.callDurationLimit,
-                },
-                true
-              );
+              setPendingDirectCall({
+                roomName: activeData.roomName,
+                livekitToken: activeData.livekitToken,
+                livekitUrl: activeData.livekitUrl,
+                partnerAlias: activeData.partnerAlias,
+                partnerBand: activeData.partnerBand,
+                callDurationLimit: activeData.callDurationLimit,
+              });
+              setAppState('ready');
               return;
             }
           }
@@ -435,8 +436,28 @@ export const App: React.FC = () => {
     setAppState('ended');
   };
 
+  const handleJoinDirectCall = useCallback(async () => {
+    if (!pendingDirectCall) return;
+    const directCall = pendingDirectCall;
+    setPendingDirectCall(null);
+    try {
+      await startAudio();
+    } catch (e) {
+      console.warn('[DirectCall] startAudio error:', e);
+    }
+    await handleMatchFound(directCall, true);
+    if (livekitRoom?.localParticipant) {
+      try {
+        await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+      } catch (e) {
+        console.warn('[DirectCall] Mic activation fallback:', e);
+      }
+    }
+  }, [pendingDirectCall, startAudio, handleMatchFound, livekitRoom]);
+
   const handleRestart = () => {
     startAudio().catch(() => {});
+    setPendingDirectCall(null);
     setMatchData(null);
     setErrorMessage(null);
     setAppState('radar');
@@ -444,6 +465,7 @@ export const App: React.FC = () => {
 
   const handleStartSearching = () => {
     startAudio().catch(() => {});
+    setPendingDirectCall(null);
     setAppState('radar');
   };
 
@@ -510,6 +532,76 @@ export const App: React.FC = () => {
 
   // 3. Ready Screen (Clean Cyberpunk Matchmaking Launcher)
   if (appState === 'ready') {
+    if (pendingDirectCall) {
+      const partnerAlias = pendingDirectCall.partnerAlias || 'Partner';
+      return (
+        <div className="flex flex-col justify-between min-h-screen p-5 md:p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-emerald-500">
+          {/* Top Minimal Bar */}
+          <div className="w-full max-w-md mx-auto flex items-center justify-between pt-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-md shadow-emerald-500/10">
+                <PhoneCall className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400">DIRECT CALL IN PROGRESS</div>
+                <div className="text-xs font-mono font-bold text-white tracking-tight">{partnerAlias}</div>
+              </div>
+            </div>
+
+            {pendingDirectCall.partnerBand !== undefined && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300">
+                <span className="text-[10px] text-slate-500 uppercase">BAND</span>
+                <span className="font-bold text-emerald-400">{(pendingDirectCall.partnerBand).toFixed(1)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Center Interstitial Card */}
+          <div className="w-full max-w-md mx-auto my-auto py-6 text-center">
+            <div className="relative w-24 h-24 mx-auto mb-5 rounded-3xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-cyan-600 p-0.5 shadow-2xl shadow-emerald-500/20 flex items-center justify-center">
+              <div className="w-full h-full bg-[#090D18] rounded-3xl flex items-center justify-center border border-emerald-500/30">
+                <PhoneCall className="w-10 h-10 text-emerald-400 animate-pulse motion-reduce:animate-none" />
+              </div>
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase border border-emerald-500/40 text-emerald-400 bg-emerald-950/40 mb-3">
+              <ShieldCheck className="w-3 h-3" />
+              <span>DIRECT VOICE SESSION</span>
+            </div>
+
+            <h1 className="text-2xl font-mono font-black tracking-tight text-white uppercase mb-2">
+              ACTIVE CALL WAITING
+            </h1>
+
+            <p className="text-xs text-slate-400 max-w-xs mx-auto mb-8 leading-relaxed font-mono">
+              A voice call session with <span className="text-emerald-400 font-bold">{partnerAlias}</span> is active. Tap below to activate your audio and join immediately.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleJoinDirectCall}
+              className="w-full py-4 px-8 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 rounded-2xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-transform active:scale-95 shadow-xl shadow-emerald-500/25 cursor-pointer"
+            >
+              <PhoneCall className="w-5 h-5" />
+              <span>📞 Join Voice Call with {partnerAlias}</span>
+            </button>
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="w-full max-w-md mx-auto pt-4 border-t border-slate-900 flex items-center justify-between text-[11px] font-mono text-slate-500">
+            <span>PAIRIAL VOICE CONNECT</span>
+            <button
+              type="button"
+              onClick={() => setPendingDirectCall(null)}
+              className="hover:text-slate-300 transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const alias = userData.alias || (userData.telegramId ? `P2P-${String(userData.telegramId).slice(-8).toUpperCase()}` : 'P2P-CANDIDATE');
     return (
       <div className="flex flex-col justify-between min-h-screen p-5 md:p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-cyan-500">

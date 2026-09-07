@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { prisma } from '../config/database';
+import { getRedis } from '../config/redis';
 import { createCanonicalError } from '../types/canonical';
 
 export interface PlanTierConfig {
@@ -404,17 +405,128 @@ export function getPaidUserProfile(user: {
   };
 }
 
-let orderSequence = 20;
+let inMemoryFallbackSequence = 0;
+let initSequencePromise: Promise<void> | null = null;
+
+export function resetOrderSequenceForTesting(): void {
+  inMemoryFallbackSequence = 0;
+  initSequencePromise = null;
+}
+
+export async function getMaxOrderNumberFromDb(): Promise<number> {
+  let maxOrderNum = 0;
+  try {
+    const manualRecords = await prisma.manualPaymentRequest.findMany({
+      select: { orderNumber: true },
+    });
+    for (const record of manualRecords) {
+      if (record?.orderNumber) {
+        const match = record.orderNumber.match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (!isNaN(num) && num > maxOrderNum) {
+            maxOrderNum = num;
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore query errors in mocked/offline environments
+  }
+
+  try {
+    const starsRecords = await prisma.starsTransaction.findMany({
+      select: { orderNumber: true },
+    });
+    for (const record of starsRecords) {
+      if (record?.orderNumber) {
+        const match = record.orderNumber.match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (!isNaN(num) && num > maxOrderNum) {
+            maxOrderNum = num;
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore query errors in mocked/offline environments
+  }
+
+  return maxOrderNum;
+}
+
+export async function initializeOrderSequence(): Promise<void> {
+  if (!initSequencePromise) {
+    initSequencePromise = (async () => {
+      try {
+        let totalManual = 0;
+        let totalStars = 0;
+        try {
+          totalManual = await prisma.manualPaymentRequest.count();
+        } catch {}
+        try {
+          totalStars = await prisma.starsTransaction.count();
+        } catch {}
+        const maxOrderNumberFromDb = await getMaxOrderNumberFromDb();
+        const initialValue = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+
+        const redis = getRedis();
+        const existing = await redis.get('counter:order_sequence');
+        if (existing === null) {
+          await redis.set('counter:order_sequence', initialValue.toString(), 'NX');
+        }
+        if (inMemoryFallbackSequence === 0) {
+          inMemoryFallbackSequence = initialValue;
+        }
+      } catch {
+        if (inMemoryFallbackSequence === 0) {
+          let totalManual = 0;
+          let totalStars = 0;
+          try {
+            totalManual = await prisma.manualPaymentRequest.count();
+          } catch {}
+          try {
+            totalStars = await prisma.starsTransaction.count();
+          } catch {}
+          const maxOrderNumberFromDb = await getMaxOrderNumberFromDb().catch(() => 0);
+          inMemoryFallbackSequence = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+        }
+      } finally {
+        initSequencePromise = null;
+      }
+    })();
+  }
+  await initSequencePromise;
+}
 
 export async function generateOrderNumber(prefix: string = 'A'): Promise<string> {
+  let seq: number;
   try {
-    const totalManual = await prisma.manualPaymentRequest.count();
-    const totalStars = await prisma.starsTransaction.count();
-    orderSequence = Math.max(orderSequence + 1, totalManual + totalStars + 21);
+    const redis = getRedis();
+    const existing = await redis.get('counter:order_sequence');
+    if (existing === null) {
+      await initializeOrderSequence();
+    }
+    seq = await redis.incr('counter:order_sequence');
   } catch {
-    orderSequence += 1;
+    // Safe fallback for tests/environments where Redis is mocked or throws
+    if (inMemoryFallbackSequence === 0) {
+      let totalManual = 0;
+      let totalStars = 0;
+      try {
+        totalManual = await prisma.manualPaymentRequest.count();
+      } catch {}
+      try {
+        totalStars = await prisma.starsTransaction.count();
+      } catch {}
+      const maxOrderNumberFromDb = await getMaxOrderNumberFromDb().catch(() => 0);
+      inMemoryFallbackSequence = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+    }
+    inMemoryFallbackSequence += 1;
+    seq = inMemoryFallbackSequence;
   }
-  return `${prefix}${orderSequence}`;
+  return `${prefix}${seq}`;
 }
 
 /**

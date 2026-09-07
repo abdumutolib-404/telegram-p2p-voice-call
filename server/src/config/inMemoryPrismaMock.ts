@@ -884,6 +884,9 @@ export class InMemoryPrismaMock {
         if (existing.telegramPaymentId === telegramPaymentId) {
           throw new Error('Unique constraint failed on the fields: (`telegramPaymentId`)');
         }
+        if (args.data.orderNumber && existing.orderNumber === stringValue(args.data.orderNumber)) {
+          throw new Error('Unique constraint failed on the fields: (`orderNumber`)');
+        }
       }
       const now = new Date();
       const row: StarsTransactionRow = {
@@ -901,12 +904,20 @@ export class InMemoryPrismaMock {
       this.starsTransactions.set(id, row);
       return { ...row };
     },
-    findUnique: async (args: { where: { telegramPaymentId?: string; id?: string }; include?: { user?: boolean } }): Promise<any> => {
+    findUnique: async (args: { where: { telegramPaymentId?: string; id?: string; orderNumber?: string }; include?: { user?: boolean } }): Promise<any> => {
       let found: StarsTransactionRow | undefined;
       if (args.where.id) found = this.starsTransactions.get(args.where.id);
       if (!found && args.where.telegramPaymentId) {
         for (const row of this.starsTransactions.values()) {
           if (row.telegramPaymentId === args.where.telegramPaymentId) {
+            found = row;
+            break;
+          }
+        }
+      }
+      if (!found && args.where.orderNumber) {
+        for (const row of this.starsTransactions.values()) {
+          if (row.orderNumber === args.where.orderNumber) {
             found = row;
             break;
           }
@@ -940,10 +951,16 @@ export class InMemoryPrismaMock {
   manualPaymentRequest = {
     create: async (args: { data: Record<string, unknown> }): Promise<ManualPaymentRequestRow> => {
       const id = stringValue(args.data.id, crypto.randomUUID());
+      const orderNumber = stringValue(args.data.orderNumber, 'A0');
+      for (const existing of this.manualPaymentRequests.values()) {
+        if (existing.orderNumber === orderNumber) {
+          throw new Error('Unique constraint failed on the fields: (`orderNumber`)');
+        }
+      }
       const now = new Date();
       const row: ManualPaymentRequestRow = {
         id,
-        orderNumber: stringValue(args.data.orderNumber, 'A0'),
+        orderNumber,
         userId: stringValue(args.data.userId),
         telegramId: args.data.telegramId === undefined ? 0n : BigInt(String(args.data.telegramId)),
         alias: stringValue(args.data.alias),
@@ -959,8 +976,17 @@ export class InMemoryPrismaMock {
       this.manualPaymentRequests.set(id, row);
       return { ...row };
     },
-    findUnique: async (args: { where: { id: string }; include?: { user?: boolean } }): Promise<any> => {
-      const row = this.manualPaymentRequests.get(args.where.id);
+    findUnique: async (args: { where: { id?: string; orderNumber?: string }; include?: { user?: boolean } }): Promise<any> => {
+      let row: ManualPaymentRequestRow | undefined;
+      if (args.where.id) row = this.manualPaymentRequests.get(args.where.id);
+      if (!row && args.where.orderNumber) {
+        for (const r of this.manualPaymentRequests.values()) {
+          if (r.orderNumber === args.where.orderNumber) {
+            row = r;
+            break;
+          }
+        }
+      }
       if (!row) return null;
       return {
         ...row,
