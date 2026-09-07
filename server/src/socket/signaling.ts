@@ -14,6 +14,17 @@ import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { MyContext } from '../bot/types';
+import { cleanupDirectCallMessages } from '../services/directCallMessages';
+
+interface PeerReadyPayload {
+  readonly roomName: string;
+}
+
+function isPeerReadyPayload(value: unknown): value is PeerReadyPayload {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return typeof data.roomName === 'string' && data.roomName.length > 0 && data.roomName.length <= 128;
+}
 
 interface ToggleRecordPayload {
   readonly roomName: string;
@@ -92,6 +103,10 @@ const activeEgresses = new Map<string, ActiveEgress>();
 const roomOperationTails = new Map<string, Promise<void>>();
 const userJoinTails = new Map<string, Promise<void>>();
 const serverSessionTimers = new Map<string, NodeJS.Timeout>();
+const connectionHandshakeTimers = new Map<string, NodeJS.Timeout>();
+const activeRoomPeers = new Map<string, Set<string>>();
+const roomStartedAt = new Map<string, number>();
+const roomDurationLimits = new Map<string, number>();
 const userLastActionTime = new Map<string, number>();
 const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
 
@@ -105,6 +120,93 @@ const clearSessionTimer = (roomName: string) => {
     serverSessionTimers.delete(roomName);
   }
 };
+
+export function clearConnectionHandshakeTimer(roomName: string): void {
+  const existing = connectionHandshakeTimers.get(roomName);
+  if (existing) {
+    clearTimeout(existing);
+    connectionHandshakeTimers.delete(roomName);
+  }
+}
+
+export function setRoomDurationLimit(roomName: string, durationSeconds: number): void {
+  roomDurationLimits.set(roomName, durationSeconds);
+}
+
+export function scheduleConnectionHandshakeTimer(
+  roomName: string,
+  timeoutSeconds: number = 90,
+  botInstance?: Bot<MyContext>,
+  ioInstance?: Server
+): NodeJS.Timeout {
+  clearConnectionHandshakeTimer(roomName);
+  const effectiveIo = ioInstance ?? globalIo;
+  const effectiveBot = botInstance ?? globalBot;
+
+  const timer = setTimeout(() => {
+    void (async () => {
+      try {
+        await runSerialized(roomOperationTails, roomName, async () => {
+          connectionHandshakeTimers.delete(roomName);
+          const currentSession = await prisma.callSession.findUnique({
+            where: { roomName },
+            include: { userA: true, userB: true },
+          });
+          if (!currentSession || currentSession.status !== 'ACTIVE') return;
+
+          // Neither or only one peer connected within 90s - cancel session without charging credits
+          await prisma.callSession.updateMany({
+            where: { id: currentSession.id, status: 'ACTIVE' },
+            data: { status: 'CANCELLED', endedAt: new Date(), duration: 0 },
+          });
+
+          await deleteLiveKitRoom(roomName);
+          const readySet = activeRoomPeers.get(roomName);
+          activeRoomPeers.delete(roomName);
+          roomStartedAt.delete(roomName);
+          roomDurationLimits.delete(roomName);
+
+          await cleanupDirectCallMessages(roomName, effectiveBot ?? undefined);
+
+          if (effectiveIo) {
+            effectiveIo.to(roomName).emit('call_finished', {
+              duration: 0,
+              reason: 'partner_failed_to_join',
+            });
+          }
+
+          if (effectiveBot) {
+            const userJoined = readySet ? readySet.has(currentSession.userAId) : false;
+            const partnerJoined = readySet ? readySet.has(currentSession.userBId) : false;
+
+            if (userJoined && !partnerJoined) {
+              await effectiveBot.api.sendMessage(
+                currentSession.userA.telegramId.toString(),
+                `⚠️ <b>Call Cancelled</b>\n\nYour partner did not connect in time. No call limits were consumed.`,
+                { parse_mode: 'HTML' }
+              ).catch(() => undefined);
+            } else if (partnerJoined && !userJoined) {
+              await effectiveBot.api.sendMessage(
+                currentSession.userB.telegramId.toString(),
+                `⚠️ <b>Call Cancelled</b>\n\nYour partner did not connect in time. No call limits were consumed.`,
+                { parse_mode: 'HTML' }
+              ).catch(() => undefined);
+            }
+          }
+        });
+      } catch (err) {
+        logger.error('Connection handshake timeout failed', {
+          service: 'signaling',
+          event: 'handshake_timeout_error',
+          roomName,
+        }, err);
+      }
+    })();
+  }, timeoutSeconds * 1000);
+
+  connectionHandshakeTimers.set(roomName, timer);
+  return timer;
+}
 
 const runSerialized = async <T>(map: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> => {
   const previous = map.get(key) ?? Promise.resolve();
@@ -174,6 +276,7 @@ export function scheduleAuthoritativeSessionTeardown(
   ioInstance?: Server
 ): NodeJS.Timeout {
   clearSessionTimer(roomName);
+  clearConnectionHandshakeTimer(roomName);
   const effectiveIo = ioInstance ?? globalIo;
   const effectiveBot = botInstance ?? globalBot;
 
@@ -188,7 +291,8 @@ export function scheduleAuthoritativeSessionTeardown(
           if (!currentSession || currentSession.status !== 'ACTIVE') return;
 
           const endedAt = new Date();
-          const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - currentSession.createdAt.getTime()) / 1000));
+          const startTime = roomStartedAt.get(roomName) ?? currentSession.createdAt.getTime();
+          const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - startTime) / 1000));
           const claimed = await prisma.callSession.updateMany({
             where: { id: currentSession.id, status: 'ACTIVE' },
             data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
@@ -233,7 +337,13 @@ export function scheduleAuthoritativeSessionTeardown(
           });
 
           clearSessionTimer(roomName);
+          clearConnectionHandshakeTimer(roomName);
+          roomStartedAt.delete(roomName);
+          activeRoomPeers.delete(roomName);
+          roomDurationLimits.delete(roomName);
+
           await deleteLiveKitRoom(roomName);
+          await cleanupDirectCallMessages(roomName, effectiveBot ?? undefined);
 
           if (effectiveIo) {
             effectiveIo.to(roomName).emit('call_finished', {
@@ -453,7 +563,9 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const partnerUser = isUserA ? activeCall.userB : activeCall.userA;
             const callDurationLimitMinutes = calculateEffectiveCallDuration(selfUser, partnerUser);
             const callDurationLimitSeconds = callDurationLimitMinutes * 60;
-            const elapsedSeconds = Math.floor((Date.now() - activeCall.createdAt.getTime()) / 1000);
+            const startedAt = roomStartedAt.get(activeCall.roomName);
+            const startTime = startedAt ?? activeCall.createdAt.getTime();
+            const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
             const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
 
             if (elapsedSeconds < callDurationLimitSeconds) {
@@ -471,6 +583,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 callDurationLimit: remainingSeconds,
                 maxDurationSeconds: callDurationLimitSeconds,
               });
+              if (startedAt) {
+                socket.emit('call_started', {
+                  startedAt,
+                  durationSeconds: callDurationLimitSeconds,
+                  expiresAt: startedAt + (callDurationLimitSeconds * 1000),
+                });
+              }
               logger.info('Active call auto-reconnected on socket connect', {
                 service: 'signaling',
                 event: 'socket:auto_reconnect',
@@ -743,8 +862,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             userSocket.join(roomName);
             partnerSocket.join(roomName);
 
-            // Server-side call duration enforcement timer at exact entitlement boundary
-            scheduleAuthoritativeSessionTeardown(roomName, callDurationLimitSeconds, bot, io);
+            // Defer authoritative duration teardown until both peers send peer_ready;
+            // schedule a 90s connection handshake timer to cancel cleanly if a peer fails to join.
+            setRoomDurationLimit(roomName, callDurationLimitSeconds);
+            scheduleConnectionHandshakeTimer(roomName, 90, bot, io);
 
             userSocket.emit('match_found', {
               partnerId: partner.id,
@@ -849,6 +970,58 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           userId: currentUserId,
         }, error);
         socket.emit('error', { message: 'Failed to cancel matchmaking.' });
+      }
+    });
+
+    socket.on('peer_ready', async (payload: unknown) => {
+      if (!isPeerReadyPayload(payload)) {
+        return;
+      }
+      const requesterId = socket.data.userId as string | undefined;
+      if (!requesterId) {
+        return;
+      }
+
+      const roomName = payload.roomName;
+      let peers = activeRoomPeers.get(roomName);
+      if (!peers) {
+        peers = new Set<string>();
+        activeRoomPeers.set(roomName, peers);
+      }
+      peers.add(requesterId);
+
+      // When both peers have joined and sent peer_ready, start the synchronized call
+      if (peers.size >= 2 && !roomStartedAt.has(roomName)) {
+        clearConnectionHandshakeTimer(roomName);
+        const startedAt = Date.now();
+        roomStartedAt.set(roomName, startedAt);
+
+        let durationLimitSeconds = roomDurationLimits.get(roomName);
+        if (!durationLimitSeconds) {
+          const session = await prisma.callSession.findUnique({
+            where: { roomName },
+            include: { userA: true, userB: true },
+          });
+          if (session?.userA && session?.userB) {
+            durationLimitSeconds = calculateEffectiveCallDuration(session.userA, session.userB) * 60;
+          } else {
+            durationLimitSeconds = 15 * 60;
+          }
+          roomDurationLimits.set(roomName, durationLimitSeconds);
+        }
+
+        // Authoritative server duration teardown starts now
+        scheduleAuthoritativeSessionTeardown(roomName, durationLimitSeconds, bot, io);
+
+        // Notify both clients with exact synchronized timestamp
+        io.to(roomName).emit('call_started', {
+          startedAt,
+          durationSeconds: durationLimitSeconds,
+          expiresAt: startedAt + (durationLimitSeconds * 1000),
+        });
+
+        // Clean up direct call messages as both parties have joined
+        await cleanupDirectCallMessages(roomName, bot).catch(() => undefined);
       }
     });
 
@@ -1011,6 +1184,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           clearSessionTimer(payload.roomName);
+          clearConnectionHandshakeTimer(payload.roomName);
 
           if (session.status !== 'ACTIVE') {
             socket.emit('call_finished', { duration: session.duration ?? 0 });
@@ -1018,7 +1192,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           const endedAt = new Date();
-          const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - session.createdAt.getTime()) / 1000));
+          const startTime = roomStartedAt.get(payload.roomName) ?? session.createdAt.getTime();
+          const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - startTime) / 1000));
           const claimed = await prisma.callSession.updateMany({
             where: { id: session.id, status: 'ACTIVE' },
             data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
@@ -1066,6 +1241,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           });
 
           await deleteLiveKitRoom(payload.roomName);
+          roomStartedAt.delete(payload.roomName);
+          activeRoomPeers.delete(payload.roomName);
+          roomDurationLimits.delete(payload.roomName);
+          await cleanupDirectCallMessages(payload.roomName, bot).catch(() => undefined);
 
           io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
 
@@ -1168,7 +1347,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   });
                   if (!currentSession || currentSession.status !== 'ACTIVE') return;
 
-                  const durationSeconds = Math.max(0, Math.floor((disconnectTimestamp - currentSession.createdAt.getTime()) / 1000));
+                  const startTime = roomStartedAt.get(session.roomName) ?? currentSession.createdAt.getTime();
+                  const durationSeconds = Math.max(0, Math.floor((disconnectTimestamp - startTime) / 1000));
                   const isCancelled = durationSeconds < 5;
                   const endedAt = new Date(disconnectTimestamp);
 
@@ -1209,7 +1389,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   });
 
                   clearSessionTimer(session.roomName);
+                  clearConnectionHandshakeTimer(session.roomName);
+                  roomStartedAt.delete(session.roomName);
+                  activeRoomPeers.delete(session.roomName);
+                  roomDurationLimits.delete(session.roomName);
                   await deleteLiveKitRoom(session.roomName);
+                  await cleanupDirectCallMessages(session.roomName, bot).catch(() => undefined);
 
                   io.to(session.roomName).emit('call_finished', {
                     duration: durationSeconds,

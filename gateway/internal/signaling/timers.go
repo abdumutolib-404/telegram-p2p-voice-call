@@ -10,6 +10,7 @@ import (
 
 func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeconds int) {
 	h.ClearSessionTimer(roomName)
+	h.ClearConnectionHandshakeTimer(roomName)
 
 	timer := time.AfterFunc(time.Duration(durationSeconds)*time.Second, func() {
 		roomLock := h.getRoomMutex(roomName)
@@ -24,7 +25,13 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 			return
 		}
 
-		actualDuration := int(time.Since(session.CreatedAt).Seconds())
+		startedAtMs := h.GetRoomStartedAt(roomName)
+		var actualDuration int
+		if startedAtMs > 0 {
+			actualDuration = int((time.Now().UnixMilli() - startedAtMs) / 1000)
+		} else {
+			actualDuration = int(time.Since(session.CreatedAt).Seconds())
+		}
 		if actualDuration < 1 {
 			actualDuration = 1
 		}
@@ -82,6 +89,11 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 
 		_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, actualDuration)
 		_ = h.LiveKit.DeleteRoom(ctx, roomName)
+		h.mu.Lock()
+		delete(h.roomPeers, roomName)
+		delete(h.roomStartedAt, roomName)
+		delete(h.roomDurationLimits, roomName)
+		h.mu.Unlock()
 		h.DeleteRoomMutex(roomName)
 
 		h.EmitToRoom(roomName, "call_finished", CallFinishedEvent{
@@ -131,4 +143,53 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 	})
 
 	h.SetSessionTimer(roomName, timer)
+}
+
+func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds int) {
+	h.ClearConnectionHandshakeTimer(roomName)
+
+	timer := time.AfterFunc(time.Duration(timeoutSeconds)*time.Second, func() {
+		roomLock := h.getRoomMutex(roomName)
+		roomLock.Lock()
+		defer roomLock.Unlock()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		session, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
+		if err != nil || session == nil || session.Status != "ACTIVE" {
+			return
+		}
+
+		// Cancel session without charging credits
+		_, _ = h.DB.CancelCallSession(ctx, session.ID)
+		_ = h.LiveKit.DeleteRoom(ctx, roomName)
+
+		h.mu.Lock()
+		delete(h.roomPeers, roomName)
+		delete(h.roomStartedAt, roomName)
+		delete(h.roomDurationLimits, roomName)
+		delete(h.handshakeTimers, roomName)
+		h.mu.Unlock()
+		h.DeleteRoomMutex(roomName)
+
+		h.EmitToRoom(roomName, "call_finished", CallFinishedEvent{
+			Duration: 0,
+			Reason:   "partner_failed_to_join",
+		})
+
+		if h.PubSub != nil {
+			_ = h.PubSub.PublishCallFinished(ctx, CallFinishedPubSubMessage{
+				Type:            "CALL_FINISHED",
+				SessionID:       session.ID,
+				RoomName:        roomName,
+				UserAID:         session.UserAID,
+				UserBID:         session.UserBID,
+				DurationSeconds: 0,
+				Reason:          "partner_failed_to_join",
+			})
+		}
+	})
+
+	h.SetConnectionHandshakeTimer(roomName, timer)
 }

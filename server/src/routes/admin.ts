@@ -41,6 +41,11 @@ router.use('/telemetry', adminAuthMiddleware, adminTelemetryRouter);
 // Mount IELTS Sub-Router (Protected under /api/admin/ielts/*)
 router.use('/ielts', adminAuthMiddleware, adminIeltsRouter);
 
+export interface AdminOtpMessageRef {
+  chatId: string;
+  messageId: number;
+}
+
 interface AdminOtpChallenge {
   challengeId: string;
   otpHash: string;
@@ -48,6 +53,7 @@ interface AdminOtpChallenge {
   attempts: number;
   maxAttempts: number;
   consumed: boolean;
+  telegramMessages?: AdminOtpMessageRef[];
 }
 
 const adminOtpChallengesFallback = new Map<string, AdminOtpChallenge>();
@@ -60,6 +66,39 @@ export function setAdminBot(bot: Bot<MyContext> | null): void {
 
 export function getAdminBot(): Bot<MyContext> | null {
   return adminBotInstance;
+}
+
+export async function cleanupAdminOtpMessages(
+  challengeId: string,
+  botToUse?: Bot<MyContext> | null
+): Promise<void> {
+  const bot = botToUse || adminBotInstance || (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token' ? new Bot<MyContext>(env.BOT_TOKEN) : null);
+  if (!bot) return;
+
+  const challenge = await getOtpChallengeFromRedis(challengeId);
+  const messages = challenge?.telegramMessages || [];
+  if (messages.length === 0) return;
+
+  logger.info('Purging sensitive admin OTP messages from Telegram', {
+    service: 'adminAuth',
+    event: 'otp_messages_cleanup',
+    challengeId,
+    count: messages.length,
+  });
+
+  for (const { chatId, messageId } of messages) {
+    try {
+      await bot.api.deleteMessage(chatId, messageId);
+    } catch {
+      try {
+        await bot.api.editMessageText(chatId, messageId, '🔐 *Admin Login Verification*\n\n_This verification code has expired or was already consumed._', {
+          parse_mode: 'Markdown',
+        });
+      } catch {
+        // Benign ignore if message already deleted
+      }
+    }
+  }
 }
 
 export async function recordAdminAuditLog(params: {
@@ -341,11 +380,13 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
       consumed: false,
     };
 
+    challenge.telegramMessages = [];
     await saveOtpChallengeToRedis(challengeId, challenge);
 
     // Dispatch OTP via Telegram bot
     let sentCount = 0;
     const botToUse = adminBotInstance || (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token' ? new Bot<MyContext>(env.BOT_TOKEN) : null);
+    const dispatchedMessages: AdminOtpMessageRef[] = [];
 
     if (botToUse && env.ADMIN_TELEGRAM_IDS.length > 0) {
       for (const adminIdStr of env.ADMIN_TELEGRAM_IDS) {
@@ -355,12 +396,13 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
             event: 'otp_dispatch_started',
             adminId: adminIdStr,
           });
-          await botToUse.api.sendMessage(
+          const sent = await botToUse.api.sendMessage(
             adminIdStr,
             `🔐 *Admin Login Verification*\n\nYour 6-digit OTP code is:\n\`${otp}\`\n\nExpires in 5 minutes. Do not share this code.`,
             { parse_mode: 'Markdown' }
           );
           sentCount += 1;
+          dispatchedMessages.push({ chatId: adminIdStr, messageId: sent.message_id });
           logger.info('OTP successfully dispatched', {
             service: 'adminAuth',
             event: 'otp_dispatched',
@@ -381,6 +423,15 @@ router.post('/auth/password', adminAuthLimiter, async (req, res) => {
         hasBot: Boolean(botToUse),
         adminCount: env.ADMIN_TELEGRAM_IDS.length,
       });
+    }
+
+    if (dispatchedMessages.length > 0) {
+      challenge.telegramMessages = dispatchedMessages;
+      await saveOtpChallengeToRedis(challengeId, challenge);
+      // Automatically purge ephemeral OTP messages after 5-minute expiry
+      setTimeout(() => {
+        void cleanupAdminOtpMessages(challengeId, botToUse);
+      }, 5 * 60 * 1000);
     }
 
     if (sentCount === 0 && env.NODE_ENV === 'production') {
@@ -417,9 +468,14 @@ router.post('/auth/otp', otpVerifyLimiter, async (req, res) => {
 
     const verification = await verifyOtpChallengeAtomic(challengeId, otp);
     if (!verification.success) {
+      if (verification.error?.includes('Maximum OTP verification attempts exceeded')) {
+        void cleanupAdminOtpMessages(challengeId);
+      }
       res.status(401).json({ error: verification.error || 'Invalid verification code.' });
       return;
     }
+
+    void cleanupAdminOtpMessages(challengeId);
 
     const adminTgId = env.ADMIN_TELEGRAM_IDS[0];
     if (!adminTgId) {
@@ -470,9 +526,14 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
   if (challengeId && otp) {
     const verification = await verifyOtpChallengeAtomic(challengeId, otp);
     if (!verification.success) {
+      if (verification.error?.includes('Maximum OTP verification attempts exceeded')) {
+        void cleanupAdminOtpMessages(challengeId);
+      }
       res.status(401).json({ error: verification.error || 'Invalid verification code.' });
       return;
     }
+
+    void cleanupAdminOtpMessages(challengeId);
 
     const adminTgId = env.ADMIN_TELEGRAM_IDS[0];
     if (!adminTgId) {

@@ -57,6 +57,12 @@ func (p *PubSubClient) StartCommandSubscriber(ctx context.Context, hub *Hub) {
 				if cmd.Command == "SCHEDULE_CALL_TEARDOWN" && cmd.RoomName != "" && cmd.DurationSeconds > 0 {
 					hub.ScheduleAuthoritativeSessionTeardown(cmd.RoomName, cmd.DurationSeconds)
 					fmt.Printf("[PubSub] Scheduled authoritative teardown for room %s (%ds)\n", cmd.RoomName, cmd.DurationSeconds)
+				} else if cmd.Command == "SCHEDULE_HANDSHAKE_TIMER" && cmd.RoomName != "" {
+					if cmd.DurationSeconds > 0 {
+						hub.SetRoomDurationLimit(cmd.RoomName, cmd.DurationSeconds)
+					}
+					hub.ScheduleConnectionHandshakeTimer(cmd.RoomName, 90)
+					fmt.Printf("[PubSub] Scheduled connection handshake timer for room %s\n", cmd.RoomName)
 				}
 			}
 		}

@@ -23,6 +23,8 @@ export interface UseLiveKitReturn {
   micError: string | null;
   micDeniedCount: number;
   analyserNode: AnalyserNode | null;
+  isPartnerConnected: boolean;
+  remoteParticipantCount: number;
   connect: (url: string, token: string) => Promise<void>;
   disconnect: () => void;
   toggleMic: () => Promise<void>;
@@ -36,6 +38,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [isPartnerConnected, setIsPartnerConnected] = useState<boolean>(false);
+  const [remoteParticipantCount, setRemoteParticipantCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [isMicMuted, setIsMicMutedState] = useState<boolean>(false);
   const [canPlaybackAudio, setCanPlaybackAudio] = useState<boolean>(true);
@@ -133,6 +137,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
 
     setIsConnected(false);
     setIsConnecting(false);
+    setIsPartnerConnected(false);
+    setRemoteParticipantCount(0);
     setIsMicMutedState(false);
     setCanPlaybackAudio(true);
     setMicError(null);
@@ -291,6 +297,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         livekitRoom.on(
           RoomEvent.ParticipantConnected,
           (participant: RemoteParticipant) => {
+            setIsPartnerConnected(true);
+            setRemoteParticipantCount(livekitRoom?.remoteParticipants.size || 1);
             for (const pub of participant.audioTrackPublications.values()) {
               pub.setSubscribed(true);
               if (pub.track && pub.track.kind === Track.Kind.Audio) {
@@ -299,6 +307,13 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
             }
           }
         );
+
+        // Remote participant left room
+        livekitRoom.on(RoomEvent.ParticipantDisconnected, () => {
+          const count = livekitRoom?.remoteParticipants.size || 0;
+          setIsPartnerConnected(count > 0);
+          setRemoteParticipantCount(count);
+        });
 
         // Track unsubscription event
         livekitRoom.on(
@@ -328,10 +343,16 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           cleanupAudio();
           setIsConnected(false);
           setIsConnecting(false);
+          setIsPartnerConnected(false);
+          setRemoteParticipantCount(0);
           isConnectingRef.current = false;
         });
 
         await livekitRoom.connect(url, token);
+
+        const initialPeerCount = livekitRoom.remoteParticipants.size;
+        setIsPartnerConnected(initialPeerCount > 0);
+        setRemoteParticipantCount(initialPeerCount);
 
         // Attach any audio tracks already published by participants currently in the room
         for (const participant of livekitRoom.remoteParticipants.values()) {
@@ -501,6 +522,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     micError,
     micDeniedCount,
     analyserNode,
+    isPartnerConnected,
+    remoteParticipantCount,
     connect,
     disconnect,
     toggleMic,

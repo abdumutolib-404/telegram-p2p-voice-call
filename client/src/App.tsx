@@ -58,6 +58,7 @@ export const App: React.FC = () => {
 
   const [matchData, setMatchData] = useState<MatchFoundPayload | null>(null);
   const [pendingDirectCall, setPendingDirectCall] = useState<MatchFoundPayload | null>(null);
+  const [synchronizedStartedAt, setSynchronizedStartedAt] = useState<number | null>(null);
 
   // 3. Refs (unconditional)
   const appStateRef = useRef<AppState>(appState);
@@ -101,6 +102,7 @@ export const App: React.FC = () => {
     startAudio,
     analyserNode,
     getRoom,
+    isPartnerConnected,
   } = useLiveKit();
 
   // 5. Match Found Callback (unconditional)
@@ -136,6 +138,7 @@ export const App: React.FC = () => {
         }
 
         setAppState('in_call');
+        socketService.peerReady(data.roomName);
       } catch (err) {
         console.error('Failed to establish audio connection:', err);
         setErrorMessage('Unable to establish voice connection. Please try again.');
@@ -369,6 +372,9 @@ export const App: React.FC = () => {
     const socket = socketService.connect(initData);
 
     const onMatch = (data: MatchFoundPayload) => handleMatchFound(data, false);
+    const onCallStarted = (data: { startedAt: number; durationSeconds: number; expiresAt: number }) => {
+      setSynchronizedStartedAt(data.startedAt);
+    };
     const onSocketError = (err: { code?: string; message?: string } | string) => {
       const code = typeof err === 'object' && err !== null ? err.code : undefined;
       const msg = typeof err === 'string' ? err : err?.message || 'Matchmaking error occurred.';
@@ -392,6 +398,7 @@ export const App: React.FC = () => {
     };
 
     socket.on('match_found', onMatch);
+    socket.on('call_started', onCallStarted);
     socket.on('call_finished', handleCallEnded);
     socket.on('error', onSocketError);
 
@@ -412,6 +419,7 @@ export const App: React.FC = () => {
 
     return () => {
       socket.off('match_found', onMatch);
+      socket.off('call_started', onCallStarted);
       socket.off('call_finished', handleCallEnded);
       socket.off('error', onSocketError);
       socket.off('connect', handleRejoin);
@@ -423,6 +431,7 @@ export const App: React.FC = () => {
     if (userData.userId) {
       socketService.cancelQueue(userData.userId);
     }
+    setSynchronizedStartedAt(null);
     setAppState('ended');
   };
 
@@ -431,6 +440,7 @@ export const App: React.FC = () => {
       socketService.finishCall(matchData.roomName, userData.userId, reason);
     }
     disconnectLiveKit();
+    setSynchronizedStartedAt(null);
     if (reason === 'microphone_permission_denied') {
       setErrorMessage('Microphone access was denied 3 times. Speaking practice requires microphone access.');
     }
@@ -722,6 +732,8 @@ export const App: React.FC = () => {
         partnerBand={matchData.partnerBand}
         callDurationLimit={matchData.callDurationLimit ?? 900}
         isMicMuted={isMicMuted}
+        isPartnerConnected={isPartnerConnected}
+        synchronizedStartedAt={synchronizedStartedAt}
         canPlaybackAudio={canPlaybackAudio}
         micError={micError}
         micDeniedCount={micDeniedCount}

@@ -6,6 +6,7 @@ import type {
   RecordStatusPayload,
   RecordingErrorPayload,
   CallEndedPayload,
+  CallStartedPayload,
   SocketErrorPayload,
 } from '../types';
 
@@ -14,10 +15,12 @@ export interface ClientToServerEvents {
   cancel_queue: (data: { userId: string }) => void;
   toggle_record: (data: { roomName: string; record: boolean }) => void;
   finish_call: (data: { roomName: string; userId: string; reason?: string }) => void;
+  peer_ready: (data: { roomName: string }) => void;
 }
 
 export interface ServerToClientEvents {
   match_found: (data: MatchFoundPayload) => void;
+  call_started: (data: CallStartedPayload) => void;
   record_status: (data: RecordStatusPayload) => void;
   recording_error: (data: RecordingErrorPayload) => void;
   call_finished: (data: CallEndedPayload) => void;
@@ -78,6 +81,10 @@ class SocketService {
 
   public finishCall(roomName: string, userId: string, reason?: string): void {
     this.socket?.emit('finish_call', { roomName, userId, reason });
+  }
+
+  public peerReady(roomName: string): void {
+    this.socket?.emit('peer_ready', { roomName });
   }
 
   public disconnect(): void {

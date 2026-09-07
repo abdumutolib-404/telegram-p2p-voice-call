@@ -111,7 +111,7 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
       },
     });
 
-    await ctx.answerCallbackQuery({ text: `Saved ${stars}-star rating!` });
+    await ctx.answerCallbackQuery({ text: `Saved ${stars}-star rating!`, show_alert: true });
     await ctx.editMessageText(
       `📞 <b>Practice Session Complete!</b>\n\n` +
         `⭐ <b>Audio Quality Rating</b>: ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}\n` +
@@ -131,18 +131,18 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
     ]);
 
     if (!rater) {
-      await ctx.answerCallbackQuery({ text: 'User not found.' });
+      await ctx.answerCallbackQuery({ text: 'User not found.', show_alert: true });
       return;
     }
 
     if (!session) {
-      await ctx.answerCallbackQuery({ text: 'Call session not found.' });
+      await ctx.answerCallbackQuery({ text: 'Call session not found.', show_alert: true });
       return;
     }
 
     // Verify reporter was actually a participant
     if (session.userAId !== rater.id && session.userBId !== rater.id) {
-      await ctx.answerCallbackQuery({ text: 'Unauthorized: You were not a participant in this call.' });
+      await ctx.answerCallbackQuery({ text: 'Unauthorized: You were not a participant in this call.', show_alert: true });
       return;
     }
 
@@ -151,7 +151,7 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
       where: { callId, raterId: rater.id, reported: true },
     });
     if (existing) {
-      await ctx.answerCallbackQuery({ text: 'You have already reported this session.' });
+      await ctx.answerCallbackQuery({ text: 'You have already reported this session.', show_alert: true });
       return;
     }
 
@@ -159,7 +159,7 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
 
     const modResult = await moderationService.processReport(targetUserId, rater.id, callId, 'Inappropriate behavior');
 
-    await ctx.answerCallbackQuery({ text: 'Report submitted to moderation.' });
+    await ctx.answerCallbackQuery({ text: 'Report submitted to moderation.', show_alert: true });
     await ctx.editMessageText(
       `⚠️ <b>Report Submitted</b>\n\n` +
         `Your report has been logged. Status: ${modResult.penaltyLevel}.\n` +

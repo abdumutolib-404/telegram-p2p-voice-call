@@ -1,5 +1,15 @@
 package signaling
 
+type PeerReadyPayload struct {
+	RoomName string `json:"roomName"`
+}
+
+type CallStartedEvent struct {
+	StartedAt       int64 `json:"startedAt"`
+	DurationSeconds int   `json:"durationSeconds"`
+	ExpiresAt       int64 `json:"expiresAt"`
+}
+
 type ToggleRecordPayload struct {
 	RoomName  string `json:"roomName"`
 	Record    bool   `json:"record"`

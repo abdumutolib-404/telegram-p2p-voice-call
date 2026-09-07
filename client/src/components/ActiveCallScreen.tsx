@@ -12,6 +12,8 @@ interface ActiveCallScreenProps {
   partnerBand: number;
   callDurationLimit: number; // in seconds
   isMicMuted: boolean;
+  isPartnerConnected?: boolean;
+  synchronizedStartedAt?: number | null;
   canPlaybackAudio?: boolean;
   micError?: string | null;
   micDeniedCount?: number;
@@ -30,6 +32,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   partnerBand,
   callDurationLimit,
   isMicMuted,
+  isPartnerConnected = false,
+  synchronizedStartedAt = null,
   canPlaybackAudio = true,
   micError = null,
   micDeniedCount = 0,
@@ -41,6 +45,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   onUnlockAudio,
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [partnerConnectedAt, setPartnerConnectedAt] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
   const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
@@ -61,12 +66,28 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   }, [handleFinishCall]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1);
-    }, 1000);
+    if (isPartnerConnected && !partnerConnectedAt) {
+      setPartnerConnectedAt(Date.now());
+    }
+  }, [isPartnerConnected, partnerConnectedAt]);
+
+  // Synchronized countdown timer: only runs when both peers are actively connected
+  useEffect(() => {
+    if (!isPartnerConnected) {
+      return;
+    }
+
+    const effectiveStartTime = synchronizedStartedAt || partnerConnectedAt || Date.now();
+    const updateElapsed = () => {
+      const seconds = Math.max(0, Math.floor((Date.now() - effectiveStartTime) / 1000));
+      setElapsedSeconds(seconds);
+    };
+
+    updateElapsed();
+    const timer = setInterval(updateElapsed, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [isPartnerConnected, synchronizedStartedAt, partnerConnectedAt]);
 
   // Auto-resume AudioContext and unlock audio whenever visibility transitions to 'visible' (eliminates iOS Safari silence on app switch)
   useEffect(() => {
@@ -284,16 +305,23 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         {/* Big High-Contrast Monospace Timer */}
         <div
           className={`text-4xl font-mono font-black tracking-wider mt-2 px-6 py-2 rounded-2xl border transition-colors ${
-            isNearEnd
+            !isPartnerConnected
+              ? 'text-amber-400 bg-amber-500/10 border-amber-500/30 animate-pulse'
+              : isNearEnd
               ? 'text-amber-400 bg-amber-500/10 border-amber-500/40 animate-pulse motion-reduce:animate-none'
               : 'text-white bg-[#090D18] border-slate-800'
           }`}
           aria-label={`Call duration ${formatTime(elapsedSeconds)}`}
         >
-          {formatTime(elapsedSeconds)}
+          {!isPartnerConnected ? 'CONNECTING...' : formatTime(elapsedSeconds)}
         </div>
 
-        {isNearEnd ? (
+        {!isPartnerConnected ? (
+          <div className="flex items-center gap-1.5 text-xs font-mono text-amber-300 mt-0.5 animate-pulse">
+            <Wifi className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            <span>Waiting for partner • Timer will begin once both connected</span>
+          </div>
+        ) : isNearEnd ? (
           <div className="flex items-center gap-1.5 text-xs font-mono text-amber-400 mt-0.5">
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>Less than 1 minute remaining</span>

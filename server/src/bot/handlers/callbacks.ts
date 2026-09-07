@@ -6,8 +6,14 @@ import { calculateOverallBand, generateUniqueAlias, getMainMenuKeyboard } from '
 import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration } from '../../services/plan';
 import { escapeHtml } from '../../utils/sanitize';
 import { logger } from '../../utils/logger';
-import { scheduleAuthoritativeSessionTeardown } from '../../socket/signaling';
+import { scheduleAuthoritativeSessionTeardown, scheduleConnectionHandshakeTimer, setRoomDurationLimit } from '../../socket/signaling';
 import { publishGatewayCommand } from '../../config/redis';
+import { getActiveBonusCallsCount } from '../../services/referralService';
+import {
+  trackDirectCallMessage,
+  deleteDirectCallMessage,
+  cleanupDirectCallMessages,
+} from '../../services/directCallMessages';
 
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
@@ -244,14 +250,13 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: favorite_partner:<partnerOrSessionId>
   bot.callbackQuery(/^favorite_partner:(.+)$/, async (ctx) => {
-    void ctx.answerCallbackQuery().catch(() => undefined);
     const partnerOrSessionId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
 
     try {
       const user = await prisma.user.findUnique({ where: { telegramId } });
       if (!user) {
-        await ctx.answerCallbackQuery({ text: 'User not found.' });
+        await ctx.answerCallbackQuery({ text: 'User not found.', show_alert: true });
         return;
       }
 
@@ -267,7 +272,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       }
 
       if (!partner) {
-        await ctx.answerCallbackQuery({ text: 'Partner not found.' });
+        await ctx.answerCallbackQuery({ text: 'Partner not found.', show_alert: true });
         return;
       }
 
@@ -281,7 +286,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       });
 
       if (existing) {
-        await ctx.answerCallbackQuery({ text: 'Already in your favorites.' });
+        await ctx.answerCallbackQuery({ text: `ℹ️ ${partner.alias} is already in your favorites!`, show_alert: true });
         return;
       }
 
@@ -292,20 +297,19 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         },
       });
 
-      await ctx.answerCallbackQuery({ text: `⭐ ${partner.alias} saved to Favorites!` });
+      await ctx.answerCallbackQuery({ text: `⭐ ${partner.alias} saved to Favorites!`, show_alert: true });
     } catch (err) {
       logger.error('favorite_partner error', {
         service: 'bot',
         event: 'favorite_partner_failed',
         telegramId: telegramId.toString(),
       }, err);
-      await ctx.answerCallbackQuery({ text: 'Failed to save favorite.' });
+      await ctx.answerCallbackQuery({ text: 'Failed to save favorite.', show_alert: true });
     }
   });
 
   // Callback: remove_favorite:<partnerId>
   bot.callbackQuery(/^remove_favorite:(.+)$/, async (ctx) => {
-    void ctx.answerCallbackQuery().catch(() => undefined);
     const partnerId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
     try {
@@ -315,10 +319,10 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           where: { userId: user.id, partnerId },
         });
       }
-      await ctx.answerCallbackQuery({ text: 'Partner removed from favorites.' });
-      await ctx.editMessageText('❌ Partner removed from your favorites list.');
+      await ctx.answerCallbackQuery({ text: 'Partner removed from favorites.', show_alert: true });
+      await ctx.editMessageText('❌ Partner removed from your favorites list.').catch(() => undefined);
     } catch {
-      await ctx.answerCallbackQuery({ text: 'Unable to remove favorite.' });
+      await ctx.answerCallbackQuery({ text: 'Unable to remove favorite.', show_alert: true });
     }
   });
 
@@ -365,6 +369,18 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       if (partner.dnd) {
         await ctx.answerCallbackQuery({ text: `${partner.alias} has Do Not Disturb enabled.`, show_alert: true });
+        return;
+      }
+
+      // Check partner call quota before sending invitation
+      const partnerEntitlement = getEffectiveEntitlement(partner);
+      const partnerCallsUsed = await getUserCallsUsedThisPeriod(partner.id, partner);
+      const partnerBonusCalls = await getActiveBonusCallsCount(partner.id);
+      if (!partnerEntitlement.isAdmin && partnerCallsUsed >= partnerEntitlement.callLimit && partnerBonusCalls <= 0) {
+        await ctx.answerCallbackQuery({
+          text: `${partner.alias} has reached their monthly call limit and cannot receive direct calls right now.`,
+          show_alert: true,
+        });
         return;
       }
 
@@ -428,6 +444,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
               where: { id: session.id },
               data: { status: 'CANCELLED', endedAt: new Date() },
             });
+            await cleanupDirectCallMessages(bot, session.id);
             await ctx.api.sendMessage(
               caller.telegramId.toString(),
               `📞 <b>Direct Call Request Expired</b>\n\n<b>${escapeHtml(partner.alias)}</b> did not answer your call invitation in time.`,
@@ -446,12 +463,18 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       const callerKb = new InlineKeyboard().text('✖️ Cancel Call', `cancel_direct:${session.id}`);
 
       await ctx.answerCallbackQuery({ text: `Calling ${partner.alias}...` });
-      await ctx.reply(
+      const callerMsg = await ctx.reply(
         `📞 <b>Direct Call Request Sent</b>\n\n` +
           `Calling <b>${escapeHtml(partner.alias)}</b> (Band ${partner.band.toFixed(1)})...\n` +
           `<i>They have received an invitation to join your call.</i>`,
         { parse_mode: 'HTML', reply_markup: callerKb }
       );
+
+      await trackDirectCallMessage(session.id, {
+        chatId: caller.telegramId.toString(),
+        messageId: callerMsg.message_id,
+        role: 'caller_req',
+      });
 
       // Send incoming call prompt to partner
       const partnerKb = new InlineKeyboard()
@@ -459,13 +482,19 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         .text('❌ Decline', `decline_direct:${session.id}`);
 
       try {
-        await ctx.api.sendMessage(
+        const partnerMsg = await ctx.api.sendMessage(
           partner.telegramId.toString(),
           `📞 <b>Incoming Direct Call!</b>\n\n` +
             `<b>${escapeHtml(caller.alias)}</b> (Band ${caller.band.toFixed(1)}) is calling you for an IELTS speaking session.\n\n` +
             `Tap below to accept or decline:`,
           { parse_mode: 'HTML', reply_markup: partnerKb }
         );
+
+        await trackDirectCallMessage(session.id, {
+          chatId: partner.telegramId.toString(),
+          messageId: partnerMsg.message_id,
+          role: 'callee_invitation',
+        });
       } catch (sendErr) {
         logger.warn('Failed to notify partner of direct call', {
           service: 'bot',
@@ -479,7 +508,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         event: 'direct_call_failed',
         partnerId,
       }, err);
-      await ctx.answerCallbackQuery({ text: 'An error occurred initiating the direct call.' });
+      await ctx.answerCallbackQuery({ text: 'An error occurred initiating the direct call.', show_alert: true });
     }
   });
 
@@ -496,7 +525,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
       if (!session || session.status !== 'PENDING') {
         await ctx.answerCallbackQuery({ text: 'This call invitation is no longer active.', show_alert: true });
-        await ctx.editMessageText('❌ This call invitation has expired or was cancelled.');
+        await ctx.editMessageText('❌ This call invitation has expired or was cancelled.').catch(() => undefined);
         return;
       }
 
@@ -511,24 +540,26 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       // Re-verify Callee quota
       const calleeEntitlement = getEffectiveEntitlement(callee);
       const calleeCallsUsed = await getUserCallsUsedThisPeriod(callee.id, callee);
-      if (!calleeEntitlement.isAdmin && calleeCallsUsed >= calleeEntitlement.callLimit) {
+      const calleeBonusCalls = await getActiveBonusCallsCount(callee.id);
+      if (!calleeEntitlement.isAdmin && calleeCallsUsed >= calleeEntitlement.callLimit && calleeBonusCalls <= 0) {
         await ctx.answerCallbackQuery({
           text: `You have reached your monthly limit of ${calleeEntitlement.callLimit} calls. Please upgrade your plan!`,
           show_alert: true,
         });
-        await ctx.editMessageText('❌ You cannot accept this call because you have reached your monthly call limit.');
+        await ctx.editMessageText('❌ You cannot accept this call because you have reached your monthly call limit.').catch(() => undefined);
         return;
       }
 
       // Re-verify Caller quota
       const callerEntitlement = getEffectiveEntitlement(caller);
       const callerCallsUsed = await getUserCallsUsedThisPeriod(caller.id, caller);
-      if (!callerEntitlement.isAdmin && callerCallsUsed >= callerEntitlement.callLimit) {
+      const callerBonusCalls = await getActiveBonusCallsCount(caller.id);
+      if (!callerEntitlement.isAdmin && callerCallsUsed >= callerEntitlement.callLimit && callerBonusCalls <= 0) {
         await ctx.answerCallbackQuery({
           text: `${caller.alias} has reached their monthly call limit.`,
           show_alert: true,
         });
-        await ctx.editMessageText(`❌ Call cannot be connected because ${escapeHtml(caller.alias)} has reached their monthly call limit.`);
+        await ctx.editMessageText(`❌ Call cannot be connected because ${escapeHtml(caller.alias)} has reached their monthly call limit.`).catch(() => undefined);
         return;
       }
 
@@ -543,12 +574,14 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      // Authoritative server session duration teardown timer
+      // Defer authoritative session duration teardown until both peers join and send peer_ready.
+      // Schedule a 90s connection handshake timer so neither peer burns minutes while waiting.
       const durationMinutes = calculateEffectiveCallDuration(caller, callee);
       const durationSeconds = durationMinutes * 60;
-      scheduleAuthoritativeSessionTeardown(session.roomName, durationSeconds, bot);
+      setRoomDurationLimit(session.roomName, durationSeconds);
+      scheduleConnectionHandshakeTimer(session.roomName, 90, bot);
       void publishGatewayCommand({
-        command: 'SCHEDULE_CALL_TEARDOWN',
+        command: 'SCHEDULE_HANDSHAKE_TIMER',
         roomName: session.roomName,
         durationSeconds,
       });
@@ -565,13 +598,27 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         { parse_mode: 'HTML', reply_markup: joinKb }
       );
 
+      if (ctx.chat?.id && ctx.msg?.message_id) {
+        await trackDirectCallMessage(session.id, {
+          chatId: ctx.chat.id.toString(),
+          messageId: ctx.msg.message_id,
+          role: 'callee_join',
+        });
+      }
+
       try {
-        await ctx.api.sendMessage(
+        const callerJoinMsg = await ctx.api.sendMessage(
           caller.telegramId.toString(),
           `✅ <b>${escapeHtml(callee.alias)} accepted your call!</b>\n\n` +
             `Tap below to enter the voice call:`,
           { parse_mode: 'HTML', reply_markup: joinKb }
         );
+
+        await trackDirectCallMessage(session.id, {
+          chatId: caller.telegramId.toString(),
+          messageId: callerJoinMsg.message_id,
+          role: 'caller_join',
+        });
       } catch (notifyErr) {
         logger.warn('Failed to notify caller of accept', {
           service: 'bot',
@@ -584,7 +631,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         event: 'accept_direct_failed',
         sessionId,
       }, err);
-      await ctx.answerCallbackQuery({ text: 'Failed to accept call.' });
+      await ctx.answerCallbackQuery({ text: 'Failed to accept call.', show_alert: true });
     }
   });
 
@@ -599,7 +646,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       });
 
       if (!session) {
-        await ctx.answerCallbackQuery({ text: 'Call session not found.' });
+        await ctx.answerCallbackQuery({ text: 'Call session not found.', show_alert: true });
         return;
       }
 
@@ -614,6 +661,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           data: { status: 'DECLINED' },
         });
 
+        await cleanupDirectCallMessages(bot, session.id);
+
         if (session.userA && session.userB) {
           try {
             await ctx.api.sendMessage(
@@ -625,8 +674,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         }
       }
 
-      await ctx.answerCallbackQuery({ text: 'Call invitation declined.' });
-      await ctx.editMessageText('❌ You declined the call invitation.');
+      await ctx.answerCallbackQuery({ text: 'Call invitation declined.', show_alert: true });
+      await ctx.editMessageText('❌ You declined the call invitation.').catch(() => undefined);
     } catch (err) {
       logger.error('decline_direct error', {
         service: 'bot',
@@ -647,7 +696,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       });
 
       if (!session) {
-        await ctx.answerCallbackQuery({ text: 'Call session not found.' });
+        await ctx.answerCallbackQuery({ text: 'Call session not found.', show_alert: true });
         return;
       }
 
@@ -662,6 +711,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
           data: { status: 'CANCELLED' },
         });
 
+        await cleanupDirectCallMessages(bot, session.id);
+
         if (session.userB) {
           try {
             await ctx.api.sendMessage(
@@ -673,8 +724,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         }
       }
 
-      await ctx.answerCallbackQuery({ text: 'Call request cancelled.' });
-      await ctx.editMessageText('✖️ Call request cancelled.');
+      await ctx.answerCallbackQuery({ text: 'Call request cancelled.', show_alert: true });
+      await ctx.editMessageText('✖️ Call request cancelled.').catch(() => undefined);
     } catch (err) {
       logger.error('cancel_direct error', {
         service: 'bot',

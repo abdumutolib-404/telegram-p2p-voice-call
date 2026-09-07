@@ -23,6 +23,8 @@ func (h *Hub) Dispatch(socket *ClientSocket, event string, payload []byte) {
 		go h.handleToggleRecord(socket, payload)
 	case "finish_call":
 		go h.handleFinishCall(socket, payload)
+	case "peer_ready":
+		go h.handlePeerReady(socket, payload)
 	case "offer", "answer", "candidate", "leave":
 		go h.handleWebRTCSignal(socket, event, payload)
 	}
@@ -194,8 +196,10 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		ps.Join(roomName)
 	}
 
-	// Schedule authoritative session duration teardown timer
-	h.ScheduleAuthoritativeSessionTeardown(roomName, durationLimitSeconds)
+	// Defer authoritative session duration teardown until both peers send peer_ready;
+	// schedule a 90s connection handshake timer to cancel cleanly if a peer fails to join.
+	h.SetRoomDurationLimit(roomName, durationLimitSeconds)
+	h.ScheduleConnectionHandshakeTimer(roomName, 90)
 
 	// Emit match_found to both participants
 	for _, s := range userSockets {
@@ -240,6 +244,54 @@ func (h *Hub) handleCancelQueue(socket *ClientSocket) {
 	}
 
 	socket.Emit("queue_cancelled", QueueCancelledEvent{Success: true})
+}
+
+func (h *Hub) handlePeerReady(socket *ClientSocket, payload []byte) {
+	if socket.UserID == "" {
+		return
+	}
+	var req PeerReadyPayload
+	if err := json.Unmarshal(payload, &req); err != nil || req.RoomName == "" {
+		return
+	}
+
+	h.mu.Lock()
+	peers, ok := h.roomPeers[req.RoomName]
+	if !ok {
+		peers = make(map[string]bool)
+		h.roomPeers[req.RoomName] = peers
+	}
+	peers[socket.UserID] = true
+	numPeers := len(peers)
+	_, alreadyStarted := h.roomStartedAt[req.RoomName]
+	h.mu.Unlock()
+
+	if numPeers >= 2 && !alreadyStarted {
+		h.ClearConnectionHandshakeTimer(req.RoomName)
+		startedAt := time.Now().UnixMilli()
+		h.SetRoomStartedAt(req.RoomName, startedAt)
+
+		durationLimit := h.GetRoomDurationLimit(req.RoomName)
+		if durationLimit <= 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
+			cancel()
+			if err == nil && session != nil && session.UserA != nil && session.UserB != nil {
+				durationLimit = database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
+			} else {
+				durationLimit = 15 * 60
+			}
+			h.SetRoomDurationLimit(req.RoomName, durationLimit)
+		}
+
+		h.ScheduleAuthoritativeSessionTeardown(req.RoomName, durationLimit)
+
+		h.EmitToRoom(req.RoomName, "call_started", CallStartedEvent{
+			StartedAt:       startedAt,
+			DurationSeconds: durationLimit,
+			ExpiresAt:       startedAt + int64(durationLimit*1000),
+		})
+	}
 }
 
 func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
@@ -392,6 +444,7 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 	}
 
 	h.ClearSessionTimer(req.RoomName)
+	h.ClearConnectionHandshakeTimer(req.RoomName)
 
 	if session.Status != "ACTIVE" {
 		dur := 0
@@ -402,7 +455,13 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		return
 	}
 
-	durationSeconds := int(time.Since(session.CreatedAt).Seconds())
+	startedAtMs := h.GetRoomStartedAt(req.RoomName)
+	var durationSeconds int
+	if startedAtMs > 0 {
+		durationSeconds = int((time.Now().UnixMilli() - startedAtMs) / 1000)
+	} else {
+		durationSeconds = int(time.Since(session.CreatedAt).Seconds())
+	}
 	if durationSeconds < 1 {
 		durationSeconds = 1
 	}
@@ -464,6 +523,11 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, durationSeconds)
 	}
 	_ = h.LiveKit.DeleteRoom(ctx, req.RoomName)
+	h.mu.Lock()
+	delete(h.roomPeers, req.RoomName)
+	delete(h.roomStartedAt, req.RoomName)
+	delete(h.roomDurationLimits, req.RoomName)
+	h.mu.Unlock()
 	h.DeleteRoomMutex(req.RoomName)
 
 	h.EmitToRoom(req.RoomName, "call_finished", CallFinishedEvent{Duration: durationSeconds})
@@ -620,7 +684,13 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 			return
 		}
 
-		durationSeconds := int(disconnectTimestamp.Sub(current.CreatedAt).Seconds())
+		startedAtMs := h.GetRoomStartedAt(activeCall.RoomName)
+		var durationSeconds int
+		if startedAtMs > 0 {
+			durationSeconds = int((disconnectTimestamp.UnixMilli() - startedAtMs) / 1000)
+		} else {
+			durationSeconds = int(disconnectTimestamp.Sub(current.CreatedAt).Seconds())
+		}
 		if durationSeconds < 0 {
 			durationSeconds = 0
 		}
@@ -634,6 +704,7 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		isCancelled := durationSeconds < 5
 
 		h.ClearSessionTimer(current.RoomName)
+		h.ClearConnectionHandshakeTimer(current.RoomName)
 
 		egress := h.GetActiveEgress(current.RoomName)
 		var egressID *string
@@ -652,6 +723,11 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		h.SetActiveEgress(current.RoomName, nil)
 
 		_ = h.LiveKit.DeleteRoom(teardownCtx, current.RoomName)
+		h.mu.Lock()
+		delete(h.roomPeers, current.RoomName)
+		delete(h.roomStartedAt, current.RoomName)
+		delete(h.roomDurationLimits, current.RoomName)
+		h.mu.Unlock()
 		h.DeleteRoomMutex(current.RoomName)
 
 		if isCancelled {

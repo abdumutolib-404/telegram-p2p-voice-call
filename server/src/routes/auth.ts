@@ -4,7 +4,8 @@ import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { createActionRateLimiter, getClientIp } from '../middleware/rateLimit';
 import { generateUniqueAlias } from '../bot/commands/start';
-import { getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../services/plan';
+import { getEffectiveEntitlement, getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../services/plan';
+import { getActiveBonusCallsCount } from '../services/referralService';
 import { logger } from '../utils/logger';
 import { setRequestContextUserId } from '../utils/requestContext';
 
@@ -110,29 +111,48 @@ router.post('/verify', authLimiter, async (req, res) => {
     // Step 4: Quota Validation
     const callsUsed = await getUserCallsUsedThisPeriod(dbUser.id, dbUser);
     const recUsed = await getUserRecordingsUsedThisPeriod(dbUser.id, dbUser);
+    const activeBonusCalls = await getActiveBonusCallsCount(dbUser.id);
     const profile = getPaidUserProfile({
       ...dbUser,
       dailyCallsUsed: callsUsed,
       recordingsUsed: recUsed,
     });
 
-    const { getActiveBonusCallsCount } = await import('../services/referralService');
-    const activeBonusCalls = await getActiveBonusCallsCount(dbUser.id);
-
+    // Step 4: Quota & Active Session Supervision
+    const entitlement = getEffectiveEntitlement(dbUser);
+    const effectiveLimit = entitlement.callLimit;
     const isQuotaExhausted =
-      !profile.isActivePaid &&
-      profile.rank === 0 &&
-      callsUsed >= 3 &&
+      !entitlement.isAdmin &&
+      callsUsed >= effectiveLimit &&
       activeBonusCalls <= 0;
 
+    const callsRemaining = Math.max(0, effectiveLimit - callsUsed) + activeBonusCalls;
     const accessStatus = isQuotaExhausted ? 'exhausted_quota' : 'granted';
 
-    // Step 5: Grant Access
+    // Step 5: Device-in-call supervision (check for ongoing active session)
+    const activeCall = await prisma.callSession.findFirst({
+      where: {
+        status: 'ACTIVE',
+        OR: [{ userAId: dbUser.id }, { userBId: dbUser.id }],
+      },
+      orderBy: { createdAt: 'desc' },
+      include: { userA: true, userB: true },
+    });
+
+    const hasActiveCall = Boolean(activeCall);
+
+    // Step 6: Grant Access
     res.json({
       success: true,
       status: accessStatus,
       access: accessStatus,
       reason: isQuotaExhausted ? 'exhausted_quota' : undefined,
+      hasActiveCall,
+      activeCall: activeCall ? {
+        id: activeCall.id,
+        roomName: activeCall.roomName,
+        partnerAlias: activeCall.userAId === dbUser.id ? activeCall.userB.alias : activeCall.userA.alias,
+      } : undefined,
       user: {
         id: dbUser.id,
         telegramId: dbUser.telegramId.toString(),
@@ -143,6 +163,8 @@ router.post('/verify', authLimiter, async (req, res) => {
         subGRA: dbUser.subGRA,
         subP: dbUser.subP,
         plan: dbUser.plan,
+        callsRemaining,
+        totalCallsLimit: effectiveLimit,
         isBanned: false,
         profile,
       },

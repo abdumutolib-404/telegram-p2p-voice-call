@@ -28,16 +28,20 @@ type Hub struct {
 	LiveKitAPISecret     string
 	AdminTelegramIDs     []string
 
-	userSockets          map[string]map[string]*ClientSocket // userId -> socketId -> socket
-	roomSockets          map[string]map[string]*ClientSocket // roomName -> socketId -> socket
-	activeEgresses       map[string]*ActiveEgress            // roomName -> egress
-	serverSessionTimers  map[string]*time.Timer              // roomName -> timer
-	disconnectGraceTimers map[string]*time.Timer             // userId -> timer
-	userLastActionTime   map[string]int64                    // userId -> timestampMs
+	userSockets           map[string]map[string]*ClientSocket // userId -> socketId -> socket
+	roomSockets           map[string]map[string]*ClientSocket // roomName -> socketId -> socket
+	activeEgresses        map[string]*ActiveEgress            // roomName -> egress
+	serverSessionTimers   map[string]*time.Timer              // roomName -> timer
+	disconnectGraceTimers map[string]*time.Timer              // userId -> timer
+	userLastActionTime    map[string]int64                    // userId -> timestampMs
+	roomPeers             map[string]map[string]bool          // roomName -> userId -> true
+	roomStartedAt         map[string]int64                    // roomName -> startedAtMs
+	roomDurationLimits    map[string]int                      // roomName -> durationSeconds
+	handshakeTimers       map[string]*time.Timer              // roomName -> timer
 
-	roomMutexes          sync.Map // roomName -> *sync.Mutex
-	userMutexes          sync.Map // userId -> *sync.Mutex
-	mu                   sync.RWMutex
+	roomMutexes           sync.Map // roomName -> *sync.Mutex
+	userMutexes           sync.Map // userId -> *sync.Mutex
+	mu                    sync.RWMutex
 }
 
 func NewHub(
@@ -64,6 +68,10 @@ func NewHub(
 		serverSessionTimers:   make(map[string]*time.Timer),
 		disconnectGraceTimers: make(map[string]*time.Timer),
 		userLastActionTime:    make(map[string]int64),
+		roomPeers:             make(map[string]map[string]bool),
+		roomStartedAt:         make(map[string]int64),
+		roomDurationLimits:    make(map[string]int),
+		handshakeTimers:       make(map[string]*time.Timer),
 	}
 }
 
@@ -373,4 +381,46 @@ func (h *Hub) GetActiveEgress(roomName string) *ActiveEgress {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.activeEgresses[roomName]
+}
+
+func (h *Hub) ClearConnectionHandshakeTimer(roomName string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if timer, ok := h.handshakeTimers[roomName]; ok {
+		timer.Stop()
+		delete(h.handshakeTimers, roomName)
+	}
+}
+
+func (h *Hub) SetConnectionHandshakeTimer(roomName string, timer *time.Timer) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if existing, ok := h.handshakeTimers[roomName]; ok {
+		existing.Stop()
+	}
+	h.handshakeTimers[roomName] = timer
+}
+
+func (h *Hub) SetRoomDurationLimit(roomName string, limit int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.roomDurationLimits[roomName] = limit
+}
+
+func (h *Hub) GetRoomDurationLimit(roomName string) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.roomDurationLimits[roomName]
+}
+
+func (h *Hub) SetRoomStartedAt(roomName string, startedAt int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.roomStartedAt[roomName] = startedAt
+}
+
+func (h *Hub) GetRoomStartedAt(roomName string) int64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.roomStartedAt[roomName]
 }

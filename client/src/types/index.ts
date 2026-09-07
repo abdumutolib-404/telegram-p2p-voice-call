@@ -76,6 +76,12 @@ export interface CallEndedPayload {
   reason?: string;
 }
 
+export interface CallStartedPayload {
+  startedAt: number; // timestamp in ms
+  durationSeconds: number;
+  expiresAt: number; // timestamp in ms
+}
+
 export interface SocketErrorPayload {
   code?: string;
   message: string;

@@ -3,6 +3,7 @@ import type { MyContext } from '../bot/types';
 import { createRedisSubscriber } from '../config/redis';
 import { sendPostCallReviewCard } from '../bot/handlers/postCall';
 import { onCallFinishedCheckReferralReward } from './referralService';
+import { cleanupDirectCallMessages } from './directCallMessages';
 import { logger } from '../utils/logger';
 
 export interface CallFinishedEventMessage {
@@ -88,7 +89,12 @@ export async function handleCallFinishedEvent(
     return;
   }
 
-  // 3. Post-call review cards if call lasted at least 5 seconds
+  // 3. Purge any ephemeral direct-call Telegram join messages
+  if (bot && sessionId) {
+    await cleanupDirectCallMessages(bot, sessionId).catch(() => undefined);
+  }
+
+  // 4. Post-call review cards if call lasted at least 5 seconds
   if (durationSeconds >= 5) {
     const isUserARecorder = Boolean(recordingUrl && retentionDaysA && retentionDaysA > 0);
     const isUserBRecorder = Boolean(recordingUrl && retentionDaysB && retentionDaysB > 0);

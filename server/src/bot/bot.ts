@@ -101,17 +101,28 @@ export function isModalAlertCallback(data: string | undefined): boolean {
     data.startsWith('accept_direct:') ||
     data.startsWith('decline_direct:') ||
     data.startsWith('cancel_direct:') ||
+    data.startsWith('favorite_partner:') ||
+    data.startsWith('remove_favorite:') ||
+    data.startsWith('rate_call:') ||
+    data.startsWith('report_partner:') ||
     data.startsWith('play_rec:') ||
     data.startsWith('play_rec_') ||
     data.startsWith('play_recording:') ||
     data.startsWith('play_recording_') ||
     data.startsWith('plan:') ||
+    data.startsWith('buy_plan:') ||
+    data.startsWith('manual_pay:') ||
+    data.startsWith('select_plan:') ||
     data.startsWith('pay_stars:') ||
     data.startsWith('pay_card:') ||
     data.startsWith('pay_click:') ||
     data.startsWith('pay_payme:') ||
     data.startsWith('pay_uzcard:') ||
-    data.startsWith('cancel_pay:')
+    data.startsWith('cancel_pay:') ||
+    data === 'request_refund' ||
+    data.startsWith('exec_stars_refund:') ||
+    data.startsWith('submit_uzs_refund:') ||
+    data === 'cancel_refund'
   );
 }
 
