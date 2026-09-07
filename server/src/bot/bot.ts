@@ -306,7 +306,8 @@ export function createBot(token: string): Bot<MyContext> {
 
   // Catch errors to prevent bot crash
   bot.catch((err) => {
-    const errorMsg = String((err.error as any)?.message || (err.error as any)?.description || err.error || '');
+    const errorObj = err.error as any;
+    const errorMsg = String(errorObj?.message || errorObj?.description || errorObj || '');
     if (
       errorMsg.includes('message is not modified') ||
       errorMsg.includes('query is too old') ||
@@ -314,10 +315,13 @@ export function createBot(token: string): Bot<MyContext> {
     ) {
       return; // Ignore benign duplicate button clicks
     }
-    logger.error(`Grammy bot update ${err.ctx.update.update_id} failed`, {
+    logger.error(`Grammy bot update ${err.ctx.update.update_id} failed: ${errorMsg}`, {
       service: 'bot',
       event: 'bot_update_error',
       updateId: err.ctx.update.update_id,
+      errorName: errorObj?.name,
+      errorMessage: errorMsg,
+      errorStack: errorObj?.stack,
     }, err.error);
   });
 

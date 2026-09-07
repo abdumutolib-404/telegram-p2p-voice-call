@@ -1277,6 +1277,21 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
       const now = Date.now();
       for (const session of activeSessions) {
+        if (!session.userA || !session.userB) {
+          logger.warn('Cleaning up active session with missing participant records', {
+            service: 'signaling',
+            event: 'reconcile_orphan_session_cleaned',
+            sessionId: session.id,
+            roomName: session.roomName,
+          });
+          await prisma.callSession.update({
+            where: { id: session.id },
+            data: { status: 'CANCELLED', endedAt: new Date() },
+          }).catch(() => undefined);
+          await deleteLiveKitRoom(session.roomName).catch(() => undefined);
+          continue;
+        }
+
         const callDurationLimitMinutes = calculateMixedPlanDuration(session.userA.plan, session.userB.plan);
         const callDurationLimitSeconds = callDurationLimitMinutes * 60;
         const elapsedSeconds = Math.floor((now - session.createdAt.getTime()) / 1000);

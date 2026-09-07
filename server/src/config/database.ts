@@ -80,6 +80,43 @@ export async function connectDB(): Promise<void> {
       service: 'database',
       event: 'db_connected',
     });
+
+    // Check if essential database schema / tables exist
+    try {
+      await realPrismaClient.user.findFirst({ select: { id: true } });
+    } catch (probeErr: any) {
+      const errMsg = String(probeErr?.message || '');
+      const errCode = String(probeErr?.code || '');
+      if (
+        errCode === 'P2021' ||
+        errMsg.includes('does not exist') ||
+        errMsg.includes('relation') ||
+        errMsg.includes('table')
+      ) {
+        logger.warn('PostgreSQL database tables missing. Automatically running Prisma schema push...', {
+          service: 'database',
+          event: 'db_auto_sync_starting',
+          code: errCode,
+        });
+        try {
+          const { execSync } = require('child_process');
+          execSync('npx prisma db push --skip-generate --accept-data-loss', {
+            stdio: 'inherit',
+            timeout: 60000,
+            env: process.env,
+          });
+          logger.info('Prisma schema synchronized successfully.', {
+            service: 'database',
+            event: 'db_auto_sync_completed',
+          });
+        } catch (pushErr: any) {
+          logger.error('Automatic Prisma db push failed', {
+            service: 'database',
+            event: 'db_auto_sync_failed',
+          }, pushErr);
+        }
+      }
+    }
   } catch (error: unknown) {
     useRealPrisma = false;
     logger.error('Database connection failed', {
