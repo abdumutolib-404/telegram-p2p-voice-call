@@ -62,6 +62,7 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
         'pay_payme:PLUS',
         'pay_uzcard:PRO',
         'cancel_pay:order_333',
+        'cancel_manual_pay:req_123',
       ];
 
       for (const cb of alertCallbacks) {

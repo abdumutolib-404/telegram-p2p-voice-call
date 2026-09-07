@@ -119,6 +119,7 @@ export function isModalAlertCallback(data: string | undefined): boolean {
     data.startsWith('pay_payme:') ||
     data.startsWith('pay_uzcard:') ||
     data.startsWith('cancel_pay:') ||
+    data.startsWith('cancel_manual_pay:') ||
     data === 'request_refund' ||
     data.startsWith('exec_stars_refund:') ||
     data.startsWith('submit_uzs_refund:') ||
