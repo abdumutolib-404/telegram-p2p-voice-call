@@ -512,16 +512,19 @@ export async function generateOrderNumber(prefix: string = 'A'): Promise<string>
   } catch {
     // Safe fallback for tests/environments where Redis is mocked or throws
     if (inMemoryFallbackSequence === 0) {
-      let totalManual = 0;
-      let totalStars = 0;
-      try {
-        totalManual = await prisma.manualPaymentRequest.count();
-      } catch {}
-      try {
-        totalStars = await prisma.starsTransaction.count();
-      } catch {}
-      const maxOrderNumberFromDb = await getMaxOrderNumberFromDb().catch(() => 0);
-      inMemoryFallbackSequence = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+      await initializeOrderSequence().catch(() => {});
+      if (inMemoryFallbackSequence === 0) {
+        let totalManual = 0;
+        let totalStars = 0;
+        try {
+          totalManual = await prisma.manualPaymentRequest.count();
+        } catch {}
+        try {
+          totalStars = await prisma.starsTransaction.count();
+        } catch {}
+        const maxOrderNumberFromDb = await getMaxOrderNumberFromDb().catch(() => 0);
+        inMemoryFallbackSequence = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+      }
     }
     inMemoryFallbackSequence += 1;
     seq = inMemoryFallbackSequence;

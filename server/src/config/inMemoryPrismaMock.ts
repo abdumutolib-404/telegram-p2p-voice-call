@@ -951,7 +951,9 @@ export class InMemoryPrismaMock {
   manualPaymentRequest = {
     create: async (args: { data: Record<string, unknown> }): Promise<ManualPaymentRequestRow> => {
       const id = stringValue(args.data.id, crypto.randomUUID());
-      const orderNumber = stringValue(args.data.orderNumber, 'A0');
+      const orderNumber = args.data.orderNumber !== undefined
+        ? stringValue(args.data.orderNumber)
+        : `A${this.manualPaymentRequests.size + 1}`;
       for (const existing of this.manualPaymentRequests.values()) {
         if (existing.orderNumber === orderNumber) {
           throw new Error('Unique constraint failed on the fields: (`orderNumber`)');

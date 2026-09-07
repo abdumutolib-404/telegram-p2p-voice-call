@@ -116,8 +116,10 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
     }
 
     const requesterId = BigInt(tgUser.id);
+    const requestedSessionId = (req.query.active_call || req.query.sessionId) as string | undefined;
     const session = await prisma.callSession.findFirst({
       where: {
+        ...(requestedSessionId ? { id: requestedSessionId } : {}),
         status: 'ACTIVE',
         OR: [{ userA: { telegramId: requesterId } }, { userB: { telegramId: requesterId } }],
       },

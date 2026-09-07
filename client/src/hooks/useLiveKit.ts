@@ -29,6 +29,7 @@ export interface UseLiveKitReturn {
   setMicMuted: (muted: boolean) => Promise<void>;
   retryMicrophone: () => Promise<boolean>;
   startAudio: () => Promise<void>;
+  getRoom: () => Room | null;
 }
 
 export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
@@ -506,5 +507,6 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     setMicMuted,
     retryMicrophone,
     startAudio,
+    getRoom: () => roomRef.current,
   };
 }

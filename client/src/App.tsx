@@ -92,7 +92,6 @@ export const App: React.FC = () => {
   const {
     connect: connectLiveKit,
     disconnect: disconnectLiveKit,
-    room: livekitRoom,
     isMicMuted,
     canPlaybackAudio,
     micError,
@@ -101,6 +100,7 @@ export const App: React.FC = () => {
     retryMicrophone,
     startAudio,
     analyserNode,
+    getRoom,
   } = useLiveKit();
 
   // 5. Match Found Callback (unconditional)
@@ -309,7 +309,8 @@ export const App: React.FC = () => {
 
         // Check if there is an active call session (e.g. direct call accepted or reconnect)
         try {
-          const activeRes = await fetch(`${serverUrl}/api/calls/active`, {
+          const activeUrl = `${serverUrl}/api/calls/active${window.location.search || ''}`;
+          const activeRes = await fetch(activeUrl, {
             headers: { 'x-telegram-init-data': rawInitData },
           });
           if (activeRes.ok) {
@@ -442,18 +443,25 @@ export const App: React.FC = () => {
     setPendingDirectCall(null);
     try {
       await startAudio();
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        // Prime audio permissions during the user gesture event tick
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      }
     } catch (e) {
-      console.warn('[DirectCall] startAudio error:', e);
+      console.warn('[DirectCall] startAudio / mic unlock warning:', e);
     }
     await handleMatchFound(directCall, true);
-    if (livekitRoom?.localParticipant) {
-      try {
-        await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-      } catch (e) {
-        console.warn('[DirectCall] Mic activation fallback:', e);
+    try {
+      await retryMicrophone();
+      const currentRoom = getRoom();
+      if (currentRoom?.localParticipant) {
+        await currentRoom.localParticipant.setMicrophoneEnabled(true);
       }
+    } catch (e) {
+      console.warn('[DirectCall] Mic activation fallback:', e);
     }
-  }, [pendingDirectCall, startAudio, handleMatchFound, livekitRoom]);
+  }, [pendingDirectCall, startAudio, handleMatchFound, retryMicrophone, getRoom]);
 
   const handleRestart = () => {
     startAudio().catch(() => {});

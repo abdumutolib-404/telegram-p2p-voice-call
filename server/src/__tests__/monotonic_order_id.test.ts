@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   generateOrderNumber,
   initializeOrderSequence,
@@ -167,6 +167,46 @@ describe('Monotonic Order ID Counter & Collision Resistance', () => {
 
       expect(num2).toBe(num1 + 1);
       expect(num3).toBe(num2 + 1);
+    } finally {
+      redis.incr = originalIncr;
+      resetOrderSequenceForTesting();
+    }
+  });
+
+  it('guarantees 100% uniqueness without collisions under concurrent generation in fallback mode', async () => {
+    resetOrderSequenceForTesting();
+
+    const redis = getRedis();
+    const originalIncr = redis.incr;
+
+    try {
+      redis.incr = async () => {
+        throw new Error('Redis connection lost');
+      };
+
+      const CONCURRENCY = 200;
+      const promises: Promise<string>[] = [];
+
+      for (let i = 0; i < CONCURRENCY; i++) {
+        promises.push(generateOrderNumber('A'));
+      }
+
+      const results = await Promise.all(promises);
+
+      expect(results).toHaveLength(CONCURRENCY);
+
+      for (const id of results) {
+        expect(id).toMatch(/^A\d+$/);
+      }
+
+      const uniqueIds = new Set(results);
+      expect(uniqueIds.size).toBe(CONCURRENCY);
+
+      const numbers = results.map((id) => parseInt(id.slice(1), 10)).sort((a, b) => a - b);
+      const minNum = numbers[0];
+      for (let i = 0; i < numbers.length; i++) {
+        expect(numbers[i]).toBe(minNum + i);
+      }
     } finally {
       redis.incr = originalIncr;
       resetOrderSequenceForTesting();
