@@ -120,9 +120,11 @@ sequenceDiagram
 
     Caller->>Bot: Tap "Call Favorite" -> Callback `direct_call:<calleeUserId>`
     Bot->>Redis: Check Rate Limit "DIRECT_CALL" (4 req / 30s)
+    Bot->>Bot: Dual Quota Check: Validate Caller AND Callee remaining call limits
     Bot->>Bot: Check Callee DND (Do-Not-Disturb) & Active Call status
     Bot->>Redis: Store Invite State: SET `bot:fave_invite:<inviteToken>` { callerId, calleeId, roomName } EX 60
     Bot->>Callee: Send Telegram Message with Inline Keyboards:<br/>"📞 <b>P2P-Partner-7821</b> is inviting you to an IELTS Speaking Call!"<br/>[ ✅ Accept Call ] [ ❌ Decline ]
+    Bot->>Redis: Track Invite Message ID in `direct_call:messages:<sessionId>`
     Bot-->>Caller: "Invitation sent! Waiting for partner to accept (60s)..."
 
     alt Callee Accepts within 60s
@@ -130,14 +132,19 @@ sequenceDiagram
         Bot->>Redis: GETDEL `bot:fave_invite:<inviteToken>`
         Bot->>GW: Hub.CreateDirectRoom(roomName, callerId, calleeId)
         Bot->>Callee: Send WebApp Launch Button: [ 🎙️ Enter Voice Room ]
-        Bot->>Caller: Send Telegram Alert: "Partner accepted! Entering room..."
+        Bot->>Caller: Send WebApp Launch Button: [ 🎙️ Enter Voice Room ]
+        Bot->>Redis: Track Join Buttons in `direct_call:messages:<sessionId>`
+        Note over Bot,GW: Session lifecycle concludes (finish, hangup, timeout)
+        Bot->>Bot: Ephemeral Auto-Purge: Delete or strip join buttons from chat history!
     else Callee Declines or 60s Times Out
         alt Callee Declines
             Callee->>Bot: Taps [ ❌ Decline ]
             Bot->>Caller: "Partner declined the invitation."
+            Bot->>Bot: Ephemeral Auto-Purge: Delete/strip invitation messages
         else Timeout
             Note over Redis,Caller: 60s TTL expires in Redis
             Bot->>Caller: "Call invitation timed out. Partner did not respond."
+            Bot->>Bot: Ephemeral Auto-Purge: Delete/strip invitation messages
         end
     end
 ```

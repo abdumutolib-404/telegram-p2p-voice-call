@@ -16,7 +16,7 @@
 | `DATABASE_URL` | String | `postgresql://...` | Yes | PostgreSQL connection string used by `jackc/pgx/v5` connection pool. |
 | `REDIS_URL` | String | `redis://127.0.0.1:6379`| Yes | Redis connection string used for matchmaking Lua scripts and Pub/Sub IPC. |
 | `BOT_TOKEN` | String | `""` | Yes | Telegram Bot token used to verify `initData` HMAC signatures on WebSocket handshakes. |
-| `LIVEKIT_HOST` | String | `""` | Yes | WebSocket/HTTP host of LiveKit SFU (e.g. `https://pairtalk.livekit.cloud`). |
+| `LIVEKIT_HOST` / `LIVEKIT_URL` | String | `""` | Yes | WebSocket/HTTP host of LiveKit SFU (e.g. `https://pairtalk.livekit.cloud`). `LIVEKIT_URL` accepted as alias. |
 | `LIVEKIT_API_KEY` | String | `""` | Yes | LiveKit API Key used for minting room access tokens and composite egress. |
 | `LIVEKIT_API_SECRET`| String | `""` | Yes | LiveKit API Secret used for cryptographic JWT signing. |
 | `S3_KEY` | String | `""` | Optional | AWS IAM Access Key ID for cloud audio recording storage. |

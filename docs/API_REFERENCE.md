@@ -170,8 +170,26 @@ POST /api/auth/verify
       "recordingsUsed": 0,
       "recordingsLimit": 1,
       "retentionDays": 1
-    }
+    },
+    "hasActiveCall": false,
+    "activeCall": null
   }
+}
+```
+
+- **Response `200 OK` (Active Call In Progress on Another Device/Tab)**:
+```json
+{
+  "success": true,
+  "status": "granted",
+  "access": "granted",
+  "hasActiveCall": true,
+  "activeCall": {
+    "id": "sess_8a7f6c5b-1122-3344-5566-778899aabbcc",
+    "roomName": "room_8a7f6c5b-1122-3344-5566-778899aabbcc",
+    "partnerAlias": "P2P-Partner-1042"
+  },
+  "user": { ... }
 }
 ```
 

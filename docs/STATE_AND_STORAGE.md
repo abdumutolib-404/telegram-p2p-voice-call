@@ -125,7 +125,7 @@ Telegram Stars in-app purchase ledger.
 | Column | Type | Attributes / Defaults | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | `String` | `@id @default(uuid())` | Primary key UUID. |
-| `orderNumber` | `String?` | Nullable | Human-readable order number. |
+| `orderNumber` | `String?` | `@unique` Nullable | Atomic monotonic order number (`ORD-1`, `ORD-2`). |
 | `userId` | `String` | References `User.id` | Buyer's user ID. |
 | `telegramPaymentId` | `String` | `@unique` | Canonical Telegram Stars payment charge ID. |
 | `starsAmount` | `Int` | - | Amount paid in Stars (`XTR`). |
@@ -137,6 +137,7 @@ Telegram Stars in-app purchase ledger.
 
 **Indexes**:
 - `@@index([userId, status])`
+- `@@index([orderNumber])`
 
 ---
 
@@ -146,7 +147,7 @@ Manual UZS Humo/Uzcard bank transfer desk.
 | Column | Type | Attributes / Defaults | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | `String` | `@id @default(uuid())` | Primary key UUID. |
-| `orderNumber` | `String` | `@default("A0")` | Human-readable tracking number (`A042`). |
+| `orderNumber` | `String` | `@unique @default("A0")` | Atomic monotonic order tracking number (`ORD-1`, `ORD-2`). |
 | `userId` | `String` | References `User.id` | Buyer's user ID. |
 | `telegramId` | `BigInt` | - | Buyer's Telegram ID. |
 | `alias` | `String` | - | Buyer's alias. |
@@ -165,6 +166,7 @@ Manual UZS Humo/Uzcard bank transfer desk.
 **Indexes**:
 - `@@index([userId, status])`
 - `@@index([status, createdAt])`
+- `@@index([orderNumber])`
 
 ---
 

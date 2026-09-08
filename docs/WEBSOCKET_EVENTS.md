@@ -149,7 +149,24 @@ Signals voluntary end of call by either participant.
 
 ---
 
-### 2.5 WebRTC Fallback Signaling Events
+### 2.5 `peer_ready`
+
+Signals that the client has successfully joined the LiveKit audio room and initialized local microphone capture.
+
+- **Action Rate Limit**: `PEER_READY` (idempotent per call).
+- **Payload Schema**:
+```json
+{
+  "roomName": "room_7b9d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f"
+}
+```
+- **Outcome**:
+  - The server tracks readiness of both peers in the room.
+  - When both peers emit `peer_ready`, the server cancels the 90-second connection handshake timer, sets the authoritative start timestamp (`roomStartedAt`), schedules the authoritative duration teardown timer, and broadcasts `call_started` to both participants.
+
+---
+
+### 2.6 WebRTC Fallback Signaling Events
 
 Used for direct P2P mesh signaling if LiveKit SFU experiences network boundary degradation:
 
@@ -208,7 +225,23 @@ Emitted upon successful cancellation of queue search.
 
 ---
 
-### 3.4 `partner_connection_lost`
+### 3.4 `call_started`
+
+Emitted when both participants have joined the LiveKit room, initialized audio capture, and signaled readiness via `peer_ready`.
+
+```json
+{
+  "roomName": "room_7b9d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
+  "startedAt": 1788739200000,
+  "durationLimit": 3600
+}
+```
+
+- **Client Action**: Unfreezes the in-call timer from `00:00` and initiates synchronized countdown against `startedAt`.
+
+---
+
+### 3.5 `partner_connection_lost`
 
 Emitted to the remaining peer when their partner's WebSocket disconnects unexpectedly.
 
@@ -334,3 +367,17 @@ To eliminate client-side duration manipulation or orphaned WebRTC sessions, the 
    - Persists completion status, recording URL, and retention timestamps in PostgreSQL.
    - Emits `call_finished` (`reason: "call_duration_limit_reached"`).
    - Broadcasts `CALL_FINISHED` to Redis channel `pairtalk:events`.
+
+### 4.3 90-Second Connection Handshake Timer
+
+To guarantee fairness and prevent burning candidate minutes while a remote partner is navigating or loading the web app:
+
+1. **Timer Arming**:
+   - When a match is formed (`match_found`) or a direct call is accepted, the server starts a **90-second connection handshake timer** (`ScheduleConnectionHandshakeTimer(roomName, 90)`).
+   - In-room elapsed countdown is held frozen at `00:00`.
+2. **Cancellation on Readiness**:
+   - Once **both** participants join the room and emit `peer_ready`, the handshake timer is cancelled.
+   - The authoritative duration timer is armed, and `call_started` is dispatched.
+3. **Expiration Cleanup**:
+   - If 90 seconds elapse without both peers achieving readiness, the session is cancelled cleanly with status `CANCELLED` and `duration: 0`.
+   - Neither participant is penalized, and zero monthly call credits are deducted.
