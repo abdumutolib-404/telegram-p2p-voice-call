@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "prisma generate && tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/assets', {recursive:true}); try { fs.copyFileSync('assets/plans_pricing.jpg', 'dist/assets/plans_pricing.jpg'); } catch(e){}\"",
-    "start": "npx prisma db push --skip-generate --accept-data-loss && node dist/index.js",
+    "start": "node dist/index.js",
+    "db:deploy": "prisma migrate deploy",
     "dev": "ts-node src/index.ts",
     "test": "vitest run --testTimeout 15000",
     "export:questions": "ts-node scripts/exportQuestions.ts",

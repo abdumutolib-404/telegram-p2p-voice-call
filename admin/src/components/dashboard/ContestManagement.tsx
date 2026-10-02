@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Dialog } from '../ui/Dialog';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { adminFetch } from '../../api/client.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { StatCard } from '../ui/StatCard.tsx';
@@ -63,6 +64,8 @@ export function ContestManagement() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const actionBusy=useRef(false);
+  const [actionError,setActionError]=useState<string|null>(null);
   // 4-Step Launch Wizard State
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
@@ -70,8 +73,8 @@ export function ContestManagement() {
 
   const [wizardForm, setWizardForm] = useState<WizardFormState>({
     title: 'IELTS Speaking Referral Championship',
-    description: 'Invite fellow learners to practice IELTS speaking! Top 3 referrers receive complimentary upgrades to VIP, BOSS, and PRO plans.',
-    prize1st: '60-Day VIP Plan (90m Duration, 50 Calls)',
+    description: 'Invite fellow learners to practice IELTS speaking! Top 3 referrers receive complimentary upgrades to BOSS, BOSS, and PRO plans.',
+    prize1st: '60-Day BOSS Plan (90m Duration, 50 Calls)',
     prize2nd: '30-Day BOSS Plan (90m Duration, 50 Calls)',
     prize3rd: '14-Day PRO Plan (60m Duration, 25 Calls)',
     durationDays: 14,
@@ -149,11 +152,15 @@ export function ContestManagement() {
   };
 
   const closeLaunchWizard = () => {
+    if(actionBusy.current)return;
     setIsWizardOpen(false);
   };
 
   // Launch Championship via 4-Step Wizard
   const handleLaunchChampionship = async () => {
+    if(actionBusy.current)return;
+    if(!wizardForm.title.trim()||!wizardForm.description.trim()||!Number.isInteger(wizardForm.durationDays)||wizardForm.durationDays<1||wizardForm.durationDays>365){setActionError('Enter a title, description and whole duration between 1 and 365 days.');return;}
+    actionBusy.current=true;setActionError(null);
     setIsLaunching(true);
     setFeedback(null);
     try {
@@ -173,37 +180,29 @@ export function ContestManagement() {
 
       await fetchContest();
       setIsWizardOpen(false);
-      setFeedback({ type: 'success', message: 'Championship launched successfully! Live broadcast dispatched to candidates.' });
+      setFeedback({ type: 'success', message: 'Championship saved.' });
     } catch (err: unknown) {
-      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to launch championship.' });
+      setActionError(err instanceof Error ? err.message : 'Failed to launch championship.');
     } finally {
-      setIsLaunching(false);
+      actionBusy.current=false;setIsLaunching(false);
     }
   };
 
   // Atomic Prize Distribution & Conclusion Trigger
   const handleExecuteConclusion = async () => {
+    if(actionBusy.current)return;actionBusy.current=true;setActionError(null);
     setIsConcluding(true);
     try {
-      // Try dedicated conclude endpoint or fallback to setting isActive: false
-      try {
-        await adminFetch('/api/admin/contest/conclude', { method: 'POST' });
-      } catch {
-        await adminFetch('/api/admin/contest', {
-          method: 'POST',
-          body: JSON.stringify({
-            isActive: false,
-          }),
-        });
-      }
+      if(!data?.contest?.id)throw new Error('Select a contest before concluding it.');
+      await adminFetch('/api/admin/contest/conclude',{method:'POST',body:JSON.stringify({contestId:data.contest.id})});
 
       await fetchContest();
       setIsConcludeDialogOpen(false);
       setFeedback({ type: 'success', message: 'Championship concluded! Prizes have been awarded atomically.' });
     } catch (err: unknown) {
-      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to conclude championship.' });
+      setActionError(err instanceof Error ? err.message : 'Failed to conclude championship.');
     } finally {
-      setIsConcluding(false);
+      actionBusy.current=false;setIsConcluding(false);
     }
   };
 
@@ -211,6 +210,7 @@ export function ContestManagement() {
     return <LoadingSkeleton message="Retrieving championship telemetry..." rows={4} />;
   }
 
+  if(!data)return <div role="alert" className="inline-error">{feedback?.message||'Contests are unavailable.'}<button className="btn-secondary" onClick={fetchContest}>Retry</button></div>;
   const top3Winners = data?.leaderboard.slice(0, 3) || [];
 
   return (
@@ -282,9 +282,9 @@ export function ContestManagement() {
           >
             <Trophy size={32} />
           </div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
             No Active Championship
-          </h3>
+          </h2>
           <p style={{ maxWidth: '520px', margin: '0 auto 1.5rem auto', color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.5 }}>
             Organize competitive practice sprints for learners. Top referrers with verified partner calls will earn complimentary VIP, BOSS, and PRO subscription tiers.
           </p>
@@ -354,7 +354,7 @@ export function ContestManagement() {
             />
           </div>
 
-          {/* 2-Column Layout: Locked Configuration & Live Leaderboard */}
+          {/* 2-Column Layout: Locked Configuration & Leaderboard snapshot */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem' }}>
             {/* Locked Configuration Details */}
             <div className="glass-panel" style={{ padding: '1.5rem', backgroundColor: 'var(--bg-surface)' }}>
@@ -419,30 +419,7 @@ export function ContestManagement() {
                 </div>
 
                 <div style={{ paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => {
-                      if (data?.contest) {
-                        const existingPrizes = data.contest.prizes.split('\n');
-                        const p1 = existingPrizes[0]?.replace(/^🥇\s*(?:1st:)?\s*/i, '').trim() || wizardForm.prize1st;
-                        const p2 = existingPrizes[1]?.replace(/^🥈\s*(?:2nd:)?\s*/i, '').trim() || wizardForm.prize2nd;
-                        const p3 = existingPrizes[2]?.replace(/^🥉\s*(?:3rd:)?\s*/i, '').trim() || wizardForm.prize3rd;
-                        setWizardForm({
-                          title: data.contest.title,
-                          description: data.contest.description,
-                          prize1st: p1,
-                          prize2nd: p2,
-                          prize3rd: p3,
-                          durationDays: 14,
-                        });
-                        setWizardStep(3);
-                        setIsWizardOpen(true);
-                      }
-                    }}
-                    className="btn-secondary"
-                    style={{ width: '100%', fontSize: '0.825rem', color: 'var(--primary-light)', borderColor: 'var(--primary-border)' }}
-                  >
-                    <Sparkles size={14} /> Customize Rules & Prize Pool
-                  </button>
+
 
                   <button
                     onClick={() => setIsConcludeDialogOpen(true)}
@@ -461,7 +438,7 @@ export function ContestManagement() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Trophy size={16} color="var(--gold-text)" />
                   <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Live Leaderboard (Top 10)
+                    Leaderboard snapshot (Top 10)
                   </h3>
                 </div>
                 <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
@@ -630,19 +607,7 @@ export function ContestManagement() {
 
       {/* 4-STEP LAUNCH WIZARD MODAL */}
       {isWizardOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(7, 10, 18, 0.85)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1200,
-            padding: '1.5rem',
-          }}
-        >
+        <Dialog title="Launch contest" pending={isLaunching} onClose={() => { closeLaunchWizard(); }}><fieldset disabled={isLaunching} style={{border:0,padding:0,margin:0,minWidth:0}}>{actionError&&<p role="alert" className="inline-error">{actionError}</p>}
           <div
             className="glass-panel"
             style={{
@@ -667,7 +632,7 @@ export function ContestManagement() {
                   </h3>
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                  Step {wizardStep} of 4: {wizardStep === 1 ? 'Championship Title' : wizardStep === 2 ? 'Participant Instructions' : wizardStep === 3 ? 'Prize Pool Configuration' : 'Duration & Confirmation'}
+                  Step {wizardStep} of 4: {wizardStep === 1 ? 'Championship Title' : wizardStep === 2 ? 'Participant Instructions' : wizardStep === 3 ? 'Award policy' : 'Duration & Confirmation'}
                 </div>
               </div>
               <button
@@ -702,7 +667,7 @@ export function ContestManagement() {
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Championship Title
                   </label>
-                  <input
+                  <input aria-label="Championship Title"
                     type="text"
                     value={wizardForm.title}
                     onChange={(e) => setWizardForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -756,7 +721,7 @@ export function ContestManagement() {
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Rules & Participant Instructions
                   </label>
-                  <textarea
+                  <textarea aria-label="Rules & Participant Instructions"
                     rows={4}
                     value={wizardForm.description}
                     onChange={(e) => setWizardForm((prev) => ({ ...prev, description: e.target.value }))}
@@ -788,51 +753,9 @@ export function ContestManagement() {
                 <div style={{ padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
                   <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Quick Prize Packages:</span>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWizardForm((prev) => ({
-                          ...prev,
-                          prize1st: '60-Day VIP Plan (90m Duration, 50 Calls)',
-                          prize2nd: '30-Day BOSS Plan (90m Duration, 50 Calls)',
-                          prize3rd: '14-Day PRO Plan (60m Duration, 25 Calls)',
-                        }))
-                      }
-                      className="btn-secondary"
-                      style={{ fontSize: '0.725rem', height: '26px', padding: '0 0.5rem' }}
-                    >
-                      👑 Standard Tier
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWizardForm((prev) => ({
-                          ...prev,
-                          prize1st: '90-Day VIP Plan (90m Duration, 50 Calls)',
-                          prize2nd: '60-Day BOSS Plan (90m Duration, 50 Calls)',
-                          prize3rd: '30-Day PRO Plan (60m Duration, 25 Calls)',
-                        }))
-                      }
-                      className="btn-secondary"
-                      style={{ fontSize: '0.725rem', height: '26px', padding: '0 0.5rem' }}
-                    >
-                      🏆 Grand Tier
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWizardForm((prev) => ({
-                          ...prev,
-                          prize1st: '30-Day BOSS Plan (90m Duration, 50 Calls)',
-                          prize2nd: '14-Day PRO Plan (60m Duration, 25 Calls)',
-                          prize3rd: '7-Day PLUS Plan (30m Duration, 10 Calls)',
-                        }))
-                      }
-                      className="btn-secondary"
-                      style={{ fontSize: '0.725rem', height: '26px', padding: '0 0.5rem' }}
-                    >
-                      ⚡ Sprint Tier
-                    </button>
+
+
+
                   </div>
                 </div>
 
@@ -840,42 +763,21 @@ export function ContestManagement() {
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gold-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     1st Place Award
                   </label>
-                  <input
-                    type="text"
-                    value={wizardForm.prize1st}
-                    onChange={(e) => setWizardForm((prev) => ({ ...prev, prize1st: e.target.value }))}
-                    placeholder="e.g. 60-Day VIP Plan (90m Duration, 50 Calls)"
-                    className="input-modern"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
-                  />
+                  <p>1st: 60-day BOSS · 50 calls · 90 minutes · 15 recordings · 90-day retention</p>
                 </div>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-primary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     2nd Place Award
                   </label>
-                  <input
-                    type="text"
-                    value={wizardForm.prize2nd}
-                    onChange={(e) => setWizardForm((prev) => ({ ...prev, prize2nd: e.target.value }))}
-                    placeholder="e.g. 30-Day BOSS Plan (90m Duration, 50 Calls)"
-                    className="input-modern"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
-                  />
+                  <p>2nd: 30-day BOSS · 50 calls · 90 minutes · 15 recordings · 90-day retention</p>
                 </div>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--warning-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     3rd Place Award
                   </label>
-                  <input
-                    type="text"
-                    value={wizardForm.prize3rd}
-                    onChange={(e) => setWizardForm((prev) => ({ ...prev, prize3rd: e.target.value }))}
-                    placeholder="e.g. 14-Day PRO Plan (60m Duration, 25 Calls)"
-                    className="input-modern"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
-                  />
+                  <p>3rd: 14-day PRO · 25 calls · 60 minutes · 7 recordings · 30-day retention</p>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
@@ -957,11 +859,12 @@ export function ContestManagement() {
               </div>
             )}
           </div>
-        </div>
+        </fieldset></Dialog>
       )}
 
       {/* Conclude Confirmation Dialog */}
       <ConfirmDialog
+        error={actionError}
         isOpen={isConcludeDialogOpen}
         title="Conclude Championship & Distribute Prizes"
         message="This action will permanently end the current championship, freeze the leaderboard, and atomically grant the configured subscription tiers to the top 3 referrers."
@@ -975,4 +878,3 @@ export function ContestManagement() {
     </div>
   );
 }
-

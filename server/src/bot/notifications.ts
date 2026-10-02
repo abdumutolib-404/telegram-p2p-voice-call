@@ -1,8 +1,12 @@
 import { Bot } from 'grammy';
 import { MyContext } from './types';
 import { logger } from '../utils/logger';
+import crypto from 'node:crypto';
+import { prisma } from '../config/database';
+import { env } from '../config/env';
 
 type SendMessageOptions = Parameters<Bot<MyContext>['api']['sendMessage']>[2];
+type SendMessageSignal = Parameters<Bot<MyContext>['api']['sendMessage']>[3];
 
 interface QueueItem {
   telegramId: string;
@@ -16,6 +20,47 @@ export class NotificationQueue {
   private urgentQueue: QueueItem[] = [];
   private bulkQueue: QueueItem[] = [];
   private isProcessing = false;
+  private stopped = false;
+  private controller: AbortController | null = null;
+  private active: Promise<void> | null = null;
+  private readonly namespace = crypto.createHash('sha256').update(env.BOT_TOKEN).digest('hex').slice(0,24);
+
+  /** Persistent jobs survive restarts; uncertain sends require review instead of blind replay. */
+  async recover(bot: Bot<MyContext>): Promise<void> {
+    if (env.NODE_ENV === 'test' || this.stopped) return;
+    if (this.active) return this.active;
+    this.active = this.drainPersistent(bot);
+    try { await this.active; } finally { this.active = null; }
+  }
+
+  private async drainPersistent(bot: Bot<MyContext>) {
+    await prisma.notificationJob.updateMany({where:{namespace:this.namespace,status:'SENDING',leasedAt:{lt:new Date(Date.now()-120000)}},data:{status:'UNCONFIRMED',failure:'Delivery outcome uncertain after worker interruption; review before sending again.'}});
+    while (!this.stopped) {
+      const job = await prisma.notificationJob.findFirst({where:{namespace:this.namespace,status:'QUEUED',nextAttemptAt:{lte:new Date()}},orderBy:[{urgent:'desc'},{createdAt:'asc'}]});
+      if (!job) return;
+      const claim = await prisma.notificationJob.updateMany({where:{id:job.id,status:'QUEUED'},data:{status:'SENDING',leasedAt:new Date()}});
+      if (claim.count !== 1) continue;
+      this.controller = new AbortController();
+      try {
+        // grammY types the legacy AbortSignal shim; Node's signal implements the same cancellation contract.
+        await bot.api.sendMessage(job.telegramId,job.text,job.optionsJson?JSON.parse(job.optionsJson):undefined,this.controller.signal as unknown as SendMessageSignal);
+        await prisma.notificationJob.update({where:{id:job.id},data:{status:'SENT',failure:null}});
+      } catch(error: any) {
+        const seconds=error?.parameters?.retry_after;
+        const retry=error?.error_code===429 && Number.isInteger(seconds) && seconds>0 && seconds<=30 && job.retries<1 && !this.stopped;
+        const permanent=[400,401,403].includes(error?.error_code);
+        await prisma.notificationJob.update({where:{id:job.id},data:{status:retry?'QUEUED':permanent?'FAILED':'UNCONFIRMED',retries:retry?job.retries+1:job.retries,nextAttemptAt:new Date(Date.now()+(retry?seconds*1000:0)),failure:retry?'Telegram rate limit; bounded retry scheduled.':permanent?'Telegram rejected delivery.':'Delivery outcome uncertain; no automatic resend.'}});
+        logger.warn('Notification delivery deferred or rejected',{service:'bot',event:'notification_delivery',jobId:job.id,retry,permanent});
+      } finally { this.controller = null; }
+    }
+  }
+
+  startWorker(supplier: () => Bot<MyContext> | null): () => Promise<void> {
+    this.stopped=false; let timer:NodeJS.Timeout | undefined;
+    const tick=async()=>{if(this.stopped)return;const bot=supplier();try{if(bot)await this.recover(bot);}catch(error){logger.warn('Notification recovery unavailable',{service:'bot'},error);}if(!this.stopped)timer=setTimeout(tick,5000);};
+    timer=setTimeout(tick,5000);
+    return async()=>{this.stopped=true;clearTimeout(timer);this.controller?.abort();await this.active;};
+  }
 
   async enqueue(
     bot: Bot<MyContext>,
@@ -24,6 +69,17 @@ export class NotificationQueue {
     options?: SendMessageOptions,
     isUrgent = false
   ) {
+    if (env.NODE_ENV !== 'test') {
+      if (text.length > 8192 || JSON.stringify(options||{}).length > 16384) throw new Error('Notification exceeds supported size.');
+      await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${this.namespace},0))`;
+        if (await tx.notificationJob.count({where:{namespace:this.namespace,status:{in:['QUEUED','SENDING']}}}) >= 1000) throw new Error('Notification queue is full.');
+        await tx.notificationJob.create({data:{namespace:this.namespace,telegramId,text,optionsJson:options?JSON.stringify(options):null,urgent:isUrgent}});
+      });
+      void this.recover(bot).catch(error=>logger.warn('Notification worker unavailable',{service:'bot'},error));
+      return;
+    }
+    if (this.urgentQueue.length + this.bulkQueue.length >= 1000) throw new Error('Notification queue is full.');
     const item: QueueItem = { telegramId, text, options, retries: 0, isUrgent };
     if (isUrgent) {
       this.urgentQueue.push(item);
@@ -62,7 +118,7 @@ export class NotificationQueue {
           const retryAfter = (errorObj.parameters?.retry_after || 3) * 1000;
           const currentRetries = item.retries || 0;
 
-          if (currentRetries < 5) {
+          if (currentRetries < 1 && retryAfter <= 30000) {
             logger.warn(`Telegram notification 429 rate limited. Retrying (${currentRetries + 1}/5) after ${retryAfter}ms`, {
               service: 'bot',
               event: 'notification_rate_limited',

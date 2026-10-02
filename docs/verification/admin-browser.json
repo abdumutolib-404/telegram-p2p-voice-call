@@ -1,0 +1,233 @@
+{
+  "checkedAt": "2026-10-02T14:35:55.118Z",
+  "syntheticFixtures": true,
+  "viewportResults": [
+    {
+      "screen": "Audit Trail & System Telemetry",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Audit Trail & System Telemetry",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Audit Trail & System Telemetry",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Candidate Roster",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Candidate Roster",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Candidate Roster",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Hall of Fame & Championships",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Hall of Fame & Championships",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Hall of Fame & Championships",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "IELTS Question Simulator Studio",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "IELTS Question Simulator Studio",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "IELTS Question Simulator Studio",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Manual Payments (UZS)",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Manual Payments (UZS)",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Manual Payments (UZS)",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Moderation Appeals Queue",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Moderation Appeals Queue",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Moderation Appeals Queue",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Overview",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Overview",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Overview",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Plans and limits",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Plans and limits",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Plans and limits",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Revenue & Platform Analytics",
+      "path": "/",
+      "width": 375,
+      "height": 812,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Revenue & Platform Analytics",
+      "path": "/",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "violations": []
+    },
+    {
+      "screen": "Revenue & Platform Analytics",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    }
+  ],
+  "dialogResults": [
+    {
+      "screen": "Candidate Roster",
+      "dialog": "Candidate controls",
+      "path": "/",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "violations": []
+    }
+  ]
+}

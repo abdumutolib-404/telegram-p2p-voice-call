@@ -4,6 +4,7 @@ import { RawCandidateQuestion, CrawlTargetSource, VERIFIED_CRAWLER_TARGETS } fro
 import { classifyTopic, cleanSubjectFromHeading, extractSubjectFromUrl, detectGroupStrongSubject } from './taxonomy';
 import { getRedis } from '../../config/redis';
 import { logger } from '../../utils/logger';
+import { safeFetch } from '../../utils/safeFetch';
 
 function stripHtml(html: string): string {
   return html
@@ -284,7 +285,8 @@ export class WebCrawlerService {
 
           let response: Response;
           try {
-            response = await fetch(url, {
+            response = await safeFetch(url, {
+              allowed: target => this.isSafeCrawlerUrl(target),
               signal: controller.signal,
               headers: {
                 'User-Agent': this.userAgent,

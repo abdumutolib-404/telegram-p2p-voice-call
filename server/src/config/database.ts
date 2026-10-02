@@ -10,7 +10,6 @@ function authorizationMarker(): void {
 
 export const inMemoryPrisma = new InMemoryPrismaMock() as unknown as PrismaClient;
 
-let useRealPrisma = false;
 let realPrismaClient: PrismaClient | null = null;
 
 function getDatabaseUrlWithPoolParams(): string | undefined {
@@ -54,7 +53,9 @@ if (process.env.NODE_ENV !== 'test') {
 
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
   get(_target, prop: keyof PrismaClient) {
-    const target = useRealPrisma && realPrismaClient ? realPrismaClient : inMemoryPrisma;
+    // Mock storage is an explicit test-only dependency, never an outage fallback.
+    const target = process.env.NODE_ENV === 'test' ? inMemoryPrisma : realPrismaClient;
+    if (!target) throw new Error('Persistent database is not configured');
     const value = (target as unknown as Record<string | symbol, unknown>)[prop];
     if (typeof value === 'function') {
       return (value as Function).bind(target);
@@ -64,72 +65,35 @@ export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
 });
 
 export async function connectDB(): Promise<void> {
-  if (process.env.NODE_ENV === 'test' || !realPrismaClient) {
-    useRealPrisma = false;
+  if (process.env.NODE_ENV === 'test') {
     logger.info('Operating in in-memory database mock mode.', {
       service: 'database',
       event: 'db_mock_mode',
     });
     return;
   }
+  if (!realPrismaClient || !process.env.DATABASE_URL) throw new Error('DATABASE_URL is required outside tests');
 
   try {
     await realPrismaClient.$connect();
-    useRealPrisma = true;
+    await Promise.all([
+      realPrismaClient.user.findFirst({ select: { id: true } }),
+      realPrismaClient.manualPaymentRequest.findFirst({ select: { id: true } }),
+      realPrismaClient.auditLog.findFirst({ select: { id: true } }),
+      realPrismaClient.notificationJob.findFirst({ select: { id: true } }),
+    ]);
     logger.info('PostgreSQL Prisma client connected.', {
       service: 'database',
       event: 'db_connected',
     });
 
-    // Check if essential database schema / tables exist
-    try {
-      await realPrismaClient.user.findFirst({ select: { id: true } });
-    } catch (probeErr: any) {
-      const errMsg = String(probeErr?.message || '');
-      const errCode = String(probeErr?.code || '');
-      if (
-        errCode === 'P2021' ||
-        errMsg.includes('does not exist') ||
-        errMsg.includes('relation') ||
-        errMsg.includes('table')
-      ) {
-        logger.warn('PostgreSQL database tables missing. Automatically running Prisma schema push...', {
-          service: 'database',
-          event: 'db_auto_sync_starting',
-          code: errCode,
-        });
-        try {
-          const { execSync } = require('child_process');
-          execSync('npx prisma db push --skip-generate --accept-data-loss', {
-            stdio: 'inherit',
-            timeout: 60000,
-            env: process.env,
-          });
-          logger.info('Prisma schema synchronized successfully.', {
-            service: 'database',
-            event: 'db_auto_sync_completed',
-          });
-        } catch (pushErr: any) {
-          logger.error('Automatic Prisma db push failed', {
-            service: 'database',
-            event: 'db_auto_sync_failed',
-          }, pushErr);
-        }
-      }
-    }
   } catch (error: unknown) {
-    useRealPrisma = false;
     logger.error('Database connection failed', {
       service: 'database',
       event: 'db_connect_failed',
     }, error);
-    if (process.env.NODE_ENV === 'production') {
-      throw error;
-    }
-    logger.warn('Development fallback to in-memory mode.', {
-      service: 'database',
-      event: 'db_fallback_memory',
-    });
+    await realPrismaClient.$disconnect().catch(() => undefined);
+    throw error;
   }
 }
 

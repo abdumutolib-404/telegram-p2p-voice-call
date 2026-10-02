@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { lockRow } from '../utils/transactionLock';
 import { getRedis } from '../config/redis';
 import { logger } from '../utils/logger';
 
@@ -43,6 +44,7 @@ export class ModerationService {
     let targetTelegramId: bigint | null = null;
 
     const result = await prisma.$transaction(async (tx) => {
+      await lockRow(tx, 'User', targetUserId);
       // Validate that both users were actual participants in this call
       const session = await tx.callSession.findUnique({ where: { id: callId } });
       if (!session) {

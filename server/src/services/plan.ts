@@ -2,6 +2,8 @@ import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { getRedis } from '../config/redis';
 import { createCanonicalError } from '../types/canonical';
+import { lockRow } from '../utils/transactionLock';
+import { decodePaymentProof } from '../utils/paymentProof';
 
 export interface PlanTierConfig {
   name: string;
@@ -169,6 +171,7 @@ export function getEffectiveEntitlement(user: {
   dailyLimit?: number | null;
   maxDuration?: number | null;
   recordingLimit?: number | null;
+  recordingLimitOverride?: number | null;
   retentionOverride?: number | null;
   customPlanName?: string | null;
   telegramId?: bigint | string | number | null;
@@ -180,11 +183,13 @@ export function getEffectiveEntitlement(user: {
     ? (user.plan!.toUpperCase() as keyof SystemPlansConfig)
     : 'FREE';
 
+  let expired = false;
   // Check if paid subscription is expired
   if (rawPlanKey !== 'FREE' && !isAdmin) {
     const isExpiredStatus = user.subscriptionStatus === 'EXPIRED' || user.subscriptionStatus === 'CANCELLED';
     const isPastDate = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) < new Date() : false;
     if (isExpiredStatus || isPastDate) {
+      expired = true;
       rawPlanKey = 'FREE';
     }
   }
@@ -195,7 +200,7 @@ export function getEffectiveEntitlement(user: {
   // Determine Call Limit
   let dailyLimit = defaultTier.dailyLimit;
   let isCustomLimit = false;
-  if (user.dailyLimit !== undefined && user.dailyLimit !== null && user.dailyLimit !== defaultTier.dailyLimit) {
+  if (!expired && user.dailyLimit !== undefined && user.dailyLimit !== null && user.dailyLimit !== defaultTier.dailyLimit) {
     dailyLimit = user.dailyLimit;
     isCustomLimit = true;
   }
@@ -206,7 +211,7 @@ export function getEffectiveEntitlement(user: {
   // Determine Max Duration
   let maxDurationMinutes = defaultTier.maxDuration;
   let isCustomDuration = false;
-  if (user.maxDuration !== undefined && user.maxDuration !== null && user.maxDuration !== defaultTier.maxDuration) {
+  if (!expired && user.maxDuration !== undefined && user.maxDuration !== null && user.maxDuration !== defaultTier.maxDuration) {
     maxDurationMinutes = user.maxDuration;
     isCustomDuration = true;
   }
@@ -214,21 +219,22 @@ export function getEffectiveEntitlement(user: {
   // Determine Recording Limit
   let recordingLimit = defaultTier.recordingLimit;
   let isCustomRecordingLimit = false;
-  if (user.recordingLimit !== undefined && user.recordingLimit !== null && user.recordingLimit > 0) {
-    recordingLimit = user.recordingLimit;
+  const recordingOverride = user.recordingLimitOverride ?? user.recordingLimit;
+  if (!expired && recordingOverride !== undefined && recordingOverride !== null && recordingOverride >= 0) {
+    recordingLimit = recordingOverride;
     isCustomRecordingLimit = true;
   }
 
   // Determine Retention Days
   let retentionDays = defaultTier.retentionDays;
   let retentionSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' = 'PLAN_DEFAULT';
-  if (user.retentionOverride !== undefined && user.retentionOverride !== null && user.retentionOverride > 0) {
+  if (!expired && user.retentionOverride !== undefined && user.retentionOverride !== null && user.retentionOverride > 0) {
     retentionDays = user.retentionOverride;
     retentionSource = 'ADMIN_OVERRIDE';
   }
 
   const isUnlimited = dailyLimit >= 999 || isAdmin;
-  const isCustomPlan = Boolean(user.customPlanName);
+  const isCustomPlan = !expired && Boolean(user.customPlanName);
   const overrideSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' =
     isCustomLimit || isCustomDuration || isCustomRecordingLimit || retentionSource === 'ADMIN_OVERRIDE'
       ? 'ADMIN_OVERRIDE'
@@ -237,7 +243,7 @@ export function getEffectiveEntitlement(user: {
     ? 'CUSTOM_PLAN'
     : overrideSource;
 
-  const planDisplayName = user.customPlanName || defaultTier.name;
+  const planDisplayName = (!expired && user.customPlanName) || defaultTier.name;
 
   return {
     plan: planKey,
@@ -292,7 +298,8 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any): Pr
       },
     });
     return count;
-  } catch {
+  } catch (error) {
+    if (env.NODE_ENV !== 'test') throw error;
     return 0;
   }
 }
@@ -430,8 +437,9 @@ export async function getMaxOrderNumberFromDb(): Promise<number> {
         }
       }
     }
-  } catch {
-    // Ignore query errors in mocked/offline environments
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'test') throw error;
+    // Test-only mock fallback
   }
 
   try {
@@ -449,8 +457,9 @@ export async function getMaxOrderNumberFromDb(): Promise<number> {
         }
       }
     }
-  } catch {
-    // Ignore query errors in mocked/offline environments
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'test') throw error;
+    // Test-only mock fallback
   }
 
   return maxOrderNum;
@@ -479,7 +488,8 @@ export async function initializeOrderSequence(): Promise<void> {
         if (inMemoryFallbackSequence === 0) {
           inMemoryFallbackSequence = initialValue;
         }
-      } catch {
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'test') throw error;
         if (inMemoryFallbackSequence === 0) {
           let totalManual = 0;
           let totalStars = 0;
@@ -509,8 +519,9 @@ export async function generateOrderNumber(prefix: string = 'A'): Promise<string>
       await initializeOrderSequence();
     }
     seq = await redis.incr('counter:order_sequence');
-  } catch {
-    // Safe fallback for tests/environments where Redis is mocked or throws
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'test') throw error;
+    // Safe test-only fallback for tests/environments where Redis is mocked or throws
     if (inMemoryFallbackSequence === 0) {
       await initializeOrderSequence().catch(() => {});
       if (inMemoryFallbackSequence === 0) {
@@ -566,7 +577,9 @@ export async function createManualPaymentRequest(params: {
   uzsAmount: number;
   paymentProof?: string;
 }) {
-  const user = await prisma.user.findUnique({ where: { id: params.userId } });
+  return prisma.$transaction(async tx => {
+  await lockRow(tx, 'User', params.userId);
+  const user = await tx.user.findUnique({ where: { id: params.userId } });
   if (user) {
     const isExpired = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) < new Date() : false;
     if (user.subscriptionStatus === 'ACTIVE' && !isExpired && user.plan !== 'FREE') {
@@ -584,7 +597,7 @@ export async function createManualPaymentRequest(params: {
     }
   }
 
-  const existingPending = await prisma.manualPaymentRequest.findFirst({
+  const existingPending = await tx.manualPaymentRequest.findFirst({
     where: {
       userId: params.userId,
       status: 'PENDING',
@@ -601,7 +614,7 @@ export async function createManualPaymentRequest(params: {
 
   const orderNumber = await generateOrderNumber('A');
 
-  const req = await prisma.manualPaymentRequest.create({
+  const req = await tx.manualPaymentRequest.create({
     data: {
       orderNumber,
       userId: params.userId,
@@ -615,6 +628,7 @@ export async function createManualPaymentRequest(params: {
   });
 
   return { success: true, request: req };
+  });
 }
 
 export async function approveManualPaymentRequest(params: {
@@ -648,6 +662,9 @@ export async function approveManualPaymentRequest(params: {
   const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
   const result = await prisma.$transaction(async (tx) => {
+    await lockRow(tx, 'User', req.userId);
+    const currentUser = await tx.user.findUnique({ where: { id: req.userId } });
+    if (currentUser && isDowngrade(currentUser.plan, tier) && currentUser.subscriptionStatus === 'ACTIVE' && (!currentUser.subscriptionExpiresAt || currentUser.subscriptionExpiresAt > new Date())) throw new Error('Cannot downgrade an active subscription.');
     const updated = await tx.manualPaymentRequest.updateMany({
       where: { id: req.id, status: 'PENDING' },
       data: {
@@ -753,19 +770,21 @@ export async function refundManualPaymentRequest(params: {
   if (!params.refundProof || !params.refundProof.trim()) {
     throw new Error('Bank transfer bill / proof is strictly required to approve a refund.');
   }
+  decodePaymentProof(params.refundProof.trim());
 
   const req = await prisma.manualPaymentRequest.findUnique({
     where: { id: params.requestId },
     include: { user: true },
   });
 
-  if (!req || req.status === 'REFUNDED') {
+  if (!req || !['APPROVED', 'REFUND_PENDING'].includes(req.status)) {
     throw new Error('Payment request not found or already refunded.');
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const updatedReq = await tx.manualPaymentRequest.update({
-      where: { id: req.id },
+    await lockRow(tx, 'User', req.userId);
+    const changed = await tx.manualPaymentRequest.updateMany({
+      where: { id: req.id, status: req.status },
       data: {
         status: 'REFUNDED',
         refundProof: params.refundProof.trim(),
@@ -774,12 +793,21 @@ export async function refundManualPaymentRequest(params: {
         reviewedAt: new Date(),
       },
     });
+    if (changed.count !== 1) throw new Error('Refund request already processed.');
+    const updatedReq = (await tx.manualPaymentRequest.findUnique({ where: { id: req.id } }))!;
 
-    const updatedUser = await tx.user.update({
+    const currentUser = await tx.user.findUnique({ where:{id:req.userId} });
+    const boundary = req.reviewedAt || req.createdAt;
+    const laterManual = await tx.manualPaymentRequest.findFirst({ where:{userId:req.userId,status:{in:['APPROVED','REFUND_PENDING']},reviewedAt:{gt:boundary}} });
+    const laterStars = await tx.starsTransaction.findFirst({ where:{userId:req.userId,status:'PAID',createdAt:{gt:boundary}} });
+    const preserve = !!laterManual || !!laterStars || !!currentUser?.customPlanName || currentUser?.plan !== req.plan;
+    const updatedUser = preserve ? currentUser! : await tx.user.update({
       where: { id: req.userId },
       data: {
         plan: 'FREE',
         subscriptionStatus: 'REFUNDED',
+        retentionOverride:null,recordingLimitOverride:null,
+        subscriptionExpiresAt: null,
         maxDuration: plansConfig.FREE.maxDuration,
         dailyLimit: plansConfig.FREE.dailyLimit,
       },
@@ -818,13 +846,13 @@ export async function rejectManualPaymentRefund(params: {
     include: { user: true },
   });
 
-  if (!req) {
+  if (!req || req.status !== 'REFUND_PENDING') {
     throw new Error('Payment request not found.');
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const updatedReq = await tx.manualPaymentRequest.update({
-      where: { id: req.id },
+    const changed = await tx.manualPaymentRequest.updateMany({
+      where: { id: req.id, status: 'REFUND_PENDING' },
       data: {
         status: 'APPROVED',
         refundReason: reasonText,
@@ -833,6 +861,8 @@ export async function rejectManualPaymentRefund(params: {
         reviewedAt: new Date(),
       },
     });
+    if (changed.count !== 1) throw new Error('Refund request already processed.');
+    const updatedReq = (await tx.manualPaymentRequest.findUnique({ where: { id: req.id } }))!;
 
     await tx.auditLog.create({
       data: {
@@ -855,7 +885,9 @@ export async function revokePlanOnRefund(params: {
   transactionId: string;
   adminId: string;
   reason?: string;
+  providerConfirmed?: boolean;
 }) {
+  if (process.env.NODE_ENV !== 'test' && !params.providerConfirmed) throw new Error('Provider refund confirmation is required.');
   const tx = await prisma.starsTransaction.findUnique({
     where: { id: params.transactionId },
     include: { user: true },
@@ -868,7 +900,7 @@ export async function revokePlanOnRefund(params: {
   // Server-Enforced Refund Policy:
   // Refunds are granted ONLY if callsUsed < callLimit * 0.10 OR (Date.now() - purchaseDate) < 48 * 3600 * 1000
   const callsUsed = await getUserCallsUsedThisPeriod(tx.userId, tx.user);
-  const callLimit = getDailyLimitForPlan(tx.planTier) || 10;
+  const callLimit = getDailyLimitForPlan(tx.planTier);
   const purchaseDate = new Date(tx.createdAt).getTime();
   const now = Date.now();
   const ageMs = now - purchaseDate;
@@ -877,41 +909,33 @@ export async function revokePlanOnRefund(params: {
   const isUsageEligible = callsUsed < callLimit * 0.10;
   const isTimeEligible = ageMs < 48 * 3600 * 1000;
 
-  if (!isUsageEligible && !isTimeEligible) {
+  if (!params.providerConfirmed && !isUsageEligible && !isTimeEligible) {
     throw new Error(
       `Refund rejected: User has utilized ${callsUsed} of ${callLimit} calls (>=10%) and purchase was made ${ageDays} days ago (>2 days).`
     );
   }
 
-  const [updatedTx, updatedUser] = await prisma.$transaction([
-    prisma.starsTransaction.update({
-      where: { id: tx.id },
-      data: {
-        status: 'REFUNDED',
-        refundReason: params.reason || 'Telegram Stars payment refunded',
-        refundedAt: new Date(),
-      },
-    }),
-    prisma.user.update({
-      where: { id: tx.userId },
-      data: {
-        plan: 'FREE',
-        subscriptionStatus: 'REFUNDED',
-        maxDuration: plansConfig.FREE.maxDuration,
-        dailyLimit: plansConfig.FREE.dailyLimit,
-      },
-    }),
-    prisma.auditLog.create({
-      data: {
-        action: 'STARS_REFUND_REVOKE',
-        targetId: tx.userId,
-        adminId: params.adminId,
-        beforeState: JSON.stringify({ plan: tx.user?.plan || 'PRO' }),
-        afterState: JSON.stringify({ plan: 'FREE', subscriptionStatus: 'REFUNDED' }),
-        reason: params.reason || 'Stars payment refunded',
-      },
-    }),
-  ]);
+  const { updatedTx, updatedUser } = await prisma.$transaction(async db => {
+    await lockRow(db, 'User', tx.userId);
+    const changed = await db.starsTransaction.updateMany({ where: { id: tx.id, status: tx.status }, data: {
+      status: 'REFUNDED', refundReason: params.reason || 'Telegram Stars payment refunded', refundedAt: new Date(), refundFailure: null,
+    } });
+    if (changed.count !== 1) throw new Error('Refund already processed.');
+    const newerStars = await db.starsTransaction.findFirst({ where: { userId: tx.userId, status: 'PAID', createdAt: { gt: tx.createdAt } } });
+    const newerManual = await db.manualPaymentRequest.findFirst({ where: { userId: tx.userId, status: { in: ['APPROVED', 'REFUND_PENDING'] }, reviewedAt: { gt: tx.createdAt } } });
+    const user = await db.user.findUnique({ where: { id: tx.userId } });
+    const preserveSubscription = !!newerStars || !!newerManual || !!user?.customPlanName || user?.plan !== tx.planTier;
+    const updatedUser = preserveSubscription ? user! : await db.user.update({ where: { id: tx.userId }, data: {
+      plan: 'FREE', subscriptionStatus: 'REFUNDED', subscriptionExpiresAt: null, maxDuration: plansConfig.FREE.maxDuration, dailyLimit: plansConfig.FREE.dailyLimit, recordingLimitOverride:null,retentionOverride:null,
+    } });
+    await db.auditLog.create({ data: {
+      action: 'STARS_REFUND_REVOKE', targetId: tx.userId, adminId: params.adminId,
+      beforeState: JSON.stringify({ plan: user?.plan, status: tx.status }),
+      afterState: JSON.stringify({ plan: updatedUser.plan, status: 'REFUNDED', preservedNewerSubscription: preserveSubscription }),
+      reason: params.reason || 'Stars payment refunded',
+    } });
+    return { updatedTx: (await db.starsTransaction.findUnique({ where: { id: tx.id } }))!, updatedUser };
+  });
 
   return { transaction: updatedTx, user: updatedUser };
 }

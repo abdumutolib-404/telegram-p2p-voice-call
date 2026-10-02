@@ -30,7 +30,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (tokenFromUrl) {
       setUrlToken(tokenFromUrl);
       // Clean up token from browser address bar for security
-      const cleanUrl = window.location.pathname + window.location.hash;
+      params.delete('token');
+      const cleanUrl = window.location.pathname + (params.size ? '?' + params.toString() : '') + window.location.hash;
       window.history.replaceState({}, document.title, cleanUrl);
     }
 
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  // Listen for unauthorized 401/403 events from API client
+  // Listen for confirmed authentication failures from protected endpoints.
   useEffect(() => {
     const handleUnauthorized = () => {
       clearAdminToken();

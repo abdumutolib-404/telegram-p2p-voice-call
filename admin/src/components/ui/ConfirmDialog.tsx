@@ -1,4 +1,5 @@
 import React from 'react';
+import { Dialog } from './Dialog';
 import { AlertTriangle, Info, ShieldAlert } from 'lucide-react';
 
 interface ConfirmDialogProps {
@@ -12,6 +13,7 @@ interface ConfirmDialogProps {
   isConfirming?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  error?: string | null;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -25,6 +27,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isConfirming = false,
   onConfirm,
   onCancel,
+  error,
 }) => {
   if (!isOpen) return null;
 
@@ -51,18 +54,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(7, 10, 18, 0.8)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1200,
-        padding: '1.5rem',
-      }}
+    <Dialog title={title} onClose={onCancel} pending={isConfirming}
     >
       <div
         className="glass-panel"
@@ -116,6 +108,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          {error && <p role="alert" className="inline-error">{error}</p>}
           <button
             type="button"
             onClick={onCancel}
@@ -134,6 +127,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };

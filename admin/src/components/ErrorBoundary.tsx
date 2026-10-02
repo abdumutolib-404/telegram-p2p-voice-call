@@ -34,10 +34,10 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <h2 className="text-xl font-bold mb-2">Admin Dashboard Error</h2>
             <p className="text-slate-400 text-sm mb-6">
-              {this.state.error?.message || 'An unexpected rendering error occurred in the administration panel.'}
+              This screen could not be displayed. Try again or choose another section.
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => this.setState({ hasError: false, error: null })}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition-colors"
             >
               <RefreshCw className="w-4 h-4" />

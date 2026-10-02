@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLatestRequest } from '../../hooks/useAdminTools';
+import { Dialog } from '../ui/Dialog';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { adminFetch } from '../../api/client';
 import './QuestionManagement.css';
 import {
@@ -77,6 +79,13 @@ export const QuestionManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'questions' | 'cueCards' | 'topics' | 'crawler' | 'bulkImport'>('questions');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
+  const latest = useLatestRequest();
+  const savingQuestion = useRef(false), savingTopic = useRef(false);
+  const [isSavingQuestion,setIsSavingQuestion]=useState(false), [isSavingTopic,setIsSavingTopic]=useState(false);
+  const [topicError,setTopicError]=useState<string|null>(null), [fetchError,setFetchError]=useState<string|null>(null);
+  const [slugEdited,setSlugEdited]=useState(false);
+  const [page,setPage]=useState(1), [totalPages,setTotalPages]=useState(1), [total,setTotal]=useState(0);
+  const parseBullets=(raw:unknown):string[]=>{if(typeof raw!=='string')return Array.isArray(raw)?raw.filter((x):x is string=>typeof x==='string'):[];try{const parsed=JSON.parse(raw);return Array.isArray(parsed)?parsed.filter((x):x is string=>typeof x==='string'):[];}catch{return raw.split('\n').filter(Boolean);}};
   // Questions state
   const [questions, setQuestions] = useState<Question[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -140,40 +149,38 @@ export const QuestionManagement: React.FC = () => {
       const res = await adminFetch<{ success: boolean; topics: Topic[] }>('/api/admin/ielts/topics');
       if (res.success) {
         setTopics(res.topics);
-        if (res.topics.length > 0 && !modalTopicId) {
-          setModalTopicId(res.topics[0].id);
-        }
-        if (res.topics.length > 0 && !bulkImportTopicId) {
-          setBulkImportTopicId(res.topics[0].id);
-        }
+        setModalTopicId(previous=>previous || res.topics[0]?.id || '');
+        setBulkImportTopicId(previous=>previous || res.topics[0]?.id || '');
       }
     } catch {
       // ignore
     }
-  }, [modalTopicId, bulkImportTopicId]);
+  }, []);
 
   const fetchQuestions = useCallback(async () => {
+    const request=latest();setFetchError(null);
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filterPart !== 'all') params.append('part', filterPart);
+      if(activeTab==='cueCards')params.append('part','PART_2');else if (filterPart !== 'all') params.append('part', filterPart);
       if (filterTopic !== 'all') params.append('topicId', filterTopic);
       if (filterActive !== 'all') params.append('isActive', filterActive);
       if (debouncedSearchQuery.trim()) params.append('search', debouncedSearchQuery.trim());
-      params.append('limit', '150');
+      params.append('limit', '50');params.append('page',String(page));
 
-      const res = await adminFetch<{ success: boolean; questions: Question[] }>(
-        `/api/admin/ielts/questions?${params.toString()}`
+      const res = await adminFetch<{ success: boolean; questions: Question[]; pagination:{total:number;totalPages:number} }>(
+        `/api/admin/ielts/questions?${params.toString()}`,{signal:request.signal}
       );
+      if(!request.isCurrent())return;
       if (res.success) {
-        setQuestions(res.questions);
+        setQuestions(res.questions);setTotal(res.pagination.total);setTotalPages(Math.max(1,res.pagination.totalPages));
       }
-    } catch {
-      // ignore
+    } catch(error) {
+      if(request.isCurrent())setFetchError(error instanceof Error?error.message:'Questions are unavailable.');
     } finally {
-      setLoading(false);
+      if(request.isCurrent())setLoading(false);
     }
-  }, [filterPart, filterTopic, filterActive, debouncedSearchQuery]);
+  }, [filterPart, filterTopic, filterActive, debouncedSearchQuery, page, activeTab, latest]);
 
   const fetchCrawlerStatus = useCallback(async () => {
     try {
@@ -244,11 +251,10 @@ export const QuestionManagement: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    void fetchTopics();
-    void fetchQuestions();
-    void fetchCrawlerStatus();
-  }, [fetchTopics, fetchQuestions, fetchCrawlerStatus]);
+  useEffect(()=>{void fetchTopics();},[fetchTopics]);
+  useEffect(()=>{void fetchQuestions();return()=>{latest();};},[fetchQuestions,latest]);
+  useEffect(()=>{if(activeTab==='crawler')void fetchCrawlerStatus();},[activeTab,fetchCrawlerStatus]);
+  useEffect(()=>{setPage(1);},[filterPart,filterTopic,filterActive,debouncedSearchQuery,activeTab]);
 
   const handleRunFilter = async () => {
     setIsFiltering(true);
@@ -358,6 +364,7 @@ export const QuestionManagement: React.FC = () => {
 
   const handleSaveQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(savingQuestion.current)return;savingQuestion.current=true;setIsSavingQuestion(true);
     setModalError(null);
 
     let bulletsJson: string | null = null;
@@ -378,6 +385,7 @@ export const QuestionManagement: React.FC = () => {
             part: modalPart,
             questionText: modalQuestionText.trim(),
             cueCardBullets: bulletsJson,
+            questionType: modalPart === 'PART_2' ? 'CUE_CARD' : modalPart === 'PART_3' ? 'DISCUSSION' : 'GENERAL',
           }),
         });
       } else {
@@ -388,6 +396,7 @@ export const QuestionManagement: React.FC = () => {
             part: modalPart,
             questionText: modalQuestionText.trim(),
             cueCardBullets: bulletsJson,
+            questionType: modalPart === 'PART_2' ? 'CUE_CARD' : modalPart === 'PART_3' ? 'DISCUSSION' : 'GENERAL',
             source: 'ADMIN_MANUAL',
           }),
         });
@@ -401,11 +410,12 @@ export const QuestionManagement: React.FC = () => {
       void fetchCrawlerStatus();
     } catch (err: any) {
       setModalError(err?.message || 'Failed to save question');
-    }
+    } finally {savingQuestion.current=false;setIsSavingQuestion(false);}
   };
 
   const handleSaveTopic = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(savingTopic.current)return;savingTopic.current=true;setIsSavingTopic(true);setTopicError(null);
     try {
       await adminFetch('/api/admin/ielts/topics', {
         method: 'POST',
@@ -418,13 +428,11 @@ export const QuestionManagement: React.FC = () => {
       });
       setShowTopicModal(false);
       setTopicName('');
-      setTopicSlug('');
+      setTopicSlug('');setSlugEdited(false);
       setTopicDesc('');
       void fetchTopics();
       void fetchCrawlerStatus();
-    } catch {
-      // ignore
-    }
+    } catch(error) {setTopicError(error instanceof Error?error.message:'Topic could not be saved.');} finally {savingTopic.current=false;setIsSavingTopic(false);}
   };
 
   const handleDeleteQuestion = async (id: string) => {
@@ -433,9 +441,7 @@ export const QuestionManagement: React.FC = () => {
       await adminFetch(`/api/admin/ielts/questions/${id}`, { method: 'DELETE' });
       void fetchQuestions();
       void fetchCrawlerStatus();
-    } catch {
-      // ignore
-    }
+    } catch(error) { setFetchError(error instanceof Error ? error.message : 'Question could not be updated.'); }
   };
 
   const handleToggleQuestionActive = async (q: Question) => {
@@ -445,9 +451,7 @@ export const QuestionManagement: React.FC = () => {
         body: JSON.stringify({ isActive: !q.isActive }),
       });
       void fetchQuestions();
-    } catch {
-      // ignore
-    }
+    } catch(error) { setFetchError(error instanceof Error ? error.message : 'Question could not be updated.'); }
   };
 
   const { part1Count, part2Count, part3Count, cueCardQuestions } = useMemo(() => {
@@ -467,6 +471,8 @@ export const QuestionManagement: React.FC = () => {
 
   return (
     <div className="qm-container">
+      {fetchError&&<p role="alert" className="inline-error">{fetchError}<button className="btn-secondary" onClick={()=>void fetchQuestions()}>Retry</button></p>}
+      {(activeTab==='questions'||activeTab==='cueCards')&&<div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}><button className="btn-secondary" disabled={page<=1||loading} onClick={()=>setPage(page-1)}>Previous page</button><span>Page {page} of {totalPages} · {total} matching questions</span><button className="btn-secondary" disabled={page>=totalPages||loading} onClick={()=>setPage(page+1)}>Next page</button></div>}
       {/* 1. EXECUTIVE COMMAND HUD HEADER */}
       <div className="qm-hero">
         <div className="qm-hero-top">
@@ -475,15 +481,15 @@ export const QuestionManagement: React.FC = () => {
               <BookOpen size={26} />
             </div>
             <div>
-              <div className="qm-hero-title">
+              <h1 className="qm-hero-title">
                 <span>IELTS Question Simulator Studio</span>
                 <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
                   <span className="dot dot-pulse" style={{ backgroundColor: 'var(--success)' }} />
-                  CRAWLER ACTIVE
+                  {crawlerStatus?.latestLog?.status === 'RUNNING' ? 'Latest run: running' : crawlerStatus?.latestLog ? 'Latest run: ' + crawlerStatus.latestLog.status.toLowerCase() : 'Crawler status unavailable'}
                 </span>
-              </div>
+              </h1>
               <div className="qm-hero-subtitle">
-                Autonomous web scraper, SHA-256 deduplication &amp; live in-call exam drawer simulator
+                Manage questions, cue cards, topics and recent ingestion runs.
               </div>
             </div>
           </div>
@@ -528,7 +534,7 @@ export const QuestionManagement: React.FC = () => {
               <span>Crawler Status</span>
             </div>
             <div className="qm-stat-val" style={{ color: 'var(--success)' }}>
-              {crawlerStatus?.latestLog?.status || 'READY'}
+              {crawlerStatus?.latestLog?.status || 'Unavailable'}
             </div>
             <div className="qm-stat-sub">
               {crawlerStatus?.gemini?.status === 'CONNECTED'
@@ -544,8 +550,8 @@ export const QuestionManagement: React.FC = () => {
               <Clock size={13} style={{ color: 'var(--warning)' }} />
               <span>Exam Format</span>
             </div>
-            <div className="qm-stat-val" style={{ color: 'var(--warning)' }}>2026 Forecast</div>
-            <div className="qm-stat-sub">Cambridge Recall Sets</div>
+            <div className="qm-stat-val" style={{ color: 'var(--warning)' }}>Parts 1–3</div>
+            <div className="qm-stat-sub">Practice question bank</div>
           </div>
         </div>
       </div>
@@ -555,6 +561,7 @@ export const QuestionManagement: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('questions')}
+          aria-pressed={activeTab === 'questions'}
           className={`qm-tab-pill ${activeTab === 'questions' ? 'active' : ''}`}
         >
           <BookOpen size={16} />
@@ -564,6 +571,7 @@ export const QuestionManagement: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('cueCards')}
+          aria-pressed={activeTab === 'cueCards'}
           className={`qm-tab-pill ${activeTab === 'cueCards' ? 'active' : ''}`}
         >
           <Sparkles size={16} />
@@ -573,6 +581,7 @@ export const QuestionManagement: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('topics')}
+          aria-pressed={activeTab === 'topics'}
           className={`qm-tab-pill ${activeTab === 'topics' ? 'active' : ''}`}
         >
           <Layers size={16} />
@@ -582,6 +591,7 @@ export const QuestionManagement: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('crawler')}
+          aria-pressed={activeTab === 'crawler'}
           className={`qm-tab-pill ${activeTab === 'crawler' ? 'active' : ''}`}
         >
           <Cpu size={16} />
@@ -591,6 +601,7 @@ export const QuestionManagement: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('bulkImport')}
+          aria-pressed={activeTab === 'bulkImport'}
           className={`qm-tab-pill ${activeTab === 'bulkImport' ? 'active' : ''}`}
         >
           <Upload size={16} />
@@ -607,7 +618,7 @@ export const QuestionManagement: React.FC = () => {
               {/* Search */}
               <div className="qm-search-box">
                 <Search size={15} className="qm-search-icon" />
-                <input
+                <input aria-label="Search questions by keyword..."
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -642,6 +653,7 @@ export const QuestionManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setFilterPart('all')}
+                  aria-pressed={filterPart === 'all'}
                   className={`qm-pill-item ${filterPart === 'all' ? 'active' : ''}`}
                 >
                   All ({questions.length})
@@ -649,6 +661,7 @@ export const QuestionManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setFilterPart('PART_1')}
+                  aria-pressed={filterPart === 'PART_1'}
                   className={`qm-pill-item ${filterPart === 'PART_1' ? 'active' : ''}`}
                   style={{ color: filterPart === 'PART_1' ? '#38BDF8' : undefined }}
                 >
@@ -657,6 +670,7 @@ export const QuestionManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setFilterPart('PART_2')}
+                  aria-pressed={filterPart === 'PART_2'}
                   className={`qm-pill-item ${filterPart === 'PART_2' ? 'active' : ''}`}
                   style={{ color: filterPart === 'PART_2' ? '#F59E0B' : undefined }}
                 >
@@ -665,6 +679,7 @@ export const QuestionManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setFilterPart('PART_3')}
+                  aria-pressed={filterPart === 'PART_3'}
                   className={`qm-pill-item ${filterPart === 'PART_3' ? 'active' : ''}`}
                   style={{ color: filterPart === 'PART_3' ? '#A855F7' : undefined }}
                 >
@@ -674,6 +689,7 @@ export const QuestionManagement: React.FC = () => {
 
               {/* Topic Select */}
               <select
+                aria-label="Filter questions by topic"
                 value={filterTopic}
                 onChange={(e) => setFilterTopic(e.target.value)}
                 className="qm-select-styled"
@@ -688,6 +704,7 @@ export const QuestionManagement: React.FC = () => {
 
               {/* Status Select */}
               <select
+                aria-label="Filter questions by status"
                 value={filterActive}
                 onChange={(e) => setFilterActive(e.target.value)}
                 className="qm-select-styled"
@@ -704,6 +721,7 @@ export const QuestionManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setViewMode('cards')}
+                  aria-pressed={viewMode === 'cards'}
                   title="Card View"
                   className={`qm-pill-item ${viewMode === 'cards' ? 'active' : ''}`}
                 >
@@ -712,6 +730,7 @@ export const QuestionManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
+                  aria-pressed={viewMode === 'table'}
                   title="Table View"
                   className={`qm-pill-item ${viewMode === 'table' ? 'active' : ''}`}
                 >
@@ -752,7 +771,7 @@ export const QuestionManagement: React.FC = () => {
                 let parsedBullets: string[] = [];
                 if (q.cueCardBullets) {
                   try {
-                    parsedBullets = JSON.parse(q.cueCardBullets);
+                    parsedBullets = parseBullets(q.cueCardBullets);
                   } catch {
                     parsedBullets = [q.cueCardBullets];
                   }
@@ -858,7 +877,7 @@ export const QuestionManagement: React.FC = () => {
                             setModalPart(q.part);
                             setModalQuestionText(q.questionText);
                             try {
-                              const bullets = q.cueCardBullets ? JSON.parse(q.cueCardBullets) : [];
+                              const bullets = q.cueCardBullets ? parseBullets(q.cueCardBullets) : [];
                               setModalCueBullets(Array.isArray(bullets) ? bullets.join('\n') : '');
                             } catch {
                               setModalCueBullets(q.cueCardBullets || '');
@@ -954,7 +973,7 @@ export const QuestionManagement: React.FC = () => {
                               setModalPart(q.part);
                               setModalQuestionText(q.questionText);
                               try {
-                                const bullets = q.cueCardBullets ? JSON.parse(q.cueCardBullets) : [];
+                                const bullets = q.cueCardBullets ? parseBullets(q.cueCardBullets) : [];
                                 setModalCueBullets(Array.isArray(bullets) ? bullets.join('\n') : '');
                               } catch {
                                 setModalCueBullets(q.cueCardBullets || '');
@@ -1014,12 +1033,12 @@ export const QuestionManagement: React.FC = () => {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: '1.25rem' }}>
             {cueCardQuestions.map((q) => {
               let bullets: string[] = [];
               if (q.cueCardBullets) {
                 try {
-                  bullets = JSON.parse(q.cueCardBullets);
+                  bullets = parseBullets(q.cueCardBullets);
                 } catch {
                   bullets = [q.cueCardBullets];
                 }
@@ -1072,6 +1091,7 @@ export const QuestionManagement: React.FC = () => {
                         }}
                         className="btn-secondary"
                         style={{ width: '28px', height: '28px', padding: 0 }}
+                        aria-label="Edit cue card"
                       >
                         <Edit2 size={12} />
                       </button>
@@ -1080,6 +1100,7 @@ export const QuestionManagement: React.FC = () => {
                         onClick={() => handleDeleteQuestion(q.id)}
                         className="btn-danger"
                         style={{ width: '28px', height: '28px', padding: 0 }}
+                        aria-label="Delete cue card"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -1116,7 +1137,7 @@ export const QuestionManagement: React.FC = () => {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '1rem' }}>
             {topics.map((t) => (
               <div key={t.id} className="glass-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
                 <div>
@@ -1392,7 +1413,7 @@ export const QuestionManagement: React.FC = () => {
               </p>
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input
+                <input aria-label="https://ieltsmaterial.com/..."
                   type="url"
                   value={customCrawlUrl}
                   onChange={(e) => setCustomCrawlUrl(e.target.value)}
@@ -1534,7 +1555,7 @@ export const QuestionManagement: React.FC = () => {
           <form onSubmit={handleBulkImport} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="qm-form-group">
               <label className="qm-form-label">Target Topic Domain</label>
-              <select
+              <select aria-label="Target Topic Domain"
                 value={bulkImportTopicId}
                 onChange={(e) => setBulkImportTopicId(e.target.value)}
                 className="qm-select-styled"
@@ -1548,7 +1569,7 @@ export const QuestionManagement: React.FC = () => {
 
             <div className="qm-form-group">
               <label className="qm-form-label">JSON Array or Line-by-Line Questions</label>
-              <textarea
+              <textarea aria-label="JSON Array or Line-by-Line Questions"
                 rows={10}
                 value={bulkImportJson}
                 onChange={(e) => setBulkImportJson(e.target.value)}
@@ -1578,7 +1599,7 @@ export const QuestionManagement: React.FC = () => {
 
       {/* 8. QUESTION CREATE/EDIT MODAL */}
       {showQuestionModal && (
-        <div className="qm-modal-overlay">
+        <Dialog title="Question" pending={isSavingQuestion} onClose={() => { setShowQuestionModal(false); }}><fieldset disabled={isSavingQuestion} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div className="qm-modal">
             <div className="qm-modal-header">
               <div className="qm-modal-title">
@@ -1603,7 +1624,7 @@ export const QuestionManagement: React.FC = () => {
             <form onSubmit={handleSaveQuestion} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="qm-form-group">
                 <label className="qm-form-label">Topic</label>
-                <select
+                <select aria-label="Topic"
                   value={modalTopicId}
                   onChange={(e) => setModalTopicId(e.target.value)}
                   className="qm-select-styled"
@@ -1665,7 +1686,7 @@ export const QuestionManagement: React.FC = () => {
               {modalPart === 'PART_2' && (
                 <div className="qm-form-group">
                   <label className="qm-form-label">Cue Card Bullets (One prompt per line)</label>
-                  <textarea
+                  <textarea aria-label="Cue Card Bullets (One prompt per line)"
                     rows={4}
                     value={modalCueBullets}
                     onChange={(e) => setModalCueBullets(e.target.value)}
@@ -1690,12 +1711,12 @@ export const QuestionManagement: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </fieldset></Dialog>
       )}
 
       {/* 9. TOPIC CREATE MODAL */}
       {showTopicModal && (
-        <div className="qm-modal-overlay">
+        <Dialog title="Topic" pending={isSavingTopic} onClose={() => { setShowTopicModal(false); }}><fieldset disabled={isSavingTopic} style={{border:0,padding:0,margin:0,minWidth:0}}>{topicError&&<p role="alert" className="inline-error">{topicError}</p>}
           <div className="qm-modal" style={{ maxWidth: '440px' }}>
             <div className="qm-modal-header">
               <div className="qm-modal-title">
@@ -1714,13 +1735,13 @@ export const QuestionManagement: React.FC = () => {
             <form onSubmit={handleSaveTopic} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="qm-form-group">
                 <label className="qm-form-label">Topic Name</label>
-                <input
+                <input aria-label="Topic Name"
                   type="text"
                   required
                   value={topicName}
                   onChange={(e) => {
                     setTopicName(e.target.value);
-                    if (!topicSlug) {
+                    if (!slugEdited) {
                       setTopicSlug(
                         e.target.value
                           .toLowerCase()
@@ -1736,11 +1757,11 @@ export const QuestionManagement: React.FC = () => {
 
               <div className="qm-form-group">
                 <label className="qm-form-label">URL Slug</label>
-                <input
+                <input aria-label="URL Slug"
                   type="text"
                   required
                   value={topicSlug}
-                  onChange={(e) => setTopicSlug(e.target.value)}
+                  onChange={(e) => {setTopicSlug(e.target.value);setSlugEdited(true);}}
                   placeholder="e.g. artificial-intelligence"
                   className="input-modern"
                 />
@@ -1748,7 +1769,7 @@ export const QuestionManagement: React.FC = () => {
 
               <div className="qm-form-group">
                 <label className="qm-form-label">Relevance Frequency (1-10)</label>
-                <input
+                <input aria-label="Relevance Frequency (1-10)"
                   type="number"
                   min={1}
                   max={10}
@@ -1760,7 +1781,7 @@ export const QuestionManagement: React.FC = () => {
 
               <div className="qm-form-group">
                 <label className="qm-form-label">Description</label>
-                <textarea
+                <textarea aria-label="Description"
                   rows={2}
                   value={topicDesc}
                   onChange={(e) => setTopicDesc(e.target.value)}
@@ -1787,7 +1808,7 @@ export const QuestionManagement: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </fieldset></Dialog>
       )}
     </div>
   );

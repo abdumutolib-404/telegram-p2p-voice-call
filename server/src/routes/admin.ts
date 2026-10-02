@@ -1,3 +1,8 @@
+import { loadPlanConfiguration, savePlanConfiguration } from '../services/planConfiguration';
+import { processStarsRefund } from '../services/starsRefund';
+import { safeFetch } from '../utils/safeFetch';
+import { decodePaymentProof } from '../utils/paymentProof';
+import { lockRow } from '../utils/transactionLock';
 import { Router, type Response } from 'express';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
@@ -619,28 +624,19 @@ router.get('/stats', adminAuthMiddleware, async (req, res) => {
 
 // GET /api/admin/plans (Protected)
 router.get('/plans', adminAuthMiddleware, async (req, res) => {
-  res.json(getPlansConfig());
+  try { res.json(await loadPlanConfiguration()); } catch { res.status(503).json({ error:'Subscription configuration is unavailable.' }); }
 });
 
 // GET /api/admin/plans/purchasable (Protected - Paid Tiers Only)
 router.get('/plans/purchasable', adminAuthMiddleware, async (req, res) => {
-  res.json(getPurchasablePlansConfig());
+  try { await loadPlanConfiguration(); res.json(getPurchasablePlansConfig()); } catch { res.status(503).json({ error:'Subscription configuration is unavailable.' }); }
 });
 
 // PUT /api/admin/plans (Protected)
 router.put('/plans', adminAuthMiddleware, async (req, res) => {
   try {
-    const beforeState = getPlansConfig();
-    const updated = updatePlansConfig(req.body);
     const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
-    await recordAdminAuditLog({
-      action: 'GLOBAL_PLANS_UPDATE',
-      targetId: 'plans_config',
-      adminId,
-      beforeState,
-      afterState: updated,
-      reason: 'Admin updated global plan tier parameters',
-    });
+    const updated = await savePlanConfiguration(req.body, adminId);
     res.json({ success: true, ...updated, plans: updated });
   } catch (err) {
     res.status(400).json({ error: 'Failed to update plan configurations.' });
@@ -730,12 +726,15 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
       where: { id },
     });
 
-    if (!paymentReq || !paymentReq.paymentProof) {
+    if (req.query.kind !== undefined && req.query.kind !== 'refund') return res.status(400).send('Invalid proof selection');
+    const selectedProof = req.query.kind === 'refund' ? paymentReq?.refundProof : paymentReq?.paymentProof;
+    if (!paymentReq || !selectedProof) {
       res.status(404).send('Receipt not found');
       return;
     }
 
-    const rawProof = paymentReq.paymentProof.trim();
+    const rawProof = selectedProof.trim();
+    res.setHeader('Cache-Control', 'private, no-store');
 
     // 1. Direct HTTP/HTTPS URL (Must strictly pass isSafeStorageUrl)
     if (rawProof.startsWith('http://') || rawProof.startsWith('https://')) {
@@ -755,31 +754,8 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
 
     // 2. Base64 Data URL (Strict Image MIME Whitelist to prevent Stored XSS)
     if (rawProof.startsWith('data:')) {
-      const matches = rawProof.match(/^data:([A-Za-z0-9-+/]+);base64,(.+)$/);
-      if (matches && matches.length === 3) {
-        const mimeType = matches[1].toLowerCase().trim();
-        const allowedImageMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-        if (!allowedImageMimes.includes(mimeType)) {
-          logger.warn('Blocked unsafe receipt MIME type in data URL', {
-            service: 'admin',
-            event: 'receipt_unsafe_mime_blocked',
-            mimeType,
-            requestId: id,
-          });
-          res.status(400).send('Receipt format is not an allowed image format');
-          return;
-        }
-
-        const buffer = Buffer.from(matches[2], 'base64');
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Length', buffer.length);
-        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.end(buffer);
-        return;
-      }
-      res.status(400).send('Invalid data URL format for receipt');
-      return;
+      const { buffer,mime }=decodePaymentProof(rawProof);
+      res.setHeader('Content-Type',mime);res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");res.setHeader('X-Content-Type-Options','nosniff');res.end(buffer);return;
     }
 
     // 3. Parsed JSON metadata containing Telegram fileId
@@ -820,7 +796,8 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
     }
 
     const telegramFileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${fileInfo.file_path}`;
-    const upstreamRes = await fetch(telegramFileUrl);
+    if (!/^[A-Za-z0-9_./-]+$/.test(fileInfo.file_path) || fileInfo.file_path.includes('..')) return res.status(400).send('Invalid receipt path');
+    const upstreamRes = await safeFetch(telegramFileUrl, { allowed: url => new URL(url).hostname === 'api.telegram.org',maxBytes:5*1024*1024 });
 
     if (!upstreamRes.ok || !upstreamRes.body) {
       res.status(upstreamRes.status).send('Failed to fetch receipt from Telegram servers');
@@ -828,19 +805,21 @@ router.get('/payments/manual/:id/receipt', adminAuthMiddleware, async (req: Admi
     }
 
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
 
-    Readable.fromWeb(upstreamRes.body as any).pipe(res);
+    const buffer=Buffer.from(await upstreamRes.arrayBuffer());
+    decodePaymentProof('data:'+mimeType+';base64,'+buffer.toString('base64'));
+    res.end(buffer);
   } catch (err) {
     logger.error('Failed to stream manual payment receipt', {
       service: 'admin',
       event: 'stream_manual_receipt_failed',
       requestId: id,
     }, err);
-    res.status(500).send('Internal error while streaming receipt');
+    res.status(400).send('Receipt could not be opened securely.');
   }
 });
 
@@ -977,7 +956,7 @@ router.post('/payments/manual/:id/refund', adminAuthMiddleware, async (req: Admi
         `Your refund of <b>${result.request.uzsAmount.toLocaleString()} UZS</b> for Order #<code>${escapeHtml(orderNum)}</code> has been transferred to your card:\n` +
         `💳 <code>${escapeHtml(cardDisplay)}</code>\n\n` +
         `📎 <i>The official bank transfer bill is attached above.</i>\n\n` +
-        `Your account has been reverted to the <b>FREE Plan</b>. Thank you for using PairTalk!`;
+        `Your current plan is <b>${escapeHtml(result.user.plan)}</b>. Thank you for using PairTalk!`;
 
       // Try sending with photo if refundProof is a valid base64 data URI or validated safe HTTPS URL
       let sent = false;
@@ -1155,27 +1134,31 @@ router.get('/payments/stars', adminAuthMiddleware, async (_req, res) => {
 router.post('/payments/stars/:id/refund', adminAuthMiddleware, async (req: AdminAuthenticatedRequest, res) => {
   const { id } = req.params;
   const { reason } = req.body;
+  if (reason !== undefined && (typeof reason !== 'string' || reason.length > 1000)) {
+    return res.status(400).json({ error: 'Refund reason must be text of at most 1000 characters.' });
+  }
   const adminId = req.adminUser?.telegramId || 'admin';
 
   try {
-    const result = await revokePlanOnRefund({
+    if (!adminBotInstance) return res.status(503).json({ error: 'Telegram refund service is unavailable.' });
+    const result = await processStarsRefund({
       transactionId: id,
       adminId,
       reason,
-    });
+    }, adminBotInstance.api);
 
-    if (adminBotInstance && result.user) {
+    if (adminBotInstance && result.user && !result.alreadyProcessed) {
       await adminBotInstance.api.sendMessage(
         result.user.telegramId.toString(),
         `ℹ️ *Telegram Stars Payment Refunded*\n\n` +
           `• Amount: *${result.transaction.starsAmount} Stars*\n` +
           `• Reason: ${reason || 'Administrator refund'}\n\n` +
-          `Your subscription has been reverted to the *FREE Plan*.`,
+          `Your current subscription is *${result.user.plan}*.`,
         { parse_mode: 'Markdown' }
       ).catch(() => undefined);
     }
 
-    res.json({ success: true, message: 'Stars payment refunded and plan revoked.', transaction: result.transaction });
+    res.json({ success: true, message: 'Stars payment refunded. Subscription eligibility has been updated.', transaction: result.transaction });
   } catch (err: any) {
     logger.error('Failed to refund stars transaction', {
       service: 'admin',
@@ -1446,8 +1429,8 @@ router.get('/users', adminAuthMiddleware, async (req, res) => {
         dailyLimit: u.dailyLimit,
         dailyCallsUsed: u.dailyCallsUsed,
         maxDuration: u.maxDuration,
-        retentionOverride: u.retentionOverride || null,
-        recordingLimitOverride: u.recordingLimitOverride || null,
+        retentionOverride: u.retentionOverride ?? null,
+        recordingLimitOverride: u.recordingLimitOverride ?? null,
         warningCount: u.warningCount,
         isPermanentlyBanned: u.isPermanentlyBanned,
         bannedUntil: u.bannedUntil ? u.bannedUntil.toISOString() : null,
@@ -1470,6 +1453,15 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const { plan, dailyLimit, maxDuration, retentionOverride, recordingLimit, recordingLimitOverride, customPlanName, durationDays, resetDailyCalls } = req.body;
 
+  const bounds: Record<string,[number,number]> = { dailyLimit:[0,2147483647],maxDuration:[1,1440],retentionOverride:[1,3650],recordingLimit:[0,2147483647],recordingLimitOverride:[0,2147483647],durationDays:[1,3650] };
+  for(const [field,[min,max]] of Object.entries(bounds)){
+    const value=req.body[field];
+    if(value!==undefined && value!==null && (typeof value!=='number'||!Number.isInteger(value)||value<min||value>max)) return res.status(400).json({error:'Invalid '+field+'. A whole number within the supported limits is required.'});
+    if(field==='durationDays' && value===null) return res.status(400).json({error:'Invalid durationDays.'});
+  }
+  if(plan!==undefined && (typeof plan!=='string'||!['FREE','PLUS','PRO','BOSS'].includes(plan.toUpperCase())))return res.status(400).json({error:'Invalid plan tier.'});
+  if(customPlanName!==undefined && customPlanName!==null && (typeof customPlanName!=='string'||customPlanName.length>80)) return res.status(400).json({error:'Invalid custom plan name.'});
+  if(resetDailyCalls!==undefined && typeof resetDailyCalls!=='boolean') return res.status(400).json({error:'Invalid call reset option.'});
   try {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
@@ -1509,6 +1501,8 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       }
     }
 
+    if (dailyLimit === null) updateData.dailyLimit = getDailyLimitForPlan(typeof plan === 'string' ? plan : user.plan);
+    if (maxDuration === null) updateData.maxDuration = getMaxDurationForPlan(typeof plan === 'string' ? plan : user.plan);
     if (dailyLimit !== undefined && typeof dailyLimit === 'number' && dailyLimit >= 0) {
       updateData.dailyLimit = dailyLimit;
     }
@@ -1523,7 +1517,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
 
     if (recordingLimit !== undefined || recordingLimitOverride !== undefined) {
       const rec = recordingLimit !== undefined ? recordingLimit : recordingLimitOverride;
-      updateData.recordingLimitOverride = typeof rec === 'number' && rec > 0 ? rec : null;
+      updateData.recordingLimitOverride = typeof rec === 'number' && rec >= 0 ? rec : null;
     }
 
     if (customPlanName !== undefined) {
@@ -1546,40 +1540,19 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
     if (resetDailyCalls === true) {
       updateData.dailyCallsUsed = 0;
       updateData.lastCallDate = new Date().toISOString().slice(0, 7);
-      const effectivePlan = updateData.plan ? String(updateData.plan) : user.plan;
-      if (effectivePlan !== 'FREE' || updateData.customPlanName || user.customPlanName) {
-        updateData.subscriptionStatus = 'ACTIVE';
-        if (!updateData.subscriptionExpiresAt) {
-          updateData.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        }
-      }
+
     }
 
-    const updated = await prisma.user.update({
-      where: { id },
-      data: updateData,
-    });
-
-    const afterState = {
-      plan: updated.plan,
-      customPlanName: updated.customPlanName,
-      dailyLimit: updated.dailyLimit,
-      dailyCallsUsed: updated.dailyCallsUsed,
-      maxDuration: updated.maxDuration,
-      retentionOverride: updated.retentionOverride,
-      recordingLimitOverride: updated.recordingLimitOverride,
-      subscriptionStatus: updated.subscriptionStatus,
-      subscriptionExpiresAt: updated.subscriptionExpiresAt,
-    };
-
     const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
-    await recordAdminAuditLog({
-      action: 'USER_PLAN_UPDATE',
-      targetId: id,
-      adminId,
-      beforeState,
-      afterState,
-      reason: typeof req.body?.reason === 'string' ? req.body.reason : 'Admin updated candidate plan and limits',
+    const updated = await prisma.$transaction(async tx => {
+      await lockRow(tx, 'User', id);
+      const prior = await tx.user.findUnique({where:{id}});
+      if (!prior || prior.updatedAt.getTime() !== user.updatedAt.getTime()) throw new Error('CONCURRENT_USER_UPDATE');
+      const changed = await tx.user.updateMany({ where:{id,updatedAt:user.updatedAt}, data:updateData as Prisma.UserUpdateManyMutationInput });
+      if(changed.count!==1)throw new Error('CONCURRENT_USER_UPDATE');
+      const current=await tx.user.findUnique({where:{id}});if(!current)throw new Error('User not found.');
+      await tx.auditLog.create({data:{action:'USER_PLAN_UPDATE',targetId:id,adminId,beforeState:JSON.stringify(beforeState),afterState:JSON.stringify({plan:current.plan,customPlanName:current.customPlanName,dailyLimit:current.dailyLimit,maxDuration:current.maxDuration,retentionOverride:current.retentionOverride,recordingLimitOverride:current.recordingLimitOverride,subscriptionStatus:current.subscriptionStatus,subscriptionExpiresAt:current.subscriptionExpiresAt}),reason:typeof req.body.reason==='string'?req.body.reason:'Administrator updated candidate limits'}});
+      return current;
     });
 
     if (adminBotInstance && (plan || resetDailyCalls || dailyLimit !== undefined || retentionOverride !== undefined)) {
@@ -1632,7 +1605,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       dailyLimit: updated.dailyLimit,
       dailyCallsUsed: updated.dailyCallsUsed,
       maxDuration: updated.maxDuration,
-      retentionOverride: updated.retentionOverride || null,
+      retentionOverride: updated.retentionOverride ?? null,
       warningCount: updated.warningCount,
       createdAt: updated.createdAt.toISOString(),
     });
@@ -1642,6 +1615,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       event: 'update_user_plan_failed',
       userId: id,
     }, err);
+    if(err instanceof Error && err.message==='CONCURRENT_USER_UPDATE') return res.status(409).json({error:'The candidate changed during this edit. Refresh before applying it again.'});
     res.status(500).json({ error: 'Failed to update user plan.' });
   }
 });
@@ -1878,7 +1852,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       dailyLimit: updated.dailyLimit,
       dailyCallsUsed: updated.dailyCallsUsed,
       maxDuration: updated.maxDuration,
-      retentionOverride: updated.retentionOverride || null,
+      retentionOverride: updated.retentionOverride ?? null,
       warningCount: updated.warningCount,
       isPermanentlyBanned: updated.isPermanentlyBanned,
       bannedUntil: updated.bannedUntil ? updated.bannedUntil.toISOString() : null,
@@ -1933,14 +1907,18 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
       ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000)
       : (endsAt ? new Date(endsAt) : null);
 
-    const existingActive = await prisma.contest.findFirst({
+    if ((title !== undefined && (typeof title !== 'string' || !title.trim() || title.length > 160)) || (description !== undefined && (typeof description !== 'string' || description.length > 2000)) || (isActive !== undefined && typeof isActive !== 'boolean') || (durationDays !== undefined && (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650)) || (calculatedEndsAt && !Number.isFinite(calculatedEndsAt.getTime()))) { res.status(400).json({error:'Invalid contest title, description, availability or duration.'}); return; }
+    const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
+    const {contest} = await prisma.$transaction(async tx => {
+      if (env.NODE_ENV !== 'test') await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251010)`;
+    const existingActive = await tx.contest.findFirst({
       where: { isActive: true },
       orderBy: { createdAt: 'desc' },
     });
 
     let contest;
     if (existingActive) {
-      contest = await prisma.contest.update({
+      contest = await tx.contest.update({
         where: { id: existingActive.id },
         data: {
           title: title || existingActive.title,
@@ -1951,7 +1929,7 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
         },
       });
     } else {
-      contest = await prisma.contest.create({
+      contest = await tx.contest.create({
         data: {
           title: title || 'IELTS Speaking Referral Championship',
           description: description || 'Invite friends to practice speaking and win exclusive prizes!',
@@ -1962,28 +1940,9 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
       });
     }
 
-    const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
-    await recordAdminAuditLog({
-      action: 'CONTEST_MUTATION',
-      targetId: contest.id,
-      adminId,
-      beforeState: existingActive ? {
-        id: existingActive.id,
-        title: existingActive.title,
-        description: existingActive.description,
-        prizes: existingActive.prizes,
-        isActive: existingActive.isActive,
-        endsAt: existingActive.endsAt,
-      } : null,
-      afterState: {
-        id: contest.id,
-        title: contest.title,
-        description: contest.description,
-        prizes: contest.prizes,
-        isActive: contest.isActive,
-        endsAt: contest.endsAt,
-      },
-      reason: 'Admin configured or launched referral championship',
+
+      await tx.auditLog.create({data:{action:'CONTEST_MUTATION',targetId:contest.id,adminId,beforeState:existingActive?JSON.stringify(existingActive):null,afterState:JSON.stringify(contest),reason:'Administrator configured referral championship'}});
+      return {contest};
     });
 
     // Broadcast championship start announcement with Redis deduplication lock

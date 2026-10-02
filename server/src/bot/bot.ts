@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import { telegramTransport } from './telegramTransport';
 import { Bot, session } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import { MyContext, SessionData } from './types';
@@ -41,24 +43,24 @@ function pruneMemorySessions(): void {
 
 const HOT_SESSION_TTL_MS = 60 * 1000; // 60 seconds hot cache
 
-function createRedisSessionStorage() {
+function createRedisSessionStorage(namespace: string) {
   return {
     async read(key: string): Promise<SessionData | undefined> {
       const entry = memorySessions.get(key);
-      if (entry && Date.now() - entry.updatedAt < HOT_SESSION_TTL_MS) {
+      if (env.NODE_ENV === 'test' && entry && Date.now() - entry.updatedAt < HOT_SESSION_TTL_MS) {
         entry.updatedAt = Date.now();
         return entry.data;
       }
       try {
         const redis = getRedis();
-        const data = await redis.get(`bot:session:${key}`);
+        const data = await redis.get(`bot:session:${namespace}:${key}`);
         if (data) {
           const parsed = JSON.parse(data);
           memorySessions.set(key, { data: parsed, updatedAt: Date.now() });
           return parsed;
         }
-      } catch {
-        // Fallback to memory
+      } catch (error) {
+        if (env.NODE_ENV !== 'test') throw error;
       }
       if (!entry) return undefined;
       if (Date.now() - entry.updatedAt > MEMORY_SESSION_TTL_MS) {
@@ -75,18 +77,18 @@ function createRedisSessionStorage() {
       }
       try {
         const redis = getRedis();
-        await redis.set(`bot:session:${key}`, JSON.stringify(value), 'EX', 86400 * 7); // 7 days
-      } catch {
-        // Fallback to memory
+        await redis.set(`bot:session:${namespace}:${key}`, JSON.stringify(value), 'EX', 86400 * 7); // 7 days
+      } catch (error) {
+        if (env.NODE_ENV !== 'test') throw error;
       }
     },
     async delete(key: string): Promise<void> {
       memorySessions.delete(key);
       try {
         const redis = getRedis();
-        await redis.del(`bot:session:${key}`);
-      } catch {
-        // Fallback to memory
+        await redis.del(`bot:session:${namespace}:${key}`);
+      } catch (error) {
+        if (env.NODE_ENV !== 'test') throw error;
       }
     },
   };
@@ -133,59 +135,37 @@ export function isStandardNavigationCallback(data: string | undefined): boolean 
 }
 
 export function createBot(token: string): Bot<MyContext> {
-  const bot = new Bot<MyContext>(token);
+  const bot = new Bot<MyContext>(token, { client: { timeoutSeconds: 15 } });
+  const namespace = crypto.createHash('sha256').update(token).digest('hex').slice(0,24);
 
-  // Guarantee sequential processing of updates per chat while running across different chats in parallel
-  bot.use(sequentialize((ctx) => ctx.chat?.id.toString()));
-
-  // Global API transformer for retry on 429 and graceful handling of benign idempotency responses
-  bot.api.config.use(async (prev, method, payload, signal) => {
-    const maxRetries = 3;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await prev(method, payload, signal);
-      } catch (error: any) {
-        if (error?.error_code === 429 && attempt < maxRetries) {
-          const retryAfter = (error.parameters?.retry_after || 1) * 1000;
-          logger.warn(`Telegram API 429 rate limit hit. Retrying in ${retryAfter}ms (attempt ${attempt + 1}/${maxRetries})`, {
-            service: 'bot',
-            event: 'telegram_api_rate_limited',
-            method,
-            retryAfter,
-            attempt: attempt + 1,
-            maxRetries,
-          });
-          await new Promise((resolve) => setTimeout(resolve, retryAfter));
-          continue;
-        }
-        // Benign Telegram idempotency / duplicate tap responses (e.g. double clicking inline buttons)
-        const desc = error?.description || error?.message || '';
-        if (
-          desc.includes('message is not modified') ||
-          desc.includes('query is too old') ||
-          desc.includes('message to edit not found')
-        ) {
-          return true as any;
-        }
-        throw error;
-      }
-    }
-    return prev(method, payload, signal);
-  });
+  bot.api.config.use(telegramTransport(token));
 
   // Early Fast-ACK Middleware: immediately acknowledge inline button clicks for standard navigation & non-alert actions (<30ms)
   bot.use(async (ctx, next) => {
     if (ctx.callbackQuery && isStandardNavigationCallback(ctx.callbackQuery.data)) {
-      void ctx.answerCallbackQuery().catch(() => undefined);
+      const acknowledge = ctx.answerCallbackQuery.bind(ctx);
+      const acknowledgement = acknowledge().catch(() => true as const);
+      ctx.answerCallbackQuery = () => acknowledgement;
     }
     return next();
   });
+
+  bot.use(async (ctx, next) => {
+    if (ctx.update.update_id === undefined) return next();
+    const redis = getRedis(), key = 'bot:update:' + namespace + ':' + ctx.update.update_id;
+    if (await redis.set(key, 'PROCESSING', 'EX', 86400, 'NX') !== 'OK') return;
+    const started = Date.now();
+    try { await next(); await redis.set(key, 'DONE', 'EX', 86400); }
+    catch (error) { await redis.set(key, 'REVIEW_REQUIRED', 'EX', 86400).catch(() => undefined); throw error; }
+    finally { logger.debug('Bot update completed', { service:'bot', updateId:ctx.update.update_id, durationMs:Date.now()-started }); }
+  });
+  bot.use(sequentialize(ctx => ctx.chat?.id.toString()));
 
   // Persistent Redis Session middleware (persists across container restarts)
   bot.use(
     session({
       initial: (): SessionData => ({ step: 'idle' }),
-      storage: createRedisSessionStorage(),
+      storage: createRedisSessionStorage(namespace),
     })
   );
 

@@ -8,6 +8,24 @@ generator client {
   binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
 }
 
+model NotificationJob {
+  id            String   @id @default(uuid())
+  namespace     String
+  telegramId    String
+  text          String
+  optionsJson   String?
+  status        String   @default("QUEUED")
+  urgent        Boolean  @default(false)
+  retries       Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  leasedAt      DateTime?
+  failure       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([namespace, status, nextAttemptAt])
+}
+
 model User {
   id                  String                 @id @default(uuid())
   telegramId          BigInt                 @unique
@@ -127,6 +145,9 @@ model StarsTransaction {
   status            String    @default("PAID") // "PAID", "REFUND_PENDING", "REFUNDED"
   refundReason      String?
   refundedAt        DateTime?
+  refundRequestedAt DateTime?
+  refundAdminId     String?
+  refundFailure     String?
   createdAt         DateTime  @default(now())
 
   user              User      @relation(fields: [userId], references: [id])
@@ -273,4 +294,3 @@ model CrawlerSyncLog {
 
   @@index([startedAt])
 }
-

@@ -96,7 +96,7 @@ export function isSafeStorageUrl(urlString: string): boolean {
     const parsed = new URL(urlString.trim());
 
     // Protocol must strictly be HTTPS
-    if (parsed.protocol !== 'https:') {
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || (parsed.port && parsed.port !== '443')) {
       return false;
     }
 
@@ -143,7 +143,9 @@ export function sanitizeUrl(urlOrData: string): string | null {
  */
 export function extractClientIp(req: Request): string {
   const cfIp = req.headers['cf-connecting-ip'];
-  if (typeof cfIp === 'string' && cfIp.trim()) {
+  const trustProxy = req.app?.get('trust proxy fn');
+  const trustedPeer = typeof trustProxy === 'function' && req.socket?.remoteAddress && trustProxy(req.socket.remoteAddress, 0);
+  if (trustedPeer && typeof cfIp === 'string' && cfIp.trim()) {
     const trimmed = cfIp.trim();
     if (net.isIP(trimmed) !== 0 && !isPrivateOrReservedHost(trimmed)) {
       return trimmed;

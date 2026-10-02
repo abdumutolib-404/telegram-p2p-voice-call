@@ -26,11 +26,11 @@
   /* Typography Colors */
   --text-primary: #F8FAFC;
   --text-secondary: #A8B3C7;
-  --text-muted: #6B778C;
+  --text-muted: #98A5BC;
   --text-inverse: #070A12;
 
   /* PairTalk Accents */
-  --primary: #7C5CFC;
+  --primary: #6F4DE8;
   --primary-hover: #6944FA;
   --primary-light: #9B82FD;
   --primary-bg: rgba(124, 92, 252, 0.12);
@@ -300,4 +300,3 @@ html, body {
     transition-duration: 0.01ms !important;
   }
 }
-

@@ -83,6 +83,8 @@ const REDACTED_KEYS = new Set([
 ]);
 
 const VALUE_PATTERNS = [
+  { pattern: /\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b/g, replacement: '[REDACTED_GITHUB_TOKEN]' },
+  { pattern: /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, replacement: '$1[REDACTED]@' },
   { pattern: /\b\d{8,12}:[A-Za-z0-9_-]{30,45}\b/g, replacement: '[REDACTED_BOT_TOKEN]' },
   { pattern: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\b/g, replacement: '[REDACTED_JWT]' },
   { pattern: /(?:query_id|user)=[^&\s]*(?:&[^&=\s]+=[^&\s]*)*&hash=[a-f0-9]{16,64}/gi, replacement: '[REDACTED_INIT_DATA]' },

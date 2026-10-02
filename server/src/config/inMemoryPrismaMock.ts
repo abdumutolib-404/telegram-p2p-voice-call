@@ -270,7 +270,9 @@ export class InMemoryPrismaMock {
       return (await Promise.all(operation)) as unknown as T;
     }
     const run = async () => {
-      return await operation(this);
+      const snapshots = Object.values(this).filter((value): value is Map<string, unknown> => value instanceof Map).map(map => ({ map, data: structuredClone([...map]) }));
+      try { return await operation(this); }
+      catch (error) { for (const { map, data } of snapshots) { map.clear(); for (const [key,value] of data) map.set(key,value); } throw error; }
     };
     const next = this.txQueue.then(run, run);
     this.txQueue = next;
@@ -929,6 +931,20 @@ export class InMemoryPrismaMock {
         ...(args.include?.user ? { user: this.users.get(found.userId) } : {}),
       };
     },
+    findFirst: async (args?: any): Promise<any> => {
+      const list = await this.starsTransaction.findMany(args);
+      return list.find(row => !args?.where?.createdAt?.gt || row.createdAt > args.where.createdAt.gt) || null;
+    },
+    updateMany: async (args: any): Promise<{ count:number }> => {
+      let count=0;
+      for (const [id,row] of this.starsTransactions) {
+        if (args.where.id && id !== args.where.id) continue;
+        if (args.where.status && row.status !== args.where.status) continue;
+        if (args.where.refundRequestedAt !== undefined && String((row as any).refundRequestedAt) !== String(args.where.refundRequestedAt)) continue;
+        this.starsTransactions.set(id,{...row,...args.data}); count++;
+      }
+      return {count};
+    },
     findMany: async (args?: { where?: { userId?: string; status?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<any[]> => {
       let list = [...this.starsTransactions.values()];
       if (args?.where?.userId) list = list.filter((tx) => tx.userId === args.where!.userId);
@@ -995,10 +1011,11 @@ export class InMemoryPrismaMock {
         ...(args.include?.user ? { user: this.users.get(row.userId) } : {}),
       };
     },
-    findFirst: async (args?: { where?: { userId?: string; status?: string } }): Promise<ManualPaymentRequestRow | null> => {
+    findFirst: async (args?: any): Promise<ManualPaymentRequestRow | null> => {
       for (const row of this.manualPaymentRequests.values()) {
         if (args?.where?.userId && row.userId !== args.where.userId) continue;
-        if (args?.where?.status && row.status !== args.where.status) continue;
+        if (args?.where?.status && (typeof args.where.status === 'string' ? row.status !== args.where.status : !args.where.status.in?.includes(row.status))) continue;
+        if (args?.where?.reviewedAt?.gt && (!row.reviewedAt || row.reviewedAt <= args.where.reviewedAt.gt)) continue;
         return { ...row };
       }
       return null;

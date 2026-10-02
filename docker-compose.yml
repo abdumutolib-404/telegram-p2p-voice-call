@@ -11,16 +11,16 @@ services:
       - PORT=3001
       - NODE_ENV=production
       - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_MASTER_PASSWORD=${ADMIN_MASTER_PASSWORD:-admin123456}
+      - ADMIN_MASTER_PASSWORD=${ADMIN_MASTER_PASSWORD:?Set an administrator password}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
-      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_change_me_in_production}
+      - JWT_SECRET=${JWT_SECRET:?Set a JWT signing secret}
       # NOTE: LIVEKIT_HOST defaults to ws://livekit:7880 but no livekit service is defined here.
       # For production, set LIVEKIT_HOST and LIVEKIT_URL to your LiveKit Cloud or self-hosted instance.
       - LIVEKIT_HOST=${LIVEKIT_HOST:-ws://livekit:7880}
       - LIVEKIT_URL=${LIVEKIT_URL:-wss://livekit:7880}
-      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
-      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-secret}
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/ielts_p2p
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?Set a LiveKit API key}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?Set a LiveKit API secret}
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:?Set a database password}@db:5432/ielts_p2p
       - REDIS_URL=redis://redis:6379
       - MINI_APP_URL=${MINI_APP_URL:-http://localhost:3001/client}
       - ADMIN_PANEL_URL=${ADMIN_PANEL_URL:-http://localhost:3001/admin}
@@ -29,19 +29,19 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a database password}
       POSTGRES_DB: ielts_p2p
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -51,8 +51,17 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
 volumes:
   pgdata:
+  redisdata:

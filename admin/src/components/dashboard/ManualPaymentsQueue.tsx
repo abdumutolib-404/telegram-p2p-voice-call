@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useClipboard, useLatestRequest } from '../../hooks/useAdminTools';
+import { Dialog } from '../ui/Dialog';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ManualPaymentRequestItem } from '../../types/index.ts';
-import { adminFetch, getAdminToken } from '../../api/client.ts';
+import { adminFetch, adminResponse } from '../../api/client.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { StatusBadge } from '../ui/StatusBadge.tsx';
 import { LoadingSkeleton } from '../ui/LoadingSkeleton.tsx';
@@ -26,29 +28,14 @@ export function ManualPaymentsQueue() {
   const [activeTab, setActiveTab] = useState<'queue' | 'refunds' | 'history'>('queue');
   const [search, setSearch] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const actionBusy = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const resolveReceiptUrl = (proof?: string | null, reqId?: string): string => {
-    if (!proof) return '';
-    const trimmed = proof.trim();
-    if (trimmed.startsWith('data:')) {
-      // Strictly allow safe raster images only; reject text/html, svg, and arbitrary files
-      if (/^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
-        return trimmed;
-      }
-      return '';
-    }
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
-    }
-    const token = getAdminToken();
-    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
-    return `/api/admin/payments/manual/${reqId}/receipt${tokenParam}`;
-  };
+  const { copiedId, copyError, copyToClipboard } = useClipboard();
+  const latest = useLatestRequest();
 
   // Receipt Preview Modal
-  const [inspectReceiptUrl, setInspectReceiptUrl] = useState<{ url: string; order: string; user: string; title?: string } | null>(null);
+  const [inspectReceiptUrl, setInspectReceiptUrl] = useState<{ url: string; order: string; user: string; title?: string; mime?: string } | null>(null);
 
   // Approve / Reject / Refund Action Modal
   const [selectedAction, setSelectedAction] = useState<{
@@ -61,6 +48,7 @@ export function ManualPaymentsQueue() {
   const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
 
   const fetchRequests = useCallback(async () => {
+    const request = latest();
     setIsLoading(true);
     setError(null);
     try {
@@ -70,29 +58,41 @@ export function ManualPaymentsQueue() {
         params.append('search', search.trim());
       }
       const url = `/api/admin/payments/manual?${params.toString()}`;
-      const data = await adminFetch<ManualPaymentRequestItem[]>(url);
+      const data = await adminFetch<ManualPaymentRequestItem[]>(url, { signal:request.signal });
+      if (!request.isCurrent()) return;
       setRequests(data || []);
     } catch (err: unknown) {
+      if (!request.isCurrent()) return;
       setError(err instanceof Error ? err.message : 'Failed to fetch payment requests');
     } finally {
-      setIsLoading(false);
+      if (request.isCurrent()) setIsLoading(false);
     }
-  }, [activeTab, search]);
+  }, [activeTab, search, latest]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchRequests();
     }, 250);
-    return () => clearTimeout(timer);
-  }, [fetchRequests]);
+    return () => { clearTimeout(timer); latest(); };
+  }, [fetchRequests, latest]);
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(key);
-    setTimeout(() => setCopiedId(null), 2000);
+
+
+  useEffect(() => () => { if (inspectReceiptUrl?.url.startsWith('blob:')) URL.revokeObjectURL(inspectReceiptUrl.url); }, [inspectReceiptUrl]);
+  const receiptLatest = useLatestRequest();
+  const viewReceipt = async (item: ManualPaymentRequestItem, refund = false) => {
+    const request = receiptLatest();
+    try {
+      const response = await adminResponse('/api/admin/payments/manual/' + item.id + '/receipt' + (refund ? '?kind=refund' : ''), {signal:request.signal});
+      const blob = await response.blob();
+      if (!['image/png','image/jpeg','image/webp','application/pdf'].includes(blob.type)) throw new Error('Receipt has an unsupported format.');
+      if (!request.isCurrent()) return;
+      setInspectReceiptUrl({ url:URL.createObjectURL(blob), mime:blob.type, order:item.orderNumber || item.id, user:item.alias, title:refund?'Refund transfer proof':'Purchase receipt' });
+    } catch(error) { if (!request.isCurrent()) return; setError(error instanceof Error?error.message:'Receipt could not be opened.'); }
   };
-
   const handleOpenActionModal = (type: 'approve' | 'reject' | 'refund' | 'reject_refund', item: ManualPaymentRequestItem) => {
+    if (actionBusy.current) return;
+    setActionError(null);
     setSelectedAction({ type, item });
     setRefundBillProof('');
     setRejectionReason('');
@@ -107,11 +107,14 @@ export function ManualPaymentsQueue() {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('File is too large. Please select an image under 5MB.');
+      setActionError('File is too large. Use a PNG, JPEG, WebP or PDF under 5 MB.');
       return;
     }
 
+    if (!['image/png','image/jpeg','image/webp','application/pdf'].includes(file.type)) { setActionError('Use a PNG, JPEG, WebP or PDF file.'); return; }
+    setActionError(null);
     const reader = new FileReader();
+    reader.onerror = () => setActionError('File could not be read.');
     reader.onload = (uploadEvent) => {
       const result = uploadEvent.target?.result;
       if (typeof result === 'string') {
@@ -122,19 +125,20 @@ export function ManualPaymentsQueue() {
   };
 
   const handleExecuteAction = async () => {
-    if (!selectedAction) return;
+    if (!selectedAction || actionBusy.current) return;
     const { type, item } = selectedAction;
 
     if (type === 'refund' && !refundBillProof.trim()) {
-      alert('You must attach the bank transfer bill proof before approving a refund.');
+      setActionError('Attach the refund transfer proof before approving.');
       return;
     }
 
     if (type === 'reject_refund' && !rejectionReason.trim()) {
-      alert('You must provide a rejection reason to notify the student.');
+      setActionError('Provide a reason for rejecting the refund request.');
       return;
     }
 
+    actionBusy.current = true; setActionError(null);
     setIsProcessingAction(true);
 
     try {
@@ -169,9 +173,9 @@ export function ManualPaymentsQueue() {
       setSelectedAction(null);
       await fetchRequests();
     } catch (err: unknown) {
-      alert(`Payment action failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setActionError(err instanceof Error ? err.message : 'Payment action failed.');
     } finally {
-      setIsProcessingAction(false);
+      actionBusy.current = false; setIsProcessingAction(false);
     }
   };
 
@@ -208,6 +212,7 @@ export function ManualPaymentsQueue() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {copyError && <p role="alert" className="inline-error">{copyError}</p>}
       <PageHeader
         title="Manual Payments (UZS)"
         description="Verify candidate offline card/bank transfers, inspect receipts, and manage fulfillment"
@@ -305,7 +310,7 @@ export function ManualPaymentsQueue() {
       {/* Search Input */}
       <div style={{ position: 'relative', maxWidth: '380px' }}>
         <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-        <input
+        <input aria-label="Search by Order #, Telegram ID, or Alias..."
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -335,7 +340,7 @@ export function ManualPaymentsQueue() {
       )}
 
       {/* Payments Table */}
-      {isLoading && requests.length === 0 ? (
+      {isLoading && requests.length === 0 && !error ? (
         <LoadingSkeleton message="Loading payment transactions..." rows={5} />
       ) : requests.length === 0 ? (
         <EmptyState
@@ -463,7 +468,7 @@ export function ManualPaymentsQueue() {
                         <td>
                           {req.paymentProof ? (
                             <button
-                              onClick={() => setInspectReceiptUrl({ url: resolveReceiptUrl(req.paymentProof, req.id), order: orderDisplay, user: req.alias, title: 'Original Purchase Receipt' })}
+                              onClick={() => void viewReceipt(req)}
                               className="btn-secondary"
                               style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
                             >
@@ -481,7 +486,7 @@ export function ManualPaymentsQueue() {
                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                             {req.paymentProof && (
                               <button
-                                onClick={() => setInspectReceiptUrl({ url: resolveReceiptUrl(req.paymentProof, req.id), order: orderDisplay, user: req.alias, title: 'Payment Receipt' })}
+                                onClick={() => void viewReceipt(req)}
                                 className="btn-secondary"
                                 style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--primary-light)' }}
                               >
@@ -490,7 +495,7 @@ export function ManualPaymentsQueue() {
                             )}
                             {req.refundProof && (
                               <button
-                                onClick={() => setInspectReceiptUrl({ url: resolveReceiptUrl(req.refundProof, req.id), order: orderDisplay, user: req.alias, title: 'Refund Transfer Bill' })}
+                                onClick={() => void viewReceipt(req, true)}
                                 className="btn-secondary"
                                 style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--success)' }}
                               >
@@ -591,19 +596,7 @@ export function ManualPaymentsQueue() {
 
       {/* Receipt Viewer Modal */}
       {inspectReceiptUrl && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(7, 10, 18, 0.85)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1200,
-            padding: '1.5rem',
-          }}
-        >
+        <Dialog title="Receipt preview" pending={false} onClose={() => { setInspectReceiptUrl(null); }}><fieldset disabled={false} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div
             className="glass-panel"
             style={{
@@ -651,13 +644,13 @@ export function ManualPaymentsQueue() {
                 padding: '1rem',
               }}
             >
-              {inspectReceiptUrl.url.startsWith('http') || inspectReceiptUrl.url.startsWith('data:') || inspectReceiptUrl.url.startsWith('/') ? (
+              {inspectReceiptUrl.url.startsWith('blob:') ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                  <img
+                  {inspectReceiptUrl.mime === 'application/pdf' ? <iframe title="Receipt document" src={inspectReceiptUrl.url} sandbox="" style={{width:'100%',height:'55vh'}}/> : <img
                     src={inspectReceiptUrl.url}
                     alt="Payment Receipt"
                     style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '4px' }}
-                  />
+                  />}
                   <div style={{ marginTop: '0.5rem' }}>
                     <a
                       href={inspectReceiptUrl.url}
@@ -677,24 +670,12 @@ export function ManualPaymentsQueue() {
               )}
             </div>
           </div>
-        </div>
+        </fieldset></Dialog>
       )}
 
       {/* Action Dialog: Approve Payment / Reject Payment / Approve Refund / Reject Refund */}
       {selectedAction && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(7, 10, 18, 0.85)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1200,
-            padding: '1.5rem',
-          }}
-        >
+        <Dialog title="Payment action" pending={isProcessingAction} onClose={() => { setSelectedAction(null); }}><fieldset disabled={isProcessingAction} style={{border:0,padding:0,margin:0,minWidth:0}}>{actionError && <p role="alert" className="inline-error">{actionError}</p>}
           <div
             className="glass-panel"
             style={{
@@ -768,16 +749,16 @@ export function ManualPaymentsQueue() {
                     <span>{refundBillProof ? 'Replace Bill Image' : 'Upload Bank Transfer Bill Image'}</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/webp,application/pdf"
                       onChange={handleFileUpload}
-                      style={{ display: 'none' }}
+                      aria-label="Refund transfer proof file"
                     />
                   </label>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Or enter Image URL:</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Or paste a PNG, JPEG, WebP or PDF data URL:</span>
                   </div>
-                  <input
+                  <input aria-label="https://... or upload image above"
                     type="text"
                     value={refundBillProof.startsWith('data:') ? 'Image uploaded (base64)' : refundBillProof}
                     onChange={(e) => setRefundBillProof(e.target.value)}
@@ -809,7 +790,7 @@ export function ManualPaymentsQueue() {
                 <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                   Rejection Reason (Sent to Student on Telegram) <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
-                <input
+                <input aria-label="Rejection Reason (Sent to Student on Telegram) *"
                   type="text"
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
@@ -870,7 +851,7 @@ export function ManualPaymentsQueue() {
               </button>
             </div>
           </div>
-        </div>
+        </fieldset></Dialog>
       )}
     </div>
   );

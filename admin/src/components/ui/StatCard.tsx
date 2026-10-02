@@ -23,6 +23,9 @@ export const StatCard: React.FC<StatCardProps> = ({
     <div
       className="metric-card"
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : undefined}
       style={{
         cursor: onClick ? 'pointer' : 'default',
         minHeight: '128px',

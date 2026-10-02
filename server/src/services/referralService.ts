@@ -1,3 +1,4 @@
+import { lockRow } from '../utils/transactionLock';
 import { prisma } from '../config/database';
 import { Bot } from 'grammy';
 import { MyContext } from '../bot/types';
@@ -415,7 +416,7 @@ export async function concludeContestAndDistributePrizes(
     ? await prisma.contest.findUnique({ where: { id: contestId } })
     : await prisma.contest.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'desc' } });
 
-  if (!contest) {
+  if (!contest && !contestId) {
     contest = await prisma.contest.findFirst({ orderBy: { createdAt: 'desc' } });
   }
 
@@ -427,6 +428,7 @@ export async function concludeContestAndDistributePrizes(
 
   // 2. Atomic & Idempotent Prize Distribution inside prisma.$transaction
   const result = await prisma.$transaction(async (tx) => {
+    await lockRow(tx, 'Contest', targetContestId);
     // Check if prize distribution was already recorded in AuditLog for idempotency
     const existingAwardLog = await tx.auditLog.findFirst({
       where: {

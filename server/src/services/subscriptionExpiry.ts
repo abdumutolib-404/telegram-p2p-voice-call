@@ -4,8 +4,10 @@ import { prisma } from '../config/database';
 import { getRedis } from '../config/redis';
 import { MyContext } from '../bot/types';
 import { notificationQueue } from '../bot/notifications';
-import { getEffectiveEntitlement, getUserCallsUsedThisPeriod } from './plan';
+import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, getPlansConfig } from './plan';
+import { lockRow } from '../utils/transactionLock';
 import { logger } from '../utils/logger';
+import { escapeHtml } from '../utils/sanitize';
 
 export interface ExpiryCheckResult {
   expiredCount: number;
@@ -36,14 +38,24 @@ export async function checkAndProcessSubscriptionExpirations(
 
     for (const user of expiredUsers) {
       const prevPlan = user.customPlanName || user.plan;
-      await prisma.user.update({
-        where: { id: user.id },
+      const changed = await prisma.$transaction(async tx => {
+        await lockRow(tx,'User',user.id);
+        const current=await tx.user.findUnique({where:{id:user.id}});
+        if (!current?.subscriptionExpiresAt || current.subscriptionExpiresAt > now || current.plan==='FREE') return false;
+        await tx.user.update({
+        where: { id: current.id },
         data: {
           plan: 'FREE',
-          dailyLimit: 3,
+          subscriptionStatus:'EXPIRED', customPlanName:null,
+          dailyLimit: getPlansConfig().FREE.dailyLimit, maxDuration:getPlansConfig().FREE.maxDuration,
+          recordingLimitOverride:null,retentionOverride:null,
           subscriptionExpiresAt: null,
         },
+        });
+        await tx.auditLog.create({data:{action:'SUBSCRIPTION_EXPIRED',targetId:current.id,adminId:'SYSTEM',beforeState:JSON.stringify({plan:current.plan,subscriptionExpiresAt:current.subscriptionExpiresAt}),afterState:JSON.stringify({plan:'FREE'})}});
+        return true;
       });
+      if (!changed) continue;
       expiredCount++;
 
       if (bot && user.telegramId) {
@@ -52,8 +64,8 @@ export async function checkAndProcessSubscriptionExpirations(
           bot,
           user.telegramId.toString(),
           `⌛ <b>Subscription Expired</b>\n\n` +
-            `Your <b>${prevPlan} Plan</b> subscription has reached the end of its 30-day billing cycle.\n\n` +
-            `Your account has now reverted to the <b>Free Plan</b> (3 calls/month, 15 min duration, 1 recording).\n\n` +
+            `Your <b>${escapeHtml(prevPlan)} Plan</b> subscription has reached its expiration date.\n\n` +
+            `Your account has now reverted to the <b>Free Plan</b>. View plans for your current allowances.\n\n` +
             `To continue practicing with longer calls, more monthly sessions, and extended recording archives, upgrade anytime!`,
           { parse_mode: 'HTML', reply_markup: inlineKb }
         );
@@ -97,7 +109,7 @@ export async function checkAndProcessSubscriptionExpirations(
             bot,
             user.telegramId.toString(),
             `⏳ <b>Subscription Expiring in 24 Hours!</b>\n\n` +
-              `Your <b>${planDisplayName} Plan</b> subscription will expire on <b>${dateStr}</b>.\n\n` +
+              `Your <b>${escapeHtml(planDisplayName)} Plan</b> subscription will expire on <b>${dateStr}</b>.\n\n` +
               `Renew your plan now to ensure your monthly call allowances and recording storage remain active without interruption!`,
             { parse_mode: 'HTML', reply_markup: inlineKb }
           );
@@ -167,7 +179,7 @@ export async function notifyQuotaLimitReachedIfExhausted(
  */
 export function startSubscriptionExpiryCron(botSupplier: () => Bot<MyContext> | null) {
   // Run every 10 minutes
-  cron.schedule('*/10 * * * *', async () => {
+  const task = cron.schedule('*/10 * * * *', async () => {
     try {
       const bot = botSupplier();
       const res = await checkAndProcessSubscriptionExpirations(bot);
@@ -190,4 +202,5 @@ export function startSubscriptionExpiryCron(botSupplier: () => Bot<MyContext> | 
     service: 'subscriptionExpiry',
     event: 'subscription_expiry_cron_scheduled',
   });
+  return () => task.stop();
 }

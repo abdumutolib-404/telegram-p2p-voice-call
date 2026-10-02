@@ -147,6 +147,8 @@ export function startEventSubscriber(
     });
   }
 
+  // Subscription must wait for the lazy connection; no offline command queue is enabled.
+  subscriber.once('ready', () => {
   subscriber.subscribe('pairtalk:events', (err) => {
     if (err) {
       logger.error('Failed to subscribe to pairtalk:events', {
@@ -159,6 +161,7 @@ export function startEventSubscriber(
         event: 'subscriber_subscribed',
       });
     }
+  });
   });
 
   subscriber.on('message', async (channel: string, message: string) => {

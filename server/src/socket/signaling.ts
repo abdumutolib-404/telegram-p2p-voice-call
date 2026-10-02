@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { admitCall } from '../services/callAdmission';
 import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
@@ -841,12 +842,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           let transactionSucceeded = false;
           try {
-            await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-              // Ensure call session is created cleanly with status ACTIVE
-              await tx.callSession.create({
-                data: { roomName, userAId: user.id, userBId: partner.id, status: 'ACTIVE' },
-              });
-            });
+            await admitCall(user.id, partner.id, roomName, 'ACTIVE');
             transactionSucceeded = true;
 
             const [tokenUser, tokenPartner] = await Promise.all([

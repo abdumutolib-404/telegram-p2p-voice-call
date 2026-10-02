@@ -111,7 +111,7 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
 
 export function startStoragePurgeCron() {
   // Run daily at midnight UTC: 0 0 * * *
-  cron.schedule('0 0 * * *', async () => {
+  const task = cron.schedule('0 0 * * *', async () => {
     logger.info('Running daily audio retention cleanup job...', {
       service: 'storage',
       event: 'storage_purge_cron_start',
@@ -129,4 +129,5 @@ export function startStoragePurgeCron() {
     service: 'storage',
     event: 'storage_purge_cron_scheduled',
   });
+  return () => task.stop();
 }

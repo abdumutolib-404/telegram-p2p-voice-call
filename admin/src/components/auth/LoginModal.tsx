@@ -166,6 +166,7 @@ export function LoginModal() {
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
+                  aria-label="Master password"
                   type={showPassword ? 'text' : 'password'}
                   value={masterPassword}
                   onChange={(e) => setMasterPassword(e.target.value)}
@@ -181,6 +182,7 @@ export function LoginModal() {
                   }}
                 />
                 <button
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   style={{
@@ -229,6 +231,7 @@ export function LoginModal() {
               <div style={{ position: 'relative' }}>
                 <Key size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
+                  aria-label="Six-digit verification code"
                   type="text"
                   maxLength={6}
                   value={otpInput}

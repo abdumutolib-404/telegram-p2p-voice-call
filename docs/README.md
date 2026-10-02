@@ -131,7 +131,7 @@ PORT=3001
 NODE_ENV=development
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/pairtalk?sslmode=disable"
 REDIS_URL="redis://localhost:6379"
-BOT_TOKEN="123456789:AAFakeTokenForLocalTestingPairTalkDev"
+BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
 MASTER_PASSWORD="LocalDevAdminPassword123!"
 JWT_SECRET="local_development_cryptographically_secure_jwt_secret_32b"
 LIVEKIT_HOST="https://dev-livekit.example.com"

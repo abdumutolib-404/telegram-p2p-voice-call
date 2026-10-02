@@ -270,6 +270,7 @@ describe('Forensic Security Audit Remediation & Defense-in-Depth Suite', () => {
       const req = {
         headers: { 'cf-connecting-ip': '203.0.113.195' },
         socket: { remoteAddress: '10.0.0.1' },
+        app: { get: () => (peer: string) => peer === '10.0.0.1' },
       } as unknown as Request;
 
       expect(extractClientIp(req)).toBe('203.0.113.195');
@@ -279,6 +280,7 @@ describe('Forensic Security Audit Remediation & Defense-in-Depth Suite', () => {
       const req = {
         headers: { 'cf-connecting-ip': '2606:4700:4700::1111' },
         socket: { remoteAddress: '10.0.0.1' },
+        app: { get: () => (peer: string) => peer === '10.0.0.1' },
       } as unknown as Request;
 
       expect(extractClientIp(req)).toBe('2606:4700:4700::1111');

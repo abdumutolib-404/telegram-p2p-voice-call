@@ -202,7 +202,8 @@ describe('Admin-Only Telegram Announcement System Test Suite', () => {
       // First call throws 429 with retry_after, second call succeeds
       mockBotApi.sendMessage
         .mockRejectedValueOnce({
-          parameters: { retry_after: 0.05 },
+          error_code: 429,
+          parameters: { retry_after: 1 },
           message: '429 Too Many Requests',
         })
         .mockResolvedValue({ message_id: 99 });
@@ -388,4 +389,3 @@ describe('Admin-Only Telegram Announcement System Test Suite', () => {
     });
   });
 });
-

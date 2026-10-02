@@ -42,39 +42,15 @@ export function AnalyticsOverview() {
     return <LoadingSkeleton message="Calculating analytics & telemetry..." rows={5} />;
   }
 
-  const defaultStats: AdminStats = stats || {
-    totalUsers: 0,
-    mau: 0,
-    dau: 0,
-    activeCalls: 0,
-    starsRevenue: {
-      totalStars: 0,
-      totalUsd: 0,
-      monthlyHistory: [],
-    },
-    manualUzsRevenue: {
-      approvedUzs: 0,
-      transactionCount: 0,
-      pendingUzs: 0,
-      pendingCount: 0,
-      rejectedUzs: 0,
-      rejectedCount: 0,
-    },
-  };
+  if (!stats) return <div role="alert" className="inline-error">{error || 'Analytics are unavailable.'}<button className="btn-secondary" onClick={fetchStats}>Retry</button></div>;
+  const defaultStats = stats;
 
   const monthlyHistory = defaultStats.starsRevenue?.monthlyHistory || [];
   const maxMonthlyStars = monthlyHistory.length > 0
     ? Math.max(...monthlyHistory.map((m) => m.stars), 1)
     : 1;
 
-  const manualUzs = defaultStats.manualUzsRevenue || {
-    approvedUzs: 0,
-    transactionCount: 0,
-    pendingUzs: 0,
-    pendingCount: 0,
-    rejectedUzs: 0,
-    rejectedCount: 0,
-  };
+  const manualUzs = defaultStats.manualUzsRevenue;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -126,8 +102,8 @@ export function AnalyticsOverview() {
         {/* Manual UZS */}
         <StatCard
           label="Card Revenue (UZS)"
-          value={`${manualUzs.approvedUzs.toLocaleString('en-US')} UZS`}
-          subValue={`${manualUzs.transactionCount} verified • ${manualUzs.pendingCount} pending`}
+          value={manualUzs ? `${manualUzs.approvedUzs.toLocaleString('en-US')} UZS` : 'Unavailable'}
+          subValue={manualUzs ? `${manualUzs.transactionCount} verified • ${manualUzs.pendingCount} pending` : 'Revenue data unavailable'}
           icon={<CreditCard size={16} />}
         />
 
@@ -142,8 +118,8 @@ export function AnalyticsOverview() {
         {/* Total Calls */}
         <StatCard
           label="Completed Calls"
-          value={(defaultStats.totalCalls ?? 0).toLocaleString()}
-          subValue={`${defaultStats.totalMinutesSpoken ?? 0} min total audio runtime`}
+          value={defaultStats.totalCalls?.toLocaleString() ?? 'Unavailable'}
+          subValue={defaultStats.totalMinutesSpoken === undefined ? 'Audio duration unavailable' : `${defaultStats.totalMinutesSpoken} min total audio runtime`}
           icon={<PhoneCall size={16} />}
         />
       </div>
@@ -154,9 +130,9 @@ export function AnalyticsOverview() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <ShieldCheck size={18} color="var(--primary-light)" />
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
                 Audio Quality & WebRTC Stability
-              </h3>
+              </h2>
             </div>
             <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
               Reliability metrics derived from room completion rates, audio continuity, and recording egress
@@ -179,7 +155,7 @@ export function AnalyticsOverview() {
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Completion Rate</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
-              {defaultStats.callQuality?.completionRate ?? 100}%
+              {defaultStats.callQuality ? `${defaultStats.callQuality.completionRate}%` : 'Unavailable'}
             </div>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Completed normally</span>
           </div>
@@ -187,7 +163,7 @@ export function AnalyticsOverview() {
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Audio Stream Stability</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
-              {defaultStats.callQuality?.audioReliability ?? 100}%
+              {defaultStats.callQuality ? `${defaultStats.callQuality.audioReliability}%` : 'Unavailable'}
             </div>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Zero premature drops</span>
           </div>
@@ -195,7 +171,7 @@ export function AnalyticsOverview() {
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Recording Egress</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
-              {defaultStats.callQuality?.recordingReliability ?? 100}%
+              {defaultStats.callQuality ? `${defaultStats.callQuality.recordingReliability}%` : 'Unavailable'}
             </div>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Egress files stored</span>
           </div>
@@ -203,7 +179,7 @@ export function AnalyticsOverview() {
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Pre-Call Abort Rate</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
-              {defaultStats.callQuality?.cancellationRate ?? 0}%
+              {defaultStats.callQuality ? `${defaultStats.callQuality.cancellationRate}%` : 'Unavailable'}
             </div>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cancellations in queue</span>
           </div>
@@ -214,9 +190,9 @@ export function AnalyticsOverview() {
       <div className="glass-panel" style={{ padding: '1.25rem', backgroundColor: 'var(--bg-surface)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <BarChart2 size={16} color="var(--primary-light)" />
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
             Monthly Telegram Stars Revenue History
-          </h3>
+          </h2>
         </div>
 
         {monthlyHistory.length === 0 ? (

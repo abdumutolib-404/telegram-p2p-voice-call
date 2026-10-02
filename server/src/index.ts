@@ -1,3 +1,4 @@
+import { loadPlanConfiguration, startPlanConfigurationRefresh } from './services/planConfiguration';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import http from 'http';
@@ -11,7 +12,7 @@ import type { UserFromGetMe } from 'grammy/types';
 import { run, RunnerHandle } from '@grammyjs/runner';
 import { env } from './config/env';
 import { prisma, connectDB, disconnectDB } from './config/database';
-import { connectRedis, pubClient, subClient } from './config/redis';
+import { connectRedis, disconnectRedis, probeRedis, pubClient, subClient } from './config/redis';
 import { primeAllCrawlerCaches } from './services/crawler/verifyCrawler';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
@@ -36,6 +37,9 @@ import { requestIdMiddleware } from './middleware/requestId';
 import { logger } from './utils/logger';
 import { getRequestId } from './utils/requestContext';
 import type { MyContext } from './bot/types';
+import { startStarsRefundRecovery } from './services/starsRefund';
+import { notificationQueue } from './bot/notifications';
+import { closeExternalConnections } from './utils/safeFetch';
 
 // Global BigInt JSON serialization guard
 (BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
@@ -43,7 +47,7 @@ import type { MyContext } from './bot/types';
 };
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', process.env.TRUSTED_PROXY_CIDRS?.split(',').map(value => value.trim()).filter(Boolean) || 'loopback');
 const server = http.createServer(app);
 
 const extractOrigin = (urlStr: string | undefined): string | null => {
@@ -64,6 +68,9 @@ const configuredOrigins = [
   ...rawAllowedOrigins,
   extractOrigin(env.MINI_APP_URL),
   extractOrigin(env.ADMIN_PANEL_URL),
+  'https://pairtalk.online',
+  'https://app.pairtalk.online',
+  'https://admin.pairtalk.online',
   'https://web.telegram.org',
   'https://webk.telegram.org',
   'https://webz.telegram.org',
@@ -72,15 +79,8 @@ const configuredOrigins = [
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true; // Same-origin, mobile apps, or server-to-server calls
   if (configuredOrigins.includes(origin)) return true;
-  // Support exact official subdomains on pairtalk.online
-  if (/^https?:\/\/(?:[a-zA-Z0-9-]+\.)*pairtalk\.online(:\d+)?$/i.test(origin)) {
-    return true;
-  }
   if (env.NODE_ENV !== 'production') {
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
-      return true;
-    }
-    if (/^https?:\/\/(?:[a-zA-Z0-9-]+\.)*(?:netlify\.app|railway\.app|up\.railway\.app|vercel\.app)(:\d+)?$/i.test(origin)) {
       return true;
     }
   }
@@ -778,13 +778,13 @@ app.use('/api/livekit', livekitWebhookRouter);
 
 app.get('/health', async (_req, res) => {
   try {
-    await prisma.user.findFirst({ select: { id: true } }).catch(() => null);
+    await Promise.all([prisma.user.findFirst({ select: { id: true } }), probeRedis()]);
     res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
   } catch (err: unknown) {
     res.status(503).json({
       status: 'error',
       db: 'disconnected',
-      error: err instanceof Error ? err.message : 'unknown',
+      error: 'Required storage is unavailable',
     });
   }
 });
@@ -949,105 +949,53 @@ methods: ['GET', 'POST'],
   },
 });
 
-if (pubClient && subClient) {
+function configureSocketAdapter() { if (pubClient && subClient) {
   io.adapter(createAdapter(pubClient, subClient));
   logger.info('Socket.IO configured with @socket.io/redis-adapter for horizontal clustering', {
     service: 'socket',
     event: 'redis_adapter_configured',
   });
-}
+} }
 
 let bot: Bot<MyContext> | null = null;
 let eventSubscriberHandle: EventSubscriberHandle | null = null;
+let stopPlanRefresh: (() => void) | null = null;
+let stopRefundRecovery: (() => Promise<void>) | null = null;
+let stopNotificationWorker: (() => Promise<void>) | null = null;
 
-async function startBotWithRetry(botInstance: Bot<MyContext>): Promise<void> {
-  let isRunning = true;
+let stopPolling: (() => Promise<void>) | null = null;
+const stopWorkers: Array<() => void> = [];
+function startBotWithRetry(botInstance: Bot<MyContext>): () => Promise<void> {
+  let stopped = false, epoch = 0;
   let activeRunner: RunnerHandle | null = null;
-
-  const stopHandler = async () => {
-    isRunning = false;
-    botLeaderLock.stopTimers();
-    await botLeaderLock.release().catch(() => {});
-    if (activeRunner && activeRunner.isRunning()) {
-      try {
-        await activeRunner.stop();
-      } catch {
-        // ignore
-      }
-      activeRunner = null;
-    }
-    try {
-      await botInstance.stop().catch(() => {});
-    } catch {
-      // ignore
-    }
+  const stopRunner = async () => {
+    epoch++;
+    const runner = activeRunner; activeRunner = null;
+    if (runner) await runner.stop();
   };
-  process.once('SIGINT', stopHandler);
-  process.once('SIGTERM', stopHandler);
-
   botLeaderLock.startElection({
     onElected: async () => {
-      logger.info('Elected as Telegram Bot polling leader. Launching high-concurrency runner...', {
-        service: 'bot',
-        event: 'bot_leader_elected',
-        instanceId: botLeaderLock.getInstanceId(),
-      });
-      while (isRunning && botLeaderLock.isCurrentLeader()) {
-        try {
-          if (!botInstance.isInited()) {
-            await botInstance.init();
-          }
-          const botUsername = botInstance.botInfo?.username || 'PairTalkBot';
-          logger.info(`Bot @${botUsername} launched with high-concurrency runner (Leader).`, {
-            service: 'bot',
-            event: 'bot_started',
-            botUsername,
-            instanceId: botLeaderLock.getInstanceId(),
-          });
-          activeRunner = run(botInstance, {
-            runner: {
-              fetch: {
-                allowed_updates: ['message', 'callback_query', 'pre_checkout_query'],
-              },
-            },
-          });
-          await activeRunner.task();
-          break;
-        } catch (error: any) {
-          if (!isRunning || !botLeaderLock.isCurrentLeader()) break;
-          const errMsg = error instanceof Error ? error.message : String(error);
-          logger.warn(`Bot runner interrupted (${errMsg}). Re-attempting in 3 seconds...`, {
-            service: 'bot',
-            event: 'bot_polling_retry',
-          }, error);
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-        }
-      }
+      const pollingEpoch = ++epoch;
+      if (!botInstance.isInited()) await botInstance.init();
+      if (stopped || pollingEpoch !== epoch || !botLeaderLock.isCurrentLeader()) return;
+      logger.info('Starting Telegram polling owner', {service:'bot',event:'bot_started'});
+      const runner = run(botInstance, {sink:{concurrency:50},runner:{silent:true,maxRetryTime:30000,retryInterval:'exponential',fetch:{allowed_updates:['message','callback_query','pre_checkout_query']}}});
+      activeRunner = runner;
+      await runner.task();
+      if (!stopped && pollingEpoch === epoch && botLeaderLock.isCurrentLeader()) throw new Error('Polling runner stopped unexpectedly');
     },
-    onLost: async () => {
-      logger.warn('Telegram bot leadership lost. Stopping runner to enter standby...', {
-        service: 'bot',
-        event: 'bot_leader_lost',
-        instanceId: botLeaderLock.getInstanceId(),
-      });
-      if (activeRunner && activeRunner.isRunning()) {
-        try {
-          await activeRunner.stop();
-        } catch {
-          // ignore
-        }
-        activeRunner = null;
-      }
-      try {
-        await botInstance.stop().catch(() => {});
-      } catch {
-        // ignore
-      }
-    },
+    onLost: stopRunner,
   });
+  return async () => {
+    stopped = true;
+    botLeaderLock.stopTimers();
+    await stopRunner();
+    // Release only after polling has stopped, so another replica cannot overlap shutdown.
+    await botLeaderLock.release();
+  };
 }
 
-if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
+if (env.NODE_ENV !== 'test' && process.env.DISABLE_BOT_POLLING !== 'true' && env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
   try {
     bot = createBot(env.BOT_TOKEN);
     setAdminBot(bot);
@@ -1067,24 +1015,31 @@ if (env.BOT_TOKEN && env.BOT_TOKEN !== 'mock_bot_token') {
 async function bootstrap(): Promise<void> {
   try {
     await connectDB();
-    await connectRedis();
-    void initializeOrderSequence().catch(() => undefined);
+    if (!await connectRedis()) throw new Error('Redis readiness failed');
+    configureSocketAdapter();
+    await initializeOrderSequence();
+    await loadPlanConfiguration();
+    stopPlanRefresh = startPlanConfigurationRefresh();
     setAdminBot(bot);
 
     // Start bot polling under distributed leader election only after Redis and DB are ready
     if (bot) {
-      void startBotWithRetry(bot);
+      stopNotificationWorker = notificationQueue.startWorker(() => bot);
+      stopPolling = startBotWithRetry(bot);
+      stopRefundRecovery = startStarsRefundRecovery(bot.api);
     }
 
     // Warm verified crawler IP prefixes in background
     void primeAllCrawlerCaches().catch(() => undefined);
 
     setupSocketSignaling(io, bot ?? undefined);
-    startZombieSessionCleaner(io, bot ?? undefined);
+    const zombieTimer = startZombieSessionCleaner(io, bot ?? undefined);
+    stopWorkers.push(() => clearInterval(zombieTimer));
     eventSubscriberHandle = startEventSubscriber(() => bot);
-    startStoragePurgeCron();
-    startSubscriptionExpiryCron(() => bot);
+    stopWorkers.push(startStoragePurgeCron());
+    stopWorkers.push(startSubscriptionExpiryCron(() => bot));
 
+    if (process.env.DISABLE_BACKGROUND_CRAWLER !== 'true') {
     // Initial crawler seed on boot & daily 24h periodic sync
     void questionIngestionService.runIngestion({
       onNewTopics: async (newCount, topics) => {
@@ -1093,15 +1048,16 @@ async function bootstrap(): Promise<void> {
     }).catch(() => undefined);
 
     // Start Two-Tier Scheduled Lifecycle (Weekly Searcher & Daily Filter)
-    startCrawlerLifecycleCron(() => bot);
+    stopWorkers.push(startCrawlerLifecycleCron(() => bot));
 
+    }
     // Start Peak-Hour Surge Alert Scheduler (10-minute liquidity monitor)
     surgeAlertService.startScheduler(() => bot);
 
     if (env.NODE_ENV !== 'test') {
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject);
-        server.listen(env.PORT, resolve);
+        server.listen(env.PORT, process.env.HOST || '0.0.0.0', resolve);
       });
       logger.info(`IELTS Speaking P2P Backend running on port ${env.PORT}`, {
         service: 'server',
@@ -1114,11 +1070,20 @@ async function bootstrap(): Promise<void> {
       service: 'server',
       event: 'server_bootstrap_failed',
     }, error);
-    if (env.NODE_ENV === 'production') process.exitCode = 1;
+    stopPlanRefresh?.(); await stopRefundRecovery?.();
+    await stopNotificationWorker?.().catch(() => undefined);
+    for (const stop of stopWorkers) stop();
+    surgeAlertService.stopScheduler();
+    await stopPolling?.().catch(() => undefined);
+    await eventSubscriberHandle?.stop().catch(() => undefined);
+    io.close();
+    await Promise.allSettled([disconnectDB(), disconnectRedis()]);
+    process.exitCode = 1;
   }
 }
 
-void bootstrap().catch((error: unknown) => {
+if (env.NODE_ENV === 'test') setupSocketSignaling(io);
+else void bootstrap().catch((error: unknown) => {
   logger.error('Server bootstrap unhandled rejection', {
     service: 'server',
     event: 'server_bootstrap_unhandled',
@@ -1143,20 +1108,32 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
   if (!res.headersSent) res.status(500).json({ error: 'Internal server error.' });
 });
 
+let shuttingDown = false;
 const gracefulShutdown = async (signal: string) => {
+  if (shuttingDown) return; shuttingDown = true;
   logger.info(`Received ${signal}. Initiating graceful shutdown...`, {
     service: 'server',
     event: 'shutdown_initiated',
     signal,
   });
   try {
+    stopPlanRefresh?.();
+    await stopRefundRecovery?.();
+    await stopNotificationWorker?.().catch(() => undefined);
+    for (const stop of stopWorkers) stop();
+    surgeAlertService.stopScheduler();
+    await stopPolling?.();
+    closeExternalConnections();
     if (eventSubscriberHandle) {
       await eventSubscriberHandle.stop().catch(() => undefined);
     }
     if (bot) await bot.stop().catch(() => undefined);
+    botLeaderLock.stopTimers();
+    await botLeaderLock.release();
     io.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await disconnectDB().catch(() => undefined);
+    await disconnectRedis().catch(() => undefined);
     logger.info('Graceful shutdown complete.', {
       service: 'server',
       event: 'shutdown_complete',

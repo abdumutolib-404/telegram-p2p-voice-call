@@ -1,6 +1,8 @@
+import { useClipboard, useLatestRequest } from '../../hooks/useAdminTools';
+import { Dialog } from '../ui/Dialog';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { AuditLogItem, SystemErrorLogEntry, AuditActionCategory } from '../../types';
-import { adminApi } from '../../services/api';
+import { adminFetch } from '../../api/client';
 import { PageHeader } from '../ui/PageHeader';
 import { StatusBadge } from '../ui/StatusBadge';
 import { DataTable } from '../ui/DataTable';
@@ -31,7 +33,8 @@ export function AuditLogViewer() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { copiedId, copyError, copyToClipboard } = useClipboard();
+  const latest = useLatestRequest();
 
   // Inspector Modal State
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
@@ -39,47 +42,33 @@ export function AuditLogViewer() {
   const fetchData = useCallback(async () => {
     setIsRefreshing(true);
     setErrorMsg(null);
-    try {
-      const [logsData, errorsData] = await Promise.all([
-        adminApi.getAuditLogs().catch(() => []),
-        adminApi
-          .getErrors(50)
-          .then((res) => {
-            if (res && Array.isArray(res.recentErrors)) return res.recentErrors;
-            if (res && Array.isArray(res.errors)) return res.errors;
-            return [];
-          })
-          .catch(() => []),
-      ]);
-
-      setLogs(Array.isArray(logsData) ? logsData : []);
-      setErrors(Array.isArray(errorsData) ? errorsData : []);
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to fetch audit logs and telemetry errors.');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
+    const request=latest();
+    const [logsData,errorsData]=await Promise.allSettled([
+      adminFetch<AuditLogItem[]>('/api/admin/audit-logs',{signal:request.signal}),
+      adminFetch<{recentErrors?:SystemErrorLogEntry[];errors?:SystemErrorLogEntry[]}>('/api/admin/telemetry/errors?limit=50',{signal:request.signal}),
+    ]);
+    if(!request.isCurrent())return;
+    if(logsData.status==='fulfilled')setLogs(logsData.value);
+    if(errorsData.status==='fulfilled')setErrors(errorsData.value.recentErrors||errorsData.value.errors||[]);
+    const failed=[logsData,errorsData].filter(result=>result.status==='rejected');
+    if(failed.length)setErrorMsg('Some audit or error data could not be refreshed. Previous results remain displayed; use Refresh to retry.');
+    setIsLoading(false);setIsRefreshing(false);
+  }, [latest]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    void fetchData();return()=>{latest();};
+  }, [fetchData,latest]);
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
+
 
   const getActionCategory = (action: string): AuditActionCategory => {
     const act = (action || '').toUpperCase();
-    if (act.includes('BAN') || act.includes('BLOCK') || act.includes('WARN') || act.includes('MODERATION') || act.includes('RESET')) return 'BANS';
-    if (act.includes('PLAN') || act.includes('LIMIT') || act.includes('RETENTION')) return 'PLANS';
+    if (act.includes('PAYMENT') || act.includes('REFUND') || act.includes('STARS') || act.includes('UZS')) return 'REFUNDS';
     if (act.includes('APPEAL')) return 'APPEALS';
     if (act.includes('CONTEST') || act.includes('CHAMPIONSHIP') || act.includes('PRIZE')) return 'CONTESTS';
-    if (act.includes('PAYMENT') || act.includes('REFUND') || act.includes('STARS') || act.includes('UZS')) return 'REFUNDS';
     if (act.includes('LOGIN') || act.includes('OTP') || act.includes('AUTH') || act.includes('LOGOUT')) return 'LOGINS';
+    if (act.includes('BAN') || act.includes('BLOCK') || act.includes('WARN') || act.includes('MODERATION') || act.includes('RESET')) return 'BANS';
+    if (act.includes('PLAN') || act.includes('LIMIT') || act.includes('RETENTION')) return 'PLANS';
     return 'ALL';
   };
 
@@ -117,7 +106,7 @@ export function AuditLogViewer() {
         const logDate = new Date(log.createdAt).getTime();
         const now = Date.now();
         const days = (now - logDate) / (1000 * 60 * 60 * 24);
-        if (timeRange === 'today' && days > 1) return false;
+        if (timeRange === 'today' && new Date(log.createdAt).toISOString().slice(0,10) !== new Date().toISOString().slice(0,10)) return false;
         if (timeRange === '7d' && days > 7) return false;
         if (timeRange === '30d' && days > 30) return false;
       }
@@ -163,10 +152,11 @@ export function AuditLogViewer() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {copyError && <p role="alert" className="inline-error">{copyError}</p>}
       {/* Header */}
       <PageHeader
         title="Audit Trail & System Telemetry"
-        description="Immutable administrative activity logs, before/after JSON diffs, and live server error telemetry"
+        description="Administrative activity, before/after changes and recent server errors."
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button
@@ -593,20 +583,7 @@ export function AuditLogViewer() {
 
       {/* JSON Diff Inspector Modal */}
       {selectedLog && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(7, 10, 18, 0.85)',
-            backdropFilter: 'blur(8px)',
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-          }}
-          onClick={() => setSelectedLog(null)}
-        >
+        <Dialog title="Audit details" pending={false} onClose={() => { setSelectedLog(null); }}><fieldset disabled={false} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div
             className="glass-panel"
             style={{
@@ -782,7 +759,7 @@ export function AuditLogViewer() {
               </button>
             </div>
           </div>
-        </div>
+        </fieldset></Dialog>
       )}
     </div>
   );

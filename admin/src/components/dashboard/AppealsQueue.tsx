@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AppealItem } from '../../types/index.ts';
 import { adminFetch } from '../../api/client.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
@@ -20,6 +20,8 @@ export function AppealsQueue() {
   const [appeals, setAppeals] = useState<AppealItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const busy = useRef(false);
 
   // Decision Confirmation Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -72,7 +74,8 @@ export function AppealsQueue() {
 
   const handleExecuteConfirmedDecision = async () => {
     const { appeal, action } = confirmDialog;
-    if (!appeal || !action) return;
+    if (!appeal || !action || busy.current) return;
+    busy.current = true; setActionError(null);
 
     setIsProcessingDecision(true);
     try {
@@ -85,9 +88,10 @@ export function AppealsQueue() {
       setAppeals((prev) => prev.filter((a) => a.id !== appeal.id));
       setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
     } catch (err: unknown) {
-      alert(`Decision failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setActionError(err instanceof Error ? err.message : 'Decision failed.');
     } finally {
       setIsProcessingDecision(false);
+      busy.current = false;
     }
   };
 
@@ -130,7 +134,7 @@ export function AppealsQueue() {
 
       {isLoading && appeals.length === 0 ? (
         <LoadingSkeleton message="Retrieving moderation appeals queue..." rows={4} />
-      ) : appeals.length === 0 ? (
+      ) : appeals.length === 0 && !error ? (
         <EmptyState
           icon={<ShieldCheck size={32} color="var(--success)" />}
           title="All moderation appeals resolved"
@@ -147,9 +151,9 @@ export function AppealsQueue() {
                     <User size={18} />
                   </div>
                   <div>
-                    <h4 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                       {appeal.alias}
-                    </h4>
+                    </h2>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                       TG: <code>{appeal.telegramId}</code> • ID: <code>{appeal.userId.slice(0, 8)}</code>
                     </span>
@@ -226,6 +230,7 @@ export function AppealsQueue() {
 
       {/* Decision Confirm Dialog */}
       <ConfirmDialog
+        error={actionError}
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
         message={confirmDialog.message}

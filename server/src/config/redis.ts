@@ -79,7 +79,8 @@ class InMemoryRedisMock {
     condition?: 'NX',
   ): Promise<string | null> {
     const isNX = condition === 'NX' || (mode as string) === 'NX';
-    if (isNX && (await this.get(key)) !== null) return null;
+    const existing = this.kv.get(key);
+    if (isNX && existing && (existing.expiresAt === undefined || existing.expiresAt > Date.now())) return null;
 
     let expiresAt: number | undefined;
     if (mode === 'EX' && duration !== undefined) expiresAt = Date.now() + duration * 1000;
@@ -100,6 +101,21 @@ class InMemoryRedisMock {
   async eval(script: string, numberOfKeys: number, ...keyArgs: string[]): Promise<any> {
     const keys = keyArgs.slice(0, numberOfKeys);
     const args = keyArgs.slice(numberOfKeys);
+    if (script.includes('TELEGRAM_SLOT')) {
+      const now = Date.now();
+      const values = keys.map(key => this.kv.get(key)).map(entry => entry && (entry.expiresAt ?? Infinity) > now ? Number(entry.value) : 0);
+      const wait = Math.max(...values) - now;
+      if (wait > 0) return wait;
+      this.kv.set(keys[0], { value: String(now + 40), expiresAt: now + 60000 });
+      this.kv.set(keys[1], { value: String(now + Number(args[0])), expiresAt: now + 60000 });
+      return 0;
+    }
+    if (script.includes('TELEGRAM_COOLDOWN')) {
+      const now = Date.now(), until = now + Number(args[0]);
+      const old = this.kv.get(keys[0]);
+      if (until > Number(old?.value || 0)) this.kv.set(keys[0], { value: String(until), expiresAt: until });
+      return 1;
+    }
     // This mock implements the atomic primitives used by production matchmaking, admin tokens, and locks.
     if (script.includes('MATCH_QUEUE_MULTI_CLAIM')) {
       const pointerPrefix = args[0];
@@ -475,6 +491,9 @@ if (env.NODE_ENV !== 'test') {
     maxRetriesPerRequest: 1,
     retryStrategy: (times) => Math.min(times * 150, 3000),
     lazyConnect: true,
+    enableOfflineQueue: false,
+    connectTimeout: 10000,
+    commandTimeout: 5000,
   });
 
   realRedisInstance.on('ready', () => {
@@ -487,6 +506,8 @@ if (env.NODE_ENV !== 'test') {
   realRedisInstance.on('end', () => {
     isRealRedisReady = false;
   });
+  realRedisInstance.on('close', () => { isRealRedisReady = false; });
+  realRedisInstance.on('reconnecting', () => { isRealRedisReady = false; });
   realRedisInstance.on('error', (error: Error) => {
     isRealRedisReady = false;
     logger.error('Redis connection error', {
@@ -495,13 +516,6 @@ if (env.NODE_ENV !== 'test') {
     }, error);
   });
 
-  void realRedisInstance.connect().catch((error: unknown) => {
-    isRealRedisReady = false;
-    logger.error('Redis initial connection failed', {
-      service: 'redis',
-      event: 'redis_connect_failed',
-    }, error);
-  });
 }
 
 export let pubClient: Redis | null = null;
@@ -566,54 +580,41 @@ export async function publishGatewayCommand(command: Record<string, unknown>): P
 
 export function isRedisReady(): boolean {
   if (env.NODE_ENV === 'test') return true;
-  if (env.NODE_ENV === 'development') return true;
   return Boolean(realRedisInstance && isRealRedisReady);
 }
 
 export async function connectRedis(timeoutMs = 15000): Promise<boolean> {
   if (env.NODE_ENV === 'test') return true;
   if (!realRedisInstance) return false;
-  if (pubClient && pubClient.status === 'wait') {
-    void pubClient.connect().catch(() => undefined);
-  }
-  if (subClient && subClient.status === 'wait') {
-    void subClient.connect().catch(() => undefined);
-  }
-  if (isRealRedisReady) return true;
-
-  return new Promise<boolean>((resolve) => {
-    if (isRealRedisReady) {
-      resolve(true);
-      return;
-    }
-
-    let resolved = false;
-    const timer = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        logger.warn('Redis initial connection wait timed out, continuing startup with degraded lock...', {
-          service: 'redis',
-          event: 'redis_connect_timeout',
-        });
-        resolve(false);
-      }
-    }, timeoutMs);
-
-    realRedisInstance.once('ready', () => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timer);
-        resolve(true);
-      }
-    });
-  });
+  try {
+    await Promise.all([realRedisInstance, pubClient, subClient].filter((client): client is Redis => client !== null).map(client => new Promise<void>((resolve,reject) => {
+      if (client.status === 'ready') { resolve(); return; }
+      const ready = () => { clearTimeout(timer); resolve(); };
+      const timer = setTimeout(() => {client.removeListener('ready',ready);reject(new Error('Redis readiness timed out'));}, timeoutMs);
+      client.once('ready',ready);
+      if (client.status === 'wait') void client.connect().catch(error => { clearTimeout(timer);client.removeListener('ready',ready);reject(error); });
+    })));
+    return await realRedisInstance.ping() === 'PONG';
+  } catch(error) { logger.error('Redis readiness failed', {service:'redis'}, error); return false; }
 }
 
 export function getRedis(): RedisClientInterface {
   if (env.NODE_ENV === 'test') return inMemoryRedis;
-  if (env.NODE_ENV === 'development' && !isRealRedisReady) return inMemoryRedis;
   if (!realRedisInstance || !isRealRedisReady) {
     throw new Error('Redis is not ready');
   }
   return realRedisInstance as unknown as RedisClientInterface;
+}
+
+export async function probeRedis(): Promise<void> {
+  if (env.NODE_ENV === 'test') return;
+  if (!isRedisReady() || await realRedisInstance!.ping() !== 'PONG') throw new Error('Redis unavailable');
+}
+
+export async function disconnectRedis(): Promise<void> {
+  isRealRedisReady = false;
+  await Promise.all([realRedisInstance, pubClient, subClient].map(async client => {
+    if (!client) return;
+    try { if (client.status === 'ready') await client.quit(); } finally { client.disconnect(); }
+  }));
 }

@@ -1,4 +1,6 @@
+import { processStarsRefund } from '../../services/starsRefund';
 import { Bot, InlineKeyboard } from 'grammy';
+import { escapeHtml } from '../../utils/sanitize';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
@@ -200,33 +202,17 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
         include: { user: true },
       });
 
-      if (!tx || tx.status === 'REFUNDED') {
+      if (!tx || tx.user?.telegramId !== BigInt(telegramIdNum) || tx.status === 'REFUNDED') {
         await ctx.reply('⚠️ This transaction has already been refunded or does not exist.');
         return;
       }
 
-      // Execute Telegram API Star Refund
-      if (tx.telegramPaymentId) {
-        await ctx.api.refundStarPayment(telegramIdNum, tx.telegramPaymentId).catch((err) => {
-          logger.warn('Telegram refundStarPayment API warning', {
-            service: 'bot',
-            event: 'refund_stars_api_warning',
-            telegramIdNum,
-          }, err);
-        });
-      }
-
-      // Atomically revoke plan and downgrade to FREE
-      await revokePlanOnRefund({
-        transactionId: tx.id,
-        adminId: 'bot_auto_refund',
-        reason: 'Automated user refund via /refund',
-      });
+      const result = await processStarsRefund({ transactionId: tx.id, adminId: 'bot_auto_refund', ownerTelegramId: telegramIdNum, reason: 'Automated user refund via /refund' }, ctx.api);
 
       await ctx.reply(
         `🎉 <b>Refund Completed Successfully!</b>\n\n` +
           `⭐ <b>${tx.starsAmount} Stars</b> have been refunded to your Telegram balance.\n` +
-          `Your account has been reverted to the <b>FREE Plan</b>.\n\n` +
+          `Your current plan is <b>${escapeHtml(result.user.plan)}</b>.\n\n` +
           `Thank you for trying PairTalk! You can upgrade again at any time.`,
         { parse_mode: 'HTML' }
       );
@@ -333,26 +319,27 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
         req = await prisma.manualPaymentRequest.findFirst({
           where: {
             telegramId,
-            status: { in: ['APPROVED', 'REFUND_PENDING', 'PENDING'] },
+            status: { in: ['APPROVED', 'REFUND_PENDING'] },
           },
           orderBy: { createdAt: 'desc' },
           include: { user: true },
         });
       }
 
-      if (!req) {
+      if (!req || req.telegramId !== telegramId || !['APPROVED', 'REFUND_PENDING'].includes(req.status)) {
         return next();
       }
 
       // Mark request as REFUND_PENDING with receiving card stored
-      await prisma.manualPaymentRequest.update({
-        where: { id: req.id },
+      const changed = await prisma.manualPaymentRequest.updateMany({
+        where: { id: req.id, telegramId, status: req.status },
         data: {
           status: 'REFUND_PENDING',
           refundCardNumber: formattedCard,
           adminNote: `[REFUND_REQUESTED] User submitted refund request for card: ${formattedCard} on ${new Date().toISOString()}`,
         },
       });
+      if (changed.count !== 1) { await ctx.reply('This payment changed. Open /refund again to see its current status.'); return; }
 
       ctx.session.step = 'idle';
       ctx.session.pendingRefundManualReqId = undefined;

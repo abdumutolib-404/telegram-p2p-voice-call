@@ -1,4 +1,5 @@
 import { Bot, InlineKeyboard } from 'grammy';
+import { admitCall, activatePendingCall } from '../../services/callAdmission';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
@@ -15,10 +16,13 @@ import {
   cleanupDirectCallMessages,
 } from '../../services/directCallMessages';
 
+export function validOnboardingBand(value: string): boolean { return /^(?:[0-8](?:\.5)?|9(?:\.0)?)$/.test(value); }
+
 export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: set_sub_fc:<score>
   bot.callbackQuery(/^set_sub_fc:(.+)$/, async (ctx) => {
-    const fc = parseFloat(ctx.match[1]);
+    if(ctx.session.step !== 'fc' || !validOnboardingBand(ctx.match[1])) { await ctx.reply('That selection is no longer valid. Continue the current step or restart with /start.'); return; }
+    const fc = Number(ctx.match[1]);
     ctx.session.fc = fc;
     ctx.session.step = 'lr';
 
@@ -37,7 +41,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: set_sub_lr:<score>
   bot.callbackQuery(/^set_sub_lr:(.+)$/, async (ctx) => {
-    const lr = parseFloat(ctx.match[1]);
+    if(ctx.session.step !== 'lr' || !validOnboardingBand(ctx.match[1])) { await ctx.reply('That selection is no longer valid. Continue the current step or restart with /start.'); return; }
+    const lr = Number(ctx.match[1]);
     ctx.session.lr = lr;
     ctx.session.step = 'gra';
 
@@ -57,7 +62,8 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: set_sub_gra:<score>
   bot.callbackQuery(/^set_sub_gra:(.+)$/, async (ctx) => {
-    const gra = parseFloat(ctx.match[1]);
+    if(ctx.session.step !== 'gra' || !validOnboardingBand(ctx.match[1])) { await ctx.reply('That selection is no longer valid. Continue the current step or restart with /start.'); return; }
+    const gra = Number(ctx.match[1]);
     ctx.session.gra = gra;
     ctx.session.step = 'p';
 
@@ -78,13 +84,14 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
 
   // Callback: set_sub_p:<score>
   bot.callbackQuery(/^set_sub_p:(.+)$/, async (ctx) => {
-    const p = parseFloat(ctx.match[1]);
+    if(ctx.session.step !== 'p' || !validOnboardingBand(ctx.match[1])) { await ctx.reply('That selection is no longer valid. Continue the current step or restart with /start.'); return; }
+    const p = Number(ctx.match[1]);
     ctx.session.p = p;
     ctx.session.step = 'confirm';
 
-    const fc = ctx.session.fc || 6.0;
-    const lr = ctx.session.lr || 6.0;
-    const gra = ctx.session.gra || 6.0;
+    const fc = ctx.session.fc ?? 6.0;
+    const lr = ctx.session.lr ?? 6.0;
+    const gra = ctx.session.gra ?? 6.0;
     const overallBand = calculateOverallBand(fc, lr, gra, p);
 
     const inlineKb = new InlineKeyboard()
@@ -108,11 +115,12 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
   // Callback: confirm_subscores
   bot.callbackQuery('confirm_subscores', async (ctx) => {
     void ctx.answerCallbackQuery().catch(() => undefined);
+    if(ctx.session.step !== 'confirm' || ![ctx.session.fc,ctx.session.lr,ctx.session.gra,ctx.session.p].every(value=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=9&&Number.isInteger(value*2))) { await ctx.reply('Complete the current score selection before saving.'); return; }
     const telegramId = BigInt(ctx.from.id);
-    const fc = ctx.session.fc || 6.0;
-    const lr = ctx.session.lr || 6.0;
-    const gra = ctx.session.gra || 6.0;
-    const p = ctx.session.p || 6.0;
+    const fc = ctx.session.fc ?? 6.0;
+    const lr = ctx.session.lr ?? 6.0;
+    const gra = ctx.session.gra ?? 6.0;
+    const p = ctx.session.p ?? 6.0;
     const overallBand = calculateOverallBand(fc, lr, gra, p);
 
     const alias = generateUniqueAlias();
@@ -424,14 +432,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       const roomName = `direct_${crypto.randomUUID()}`;
 
       // Create PENDING CallSession
-      const session = await prisma.callSession.create({
-        data: {
-          roomName,
-          userAId: caller.id,
-          userBId: partner.id,
-          status: 'PENDING',
-        },
-      });
+      const session = await admitCall(caller.id, partner.id, roomName, 'PENDING');
 
       // Schedule 60-second timeout to cleanly cancel unanswered direct calls
       setTimeout(async () => {
@@ -440,10 +441,11 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
             where: { id: session.id },
           });
           if (check && check.status === 'PENDING') {
-            await prisma.callSession.update({
-              where: { id: session.id },
+            const expired = await prisma.callSession.updateMany({
+              where: { id: session.id, status: 'PENDING' },
               data: { status: 'CANCELLED', endedAt: new Date() },
             });
+            if (expired.count !== 1) return;
             await cleanupDirectCallMessages(bot, session.id);
             await ctx.api.sendMessage(
               caller.telegramId.toString(),
@@ -564,10 +566,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
       }
 
       // Atomically mark session ACTIVE only if still PENDING (prevents double-activation race condition)
-      const claimed = await prisma.callSession.updateMany({
-        where: { id: session.id, status: 'PENDING' },
-        data: { status: 'ACTIVE' },
-      });
+      const claimed = await activatePendingCall(session.id);
 
       if (claimed.count !== 1) {
         await ctx.answerCallbackQuery({ text: 'Call invitation has already been processed.', show_alert: true });

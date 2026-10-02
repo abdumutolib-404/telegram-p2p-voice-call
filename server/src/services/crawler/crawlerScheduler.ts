@@ -17,7 +17,7 @@ export function startCrawlerLifecycleCron(botSupplier?: () => Bot<MyContext> | n
   });
 
   // 1. Weekly Searcher: Every Sunday at 03:00 UTC ('0 3 * * 0')
-  cron.schedule('0 3 * * 0', async () => {
+  const weekly = cron.schedule('0 3 * * 0', async () => {
     logger.info('Running scheduled Weekly IELTS Searcher crawl...', {
       service: 'crawler_scheduler',
       event: 'weekly_searcher_run',
@@ -46,7 +46,7 @@ export function startCrawlerLifecycleCron(botSupplier?: () => Bot<MyContext> | n
   });
 
   // 2. Daily Filter: Every day at 04:00 UTC ('0 4 * * *')
-  cron.schedule('0 4 * * *', async () => {
+  const daily = cron.schedule('0 4 * * *', async () => {
     logger.info('Running scheduled Daily IELTS Question Filter & Janitor cycle...', {
       service: 'crawler_scheduler',
       event: 'daily_filter_run',
@@ -64,4 +64,5 @@ export function startCrawlerLifecycleCron(botSupplier?: () => Bot<MyContext> | n
       }, err);
     }
   });
+  return () => { weekly.stop(); daily.stop(); };
 }

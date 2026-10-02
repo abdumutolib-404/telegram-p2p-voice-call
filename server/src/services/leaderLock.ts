@@ -19,6 +19,7 @@ export class DistributedLeaderLock {
   private isRunning = false;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private standbyTimer: NodeJS.Timeout | null = null;
+  private generation = 0;
 
   constructor(options?: LeaderLockOptions) {
     this.lockKey = options?.lockKey ?? 'pairtalk:bot:leader:lock';
@@ -71,7 +72,7 @@ export class DistributedLeaderLock {
   public async renew(): Promise<boolean> {
     if (!this.isLeader) return false;
     try {
-      if (!isRedisReady()) return false;
+      if (!isRedisReady()) { this.isLeader = false; return false; }
       const redis = getRedis();
       const script = `
         -- LOCK_RENEW
@@ -93,6 +94,7 @@ export class DistributedLeaderLock {
       });
       return false;
     } catch (err: unknown) {
+      this.isLeader = false;
       logger.error(`Error renewing leader lock [${this.lockKey}]`, {
         service: 'leaderLock',
         event: 'renew_error',
@@ -146,72 +148,47 @@ export class DistributedLeaderLock {
   }): void {
     if (this.isRunning) return;
     this.isRunning = true;
-
-    const tryElect = async () => {
-      if (!this.isRunning) return;
-      if (this.isLeader) return;
-
-      try {
-        const acquired = await this.acquire();
-        if (acquired) {
-          this.clearStandbyTimer();
-          this.startHeartbeat(callbacks.onLost);
-          try {
-            await callbacks.onElected();
-          } catch (err: unknown) {
-            logger.error('Error in onElected callback', {
-              service: 'leaderLock',
-              event: 'on_elected_error',
-            }, err);
-          }
-        } else {
-          this.scheduleStandby(tryElect);
-        }
-      } catch (err: unknown) {
-        logger.warn('Unexpected error during election cycle, retrying in standby...', {
-          service: 'leaderLock',
-          event: 'election_cycle_error',
-        }, err);
-        this.scheduleStandby(tryElect);
-      }
+    const generation = ++this.generation;
+    let tenure = 0;
+    const current = () => this.isRunning && this.generation === generation;
+    const standby = () => {
+      if (!current()) return;
+      this.clearStandbyTimer();
+      this.standbyTimer = setTimeout(() => void elect(), this.standbyCheckIntervalMs);
     };
-
-    void tryElect();
-  }
-
-  private startHeartbeat(onLost?: () => Promise<void> | void): void {
-    this.clearHeartbeatTimer();
-    this.heartbeatTimer = setInterval(async () => {
-      if (!this.isLeader || !this.isRunning) {
+    const lost = async () => {
+      if (!current()) return;
+      tenure++;
+      this.clearHeartbeatTimer();
+      this.isLeader = false;
+      try { await callbacks.onLost?.(); }
+      catch (error) { logger.error('Polling stop failed after leadership loss', { service: 'leaderLock' }, error); }
+      standby();
+    };
+    const heartbeat = async () => {
+      if (!current() || !this.isLeader) return;
+      if (!await this.renew()) { await lost(); return; }
+      if (current()) this.heartbeatTimer = setTimeout(() => void heartbeat(), this.heartbeatIntervalMs);
+    };
+    const elect = async () => {
+      if (!current()) return;
+      if (!await this.acquire()) { standby(); return; }
+      if (!current()) { await this.release(); return; }
+      const electedTenure = ++tenure;
+      this.heartbeatTimer = setTimeout(() => void heartbeat(), this.heartbeatIntervalMs);
+      // onElected may own a long-lived polling task. Renew while it runs.
+      void Promise.resolve().then(callbacks.onElected).catch(async error => {
+        logger.error('Polling startup failed', { service: 'leaderLock', event: 'on_elected_error' }, error);
+        if (!current() || electedTenure !== tenure) return;
+        tenure++;
         this.clearHeartbeatTimer();
-        return;
-      }
-      const renewed = await this.renew();
-      if (!renewed) {
-        this.clearHeartbeatTimer();
-        if (onLost) {
-          try {
-            await onLost();
-          } catch (err: unknown) {
-            logger.error('Error in onLost callback', {
-              service: 'leaderLock',
-              event: 'on_lost_error',
-            }, err);
-          }
-        }
-        this.scheduleStandby(() => this.acquire().then((ok) => {
-          if (ok) this.startHeartbeat(onLost);
-        }));
-      }
-    }, this.heartbeatIntervalMs);
-  }
-
-  private scheduleStandby(attemptFn: () => void): void {
-    this.clearStandbyTimer();
-    if (!this.isRunning) return;
-    this.standbyTimer = setTimeout(() => {
-      attemptFn();
-    }, this.standbyCheckIntervalMs);
+        try { await callbacks.onLost?.(); } catch (stopError) { logger.error('Polling stop failed', {service:'leaderLock'}, stopError); }
+        await this.release();
+        // release cancels election timers; restart a fresh fenced election.
+        this.startElection(callbacks);
+      });
+    };
+    void elect();
   }
 
   private clearHeartbeatTimer(): void {
@@ -230,13 +207,14 @@ export class DistributedLeaderLock {
 
   public stopTimers(): void {
     this.isRunning = false;
+    this.generation++;
     this.clearHeartbeatTimer();
     this.clearStandbyTimer();
   }
 }
 
 export const botLeaderLock = new DistributedLeaderLock({
-  lockKey: 'pairtalk:bot:leader:lock',
+  lockKey: 'pairtalk:bot:' + crypto.createHash('sha256').update(process.env.BOT_TOKEN || 'test').digest('hex').slice(0, 24) + ':leader:lock',
   ttlMs: 15000,
   heartbeatIntervalMs: 5000,
   standbyCheckIntervalMs: 4000,

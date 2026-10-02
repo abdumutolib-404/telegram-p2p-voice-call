@@ -137,8 +137,8 @@ export async function executeAnnouncementBroadcast(
               return;
             } catch (err: any) {
               // Check for Telegram 429 rate limit
-              const retryAfter = err?.parameters?.retry_after || (err?.message?.includes('429') ? 1 : 0);
-              if (retryAfter > 0 && attempts < maxAttempts) {
+              const retryAfter = err?.error_code === 429 ? err?.parameters?.retry_after : 0;
+              if (Number.isInteger(retryAfter) && retryAfter > 0 && retryAfter <= 30 && attempts < maxAttempts) {
                 await new Promise((resolve) => setTimeout(resolve, (retryAfter + 0.5) * 1000));
                 continue;
               }

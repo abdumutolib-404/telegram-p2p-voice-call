@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useClipboard, useLatestRequest } from '../../hooks/useAdminTools';
+import { Dialog } from '../ui/Dialog';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { UserItem, ModerationAction } from '../../types/index.ts';
 import { adminFetch } from '../../api/client.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
@@ -36,7 +38,11 @@ export function UserManagement() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { copiedId, copyError, copyToClipboard } = useClipboard();
+  const latest = useLatestRequest();
+  const actionBusy = useRef(false);
+  const [actionError,setActionError] = useState<string | null>(null);
+  const [useTierLimits,setUseTierLimits] = useState(false);
 
   // Dedicated Active Candidate Drawer / Panel State
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
@@ -77,6 +83,7 @@ export function UserManagement() {
   const [isConfirmingAction, setIsConfirmingAction] = useState<boolean>(false);
 
   const fetchUsers = useCallback(async () => {
+    const request = latest();
     setIsLoading(true);
     setError(null);
     try {
@@ -85,43 +92,42 @@ export function UserManagement() {
       if (statusFilter !== 'all') params.append('status', statusFilter);
 
       const endpoint = `/api/admin/users?${params.toString()}`;
-      const data = await adminFetch<UserItem[]>(endpoint);
+      const data = await adminFetch<UserItem[]>(endpoint, { signal:request.signal });
+      if (!request.isCurrent()) return;
       setUsers(data || []);
     } catch (err: unknown) {
+      if (!request.isCurrent()) return;
       setError(err instanceof Error ? err.message : 'Failed to fetch candidate roster.');
     } finally {
-      setIsLoading(false);
+      if (request.isCurrent()) setIsLoading(false);
     }
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, latest]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
       fetchUsers();
     }, 250);
-    return () => clearTimeout(timeout);
-  }, [fetchUsers]);
+    return () => { clearTimeout(timeout); latest(); };
+  }, [fetchUsers, latest]);
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
+
 
   // Open Dedicated Candidate Drawer to specific tab
   const openCandidatePanel = (user: UserItem, tab: ControlPanelTab = 'limits') => {
+    if (user.dailyLimit === undefined || user.maxDuration === undefined) { setError('Candidate limits are unavailable. Refresh before editing.'); return; }
     setSelectedUser(user);
     setActivePanelTab(tab);
-    setFeedback(null);
+    setFeedback(null); setActionError(null); setUseTierLimits(false);
 
     // Initialize Limits fields
     const rawTier = (user.planTier || 'free').toLowerCase();
     const tier: 'free' | 'plus' | 'pro' | 'boss' =
       rawTier === 'boss' ? 'boss' : rawTier === 'pro' ? 'pro' : rawTier === 'plus' ? 'plus' : 'free';
     setPlanTier(tier);
-    setDailyLimitInput(user.dailyLimit ?? (tier === 'boss' || tier === 'pro' ? 999 : tier === 'plus' ? 10 : 3));
-    setMaxDurationInput(user.maxDuration ?? (tier === 'boss' || tier === 'pro' ? 60 : tier === 'plus' ? 30 : 15));
-    setRetentionOverrideInput(user.retentionOverride ? user.retentionOverride : '');
-    setRecordingLimitInput(user.recordingLimitOverride ? user.recordingLimitOverride : '');
+    setDailyLimitInput(user.dailyLimit);
+    setMaxDurationInput(user.maxDuration);
+    setRetentionOverrideInput(user.retentionOverride ?? '');
+    setRecordingLimitInput(user.recordingLimitOverride ?? '');
 
     // Initialize Plan fields
     setDurationDaysInput(30);
@@ -130,25 +136,28 @@ export function UserManagement() {
   };
 
   const closeCandidatePanel = () => {
+    if (actionBusy.current) return;
     setSelectedUser(null);
   };
 
+  const normalizeUser = (result: UserItem | { user: UserItem }): UserItem => 'user' in result ? result.user : result;
+
   // Save Limits Form
   const handleSaveLimits = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || actionBusy.current) return;
+    actionBusy.current = true;
     setIsSavingLimits(true);
     setFeedback(null);
     try {
-      const updatedUser = await adminFetch<UserItem>(`/api/admin/users/${selectedUser.id}/plan`, {
+      const updatedUser = normalizeUser(await adminFetch<UserItem | { user:UserItem }>(`/api/admin/users/${selectedUser.id}/plan`, {
         method: 'PATCH',
         body: JSON.stringify({
-          plan: selectedUser.planTier.toUpperCase(),
-          dailyLimit: Number(dailyLimitInput),
-          maxDuration: Number(maxDurationInput),
+          dailyLimit: useTierLimits ? null : Number(dailyLimitInput),
+          maxDuration: useTierLimits ? null : Number(maxDurationInput),
           retentionOverride: retentionOverrideInput !== '' ? Number(retentionOverrideInput) : null,
           recordingLimit: recordingLimitInput !== '' ? Number(recordingLimitInput) : null,
         }),
-      });
+      }));
 
       setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? { ...u, ...updatedUser } : u)));
       setSelectedUser((prev) => (prev ? { ...prev, ...updatedUser } : null));
@@ -156,23 +165,24 @@ export function UserManagement() {
     } catch (err: unknown) {
       setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update limits.' });
     } finally {
-      setIsSavingLimits(false);
+      actionBusy.current = false; setIsSavingLimits(false);
     }
   };
 
   // Instant Reset Monthly Calls to 0
   const handleResetMonthlyCalls = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || actionBusy.current) return;
+    actionBusy.current = true;
     setIsResettingCalls(true);
     setFeedback(null);
     try {
-      const updatedUser = await adminFetch<UserItem>(`/api/admin/users/${selectedUser.id}/moderate`, {
+      const updatedUser = normalizeUser(await adminFetch<UserItem | { user:UserItem }>(`/api/admin/users/${selectedUser.id}/moderate`, {
         method: 'POST',
         body: JSON.stringify({
           action: 'reset-calls',
           reason: 'Manual cycle reset via Admin Limits Panel',
         }),
-      });
+      }));
 
       setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? { ...u, ...updatedUser, dailyCallsUsed: 0 } : u)));
       setSelectedUser((prev) => (prev ? { ...prev, ...updatedUser, dailyCallsUsed: 0 } : null));
@@ -180,7 +190,7 @@ export function UserManagement() {
     } catch (err: unknown) {
       setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to reset call count.' });
     } finally {
-      setIsResettingCalls(false);
+      actionBusy.current = false; setIsResettingCalls(false);
     }
   };
 
@@ -196,21 +206,21 @@ export function UserManagement() {
       setDurationDaysInput(60);
       setResetCallsOnPlanChange(true);
     } else if (preset === '2nd') {
-      setPlanTier('pro');
+      setPlanTier('boss');
       setCustomPlanNameInput('Contest 2nd Place');
+      setDailyLimitInput(50);
+      setMaxDurationInput(90);
+      setRecordingLimitInput(15);
+      setRetentionOverrideInput(90);
+      setDurationDaysInput(30);
+      setResetCallsOnPlanChange(true);
+    } else if (preset === '3rd') {
+      setPlanTier('pro');
+      setCustomPlanNameInput('Contest 3rd Place');
       setDailyLimitInput(25);
       setMaxDurationInput(60);
       setRecordingLimitInput(7);
       setRetentionOverrideInput(30);
-      setDurationDaysInput(30);
-      setResetCallsOnPlanChange(true);
-    } else if (preset === '3rd') {
-      setPlanTier('plus');
-      setCustomPlanNameInput('Contest 3rd Place');
-      setDailyLimitInput(15);
-      setMaxDurationInput(30);
-      setRecordingLimitInput(5);
-      setRetentionOverrideInput(14);
       setDurationDaysInput(14);
       setResetCallsOnPlanChange(true);
     } else if (preset === 'vip') {
@@ -227,8 +237,11 @@ export function UserManagement() {
 
   const handlePlanTierChange = (newTier: 'free' | 'plus' | 'pro' | 'boss') => {
     setPlanTier(newTier);
-    if (newTier === 'boss' || newTier === 'pro') {
-      setDailyLimitInput(999);
+    if (newTier === 'boss') {
+      setDailyLimitInput(50);
+      setMaxDurationInput(90);
+    } else if (newTier === 'pro') {
+      setDailyLimitInput(25);
       setMaxDurationInput(60);
     } else if (newTier === 'plus') {
       setDailyLimitInput(10);
@@ -241,11 +254,12 @@ export function UserManagement() {
 
   // Save Plan Assignment
   const handleSavePlan = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || actionBusy.current) return;
+    actionBusy.current = true;
     setIsSubmittingPlan(true);
     setFeedback(null);
     try {
-      const updatedUser = await adminFetch<UserItem>(`/api/admin/users/${selectedUser.id}/plan`, {
+      const updatedUser = normalizeUser(await adminFetch<UserItem | { user:UserItem }>(`/api/admin/users/${selectedUser.id}/plan`, {
         method: 'PATCH',
         body: JSON.stringify({
           plan: planTier.toUpperCase(),
@@ -253,11 +267,11 @@ export function UserManagement() {
           maxDuration: Number(maxDurationInput),
           retentionOverride: retentionOverrideInput !== '' ? Number(retentionOverrideInput) : null,
           recordingLimit: recordingLimitInput !== '' ? Number(recordingLimitInput) : null,
-          durationDays: durationDaysInput !== '' ? Number(durationDaysInput) : 30,
+          durationDays: planTier === 'free' && !customPlanNameInput.trim() ? undefined : Number(durationDaysInput),
           customPlanName: customPlanNameInput.trim() || null,
           resetDailyCalls: resetCallsOnPlanChange,
         }),
-      });
+      }));
 
       setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? { ...u, ...updatedUser } : u)));
       setSelectedUser((prev) => (prev ? { ...prev, ...updatedUser } : null));
@@ -265,7 +279,7 @@ export function UserManagement() {
     } catch (err: unknown) {
       setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update plan assignment.' });
     } finally {
-      setIsSubmittingPlan(false);
+      actionBusy.current = false; setIsSubmittingPlan(false);
     }
   };
 
@@ -285,7 +299,7 @@ export function UserManagement() {
       severity = 'warning';
     } else if (action === 'warn') {
       title = 'Issue Formal Violation Warning';
-      message = `A formal violation warning will be recorded and dispatched to ${user.alias} via the Telegram Bot.`;
+      message = `A formal violation warning will be recorded for ${user.alias}. A Telegram notification will be attempted.`;
       severity = 'warning';
     } else if (action === 'unblock' || action === 'unban') {
       title = 'Restore Candidate Access';
@@ -305,27 +319,28 @@ export function UserManagement() {
 
   const handleExecuteConfirmedAction = async () => {
     const { user, action } = confirmDialog;
-    if (!user || !action) return;
+    if (!user || !action || actionBusy.current) return;
+    actionBusy.current = true; setActionError(null);
 
     setIsConfirmingAction(true);
     setFeedback(null);
     try {
-      const updatedUser = await adminFetch<UserItem>(`/api/admin/users/${user.id}/moderate`, {
+      const updatedUser = normalizeUser(await adminFetch<UserItem | { user:UserItem }>(`/api/admin/users/${user.id}/moderate`, {
         method: 'POST',
         body: JSON.stringify({
           action,
           reason: `Administrative action (${suspensionDuration}) via Operations Console`,
         }),
-      });
+      }));
 
       setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...updatedUser } : u)));
       setSelectedUser((prev) => (prev ? { ...prev, ...updatedUser } : null));
       setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
       setFeedback({ type: 'success', message: `Executed ${action.toUpperCase()} action successfully.` });
     } catch (err: unknown) {
-      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Moderation action failed.' });
+      setActionError(err instanceof Error ? err.message : 'Moderation action failed.');
     } finally {
-      setIsConfirmingAction(false);
+      actionBusy.current = false; setIsConfirmingAction(false);
     }
   };
 
@@ -333,12 +348,12 @@ export function UserManagement() {
   const getOverallBand = (user: UserItem) => {
     if (user.subscores?.band !== undefined && user.subscores?.band !== null) {
       const b = Number(user.subscores.band);
-      return Math.max(5, Math.min(9, Math.round(b))).toString();
+      return Number.isFinite(b) ? (Math.round(b * 2) / 2).toFixed(1) : 'Unavailable';
     }
     if (!user.subscores) return null;
     const { fc, lr, gra, p } = user.subscores;
     const avg = (fc + lr + gra + p) / 4;
-    const rounded = Math.max(5, Math.min(9, Math.round(avg)));
+    const rounded = Math.round(avg * 2) / 2;
     return rounded.toString();
   };
 
@@ -381,6 +396,7 @@ export function UserManagement() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {copyError && <p role="alert" className="inline-error">{copyError}</p>}
       <PageHeader
         title="Candidate Roster"
         description="Streamlined learner registry with deep controls organized into dedicated Limits, Plan, and Status panels"
@@ -402,7 +418,7 @@ export function UserManagement() {
         {/* Search Input */}
         <div style={{ position: 'relative', flex: 1, minWidth: '260px', maxWidth: '400px' }}>
           <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
+          <input aria-label="Search alias or Telegram ID..."
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -418,6 +434,7 @@ export function UserManagement() {
             <button
               key={tab}
               onClick={() => setStatusFilter(tab)}
+              aria-pressed={statusFilter === tab}
               style={{
                 padding: '0.35rem 0.75rem',
                 border: 'none',
@@ -458,6 +475,7 @@ export function UserManagement() {
 
       {feedback && !selectedUser && (
         <div
+          role={feedback.type === 'error' ? 'alert' : 'status'}
           style={{
             padding: '0.875rem 1.125rem',
             borderRadius: '8px',
@@ -643,19 +661,7 @@ export function UserManagement() {
 
       {/* DEDICATED 3-PANEL CANDIDATE MODAL / DRAWER */}
       {selectedUser && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(7, 10, 18, 0.85)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1100,
-            padding: '1.5rem',
-          }}
-        >
+        <Dialog title="Candidate controls" pending={isSavingLimits || isResettingCalls || isSubmittingPlan || isConfirmingAction} onClose={() => { closeCandidatePanel(); }}><fieldset disabled={isSavingLimits || isResettingCalls || isSubmittingPlan || isConfirmingAction} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div
             className="glass-panel"
             style={{
@@ -777,6 +783,7 @@ export function UserManagement() {
 
             {feedback && (
               <div
+                role={feedback.type === 'error' ? 'alert' : 'status'}
                 style={{
                   padding: '0.75rem 1rem',
                   borderRadius: '6px',
@@ -842,12 +849,12 @@ export function UserManagement() {
                     Call Allowance (Monthly Calls Limit)
                   </label>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input
+                    <input aria-label="Call Allowance (Monthly Calls Limit)"
                       type="number"
-                      min="1"
-                      max="999"
+                      min="0"
+                      max="2147483647"
                       value={dailyLimitInput}
-                      onChange={(e) => setDailyLimitInput(Math.max(1, parseInt(e.target.value) || 1))}
+                      onChange={(e) => setDailyLimitInput(Number(e.target.value))}
                       className="input-modern num-tabular"
                       style={{ flex: 1 }}
                     />
@@ -858,7 +865,7 @@ export function UserManagement() {
                       style={{ fontSize: '0.75rem', padding: '0 0.75rem', height: '36px' }}
                     >
                       Unlimited (999)
-                    </button>
+                    </button><label className="field-label"><input type="checkbox" checked={useTierLimits} onChange={e=>setUseTierLimits(e.target.checked)}/> Use the current tier defaults for calls and duration</label>
                   </div>
                 </div>
 
@@ -867,12 +874,12 @@ export function UserManagement() {
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Max Call Duration (Minutes)
                   </label>
-                  <input
+                  <input aria-label="Max Call Duration (Minutes)"
                     type="number"
-                    min="5"
-                    max="120"
+                    min="1"
+                    max="1440"
                     value={maxDurationInput}
-                    onChange={(e) => setMaxDurationInput(Math.max(5, parseInt(e.target.value) || 5))}
+                    onChange={(e) => setMaxDurationInput(Number(e.target.value))}
                     className="input-modern num-tabular"
                     style={{ width: '100%', boxSizing: 'border-box' }}
                   />
@@ -884,7 +891,7 @@ export function UserManagement() {
                     <label style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase' }}>
                       Recording Limit Override
                     </label>
-                    <input
+                    <input aria-label="Recording Limit Override"
                       type="number"
                       min="0"
                       max="50"
@@ -900,7 +907,7 @@ export function UserManagement() {
                     <label style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase' }}>
                       Audio Retention (Days)
                     </label>
-                    <input
+                    <input aria-label="Audio Retention (Days)"
                       type="number"
                       min="1"
                       max="365"
@@ -972,7 +979,7 @@ export function UserManagement() {
                       Live Expiry: {liveExpiryDate}
                     </span>
                   </div>
-                  <input
+                  <input aria-label="Validity Duration (Days)"
                     type="number"
                     min="1"
                     max="730"
@@ -1014,7 +1021,7 @@ export function UserManagement() {
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Custom Plan Label (Optional)
                   </label>
-                  <input
+                  <input aria-label="Custom Plan Label (Optional)"
                     type="text"
                     value={customPlanNameInput}
                     onChange={(e) => setCustomPlanNameInput(e.target.value)}
@@ -1137,9 +1144,7 @@ export function UserManagement() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
                     {[
                       { label: '6 Hours', value: '6h' },
-                      { label: '24 Hours', value: '24h' },
-                      { label: '3 Days', value: '3d' },
-                      { label: '7 Days', value: '7d' },
+
                     ].map((opt) => (
                       <button
                         key={opt.value}
@@ -1216,11 +1221,12 @@ export function UserManagement() {
               </div>
             )}
           </div>
-        </div>
+        </fieldset></Dialog>
       )}
 
       {/* Destructive Confirm Dialog */}
       <ConfirmDialog
+        error={actionError}
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
         message={confirmDialog.message}
@@ -1234,4 +1240,3 @@ export function UserManagement() {
     </div>
   );
 }
-
