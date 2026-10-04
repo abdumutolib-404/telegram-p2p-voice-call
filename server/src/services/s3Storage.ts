@@ -162,5 +162,8 @@ export async function deleteS3Object(storageKey: string): Promise<void> {
       event: 's3_delete_failed',
       key: storageKey,
     }, err);
+    // Callers must retain the recording key until deletion is confirmed so a
+    // failed or timed-out request can be retried by the next retention purge.
+    throw err;
   }
 }

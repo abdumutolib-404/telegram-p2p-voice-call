@@ -126,7 +126,7 @@ func TestCalculateEffectiveCallDuration(t *testing.T) {
 	t.Run("Admin override enforces restrictive minimum", func(t *testing.T) {
 		override5 := 5
 		userA := &User{ID: "A", Plan: "FREE", MaxDuration: &override5} // 5m override
-		userB := &User{ID: "B", Plan: "BOSS"}                         // 90m
+		userB := &User{ID: "B", Plan: "BOSS"}                          // 90m
 		dur := CalculateEffectiveCallDuration(userA, userB, nil)
 		if dur != 5 {
 			t.Errorf("expected min(5, 90) = 5 due to admin override, got %d", dur)
@@ -140,5 +140,34 @@ func TestCalculateMixedPlanDuration(t *testing.T) {
 	}
 	if dur := CalculateMixedPlanDuration("PLUS", "PRO"); dur != 60 {
 		t.Errorf("expected 60, got %d", dur)
+	}
+}
+
+func TestExpiredPaidOverridesDoNotSurviveDowngrade(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	limit, duration, recordings, retention := 50, 90, 15, 90
+	name := "Old award"
+	user := &User{Plan: "BOSS", SubscriptionExpiresAt: &past, DailyLimit: &limit,
+		MaxDuration: &duration, RecordingLimit: &recordings, RetentionOverride: &retention, CustomPlanName: &name}
+	ent := GetEffectiveEntitlement(user, nil)
+	if ent.Plan != "FREE" || ent.CallLimit != 3 || ent.MaxDurationMinutes != 15 || ent.RecordingLimit != 1 || ent.RetentionDays != 1 || ent.Source != "PLAN_DEFAULT" {
+		t.Fatalf("expired overrides survived downgrade: %+v", ent)
+	}
+}
+
+func TestZeroRecordingOverrideIsEnforced(t *testing.T) {
+	zero := 0
+	ent := GetEffectiveEntitlement(&User{Plan: "PLUS", RecordingLimit: &zero}, nil)
+	if ent.RecordingLimit != 0 || ent.Source != "ADMIN_OVERRIDE" {
+		t.Fatalf("zero recording override was ignored: %+v", ent)
+	}
+}
+
+func TestCustomPlanNameDoesNotHideDurationRestriction(t *testing.T) {
+	name, duration := "Custom practice award", 5
+	a := &User{Plan: "PRO", CustomPlanName: &name, MaxDuration: &duration}
+	b := &User{Plan: "BOSS"}
+	if got := CalculateEffectiveCallDuration(a, b, nil); got != 5 {
+		t.Fatalf("custom plan name bypassed duration restriction: %d", got)
 	}
 }

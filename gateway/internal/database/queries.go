@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type User struct {
@@ -56,18 +57,19 @@ type CallSession struct {
 }
 
 type PlanConfig struct {
-	Name           string
-	MaxDuration    int
-	DailyLimit     int
-	RecordingLimit int
-	RetentionDays  int
+	Name                     string
+	MaxDuration              int
+	DailyLimit               int
+	RecordingLimit           int
+	RetentionDays            int
+	SubscriptionDurationDays int
 }
 
 var DefaultPlans = map[string]PlanConfig{
-	"FREE": {Name: "Free", MaxDuration: 15, DailyLimit: 3, RecordingLimit: 1, RetentionDays: 1},
-	"PLUS": {Name: "Plus", MaxDuration: 30, DailyLimit: 10, RecordingLimit: 3, RetentionDays: 7},
-	"PRO":  {Name: "Pro", MaxDuration: 60, DailyLimit: 25, RecordingLimit: 7, RetentionDays: 30},
-	"BOSS": {Name: "Boss", MaxDuration: 90, DailyLimit: 50, RecordingLimit: 15, RetentionDays: 90},
+	"FREE": {Name: "Free", MaxDuration: 15, DailyLimit: 3, RecordingLimit: 1, RetentionDays: 1, SubscriptionDurationDays: 0},
+	"PLUS": {Name: "Plus", MaxDuration: 30, DailyLimit: 10, RecordingLimit: 3, RetentionDays: 7, SubscriptionDurationDays: 30},
+	"PRO":  {Name: "Pro", MaxDuration: 60, DailyLimit: 25, RecordingLimit: 7, RetentionDays: 30, SubscriptionDurationDays: 30},
+	"BOSS": {Name: "Boss", MaxDuration: 90, DailyLimit: 50, RecordingLimit: 15, RetentionDays: 90, SubscriptionDurationDays: 30},
 }
 
 type Entitlement struct {
@@ -78,9 +80,11 @@ type Entitlement struct {
 	RetentionDays      int
 	IsAdmin            bool
 	Source             string // "PLAN_DEFAULT" or "ADMIN_OVERRIDE" or "CUSTOM_PLAN"
+	OverrideSource     string // Retains restriction semantics when a custom name is present.
 }
 
 func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement {
+	plans := currentPlans()
 	isAdmin := false
 	if user != nil {
 		tgStr := fmt.Sprintf("%d", user.TelegramID)
@@ -95,23 +99,25 @@ func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement 
 	planKey := "FREE"
 	if user != nil && user.Plan != "" {
 		upper := strings.ToUpper(user.Plan)
-		if _, ok := DefaultPlans[upper]; ok {
+		if _, ok := plans[upper]; ok {
 			planKey = upper
 		}
 	}
 
+	expired := false
 	if planKey != "FREE" && !isAdmin && user != nil {
 		isExpiredStatus := user.SubscriptionStatus != nil && (*user.SubscriptionStatus == "EXPIRED" || *user.SubscriptionStatus == "CANCELLED")
 		isPastDate := user.SubscriptionExpiresAt != nil && user.SubscriptionExpiresAt.Before(time.Now())
 		if isExpiredStatus || isPastDate {
+			expired = true
 			planKey = "FREE"
 		}
 	}
 
-	defaultTier := DefaultPlans[planKey]
+	defaultTier := plans[planKey]
 	dailyLimit := defaultTier.DailyLimit
 	isCustomLimit := false
-	if user != nil && user.DailyLimit != nil && *user.DailyLimit != defaultTier.DailyLimit {
+	if !expired && user != nil && user.DailyLimit != nil && *user.DailyLimit != defaultTier.DailyLimit {
 		dailyLimit = *user.DailyLimit
 		isCustomLimit = true
 	}
@@ -121,21 +127,21 @@ func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement 
 
 	maxDurationMinutes := defaultTier.MaxDuration
 	isCustomDuration := false
-	if user != nil && user.MaxDuration != nil && *user.MaxDuration != defaultTier.MaxDuration {
+	if !expired && user != nil && user.MaxDuration != nil && *user.MaxDuration != defaultTier.MaxDuration {
 		maxDurationMinutes = *user.MaxDuration
 		isCustomDuration = true
 	}
 
 	recordingLimit := defaultTier.RecordingLimit
 	isCustomRecordingLimit := false
-	if user != nil && user.RecordingLimit != nil && *user.RecordingLimit > 0 {
+	if !expired && user != nil && user.RecordingLimit != nil && *user.RecordingLimit >= 0 {
 		recordingLimit = *user.RecordingLimit
 		isCustomRecordingLimit = true
 	}
 
 	retentionDays := defaultTier.RetentionDays
 	retentionSource := "PLAN_DEFAULT"
-	if user != nil && user.RetentionOverride != nil && *user.RetentionOverride > 0 {
+	if !expired && user != nil && user.RetentionOverride != nil && *user.RetentionOverride > 0 {
 		retentionDays = *user.RetentionOverride
 		retentionSource = "ADMIN_OVERRIDE"
 	}
@@ -144,7 +150,8 @@ func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement 
 	if isCustomLimit || isCustomDuration || isCustomRecordingLimit || retentionSource == "ADMIN_OVERRIDE" {
 		source = "ADMIN_OVERRIDE"
 	}
-	if user != nil && user.CustomPlanName != nil && *user.CustomPlanName != "" {
+	overrideSource := source
+	if !expired && user != nil && user.CustomPlanName != nil && *user.CustomPlanName != "" {
 		source = "CUSTOM_PLAN"
 	}
 
@@ -156,6 +163,7 @@ func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement 
 		RetentionDays:      retentionDays,
 		IsAdmin:            isAdmin,
 		Source:             source,
+		OverrideSource:     overrideSource,
 	}
 }
 
@@ -163,7 +171,7 @@ func CalculateEffectiveCallDuration(userA, userB *User, adminTelegramIDs []strin
 	entA := GetEffectiveEntitlement(userA, adminTelegramIDs)
 	entB := GetEffectiveEntitlement(userB, adminTelegramIDs)
 
-	if entA.Source == "ADMIN_OVERRIDE" || entB.Source == "ADMIN_OVERRIDE" {
+	if entA.OverrideSource == "ADMIN_OVERRIDE" || entB.OverrideSource == "ADMIN_OVERRIDE" {
 		if entA.MaxDurationMinutes < entB.MaxDurationMinutes {
 			return entA.MaxDurationMinutes
 		}
@@ -177,13 +185,14 @@ func CalculateEffectiveCallDuration(userA, userB *User, adminTelegramIDs []strin
 }
 
 func CalculateMixedPlanDuration(planA, planB string) int {
-	cfgA, okA := DefaultPlans[strings.ToUpper(planA)]
+	plans := currentPlans()
+	cfgA, okA := plans[strings.ToUpper(planA)]
 	if !okA {
-		cfgA = DefaultPlans["FREE"]
+		cfgA = plans["FREE"]
 	}
-	cfgB, okB := DefaultPlans[strings.ToUpper(planB)]
+	cfgB, okB := plans[strings.ToUpper(planB)]
 	if !okB {
-		cfgB = DefaultPlans["FREE"]
+		cfgB = plans["FREE"]
 	}
 
 	if cfgA.MaxDuration > cfgB.MaxDuration {
@@ -354,13 +363,15 @@ func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSes
 
 	// Fetch both users
 	uA, errA := db.GetUserByID(ctx, s.UserAID)
-	if errA == nil {
-		s.UserA = uA
+	if errA != nil {
+		return nil, errA
 	}
+	s.UserA = uA
 	uB, errB := db.GetUserByID(ctx, s.UserBID)
-	if errB == nil {
-		s.UserB = uB
+	if errB != nil {
+		return nil, errB
 	}
+	s.UserB = uB
 
 	return s, nil
 }
@@ -427,50 +438,44 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 	}
 
 	uA, errA := db.GetUserByID(ctx, s.UserAID)
-	if errA == nil {
-		s.UserA = uA
+	if errA != nil {
+		return nil, errA
 	}
+	s.UserA = uA
 	uB, errB := db.GetUserByID(ctx, s.UserBID)
-	if errB == nil {
-		s.UserB = uB
+	if errB != nil {
+		return nil, errB
 	}
+	s.UserB = uB
 
 	return s, nil
 }
 
-func (db *DB) CreateCallSession(ctx context.Context, id, roomName, userAID, userBID string) error {
-	query := `
-		INSERT INTO "CallSession" (id, "roomName", "userAId", "userBId", status, "createdAt")
-		VALUES ($1, $2, $3, $4, 'ACTIVE', NOW())
-	`
-	_, err := db.Pool.Exec(ctx, query, id, roomName, userAID, userBID)
-	return err
-}
-
-func (db *DB) CompleteCallSession(ctx context.Context, id string, duration int, egressID, recordingURL *string, recordingExpiresAt *time.Time) (bool, error) {
-	query := `
-		UPDATE "CallSession"
-		SET status = 'COMPLETED', "endedAt" = NOW(), duration = $1, "egressId" = $2, "recordingUrl" = $3, "recordingExpiresAt" = $4
-		WHERE id = $5 AND status = 'ACTIVE'
-	`
-	tag, err := db.Pool.Exec(ctx, query, duration, egressID, recordingURL, recordingExpiresAt, id)
+func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
+	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
-}
-
-func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
+	defer tx.Rollback(ctx)
 	query := `
 		UPDATE "CallSession"
 		SET status = 'CANCELLED', "endedAt" = NOW(), duration = 0
 		WHERE id = $1 AND (status = 'ACTIVE' OR status = 'PENDING')
 	`
-	tag, err := db.Pool.Exec(ctx, query, id)
+	tag, err := tx.Exec(ctx, query, id)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() >= 1, nil
+	if tag.RowsAffected() != 1 {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO "PostCallJob" ("callId",reason,"updatedAt") VALUES ($1,'call_cancelled',NOW())`, id); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (db *DB) UpdateSessionRecorders(ctx context.Context, id string, recorders *string) error {
@@ -508,41 +513,6 @@ func (db *DB) ClearSessionEgress(ctx context.Context, id string) error {
 	return err
 }
 
-func (db *DB) RecordCompletedCallCredits(ctx context.Context, userAID, userBID string, durationSeconds int) error {
-	if durationSeconds < 5 {
-		return nil
-	}
-
-	currentMonth := time.Now().UTC().Format("2006-01")
-
-	recordUserCredit := func(userID string) error {
-		u, err := db.GetUserByID(ctx, userID)
-		if err != nil || u == nil {
-			return err
-		}
-
-		ent := GetEffectiveEntitlement(u, db.AdminTelegramIDs)
-		callsUsed, _ := db.GetUserCallsUsedThisPeriod(ctx, userID, u)
-		if !ent.IsAdmin && callsUsed >= ent.CallLimit {
-			consumed, _ := db.ConsumeOldestBonusCall(ctx, userID)
-			if consumed {
-				return nil
-			}
-		}
-
-		if u.LastCallDate != nil && strings.HasPrefix(*u.LastCallDate, currentMonth) {
-			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "dailyCallsUsed" = "dailyCallsUsed" + 1, "updatedAt" = NOW() WHERE id = $1 AND "lastCallDate" = $2`, userID, *u.LastCallDate)
-		} else {
-			_, err = db.Pool.Exec(ctx, `UPDATE "User" SET "lastCallDate" = $1, "dailyCallsUsed" = 1, "updatedAt" = NOW() WHERE id = $2`, currentMonth, userID)
-		}
-		return err
-	}
-
-	_ = recordUserCredit(userAID)
-	_ = recordUserCredit(userBID)
-	return nil
-}
-
 func (db *DB) GetActiveBonusCallsCount(ctx context.Context, userID string) (int, error) {
 	query := `SELECT COUNT(*) FROM "ReferralReward" WHERE "userId" = $1 AND status = 'AVAILABLE'`
 	var count int
@@ -551,17 +521,27 @@ func (db *DB) GetActiveBonusCallsCount(ctx context.Context, userID string) (int,
 }
 
 func (db *DB) ConsumeOldestBonusCall(ctx context.Context, userID string) (bool, error) {
+	return consumeOldestBonusCall(ctx, db.Pool, userID)
+}
+
+type queryRunner interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func consumeOldestBonusCall(ctx context.Context, runner queryRunner, userID string) (bool, error) {
 	query := `
 		UPDATE "ReferralReward"
 		SET status = 'USED', "usedAt" = NOW()
-		WHERE id = (
+		WHERE status = 'AVAILABLE' AND id = (
 			SELECT id FROM "ReferralReward"
 			WHERE "userId" = $1 AND status = 'AVAILABLE'
 			ORDER BY "createdAt" ASC
 			LIMIT 1
+			FOR UPDATE SKIP LOCKED
 		)
 	`
-	tag, err := db.Pool.Exec(ctx, query, userID)
+	tag, err := runner.Exec(ctx, query, userID)
 	if err != nil {
 		return false, err
 	}
@@ -569,7 +549,6 @@ func (db *DB) ConsumeOldestBonusCall(ctx context.Context, userID string) (bool, 
 }
 
 func (db *DB) GetUserCallsUsedThisPeriod(ctx context.Context, userID string, user *User) (int, error) {
-	currentMonth := time.Now().UTC().Format("2006-01")
 	targetUser := user
 	var err error
 	if targetUser == nil {
@@ -578,12 +557,18 @@ func (db *DB) GetUserCallsUsedThisPeriod(ctx context.Context, userID string, use
 			return 0, err
 		}
 	}
+	return callsUsedThisPeriod(ctx, db.Pool, userID, targetUser)
+}
+
+func callsUsedThisPeriod(ctx context.Context, runner queryRunner, userID string, targetUser *User) (int, error) {
+	currentMonth := time.Now().UTC().Format("2006-01")
 
 	if targetUser.LastCallDate != nil && strings.HasPrefix(*targetUser.LastCallDate, currentMonth) {
 		return int(math.Max(0, float64(targetUser.DailyCallsUsed))), nil
 	}
 
-	periodStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
+	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	if targetUser.SubscriptionExpiresAt != nil && targetUser.SubscriptionExpiresAt.After(time.Now()) {
 		durationDays := 30
 		if targetUser.SubscriptionDurationDays != nil && *targetUser.SubscriptionDurationDays > 0 {
@@ -601,7 +586,7 @@ func (db *DB) GetUserCallsUsedThisPeriod(ctx context.Context, userID string, use
 		  AND "createdAt" >= $2
 	`
 	var count int
-	err = db.Pool.QueryRow(ctx, query, userID, periodStart).Scan(&count)
+	err := runner.QueryRow(ctx, query, userID, periodStart).Scan(&count)
 	return count, err
 }
 
@@ -615,7 +600,8 @@ func (db *DB) GetUserRecordingsUsedThisPeriod(ctx context.Context, userID string
 		}
 	}
 
-	periodStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
+	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	if targetUser.SubscriptionExpiresAt != nil && targetUser.SubscriptionExpiresAt.After(time.Now()) {
 		durationDays := 30
 		if targetUser.SubscriptionDurationDays != nil && *targetUser.SubscriptionDurationDays > 0 {
@@ -627,7 +613,8 @@ func (db *DB) GetUserRecordingsUsedThisPeriod(ctx context.Context, userID string
 	query := `
 		SELECT COUNT(*)
 		FROM "CallSession"
-		WHERE ("recordedByUserId" = $1
+		WHERE ("userAId" = $1 OR "userBId" = $1)
+		  AND ("recordedByUserId" = $1
 		   OR "recordedByUserId" = 'BOTH'
 		   OR "recordedByUserId" = 'ALL'
 		   OR ("recordedByUserId" IS NULL AND "userAId" = $1)
@@ -712,8 +699,15 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 	}
 
 	for _, s := range sessions {
-		s.UserA, _ = db.GetUserByID(ctx, s.UserAID)
-		s.UserB, _ = db.GetUserByID(ctx, s.UserBID)
+		var err error
+		s.UserA, err = db.GetUserByID(ctx, s.UserAID)
+		if err != nil {
+			return nil, err
+		}
+		s.UserB, err = db.GetUserByID(ctx, s.UserBID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return sessions, nil

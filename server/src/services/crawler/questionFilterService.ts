@@ -1,5 +1,5 @@
 import { prisma } from '../../config/database';
-import { getRedis } from '../../config/redis';
+import { CrawlerLease } from './lease';
 import { logger } from '../../utils/logger';
 import {
   classifyTopic,
@@ -10,6 +10,7 @@ import {
 } from './taxonomy';
 import { isSemanticDuplicate, generateCanonicalSemanticKey } from './semanticMatcher';
 import { generateQuestionFingerprint } from './fingerprint';
+import { purgeEmptyNonCanonicalTopic } from './orphanPurge';
 
 export interface FilterResult {
   status: 'SUCCESS' | 'FAILED' | 'LOCKED';
@@ -44,23 +45,13 @@ function cleanTextArtifacts(raw: string): string {
 }
 
 export class QuestionFilterService {
-  private readonly filterLockKey = 'pairtalk:crawler:filter_lock';
-  private readonly lockTtlMs = 45000; // 45 seconds
 
   public async runFilterCycle(options?: { force?: boolean }): Promise<FilterResult> {
     const startTime = Date.now();
-    const redis = getRedis();
+    const lease = new CrawlerLease();
 
-    // 1. Acquire distributed lock
-    let hasLock = false;
-    try {
-      const lockRes = await redis.set(this.filterLockKey, String(process.pid), 'PX', this.lockTtlMs, 'NX');
-      hasLock = lockRes === 'OK';
-    } catch {
-      hasLock = true;
-    }
-
-    if (!hasLock && !options?.force) {
+    // A manual force request still respects active distributed ownership.
+    if (!await lease.acquire()) {
       logger.warn('Daily Question Filter skipped: another filter cycle is currently running.', {
         service: 'crawler_filter',
       });
@@ -103,11 +94,13 @@ export class QuestionFilterService {
       const topicIdToSlug = new Map<string, string>();
 
       for (const seed of SEED_TOPICS) {
+        await lease.assertOwned();
         let topic = await prisma.ieltsTopic.findUnique({ where: { slug: seed.slug } });
         if (!topic) {
           // Check by name to avoid duplicate name unique constraint violations
           topic = await prisma.ieltsTopic.findUnique({ where: { name: seed.name } });
           if (topic) {
+            await lease.assertOwned();
             topic = await prisma.ieltsTopic.update({
               where: { id: topic.id },
               data: {
@@ -118,6 +111,7 @@ export class QuestionFilterService {
               },
             });
           } else {
+            await lease.assertOwned();
             topic = await prisma.ieltsTopic.create({
               data: {
                 name: seed.name,
@@ -155,11 +149,13 @@ export class QuestionFilterService {
       const topicPartBuckets = new Map<string, Array<{ id: string; questionText: string; canonicalKey: string }>>();
 
       for (const q of questions) {
+        await lease.assertOwned();
         // --- PASS A: Clean Formatting & HTML Entities ---
         const cleaned = cleanTextArtifacts(q.questionText);
         let currentText = q.questionText;
         if (cleaned && cleaned !== q.questionText && cleaned.length >= 10) {
           try {
+            await lease.assertOwned();
             await prisma.ieltsQuestion.update({
               where: { id: q.id },
               data: {
@@ -181,6 +177,7 @@ export class QuestionFilterService {
                 questionId: q.id,
                 duplicateHash: generateQuestionFingerprint(q.part, cleaned, q.cueCardBullets),
               });
+              await lease.assertOwned();
               await prisma.ieltsQuestion.delete({ where: { id: q.id } }).catch(() => undefined);
               duplicatesPrunedCount++;
               continue;
@@ -213,6 +210,7 @@ export class QuestionFilterService {
           targetTopicId &&
           (q.topicId !== targetTopicId || (currentTopicSlug && !canonicalSlugs.has(currentTopicSlug)))
         ) {
+          await lease.assertOwned();
           await prisma.ieltsQuestion.update({
             where: { id: q.id },
             data: { topicId: targetTopicId },
@@ -239,6 +237,7 @@ export class QuestionFilterService {
           const semanticCheck = isSemanticDuplicate(currentText, bucket, 0.75);
 
           if (semanticCheck.isDuplicate) {
+            await lease.assertOwned();
             await prisma.ieltsQuestion.delete({ where: { id: q.id } });
             duplicatesPrunedCount++;
             logger.info('Pruned semantic duplicate IELTS question', {
@@ -274,7 +273,8 @@ export class QuestionFilterService {
         const questionCount =
           t._count?.questions ?? (await prisma.ieltsQuestion.count({ where: { topicId: t.id } }));
         if (questionCount === 0) {
-          await prisma.ieltsTopic.delete({ where: { id: t.id } });
+          await lease.assertOwned();
+          if (!await purgeEmptyNonCanonicalTopic(t.id, canonicalSlugs)) continue;
           orphansPurgedCount++;
           logger.info('Purged orphan non-canonical IELTS topic record', {
             service: 'crawler_filter',
@@ -285,6 +285,7 @@ export class QuestionFilterService {
         }
       }
 
+      await lease.assertOwned();
       const durationMs = Date.now() - startTime;
 
       if (syncLogId) {
@@ -351,11 +352,7 @@ export class QuestionFilterService {
         error: errMsg,
       };
     } finally {
-      try {
-        await redis.del(this.filterLockKey);
-      } catch {
-        // ignore
-      }
+      await lease.release();
     }
   }
 }

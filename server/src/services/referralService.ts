@@ -3,6 +3,10 @@ import { prisma } from '../config/database';
 import { Bot } from 'grammy';
 import { MyContext } from '../bot/types';
 import { logger } from '../utils/logger';
+import type { Prisma } from '@prisma/client';
+import { env } from '../config/env';
+import { escapeHtml } from '../utils/sanitize';
+import { persistNotification } from '../bot/notifications';
 
 export interface ReferralStats {
   totalInvited: number;
@@ -147,85 +151,47 @@ export async function onCallFinishedCheckReferralReward(
   session: { id: string; userAId: string; userBId: string; duration: number },
   bot?: Bot<MyContext>
 ): Promise<void> {
-  if (!session || session.duration < 30) {
-    return;
-  }
-
-  const participantIds = [session.userAId, session.userBId];
-
-  for (const participantId of participantIds) {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: participantId },
-      });
-
-      if (!user || !user.referredByUserId) {
-        continue;
+  if (!session || !Number.isInteger(session.duration) || session.duration < 30) return;
+  for (const participantId of [session.userAId, session.userBId]) {
+    const user = await prisma.user.findUnique({ where: { id: participantId } });
+    if (!user?.referredByUserId) continue;
+    await prisma.$transaction(async tx => {
+      for (const id of [user.id, user.referredByUserId!].sort()) await lockRow(tx, 'User', id);
+      const friend = await tx.user.findUnique({ where: { id: user.id } });
+      if (!friend || friend.referredByUserId !== user.referredByUserId) return;
+      if (await tx.referralReward.findFirst({ where: { referredUserId: friend.id } })) return;
+      await tx.referralReward.create({ data: {
+        userId: friend.referredByUserId!, referredUserId: friend.id,
+        qualifyingCallId: session.id, status: 'AVAILABLE',
+      } });
+      const inviter = await tx.user.findUnique({ where: { id: friend.referredByUserId! } });
+      if (bot && inviter && !inviter.dnd) {
+        const text = '🎉 <b>Referral Bonus Earned!</b>\n\n' +
+          'Your friend <b>' + escapeHtml(friend.alias) + '</b> just completed their first speaking practice session (<code>' + Math.floor(session.duration / 60) + ' min</code>)!\n\n' +
+          '🎁 <b>Reward Granted:</b> <code>1 Free Bonus Call</code> (Permanent / Never Expires)\n\n' +
+          '💡 <i>Your bonus calls are saved forever and automatically used whenever your monthly plan limits run out.</i>';
+        // The award and its notice commit together; a crash cannot lose the notice after awarding.
+        await persistNotification(tx, inviter.telegramId.toString(), text, { parse_mode: 'HTML' }, true, 'referral:' + friend.id);
       }
-
-      // Check if a reward was already granted for this referred user
-      const existingReward = await prisma.referralReward.findFirst({
-        where: { referredUserId: user.id },
-      });
-
-      if (existingReward) {
-        continue;
-      }
-
-      // Inviter receives 1 free permanent bonus call (never expires)
-      await prisma.referralReward.create({
-        data: {
-          userId: user.referredByUserId,
-          referredUserId: user.id,
-          qualifyingCallId: session.id,
-          status: 'AVAILABLE',
-        },
-      });
-
-      // Send celebratory Telegram notification to the inviter
-      if (bot) {
-        const inviter = await prisma.user.findUnique({
-          where: { id: user.referredByUserId },
-        });
-
-        if (inviter && !inviter.dnd) {
-          const msg =
-            `🎉 <b>Referral Bonus Earned!</b>\n\n` +
-            `Your friend <b>${user.alias}</b> just completed their first speaking practice session (<code>${Math.floor(session.duration / 60)} min</code>)!\n\n` +
-            `🎁 <b>Reward Granted:</b> <code>1 Free Bonus Call</code> (Permanent / Never Expires)\n\n` +
-            `💡 <i>Your bonus calls are saved forever and automatically used whenever your monthly plan limits run out.</i>`;
-
-          await bot.api.sendMessage(inviter.telegramId.toString(), msg, { parse_mode: 'HTML' })
-            .catch((e: unknown) => logger.warn('Failed to deliver reward notice', {
-              service: 'referral',
-              event: 'reward_notice_failed',
-              inviterTelegramId: inviter.telegramId.toString(),
-            }, e));
-        }
-      }
-    } catch (err) {
-      logger.error('Error processing qualifying call reward for participant', {
-        service: 'referral',
-        event: 'qualifying_reward_error',
-        participantId,
-      }, err);
-    }
+    }, { maxWait: 10000, timeout: 15000 });
   }
 }
 
 /**
  * Returns the number of currently active permanent bonus calls available for the user.
  */
-export async function getActiveBonusCallsCount(userId: string): Promise<number> {
+export async function getActiveBonusCallsCount(userId: string, transaction?: Pick<Prisma.TransactionClient, 'referralReward'>): Promise<number> {
+  const database = transaction ?? prisma;
   try {
-    const count = await prisma.referralReward.count({
+    const count = await database.referralReward.count({
       where: {
         userId,
         status: 'AVAILABLE',
       },
     });
     return count;
-  } catch {
+  } catch (error) {
+    if (env.NODE_ENV !== 'test' || transaction) throw error;
     return 0;
   }
 }
@@ -234,10 +200,11 @@ export async function getActiveBonusCallsCount(userId: string): Promise<number> 
  * Consumes 1 bonus call.
  * Returns true if a bonus call was successfully consumed, false if none available.
  */
-export async function consumeOldestBonusCall(userId: string): Promise<boolean> {
+export async function consumeOldestBonusCall(userId: string, transaction?: Pick<Prisma.TransactionClient, 'referralReward'>): Promise<boolean> {
+  const database = transaction ?? prisma;
   try {
     const now = new Date();
-    const oldestReward = await prisma.referralReward.findFirst({
+    const oldestReward = await database.referralReward.findFirst({
       where: {
         userId,
         status: 'AVAILABLE',
@@ -249,21 +216,22 @@ export async function consumeOldestBonusCall(userId: string): Promise<boolean> {
       return false;
     }
 
-    await prisma.referralReward.update({
-      where: { id: oldestReward.id },
+    const claimed = await database.referralReward.updateMany({
+      where: { id: oldestReward.id, userId, status: 'AVAILABLE' },
       data: {
         status: 'USED',
         usedAt: now,
       },
     });
 
-    return true;
+    return claimed.count === 1;
   } catch (err) {
     logger.error('consumeOldestBonusCall error', {
       service: 'referral',
       event: 'consume_bonus_call_error',
       userId,
     }, err);
+    if (env.NODE_ENV !== 'test' || transaction) throw err;
     return false;
   }
 }
@@ -591,4 +559,3 @@ export async function concludeContestAndDistributePrizes(
     winners: result.winners,
   };
 }
-

@@ -1,0 +1,37 @@
+[
+  {
+    "url": "https://pairtalk.online/",
+    "status": 200,
+    "server": "cloudflare",
+    "contentType": "text/html",
+    "location": null
+  },
+  {
+    "url": "https://app.pairtalk.online/",
+    "status": 200,
+    "server": "cloudflare",
+    "contentType": "text/html",
+    "location": null
+  },
+  {
+    "url": "https://admin.pairtalk.online/",
+    "status": 302,
+    "server": "cloudflare",
+    "contentType": "text/html; charset=UTF-8",
+    "location": "https://pairtalk71.cloudflareaccess.com/cdn-cgi/access/login/admin.pairtalk.online"
+  },
+  {
+    "url": "https://api.pairtalk.online/health",
+    "status": 404,
+    "server": "cloudflare",
+    "contentType": "application/json",
+    "location": null
+  },
+  {
+    "url": "https://api.pairtalk.online/healthz",
+    "status": 404,
+    "server": "cloudflare",
+    "contentType": "application/json",
+    "location": null
+  }
+]

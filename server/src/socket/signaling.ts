@@ -1,21 +1,24 @@
 import crypto from 'node:crypto';
 import { admitCall } from '../services/callAdmission';
+import { completeCallSession } from '../services/callCompletion';
 import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration, calculateMixedPlanDuration } from '../services/plan';
-import { getActiveBonusCallsCount, consumeOldestBonusCall, onCallFinishedCheckReferralReward } from '../services/referralService';
+import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration } from '../services/plan';
+import { getActiveBonusCallsCount } from '../services/referralService';
 import { checkRateLimit } from '../services/rateLimitMatrix';
-import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, type EgressResult } from '../config/livekit';
+import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, areCallParticipantsPresent, countCallParticipants, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
-import { sendPostCallReviewCard } from '../bot/handlers/postCall';
+import { wakePostCallWorker } from '../services/postCallOutbox';
 import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { MyContext } from '../bot/types';
 import { cleanupDirectCallMessages } from '../services/directCallMessages';
+import { isUserSessionRecorder } from '../utils/recordingAccess';
+export { isUserSessionRecorder } from '../utils/recordingAccess';
 
 interface PeerReadyPayload {
   readonly roomName: string;
@@ -75,13 +78,6 @@ function getUserBucket(user: {
     subP: user.subP,
   });
   return matchmakingService.getBucketKey(user.band, weakSkill, strongSkill);
-}
-
-export function isUserSessionRecorder(recordedByUserId: string | null | undefined, userId: string): boolean {
-  if (!recordedByUserId || !userId) return false;
-  if (recordedByUserId === 'BOTH' || recordedByUserId === 'ALL') return true;
-  const ids = recordedByUserId.split(',').map((id) => id.trim()).filter(Boolean);
-  return ids.includes(userId);
 }
 
 export function addSessionRecorder(currentRecordedBy: string | null | undefined, userId: string): string {
@@ -155,11 +151,26 @@ export function scheduleConnectionHandshakeTimer(
           });
           if (!currentSession || currentSession.status !== 'ACTIVE') return;
 
-          // Neither or only one peer connected within 90s - cancel session without charging credits
-          await prisma.callSession.updateMany({
+          let connected: number;
+          try {
+            connected = await countCallParticipants(roomName, [currentSession.userAId, currentSession.userBId]);
+          } catch (error) {
+            logger.warn('Handshake presence could not be verified; retrying', { service: 'signaling', event: 'handshake_presence_unavailable', roomName }, error);
+            scheduleConnectionHandshakeTimer(roomName, 30, effectiveBot ?? undefined, effectiveIo ?? undefined);
+            return;
+          }
+          if (connected === 2) {
+            const elapsed = Math.floor((Date.now() - currentSession.createdAt.getTime()) / 1000);
+            const remaining = Math.max(1, calculateEffectiveCallDuration(currentSession.userA, currentSession.userB) * 60 - elapsed);
+            scheduleAuthoritativeSessionTeardown(roomName, remaining, effectiveBot ?? undefined, effectiveIo ?? undefined);
+            return;
+          }
+          // Fewer than two peers connected within 90s; provider has confirmed this.
+          const claimed = await prisma.callSession.updateMany({
             where: { id: currentSession.id, status: 'ACTIVE' },
             data: { status: 'CANCELLED', endedAt: new Date(), duration: 0 },
           });
+          if (claimed.count !== 1) return;
 
           await deleteLiveKitRoom(roomName);
           const readySet = activeRoomPeers.get(roomName);
@@ -226,50 +237,6 @@ const runSerialized = async <T>(map: Map<string, Promise<void>>, key: string, op
   }
 };
 
-const recordCompletedCallCredits = async (userAId: string, userBId: string, durationSeconds: number): Promise<void> => {
-  if (durationSeconds < 5) return;
-  const currentMonth = new Date().toISOString().slice(0, 7);
-
-  const recordUserCredit = async (userId: string) => {
-    try {
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) return;
-      const entitlement = getEffectiveEntitlement(user);
-      const callsUsed = await getUserCallsUsedThisPeriod(userId, user);
-
-      if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit) {
-        const bonusConsumed = await consumeOldestBonusCall(userId);
-        if (bonusConsumed) {
-          return;
-        }
-      }
-
-      if (user.lastCallDate === currentMonth) {
-        await prisma.user.updateMany({
-          where: { id: userId, lastCallDate: currentMonth },
-          data: { dailyCallsUsed: { increment: 1 } },
-        });
-      } else {
-        await prisma.user.updateMany({
-          where: { id: userId },
-          data: { lastCallDate: currentMonth, dailyCallsUsed: 1 },
-        });
-      }
-    } catch (err) {
-      logger.error('recordUserCredit error', {
-        service: 'signaling',
-        event: 'record_user_credit_failed',
-        userId,
-      }, err);
-    }
-  };
-
-  await Promise.allSettled([
-    recordUserCredit(userAId),
-    recordUserCredit(userBId),
-  ]);
-};
-
 export function scheduleAuthoritativeSessionTeardown(
   roomName: string,
   callDurationLimitSeconds: number,
@@ -294,17 +261,8 @@ export function scheduleAuthoritativeSessionTeardown(
           const endedAt = new Date();
           const startTime = roomStartedAt.get(roomName) ?? currentSession.createdAt.getTime();
           const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - startTime) / 1000));
-          const claimed = await prisma.callSession.updateMany({
-            where: { id: currentSession.id, status: 'ACTIVE' },
-            data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
-          });
+          const claimed = await completeCallSession(currentSession.id, { endedAt, duration: durationSeconds });
           if (claimed.count !== 1) return;
-
-          await recordCompletedCallCredits(currentSession.userAId, currentSession.userBId, durationSeconds);
-          await onCallFinishedCheckReferralReward(
-            { id: currentSession.id, userAId: currentSession.userAId, userBId: currentSession.userBId, duration: durationSeconds },
-            effectiveBot ?? undefined
-          ).catch(() => undefined);
 
           const egress = activeEgresses.get(roomName);
           const egressId = egress?.egressId ?? currentSession.egressId;
@@ -353,28 +311,7 @@ export function scheduleAuthoritativeSessionTeardown(
             });
           }
 
-          if (effectiveBot) {
-            await Promise.allSettled([
-              sendPostCallReviewCard(
-                effectiveBot,
-                currentSession.userA.telegramId.toString(),
-                currentSession.id,
-                currentSession.userB.alias,
-                durationSeconds,
-                isUserARecorder ? recordingUrl : undefined,
-                isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : undefined
-              ),
-              sendPostCallReviewCard(
-                effectiveBot,
-                currentSession.userB.telegramId.toString(),
-                currentSession.id,
-                currentSession.userA.alias,
-                durationSeconds,
-                isUserBRecorder ? recordingUrl : undefined,
-                isUserBRecorder ? getEffectiveEntitlement(currentSession.userB).retentionDays : undefined
-              ),
-            ]);
-          }
+          wakePostCallWorker();
         });
       } catch (timeoutErr) {
         logger.error('Server duration timeout execution failed', {
@@ -743,47 +680,18 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             include: { userA: true, userB: true },
           });
           if (activeCall) {
-            const maxDurationMinutes = calculateMixedPlanDuration(activeCall.userA.plan, activeCall.userB.plan);
+            const maxDurationMinutes = calculateEffectiveCallDuration(activeCall.userA, activeCall.userB);
             const maxDurationMs = maxDurationMinutes * 60 * 1000 + 60 * 1000;
             const elapsedMs = Date.now() - activeCall.createdAt.getTime();
             if (elapsedMs > maxDurationMs) {
-              await prisma.callSession.updateMany({
-                where: { id: activeCall.id, status: 'ACTIVE' },
-                data: { status: 'COMPLETED', endedAt: new Date(), duration: maxDurationMinutes * 60 },
-              });
+              await completeCallSession(activeCall.id, { endedAt: new Date(), duration: maxDurationMinutes * 60 });
               clearSessionTimer(activeCall.roomName);
             } else {
-              // Check if any sockets are actually connected to this activeCall room
-              let roomHasLiveSockets = false;
-              try {
-                const sockets = await io.in(activeCall.roomName).fetchSockets();
-                roomHasLiveSockets = sockets.length > 0;
-              } catch {
-                const userASockets = userSockets.get(activeCall.userAId)?.size ?? 0;
-                const userBSockets = userSockets.get(activeCall.userBId)?.size ?? 0;
-                roomHasLiveSockets = (userASockets + userBSockets) > 0;
-              }
-
-              if (!roomHasLiveSockets) {
-                logger.info('Auto-clearing orphaned active call session on join_queue', {
-                  service: 'signaling',
-                  event: 'auto_cleared_orphaned_call',
-                  sessionId: activeCall.id,
-                  roomName: activeCall.roomName,
-                  userId: user.id,
-                });
-                await prisma.callSession.updateMany({
-                  where: { id: activeCall.id, status: 'ACTIVE' },
-                  data: { status: 'CANCELLED', endedAt: new Date(), duration: 0 },
-                });
-                clearSessionTimer(activeCall.roomName);
-              } else {
-                socket.emit('error', {
-                  code: 'CALL_ALREADY_ACTIVE',
-                  message: 'Another session is currently in an active call from this account. Please try again later.',
-                });
-                return;
-              }
+              socket.emit('error', {
+                code: 'CALL_ALREADY_ACTIVE',
+                message: 'Another session is currently in an active call from this account. Please try again later.',
+              });
+              return;
             }
           }
 
@@ -1179,9 +1087,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
-          clearSessionTimer(payload.roomName);
-          clearConnectionHandshakeTimer(payload.roomName);
-
           if (session.status !== 'ACTIVE') {
             socket.emit('call_finished', { duration: session.duration ?? 0 });
             return;
@@ -1190,20 +1095,17 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           const endedAt = new Date();
           const startTime = roomStartedAt.get(payload.roomName) ?? session.createdAt.getTime();
           const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - startTime) / 1000));
-          const claimed = await prisma.callSession.updateMany({
-            where: { id: session.id, status: 'ACTIVE' },
-            data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
+          const claimed = await completeCallSession(session.id, {
+            endedAt, duration: durationSeconds, charge: payload.reason !== 'microphone_permission_denied',
+            reason: payload.reason, deniedUserId: payload.reason === 'microphone_permission_denied' ? requesterId : undefined,
           });
           if (claimed.count !== 1) {
             socket.emit('call_finished', { duration: session.duration ?? 0 });
             return;
           }
 
-          await recordCompletedCallCredits(session.userAId, session.userBId, durationSeconds);
-          await onCallFinishedCheckReferralReward(
-            { id: session.id, userAId: session.userAId, userBId: session.userBId, duration: durationSeconds },
-            bot
-          ).catch(() => undefined);
+          clearSessionTimer(payload.roomName);
+          clearConnectionHandshakeTimer(payload.roomName);
 
           const egress = activeEgresses.get(payload.roomName);
           const egressId = egress?.egressId ?? session.egressId;
@@ -1244,46 +1146,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
 
-          if (bot && payload.reason === 'microphone_permission_denied') {
-            const deniedUser = requesterId === session.userAId ? session.userA : session.userB;
-            const partnerUser = requesterId === session.userAId ? session.userB : session.userA;
-            await Promise.allSettled([
-              bot.api.sendMessage(
-                deniedUser.telegramId.toString(),
-                `🎙️ <b>Call Ended: Microphone Access Denied</b>\n\n` +
-                  `Microphone access was not granted after 3 attempts. Speaking practice requires a working microphone so your partner can hear you.\n\n` +
-                  `💡 <i>Please allow microphone permissions in your browser / Telegram settings before starting your next session.</i>`,
-                { parse_mode: 'HTML' }
-              ),
-              bot.api.sendMessage(
-                partnerUser.telegramId.toString(),
-                `⚠️ <b>Call Disconnected</b>\n\n` +
-                  `Your practice partner was unable to grant microphone permissions. No call limits were consumed for this session.`,
-                { parse_mode: 'HTML' }
-              ),
-            ]);
-          } else if (bot && durationSeconds >= 5) {
-            await Promise.allSettled([
-              sendPostCallReviewCard(
-                bot,
-                session.userA.telegramId.toString(),
-                session.id,
-                session.userB.alias,
-                durationSeconds,
-                isUserARecorder ? recordingUrl : undefined,
-                isUserARecorder ? getEffectiveEntitlement(session.userA).retentionDays : undefined
-              ),
-              sendPostCallReviewCard(
-                bot,
-                session.userB.telegramId.toString(),
-                session.id,
-                session.userA.alias,
-                durationSeconds,
-                isUserBRecorder ? recordingUrl : undefined,
-                isUserBRecorder ? getEffectiveEntitlement(session.userB).retentionDays : undefined
-              ),
-            ]);
-          }
+          wakePostCallWorker();
         });
       } catch (error: unknown) {
         logger.error('Finish call failed', {
@@ -1352,17 +1215,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   const egressId = egress?.egressId ?? currentSession.egressId;
                   const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
 
-                  if (egressId) {
-                    await stopAudioEgress(egressId).catch((stopErr: unknown) => {
-                      logger.error('Disconnect egress stop failed', {
-                        service: 'signaling',
-                        event: 'disconnect_egress_stop_failed',
-                        roomName: session.roomName,
-                      }, stopErr);
-                    });
-                    activeEgresses.delete(session.roomName);
-                  }
-
                   const isUserARecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userAId));
                   const isUserBRecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userBId));
                   const retentionA = isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : 0;
@@ -1372,17 +1224,23 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
                     : null;
 
-                  await prisma.callSession.update({
-                    where: { id: session.id },
-                    data: {
+                  const claimed = await completeCallSession(session.id, {
                       status: isCancelled ? 'CANCELLED' : 'COMPLETED',
                       endedAt,
                       duration: durationSeconds,
                       egressId: egressId ?? null,
                       recordingUrl: recordingUrl ?? null,
                       recordingExpiresAt,
-                    },
                   });
+                  if (claimed.count !== 1) return;
+                  if (egressId) {
+                    await stopAudioEgress(egressId).catch((stopErr: unknown) => {
+                      logger.error('Disconnect egress stop failed', {
+                        service: 'signaling', event: 'disconnect_egress_stop_failed', roomName: session.roomName,
+                      }, stopErr);
+                    });
+                  }
+                  activeEgresses.delete(session.roomName);
 
                   clearSessionTimer(session.roomName);
                   clearConnectionHandshakeTimer(session.roomName);
@@ -1397,36 +1255,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     reason: isCancelled ? 'call_cancelled' : 'partner_disconnected',
                   });
 
-                  if (!isCancelled) {
-                    await recordCompletedCallCredits(currentSession.userAId, currentSession.userBId, durationSeconds);
-                    await onCallFinishedCheckReferralReward(
-                      { id: currentSession.id, userAId: currentSession.userAId, userBId: currentSession.userBId, duration: durationSeconds },
-                      bot
-                    ).catch(() => undefined);
-                  }
-
-                  if (bot && !isCancelled && durationSeconds >= 5) {
-                    await Promise.allSettled([
-                      sendPostCallReviewCard(
-                        bot,
-                        currentSession.userA.telegramId.toString(),
-                        currentSession.id,
-                        currentSession.userB.alias,
-                        durationSeconds,
-                        isUserARecorder ? recordingUrl : undefined,
-                        isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : undefined
-                      ),
-                      sendPostCallReviewCard(
-                        bot,
-                        currentSession.userB.telegramId.toString(),
-                        currentSession.id,
-                        currentSession.userA.alias,
-                        durationSeconds,
-                        isUserBRecorder ? recordingUrl : undefined,
-                        isUserBRecorder ? getEffectiveEntitlement(currentSession.userB).retentionDays : undefined
-                      ),
-                    ]);
-                  }
+                  wakePostCallWorker();
                 });
               } catch (error: unknown) {
                 logger.error('Disconnect session cleanup failed', {
@@ -1475,17 +1304,15 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           continue;
         }
 
-        const callDurationLimitMinutes = calculateMixedPlanDuration(session.userA.plan, session.userB.plan);
+        const callDurationLimitMinutes = calculateEffectiveCallDuration(session.userA, session.userB);
         const callDurationLimitSeconds = callDurationLimitMinutes * 60;
         const elapsedSeconds = Math.floor((now - session.createdAt.getTime()) / 1000);
         const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
 
         if (elapsedSeconds >= callDurationLimitSeconds) {
           const endedAt = new Date();
-          await prisma.callSession.update({
-            where: { id: session.id },
-            data: { status: 'COMPLETED', endedAt, duration: elapsedSeconds },
-          });
+          const claimed = await completeCallSession(session.id, { endedAt, duration: elapsedSeconds });
+          if (claimed.count !== 1) continue;
           await deleteLiveKitRoom(session.roomName);
         } else {
           clearSessionTimer(session.roomName);
@@ -1501,10 +1328,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
                   const endedAt = new Date();
                   const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - current.createdAt.getTime()) / 1000));
-                  await prisma.callSession.update({
-                    where: { id: session.id },
-                    data: { status: 'COMPLETED', endedAt, duration: durationSeconds },
-                  });
+                  const claimed = await completeCallSession(session.id, { endedAt, duration: durationSeconds });
+                  if (claimed.count !== 1) return;
 
                   clearSessionTimer(session.roomName);
                   await deleteLiveKitRoom(session.roomName);
@@ -1586,9 +1411,9 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
         const isPastMaxDurationWithMargin = elapsedMs > (maxDurationMs + 5 * 60 * 1000);
 
         // 2. Condition: both participants disconnected
-        // Allow a 30-second initial grace period after creation to avoid terminating newly matching sessions
+        // Preserve the complete 90-second connection-handshake window.
         let bothParticipantsDisconnected = false;
-        if (elapsedMs >= 30_000) {
+        if (elapsedMs >= 90_000) {
           let roomSocketsCount = 0;
           if (effectiveIo) {
             try {
@@ -1613,6 +1438,7 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
         if (!isPastMaxDurationWithMargin && !bothParticipantsDisconnected) {
           continue;
         }
+        if (!isPastMaxDurationWithMargin && await areCallParticipantsPresent(session.roomName, [session.userAId, session.userBId])) continue;
 
         await runSerialized(roomOperationTails, session.roomName, async () => {
           const current = await prisma.callSession.findUnique({
@@ -1627,13 +1453,10 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
           const targetStatus = isCompleted ? 'COMPLETED' : 'CANCELLED';
           const finalDuration = isCompleted ? Math.min(elapsedSeconds, maxDurationMinutes * 60) : 0;
 
-          const claimed = await prisma.callSession.updateMany({
-            where: { id: session.id, status: 'ACTIVE' },
-            data: {
+          const claimed = await completeCallSession(session.id, {
               status: targetStatus,
               endedAt,
               duration: finalDuration,
-            },
           });
 
           if (claimed.count !== 1) return;
@@ -1688,13 +1511,7 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
             }).catch(() => undefined);
           }
 
-          if (targetStatus === 'COMPLETED' && finalDuration >= 5) {
-            await recordCompletedCallCredits(session.userAId, session.userBId, finalDuration).catch(() => undefined);
-            await onCallFinishedCheckReferralReward(
-              { id: session.id, userAId: session.userAId, userBId: session.userBId, duration: finalDuration },
-              effectiveBot ?? undefined
-            ).catch(() => undefined);
-          }
+          wakePostCallWorker();
 
           if (effectiveIo) {
             effectiveIo.to(session.roomName).emit('call_finished', {

@@ -34,25 +34,35 @@ func main() {
 	// Initialize PostgreSQL pool
 	db, err := database.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("[Gateway] Fatal: database connection failed: %v", err)
+		log.Fatal("[Gateway] Fatal: database connection failed")
 	}
 	defer db.Close()
 	db.AdminTelegramIDs = cfg.AdminTelegramIDs
+	if err := db.RefreshPlanConfiguration(ctx); err != nil {
+		log.Fatal("[Gateway] Fatal: persisted plan configuration is unavailable or invalid")
+	}
 	log.Println("[Gateway] Connected to PostgreSQL pool")
 
 	// Initialize Redis client
 	redisOpts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("[Gateway] Fatal: invalid redis URL: %v", err)
+		log.Fatal("[Gateway] Fatal: invalid Redis configuration")
 	}
+	redisOpts.DialTimeout = 3 * time.Second
+	redisOpts.ReadTimeout = 2 * time.Second
+	redisOpts.WriteTimeout = 2 * time.Second
+	redisOpts.PoolTimeout = 3 * time.Second
+	redisOpts.ContextTimeoutEnabled = true
+	redisOpts.MaxRetries = 1
 	rdb := redis.NewClient(redisOpts)
 	defer rdb.Close()
-
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Printf("[Gateway] Warning: redis ping failed: %v", err)
-	} else {
-		log.Println("[Gateway] Connected to Redis")
+	pingCtx, pingCancel := context.WithTimeout(ctx, 3*time.Second)
+	pingErr := rdb.Ping(pingCtx).Err()
+	pingCancel()
+	if pingErr != nil {
+		log.Fatal("[Gateway] Fatal: Redis is unavailable")
 	}
+	log.Println("[Gateway] Connected to Redis")
 
 	// Initialize Matchmaking Engine
 	matchEngine := matchmaking.NewEngine(rdb)
@@ -105,25 +115,28 @@ func main() {
 	pubsubClient.StartCommandSubscriber(ctx, hub)
 
 	// Initialize Socket.IO Server
-	socketIOServer := signaling.NewSocketIOServer(hub)
+	socketIOServer := signaling.NewSocketIOServer(hub, cfg.OriginAllowed)
 
 	// Initialize Reverse Proxy to Node
-	revProxy, err := proxy.NewReverseProxy(cfg.NodeURL)
+	revProxy, err := proxy.NewReverseProxy(cfg.NodeURL, cfg.TrustedProxyCIDRs...)
 	if err != nil {
 		log.Fatalf("[Gateway] Fatal: invalid node URL for reverse proxy: %v", err)
 	}
 
 	router := gin.New()
+	if err := router.SetTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
+		log.Fatal("[Gateway] Fatal: invalid TRUSTED_PROXY_CIDRS")
+	}
 	router.Use(gin.Recovery())
 
 	// Health endpoint
-	router.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "ok",
-			"service":   "gateway",
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-		})
-	})
+	router.GET("/healthz", readinessHandler(
+		func(ctx context.Context) error {
+			return db.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT id FROM "User" LIMIT 1)`).Scan(new(bool))
+		},
+		func(ctx context.Context) error { return rdb.Ping(ctx).Err() },
+		nodeReadiness(cfg.NodeURL),
+	))
 
 	// Socket.IO endpoint
 	router.Any("/socket.io/*any", socketIOServer.HandleRequest)
@@ -133,10 +146,13 @@ func main() {
 	router.NoRoute(revProxy.Handle)
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      router,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    32 * 1024,
 	}
 
 	go func() {
@@ -152,6 +168,8 @@ func main() {
 	<-quit
 
 	cancel() // Stop background loops immediately during drain
+	hub.Close()
+	socketIOServer.Close()
 	log.Println("[Gateway] Shutting down gateway gracefully...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

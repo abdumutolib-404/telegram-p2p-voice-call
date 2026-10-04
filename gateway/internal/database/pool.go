@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,6 +12,8 @@ import (
 type DB struct {
 	Pool             *pgxpool.Pool
 	AdminTelegramIDs []string
+	plansMu          sync.Mutex
+	plansCheckedAt   time.Time
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*DB, error) {

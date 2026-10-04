@@ -109,3 +109,23 @@ func TestParseStringSliceEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestOriginPolicy(t *testing.T) {
+	cfg := &Config{NodeEnv: "production", AllowedOrigins: []string{"https://app.pairtalk.online/path", "https://web.telegram.org"}}
+	for _, value := range []struct {
+		origin  string
+		allowed bool
+	}{
+		{"", true}, {"https://app.pairtalk.online", true}, {"https://web.telegram.org", true},
+		{"https://app.pairtalk.online.evil.example", false}, {"https://app.pairtalk.online@evil.example", false},
+		{"https://app.pairtalk.online/path", false}, {"null", false}, {"http://127.0.0.1:4173", false},
+	} {
+		if cfg.OriginAllowed(value.origin) != value.allowed {
+			t.Errorf("origin policy mismatch for %q", value.origin)
+		}
+	}
+	cfg.NodeEnv = "development"
+	if !cfg.OriginAllowed("http://127.0.0.1:4173") || cfg.OriginAllowed("http://127.0.0.1.evil.example:4173") {
+		t.Fatal("development loopback policy failed")
+	}
+}

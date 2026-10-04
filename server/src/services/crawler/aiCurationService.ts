@@ -1,7 +1,21 @@
-import { GoogleGenerativeAI, SchemaType, ResponseSchema } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerativeModel, SchemaType, ResponseSchema } from '@google/generative-ai';
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { CANONICAL_TOPIC_SLUGS, classifyTopic, normalizeToCanonicalSlug } from './taxonomy';
+
+async function generateWithDeadline(model: GenerativeModel, prompt: string, timeoutMs: number) {
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Gemini request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  try { return await Promise.race([model.generateContent(prompt, { signal: controller.signal }), deadline]); }
+  finally { clearTimeout(timer); }
+}
 
 export interface GeminiConnectionState {
   status: 'CONNECTED' | 'FAILED' | 'NOT_CONFIGURED';
@@ -525,15 +539,9 @@ export class AiCurationService {
         const genAI = new GoogleGenerativeAI(apiKey);
         for (const modelName of modelsToTry) {
           lastAttemptedModel = modelName;
-          let timeoutId: NodeJS.Timeout | undefined;
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('Gemini ping timed out after 10000ms')), 10000);
-            if (typeof timeoutId.unref === 'function') timeoutId.unref();
-          });
-
           try {
             const model = genAI.getGenerativeModel({ model: modelName });
-            const response = await Promise.race([model.generateContent('ping'), timeoutPromise]);
+            const response = await generateWithDeadline(model, 'ping', 10000);
             if (response) {
               succeededModel = modelName;
               this.activeModel = modelName;
@@ -541,8 +549,6 @@ export class AiCurationService {
             }
           } catch (err) {
             lastErr = err;
-          } finally {
-            if (timeoutId) clearTimeout(timeoutId);
           }
         }
 
@@ -552,15 +558,9 @@ export class AiCurationService {
           for (const discoveredModel of discovered) {
             if (modelsToTry.includes(discoveredModel)) continue;
             lastAttemptedModel = discoveredModel;
-            let timeoutId: NodeJS.Timeout | undefined;
-            const timeoutPromise = new Promise<never>((_, reject) => {
-              timeoutId = setTimeout(() => reject(new Error('Gemini ping timed out after 10000ms')), 10000);
-              if (typeof timeoutId.unref === 'function') timeoutId.unref();
-            });
-
             try {
               const model = genAI.getGenerativeModel({ model: discoveredModel });
-              const response = await Promise.race([model.generateContent('ping'), timeoutPromise]);
+              const response = await generateWithDeadline(model, 'ping', 10000);
               if (response) {
                 succeededModel = discoveredModel;
                 this.activeModel = discoveredModel;
@@ -568,8 +568,6 @@ export class AiCurationService {
               }
             } catch (err) {
               lastErr = err;
-            } finally {
-              if (timeoutId) clearTimeout(timeoutId);
             }
           }
         }
@@ -736,7 +734,7 @@ export class AiCurationService {
             systemInstruction: SYSTEM_INSTRUCTION,
           });
 
-          const response = await model.generateContent(prompt);
+          const response = await generateWithDeadline(model, prompt, 30000);
           responseText = response.response.text();
           if (responseText) {
             succeededModel = modelName;
@@ -763,7 +761,7 @@ export class AiCurationService {
                 },
                 systemInstruction: `${SYSTEM_INSTRUCTION}\nOutput must be a valid JSON array of objects with keys: index (number), isValidIeltsSpeaking (boolean), rejectionReason (string or null), part (PART_1, PART_2, or PART_3), canonicalTopicSlug (string), cleanedText (string).`,
               });
-              const response = await promptJsonModel.generateContent(prompt);
+              const response = await generateWithDeadline(promptJsonModel, prompt, 30000);
               responseText = response.response.text();
               if (responseText) {
                 succeededModel = modelName;
@@ -794,7 +792,7 @@ export class AiCurationService {
               systemInstruction: SYSTEM_INSTRUCTION,
             });
 
-            const response = await model.generateContent(prompt);
+            const response = await generateWithDeadline(model, prompt, 30000);
             responseText = response.response.text();
             if (responseText) {
               succeededModel = discoveredModel;

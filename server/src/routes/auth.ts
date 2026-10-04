@@ -90,10 +90,12 @@ router.post('/verify', authLimiter, async (req, res) => {
       return;
     }
 
-    if (dbUser.isBanned && dbUser.bannedUntil && new Date(dbUser.bannedUntil) > now) {
-      const remainingSeconds = Math.max(0, Math.ceil((new Date(dbUser.bannedUntil).getTime() - now.getTime()) / 1000));
+    if (dbUser.isBanned && (!dbUser.bannedUntil || new Date(dbUser.bannedUntil) > now)) {
+      const remainingSeconds = dbUser.bannedUntil
+        ? Math.max(0, Math.ceil((new Date(dbUser.bannedUntil).getTime() - now.getTime()) / 1000))
+        : null;
       res.status(403).json({
-        error: 'Account is temporarily suspended.',
+        error: dbUser.bannedUntil ? 'Account is temporarily suspended.' : 'Account is suspended pending review.',
         code: 'suspended',
         reason: 'suspended',
         status: 'suspended',

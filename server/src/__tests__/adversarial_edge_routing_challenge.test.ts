@@ -1,25 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { app } from '../index';
+import fs from 'node:fs';
+import path from 'node:path';
+// These integration-level route tests can run before frontend builds on a fresh checkout.
+// Dedicated frontendRouting tests always use all three built-shell fixtures.
+const privateFrontendStatus = (name: 'client' | 'admin') => [
+  path.resolve(__dirname, '../../public', name, 'index.html'),
+  path.resolve(__dirname, '../../../', name, 'dist/index.html'),
+].some(file => fs.existsSync(file)) ? 200 : 503;
 
 describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Rendered SEO', () => {
   describe('A. Edge Routing & Subdomain Boundary Stress Cases', () => {
-    it('redirects uppercase and mixed-case app subdomains (APP.PAIRTALK.ONLINE)', async () => {
+    it('loads the non-indexable Mini App shell for uppercase and mixed-case app subdomains (APP.PAIRTALK.ONLINE)', async () => {
       const res = await request(app)
         .get('/dashboard')
         .set('Host', 'APP.PAIRTALK.ONLINE');
 
-      expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('https://pairtalk.online');
+      expect(res.status).toBe(privateFrontendStatus('client'));
+      expect(res.headers.location).toBeUndefined();
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
     });
 
-    it('redirects app subdomain when custom ports are specified (app.pairtalk.online:8443)', async () => {
+    it('loads the non-indexable Mini App shell for app subdomain when custom ports are specified (app.pairtalk.online:8443)', async () => {
       const res = await request(app)
         .get('/practice')
         .set('Host', 'app.pairtalk.online:8443');
 
-      expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('https://pairtalk.online');
+      expect(res.status).toBe(privateFrontendStatus('client'));
+      expect(res.headers.location).toBeUndefined();
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
     });
 
     it('redirects api subdomain with port (api.pairtalk.online:3000) on non-api routes', async () => {
@@ -36,8 +46,9 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
         .get('/')
         .set('X-Forwarded-Host', 'App.PairTalk.Online:443');
 
-      expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('https://pairtalk.online');
+      expect(res.status).toBe(privateFrontendStatus('client'));
+      expect(res.headers.location).toBeUndefined();
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
     });
 
     it('bypasses redirect on app.pairtalk.online when session_token cookie is present', async () => {
@@ -46,7 +57,7 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
         .set('Host', 'app.pairtalk.online')
         .set('Cookie', 'session_token=valid-jwt-token-12345');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -56,7 +67,7 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
         .set('Host', 'app.pairtalk.online')
         .set('Cookie', 'admin_session=valid-admin-session-xyz');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -66,7 +77,7 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
         .set('Host', 'app.pairtalk.online')
         .set('Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -75,7 +86,7 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
         .get('/?tgWebAppStartParam=ref_friend_12345')
         .set('Host', 'app.pairtalk.online');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -84,7 +95,7 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
         .get('/?tgWebAppPlatform=ios&tgWebAppVersion=7.10')
         .set('Host', 'app.pairtalk.online');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -101,7 +112,7 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
           .set('Host', 'app.pairtalk.online')
           .set('User-Agent', ua);
 
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(privateFrontendStatus('client'));
       }
     });
 
@@ -118,7 +129,7 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
           .set('Host', 'app.pairtalk.online')
           .set('Referer', ref);
 
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(privateFrontendStatus('client'));
       }
     });
 
@@ -134,7 +145,8 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
           .get('/')
           .set('Host', host);
 
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(privateFrontendStatus('admin'));
+        expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
       }
     });
 
@@ -226,91 +238,32 @@ describe('Adversarial Stress Test: Server Edge Routing, Robots, Sitemap & Pre-Re
     });
   });
 
-  describe('D. Pre-Rendered SEO HTML & Schema.org JSON-LD Syntactic Integrity', () => {
-    it('extracts and validates Schema.org JSON-LD payload with JSON.parse()', async () => {
-      const res = await request(app).get('/');
-      expect(res.status).toBe(200);
-      const html = res.text;
-
-      const scriptMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-      expect(scriptMatch).not.toBeNull();
-      const rawJson = scriptMatch![1].trim();
-
-      // Syntactic parsing stress test
-      let parsedSchema: any;
-      expect(() => {
-        parsedSchema = JSON.parse(rawJson);
-      }).not.toThrow();
-
-      expect(parsedSchema['@context']).toBe('https://schema.org');
-      expect(Array.isArray(parsedSchema['@graph'])).toBe(true);
-      expect(parsedSchema['@graph'].length).toBe(3);
-
-      // Verify SoftwareApplication Entity
-      const softApp = parsedSchema['@graph'].find((item: any) =>
-        Array.isArray(item['@type']) && item['@type'].includes('SoftwareApplication')
-      );
-      expect(softApp).toBeDefined();
-      expect(softApp.name).toBe('PairTalk');
-      expect(softApp.offers.length).toBe(4);
-      expect(softApp.offers.map((o: any) => o.name)).toEqual(['FREE Tier', 'PLUS Plan', 'PRO Plan', 'BOSS Plan']);
-
-      // Verify EducationalOrganization Entity
-      const eduOrg = parsedSchema['@graph'].find((item: any) =>
-        item['@type'] === 'EducationalOrganization'
-      );
-      expect(eduOrg).toBeDefined();
-      expect(eduOrg.name).toBe('PairTalk IELTS Speaking Network');
-      expect(eduOrg.contactPoint.url).toBe('https://t.me/PairTalkSupport');
-      expect(eduOrg.knowsAbout).toContain('IELTS Speaking Exam 2026');
-
-      // Verify FAQPage Entity with full Q&A matrix
-      const faqPage = parsedSchema['@graph'].find((item: any) =>
-        item['@type'] === 'FAQPage'
-      );
-      expect(faqPage).toBeDefined();
-      expect(Array.isArray(faqPage.mainEntity)).toBe(true);
-      expect(faqPage.mainEntity.length).toBe(10);
-
-      // Ensure every question has acceptedAnswer with valid non-empty text
-      for (const qa of faqPage.mainEntity) {
-        expect(qa['@type']).toBe('Question');
-        expect(typeof qa.name).toBe('string');
-        expect(qa.name.length).toBeGreaterThan(10);
-        expect(qa.acceptedAnswer['@type']).toBe('Answer');
-        expect(typeof qa.acceptedAnswer.text).toBe('string');
-        expect(qa.acceptedAnswer.text.length).toBeGreaterThan(20);
+  describe('D. Public fallback SEO integrity', () => {
+    it('parses structured entities and verifies their canonical identities', async () => {
+      const html = (await request(app).get('/')).text;
+      const match = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+      expect(match).not.toBeNull();
+      const schema = JSON.parse(match![1]);
+      expect(schema['@context']).toBe('https://schema.org');
+      expect(schema['@graph']).toHaveLength(3);
+      for (const entity of schema['@graph']) {
+        expect(entity.name).toBe('PairTalk');
+        expect(entity.url).toBe('https://pairtalk.online/');
+        expect(entity['@id']).toMatch(/^https:\/\/pairtalk\.online\/#/);
+        expect(entity.aggregateRating).toBeUndefined();
+        expect(entity.review).toBeUndefined();
       }
     });
 
-    it('verifies OpenGraph, Twitter Cards, and Google Trends power keywords', async () => {
-      const res = await request(app).get('/');
-      const html = res.text;
-
-      // High-CTR copy check
-      expect(html).toContain('Partner ghosted you again? No more excuses.');
-      expect(html).toContain('Stop waiting for your study buddy to reply. Get matched with a live IELTS partner in < 3 seconds.');
-      expect(html).toContain('https://pairtalk.online/plans_pricing.jpg');
-      expect(html).toContain('name="twitter:card" content="summary_large_image"');
-
-      // Canonical link check
-      expect(html).toContain('<link rel="canonical" href="https://pairtalk.online/" />');
-
-      // Power keywords
-      const keywords = [
-        'ielts speaking 2026',
-        'ielts speaking band descriptors',
-        'ielts speaking part 1',
-        'ielts speaking part 2',
-        'ielts speaking part 3',
-        'ielts pronunciation practice',
-        'ielts price',
-        'ielts 6.5 speaking',
-        'ielts band 7 speaking',
-      ];
-      for (const kw of keywords) {
-        expect(html).toContain(kw);
-      }
+    it('keeps the public fallback readable without JavaScript or invalid social assets', async () => {
+      const html = (await request(app).get('/')).text;
+      expect(html).toContain('<html lang="en">');
+      expect(html).toContain('<main>');
+      expect(html).toContain('name="viewport" content="width=device-width, initial-scale=1"');
+      expect(html).not.toContain('/src/main.tsx');
+      expect(html).not.toContain('plans_pricing.jpg');
+      expect(html).not.toContain('Partner ghosted you again?');
+      expect(html).not.toContain('guarantee');
     });
   });
 });

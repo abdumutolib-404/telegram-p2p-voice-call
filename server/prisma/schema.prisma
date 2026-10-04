@@ -11,6 +11,7 @@ generator client {
 model NotificationJob {
   id            String   @id @default(uuid())
   namespace     String
+  dedupeKey     String?
   telegramId    String
   text          String
   optionsJson   String?
@@ -24,6 +25,28 @@ model NotificationJob {
   updatedAt     DateTime @updatedAt
 
   @@index([namespace, status, nextAttemptAt])
+  @@unique([namespace, dedupeKey])
+}
+
+// Written in the same transaction as completion; Redis events are only wake-up hints.
+model PostCallJob {
+  callId        String      @id
+  call          CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  reason        String?
+  deniedUserId  String?
+  retentionA    Int         @default(0)
+  retentionB    Int         @default(0)
+  status        String      @default("QUEUED")
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  leaseUntil    DateTime?
+  owner         String?
+  failure       String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseUntil])
 }
 
 model User {
@@ -91,6 +114,7 @@ model CallSession {
   endedAt            DateTime?
 
   ratings            CallRating[]
+  postCallJob        PostCallJob?
 
   @@index([userAId, status, createdAt])
   @@index([userBId, status, createdAt])

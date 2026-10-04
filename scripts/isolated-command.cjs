@@ -2,8 +2,8 @@ const fs=require('node:fs'),path=require('node:path'),{spawnSync,spawn}=require(
 const runtime=JSON.parse(fs.readFileSync(process.argv[2],'utf8')),action=process.argv[3];
 if(!/^postgresql:\/\/[^@]+@127\.0\.0\.1:55432\/pairtalk_check$/.test(runtime.DATABASE_URL)||runtime.REDIS_URL!=='redis://127.0.0.1:56379')throw new Error('Only dedicated loopback verification services are permitted.');
 const root=path.resolve(__dirname,'..'),server=path.join(root,'server'),env=require('./safe-environment.cjs')({...runtime,NODE_ENV:'development',HOST:'127.0.0.1',BOT_TOKEN:'123456789:'+require('node:crypto').randomBytes(24).toString('base64url')});delete env.names;
-const commands={migrate:[path.join(server,'node_modules/prisma/build/index.js'),'migrate','deploy'],integration:[path.join(server,'node_modules/ts-node/dist/bin.js'),'-T','--project',path.join(server,'tsconfig.json'),path.join(root,'scripts/isolated-integration.ts')],runtime:[path.join(server,'dist/index.js')]};
-if(!commands[action])throw new Error('Use migrate, integration or runtime');
+const commands={schema:[path.join(server,'node_modules/prisma/build/index.js'),'migrate','diff','--from-schema-datasource','prisma/schema.prisma','--to-schema-datamodel','prisma/schema.prisma','--exit-code'],migrate:[path.join(server,'node_modules/prisma/build/index.js'),'migrate','deploy'],integration:[path.join(server,'node_modules/ts-node/dist/bin.js'),'-T','--project',path.join(server,'tsconfig.json'),path.join(root,'scripts/isolated-integration.ts')],runtime:[path.join(server,'dist/index.js')]};
+if(!commands[action])throw new Error('Use schema, migrate, integration or runtime');
 if(action==='runtime') {
  const child=spawn(process.execPath,commands[action],{cwd:server,env,stdio:['ignore','pipe','pipe']});
  const log=path.join(path.dirname(process.argv[2]),'backend-redacted.log');

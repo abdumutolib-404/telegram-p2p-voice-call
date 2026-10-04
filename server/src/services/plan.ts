@@ -4,6 +4,7 @@ import { getRedis } from '../config/redis';
 import { createCanonicalError } from '../types/canonical';
 import { lockRow } from '../utils/transactionLock';
 import { decodePaymentProof } from '../utils/paymentProof';
+import type { Prisma } from '@prisma/client';
 
 export interface PlanTierConfig {
   name: string;
@@ -269,10 +270,11 @@ export function getEffectiveEntitlement(user: {
   };
 }
 
-export async function getUserCallsUsedThisPeriod(userId: string, user?: any): Promise<number> {
+export async function getUserCallsUsedThisPeriod(userId: string, user?: any, transaction?: Pick<Prisma.TransactionClient, 'user' | 'callSession'>): Promise<number> {
+  const database = transaction ?? prisma;
   try {
     const currentMonth = new Date().toISOString().slice(0, 7);
-    const targetUser = user || (await prisma.user.findUnique({ where: { id: userId } }));
+    const targetUser = user || (await database.user.findUnique({ where: { id: userId } }));
     if (!targetUser) return 0;
 
     if (targetUser.lastCallDate && targetUser.lastCallDate.startsWith(currentMonth)) {
@@ -281,7 +283,8 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any): Pr
       }
     }
 
-    let periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const now = new Date();
+    let periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     if (targetUser.subscriptionExpiresAt) {
       const expiresAt = new Date(targetUser.subscriptionExpiresAt);
       if (expiresAt > new Date()) {
@@ -289,7 +292,7 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any): Pr
         periodStart = new Date(expiresAt.getTime() - durationDays * 24 * 60 * 60 * 1000);
       }
     }
-    const count = await prisma.callSession.count({
+    const count = await database.callSession.count({
       where: {
         OR: [{ userAId: userId }, { userBId: userId }],
         status: 'COMPLETED',
@@ -299,7 +302,7 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any): Pr
     });
     return count;
   } catch (error) {
-    if (env.NODE_ENV !== 'test') throw error;
+    if (env.NODE_ENV !== 'test' || transaction) throw error;
     return 0;
   }
 }
@@ -318,7 +321,8 @@ export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any
       return Math.max(0, targetUser.recordingsUsed);
     }
 
-    let periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const now = new Date();
+    let periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     if (targetUser.subscriptionExpiresAt) {
       const expiresAt = new Date(targetUser.subscriptionExpiresAt);
       if (expiresAt > new Date()) {
@@ -328,21 +332,24 @@ export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any
     }
     const count = await prisma.callSession.count({
       where: {
-        OR: [
+        AND: [{ OR: [{ userAId: userId }, { userBId: userId }] }, { OR: [
           { recordedByUserId: userId },
           { recordedByUserId: 'BOTH' },
+          { recordedByUserId: 'ALL' },
           { recordedByUserId: null, userAId: userId },
           { recordedByUserId: null, userBId: userId },
-          { userAId: userId, recordedByUserId: { contains: ',' } },
-          { userBId: userId, recordedByUserId: { contains: ',' } },
-        ],
+          { recordedByUserId: { startsWith: `${userId},` } },
+          { recordedByUserId: { endsWith: `,${userId}` } },
+          { recordedByUserId: { contains: `,${userId},` } },
+        ] }],
         recordingUrl: { not: null },
         createdAt: { gte: periodStart },
       },
     });
 
     return count;
-  } catch {
+  } catch (error) {
+    if (env.NODE_ENV !== 'test') throw error;
     return 0;
   }
 }

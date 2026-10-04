@@ -54,7 +54,7 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
 
   try {
     // Session lookup: egressId is the primary identifier for egress lifecycle events.
-    // roomName (generated as a cryptographically unique UUID) is used as a fallback for egress_started where egressId may not yet be persisted.
+    // The unique room identifies legacy stopped recordings whose egress ID was cleared.
     const session = await prisma.callSession.findFirst({
       where: {
         OR: [
@@ -75,14 +75,23 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
       return;
     }
 
+    if (!egressId || (session.egressId && session.egressId !== egressId) || (roomName && roomName !== session.roomName) || (eventName === 'egress_started' && !session.egressId)) {
+      // Signaling atomically binds a successful start. An early callback must not steal that claim,
+      // and a stopped losing start must not overwrite another recording in the same room.
+      logger.info('Ignored untracked or mismatched egress notification', { service: 'livekit', event: 'webhook_egress_ignored', sessionId: session.id });
+      res.status(200).send('OK');
+      return;
+    }
+    const recordingOwner = { id: session.id, egressId: session.egressId };
+
     if (eventName === 'egress_started') {
-      await prisma.callSession.update({
-        where: { id: session.id },
+      const updated = await prisma.callSession.updateMany({
+        where: recordingOwner,
         data: {
-          status: session.status,
           egressId,
         },
       });
+      if (updated.count !== 1) { res.status(200).send('OK'); return; }
       logger.info('LiveKit recording active', {
         service: 'livekit',
         event: 'recording_active',
@@ -108,20 +117,22 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
             storageKey,
           });
 
-          await prisma.callSession.update({
-            where: { id: session.id },
+          const updated = await prisma.callSession.updateMany({
+            where: recordingOwner,
             data: {
               recordingUrl: null,
             },
           });
+          if (updated.count !== 1) { res.status(200).send('OK'); return; }
         } else {
-          await prisma.callSession.update({
-            where: { id: session.id },
+          const updated = await prisma.callSession.updateMany({
+            where: recordingOwner,
             data: {
               egressId,
               recordingUrl: storageKey,
             },
           });
+          if (updated.count !== 1) { res.status(200).send('OK'); return; }
 
           logger.info('LiveKit recording completed', {
             service: 'livekit',
@@ -143,12 +154,13 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
           error: egressInfo.error,
         });
 
-        await prisma.callSession.update({
-          where: { id: session.id },
+        const updated = await prisma.callSession.updateMany({
+          where: recordingOwner,
           data: {
             recordingUrl: null,
           },
         });
+        if (updated.count !== 1) { res.status(200).send('OK'); return; }
       }
     }
   } catch (dbErr: unknown) {

@@ -34,7 +34,12 @@ export const App: React.FC = () => {
   });
 
   // 2. Application Core State Machine (unconditional)
-  const [appState, setAppState] = useState<AppState>('idle');
+  const [appState, setAppStateValue] = useState<AppState>('idle');
+  const appStateRef = useRef<AppState>('idle');
+  const setAppState = useCallback((state: AppState) => {
+    appStateRef.current = state;
+    setAppStateValue(state);
+  }, []);
   const [lockdownReason, setLockdownReason] = useState<LockdownReason>('browser_direct');
   const [lockdownBannedUntil, setLockdownBannedUntil] = useState<string | null>(null);
   const [lockdownRetrySeconds, setLockdownRetrySeconds] = useState<number>(30);
@@ -61,12 +66,10 @@ export const App: React.FC = () => {
   const [synchronizedStartedAt, setSynchronizedStartedAt] = useState<number | null>(null);
 
   // 3. Refs (unconditional)
-  const appStateRef = useRef<AppState>(appState);
   const hasJoinedQueueRef = useRef(false);
-
-  useEffect(() => {
-    appStateRef.current = appState;
-  }, [appState]);
+  const matchAttemptRef = useRef(0);
+  const authAttemptRef = useRef(0);
+  const authControllerRef = useRef<AbortController | null>(null);
 
   // Sync hash routing for guidelines and privacy views
   useEffect(() => {
@@ -103,6 +106,7 @@ export const App: React.FC = () => {
     analyserNode,
     getRoom,
     isPartnerConnected,
+    error: voiceError,
   } = useLiveKit();
 
   // 5. Match Found Callback (unconditional)
@@ -112,6 +116,8 @@ export const App: React.FC = () => {
         console.warn(`Ignoring late match_found event because app state is ${appStateRef.current}`);
         return;
       }
+
+      const attempt = ++matchAttemptRef.current;
 
       const livekitToken = data.livekitToken || data.token || '';
       const callDurationLimit = data.callDurationLimit ?? data.maxDurationSeconds ?? 900;
@@ -130,6 +136,7 @@ export const App: React.FC = () => {
 
       try {
         await connectLiveKit(livekitUrl, livekitToken);
+        if (attempt !== matchAttemptRef.current) return;
 
         const currentState = appStateRef.current as AppState;
         if (currentState === 'ended' || currentState === 'idle') {
@@ -140,16 +147,21 @@ export const App: React.FC = () => {
         setAppState('in_call');
         socketService.peerReady(data.roomName);
       } catch (err) {
+        if (attempt !== matchAttemptRef.current || (err instanceof Error && err.name === 'AbortError')) return;
         console.error('Failed to establish audio connection:', err);
         setErrorMessage('Unable to establish voice connection. Please try again.');
         setAppState('ended');
       }
     },
-    [connectLiveKit, disconnectLiveKit]
+    [connectLiveKit, disconnectLiveKit, setAppState]
   );
 
   // 6. Telegram WebApp Initialization & Deterministic Access-Control Verification (unconditional)
   const initAuth = useCallback(async () => {
+    const attempt = ++authAttemptRef.current;
+    authControllerRef.current?.abort();
+    const controller = new AbortController();
+    authControllerRef.current = controller;
     logger.info('BOOT', 'APP_BOOT: Initializing deterministic access control check');
 
     const tgPresent = Boolean(window.Telegram);
@@ -188,8 +200,9 @@ export const App: React.FC = () => {
 
     // Poll up to 1000ms (10 x 100ms) to allow Telegram WebApp SDK script to finish initializing
     if (!rawInitData) {
-      for (let attempt = 0; attempt < 10; attempt++) {
+      for (let pollIndex = 0; pollIndex < 10; pollIndex++) {
         await new Promise((resolve) => setTimeout(resolve, 100));
+        if (attempt !== authAttemptRef.current || controller.signal.aborted) return;
         rawInitData = getRawInitData();
         if (rawInitData) break;
       }
@@ -198,7 +211,8 @@ export const App: React.FC = () => {
     // Gate 1: Non-Telegram or Missing InitData Check
     if (!rawInitData || rawInitData.trim() === '') {
       logger.warn('TELEGRAM', 'TELEGRAM_INIT_DATA_MISSING');
-      const isTelegramWebview = webAppPresent || /Telegram/i.test(navigator.userAgent);
+      const webApp = window.Telegram?.WebApp;
+      const isTelegramWebview = Boolean(webApp && webApp.platform !== 'unknown') || /Telegram/i.test(navigator.userAgent);
       const reason: LockdownReason = isTelegramWebview ? 'telegram_no_initdata' : 'browser_direct';
       setLockdownReason(reason);
       setErrorMessage(
@@ -216,16 +230,22 @@ export const App: React.FC = () => {
 
     const tg = window.Telegram?.WebApp;
     if (tg) {
-      tg.ready();
-      tg.expand();
+      try { tg.ready(); tg.expand(); }
+      catch { logger.warn('TELEGRAM', 'Telegram window expansion is unavailable.'); }
     }
 
     // Gate 2-5: Verify initData with server to evaluate rate-limits, account moderation, and quota
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 20000);
+    const ensureCurrent = () => {
+      if (attempt !== authAttemptRef.current || controller.signal.aborted) throw new DOMException('Authentication request cancelled.', 'AbortError');
+    };
     try {
       const serverUrl = (import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
       logger.info('AUTH', `AUTH_REQUEST_STARTED: Calling /api/auth/verify on ${serverUrl || 'same-origin'}`);
 
       const res = await fetch(`${serverUrl}/api/auth/verify`, {
+        signal: controller.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -233,32 +253,35 @@ export const App: React.FC = () => {
         },
         body: JSON.stringify({ initData: rawInitData }),
       });
+      ensureCurrent();
 
       logger.info('AUTH', `AUTH_RESPONSE_RECEIVED: HTTP ${res.status}`);
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        ensureCurrent();
+        const errorCode = typeof errData.code === 'string' ? errData.code.toUpperCase() : '';
         
         // Deterministic Error Gate Classification
-        if (res.status === 429 || errData.code === 'RATE_LIMITED') {
+        if (res.status === 429 || errorCode === 'RATE_LIMITED') {
           logger.warn('AUTH', 'RATE_LIMITED: Client rate limit threshold reached');
           setLockdownReason('rate_limited');
           setLockdownRetrySeconds(errData.retryAfterSeconds || 30);
           setErrorMessage(errData.message || 'Request threshold exceeded. System cooldown engaged.');
-        } else if (errData.code === 'BANNED' || errData.isPermanentlyBanned) {
+        } else if (errorCode === 'BANNED' || errData.isPermanentlyBanned) {
           logger.error('AUTH', 'BANNED: Permanent account lock');
           setLockdownReason('banned');
-          setErrorMessage(errData.message || 'Your account has been permanently restricted due to guideline violations.');
-        } else if (errData.code === 'SUSPENDED' || errData.bannedUntil) {
+          setErrorMessage(errData.error || errData.message || 'Your account has been permanently restricted due to guideline violations.');
+        } else if (errorCode === 'SUSPENDED' || errData.bannedUntil) {
           logger.warn('AUTH', 'SUSPENDED: Temporary suspension active');
           setLockdownReason('suspended');
           setLockdownBannedUntil(errData.bannedUntil || null);
-          setErrorMessage(errData.message || 'Your account is under temporary moderation suspension.');
-        } else if (errData.code === 'QUOTA_EXHAUSTED') {
+          setErrorMessage(errData.error || errData.message || 'Your account is suspended pending review.');
+        } else if (errorCode === 'QUOTA_EXHAUSTED') {
           logger.warn('AUTH', 'QUOTA_EXHAUSTED: Monthly practice calls depleted');
           setLockdownReason('exhausted_quota');
           setErrorMessage(errData.message || 'You have exhausted your monthly call limit.');
-        } else if (res.status === 403 || errData.code === 'AUTH_REJECTED') {
+        } else if (res.status === 403 || errorCode === 'AUTH_REJECTED') {
           logger.error('AUTH', 'AUTH_REJECTED: Server rejected initData signature');
           setLockdownReason('auth_rejected');
           setErrorMessage(errData.error || errData.message || 'Authentication failed or session expired.');
@@ -273,6 +296,7 @@ export const App: React.FC = () => {
       }
 
       const data = await res.json();
+      ensureCurrent();
       if (data.success && data.user) {
         logger.info('AUTH', 'AUTH_SUCCESS: Profile verified');
 
@@ -312,12 +336,21 @@ export const App: React.FC = () => {
 
         // Check if there is an active call session (e.g. direct call accepted or reconnect)
         try {
-          const activeUrl = `${serverUrl}/api/calls/active${window.location.search || ''}`;
+          const currentParams = new URLSearchParams(window.location.search);
+          const activeParams = new URLSearchParams();
+          for (const key of ['active_call', 'sessionId']) {
+            const value = currentParams.get(key);
+            if (value) activeParams.set(key, value);
+          }
+          const activeUrl = `${serverUrl}/api/calls/active${activeParams.size ? '?' + activeParams.toString() : ''}`;
           const activeRes = await fetch(activeUrl, {
+            signal: controller.signal,
             headers: { 'x-telegram-init-data': rawInitData },
           });
+          ensureCurrent();
           if (activeRes.ok) {
             const activeData = await activeRes.json();
+            ensureCurrent();
             if (activeData.hasActiveCall) {
               setPendingDirectCall({
                 roomName: activeData.roomName,
@@ -332,6 +365,7 @@ export const App: React.FC = () => {
             }
           }
         } catch (activeErr) {
+          ensureCurrent();
           console.warn('Active call check warning:', activeErr);
         }
 
@@ -343,24 +377,45 @@ export const App: React.FC = () => {
         setAppState('lockdown');
       }
     } catch (err) {
+      if (attempt !== authAttemptRef.current || (controller.signal.aborted && !timedOut)) return;
       const errorMsg = err instanceof Error ? err.message : String(err);
       logger.error('AUTH', `AUTH_NETWORK_ERROR: ${errorMsg}`);
       setLockdownReason('server_unavailable');
-      setErrorMessage('Network error connecting to backend server cluster.');
+      setErrorMessage(timedOut ? 'The server took too long to respond. Please try again.' : 'Network error connecting to backend server cluster.');
       setAppState('lockdown');
+    } finally {
+      clearTimeout(timeout);
     }
-  }, [handleMatchFound]);
+  }, [setAppState]);
 
   // 7. Trigger Init Auth on Mount (unconditional)
+  const cancelAuth = useCallback(() => {
+    authAttemptRef.current++;
+    authControllerRef.current?.abort();
+  }, []);
+
   useEffect(() => {
-    initAuth();
-  }, [initAuth]);
+    void initAuth();
+    return () => {
+      cancelAuth();
+      socketService.disconnect();
+    };
+  }, [initAuth, cancelAuth]);
 
   // 8. Call Ended Handler (unconditional)
   const handleCallEnded = useCallback(() => {
+    matchAttemptRef.current++;
     disconnectLiveKit();
+    setSynchronizedStartedAt(null);
     setAppState('ended');
-  }, [disconnectLiveKit]);
+  }, [disconnectLiveKit, setAppState]);
+
+  useEffect(() => {
+    if (!voiceError || appStateRef.current !== 'in_call') return;
+    if (matchData) socketService.finishCall(matchData.roomName, userData.userId, 'voice_disconnected');
+    setErrorMessage(voiceError);
+    handleCallEnded();
+  }, [voiceError, matchData, userData.userId, handleCallEnded]);
 
   // 9. Socket Connection & Event Listeners (unconditional)
   useEffect(() => {
@@ -385,6 +440,7 @@ export const App: React.FC = () => {
         'RECORDING_STOP_FAILED',
         'PAYMENT_RATE_LIMITED',
         'ALREADY_IN_PROGRESS',
+        'CALL_ALREADY_ACTIVE',
       ];
 
       // If user is currently in a call and gets a recording/non-fatal error, do NOT end the call
@@ -394,13 +450,29 @@ export const App: React.FC = () => {
       }
 
       setErrorMessage(msg);
-      setAppState('ended');
+      handleCallEnded();
+    };
+
+    const onConnectError = () => {
+      if (appStateRef.current !== 'radar') return;
+      socketService.cancelQueue(userData.userId);
+      setErrorMessage('Unable to connect to matchmaking. Check your connection and try again.');
+      handleCallEnded();
+    };
+    const onReconnectFailed = () => {
+      const state = appStateRef.current;
+      if (state !== 'radar' && state !== 'connecting' && state !== 'in_call') return;
+      if (state === 'radar') socketService.cancelQueue(userData.userId);
+      setErrorMessage('The connection to the call server was lost. Check your connection and try again.');
+      handleCallEnded();
     };
 
     socket.on('match_found', onMatch);
     socket.on('call_started', onCallStarted);
     socket.on('call_finished', handleCallEnded);
     socket.on('error', onSocketError);
+    socket.on('connect_error', onConnectError);
+    socket.io.on('reconnect_failed', onReconnectFailed);
 
     // Auto-join queue when in radar state & handle reconnection
     const handleRejoin = () => {
@@ -422,12 +494,15 @@ export const App: React.FC = () => {
       socket.off('call_started', onCallStarted);
       socket.off('call_finished', handleCallEnded);
       socket.off('error', onSocketError);
+      socket.off('connect_error', onConnectError);
+      socket.io.off('reconnect_failed', onReconnectFailed);
       socket.off('connect', handleRejoin);
     };
-  }, [initData, appState, userData, handleMatchFound, handleCallEnded]);
+  }, [initData, appState, userData, handleMatchFound, handleCallEnded, setAppState]);
 
   // Action handlers
   const handleCancelMatchmaking = () => {
+    matchAttemptRef.current++;
     if (userData.userId) {
       socketService.cancelQueue(userData.userId);
     }
@@ -436,6 +511,8 @@ export const App: React.FC = () => {
   };
 
   const handleFinishCall = (reason?: string) => {
+    if (appStateRef.current !== 'in_call' && appStateRef.current !== 'connecting') return;
+    matchAttemptRef.current++;
     if (matchData) {
       socketService.finishCall(matchData.roomName, userData.userId, reason);
     }

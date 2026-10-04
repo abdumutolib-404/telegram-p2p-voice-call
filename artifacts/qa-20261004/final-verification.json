@@ -1,0 +1,66 @@
+{
+  "recordedAt": "2026-10-04T07:14:33.445Z",
+  "result": "NOT READY FOR USERS",
+  "reviewedSourceUnchanged": true,
+  "runningContainers": [],
+  "remainingNetworks": [
+    "bridge",
+    "host",
+    "none"
+  ],
+  "dependencyAudits": [
+    {
+      "package": "server",
+      "productionVulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "zeroProductionVulnerabilities": true
+    },
+    {
+      "package": "client",
+      "productionVulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "zeroProductionVulnerabilities": true
+    },
+    {
+      "package": "admin",
+      "productionVulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "zeroProductionVulnerabilities": true
+    },
+    {
+      "package": "landing",
+      "productionVulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "zeroProductionVulnerabilities": true
+    }
+  ],
+  "finalProductionImage": "pairtalk-qa-20261004:local",
+  "linuxGatewayRaceBuildExitCode": 0,
+  "temporaryCredentialFileDeletion": "Rejected by automatic approval review; owner cleanup required",
+  "cloudDeployment": "not performed",
+  "realTelegramLiveKitR2Tests": "blocked by hosting and account access"
+}

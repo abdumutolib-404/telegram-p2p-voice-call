@@ -17,6 +17,7 @@ import { primeAllCrawlerCaches } from './services/crawler/verifyCrawler';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
 import ieltsRoutes from './routes/ielts';
+import publicStatsRoutes from './routes/publicStats';
 import adminRoutes, { setAdminBot } from './routes/admin';
 import adminTelemetryRouter from './routes/adminTelemetry';
 import { adminAuthMiddleware } from './middleware/adminAuth';
@@ -32,6 +33,7 @@ import { topicNotificationService } from './services/topicNotificationService';
 import { initializeOrderSequence } from './services/plan';
 import { surgeAlertService } from './services/surgeAlertService';
 import { startEventSubscriber, EventSubscriberHandle } from './services/eventSubscriber';
+import { startPostCallWorker } from './services/postCallOutbox';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
 import { requestIdMiddleware } from './middleware/requestId';
 import { logger } from './utils/logger';
@@ -39,6 +41,7 @@ import { getRequestId } from './utils/requestContext';
 import type { MyContext } from './bot/types';
 import { startStarsRefundRecovery } from './services/starsRefund';
 import { notificationQueue } from './bot/notifications';
+import { createFrontendRouter, httpsAuthority } from './services/frontendRouting';
 import { closeExternalConnections } from './utils/safeFetch';
 
 // Global BigInt JSON serialization guard
@@ -202,505 +205,40 @@ const getAdminDistPath = (): string | null => {
   return null;
 };
 
+// A truthful public fallback when the landing build is unavailable. No invented metrics or paid offers.
 const STATIC_SEO_FALLBACK_HTML = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>PairTalk — IELTS Speaking Practice | Criteria-Matched P2P Calls</title>
-
-    <!-- SEO & Search Intent Metadata -->
-    <meta name="description" content="Stop waiting for your study buddy to reply. Get matched with a live IELTS partner in < 3 seconds. Practice Part 1, 2, and 3 with criteria-matched candidates. 100% anonymous & free to start on Telegram." />
-    <meta name="keywords" content="ielts speaking 2026, ielts speaking band descriptors, ielts speaking part 1, ielts speaking part 2, ielts speaking part 3, ielts pronunciation practice, ielts price, ielts 6.5 speaking, ielts band 7 speaking, ielts band 8 speaking, ielts study buddy, ielts speaking partner, peer to peer ielts, telegram ielts bot, livekit webrtc speaking practice" />
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-    <meta name="author" content="PairTalk IELTS Speaking Network" />
-    <meta name="theme-color" content="#07070a" />
-    <link rel="canonical" href="https://pairtalk.online/" />
-
-    <!-- Favicons & Icons -->
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="shortcut icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
-
-    <!-- High-CTR OpenGraph Meta Tags -->
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="PairTalk — IELTS Speaking Practice" />
-    <meta property="og:url" content="https://pairtalk.online/" />
-    <meta property="og:title" content="Partner ghosted you again? No more excuses." />
-    <meta property="og:description" content="Stop waiting for your study buddy to reply. Get matched with a live IELTS partner in < 3 seconds. Practice Part 1, 2, and 3 with criteria-matched candidates. 100% anonymous & free to start on Telegram." />
-    <meta property="og:image" content="https://pairtalk.online/plans_pricing.jpg" />
-    <meta property="og:image:secure_url" content="https://pairtalk.online/plans_pricing.jpg" />
-    <meta property="og:image:type" content="image/jpeg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="PairTalk — Instant Peer-to-Peer IELTS Speaking Practice on Telegram" />
-    <meta property="og:locale" content="en_US" />
-
-    <!-- Twitter Preview Card (Large Summary Image) -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@PairTalk" />
-    <meta name="twitter:creator" content="@PairTalk" />
-    <meta name="twitter:url" content="https://pairtalk.online/" />
-    <meta name="twitter:title" content="Partner ghosted you again? No more excuses." />
-    <meta name="twitter:description" content="Stop waiting for your study buddy to reply. Get matched with a live IELTS partner in < 3 seconds. Practice Part 1, 2, and 3 with criteria-matched candidates. 100% anonymous & free to start on Telegram." />
-    <meta name="twitter:image" content="https://pairtalk.online/plans_pricing.jpg" />
-    <meta name="twitter:image:alt" content="PairTalk Live P2P IELTS Speaking Simulation" />
-
-    <!-- Telegram WebApp SDK -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-    <!-- Machine-Readable Schema.org JSON-LD (SoftwareApplication, EducationalOrganization, FAQPage) -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@graph": [
-        {
-          "@type": "WebSite",
-          "@id": "https://pairtalk.online/#website",
-          "url": "https://pairtalk.online/",
-          "name": "PairTalk — IELTS Speaking Practice",
-          "description": "Instant Criteria-Matched Peer-to-Peer IELTS Speaking Practice Platform on Telegram & Web.",
-          "publisher": {
-            "@id": "https://pairtalk.online/#organization"
-          },
-          "inLanguage": "en"
-        },
-        {
-          "@type": "Organization",
-          "@id": "https://pairtalk.online/#organization",
-          "name": "PairTalk",
-          "legalName": "PairTalk IELTS Speaking Network",
-          "url": "https://pairtalk.online/",
-          "logo": "https://pairtalk.online/favicon.png",
-          "sameAs": [
-            "https://t.me/PairTalkBot",
-            "https://t.me/PairTalkSupport",
-            "https://twitter.com/PairTalk"
-          ],
-          "contactPoint": {
-            "@type": "ContactPoint",
-            "contactType": "Customer Support",
-            "url": "https://t.me/PairTalkSupport",
-            "availableLanguage": ["English", "Uzbek", "Russian"]
-          }
-        },
-        {
-          "@type": "Product",
-          "@id": "https://pairtalk.online/#product",
-          "name": "PairTalk IELTS Speaking Practice",
-          "description": "Autonomous peer-to-peer IELTS Speaking practice platform inside Telegram and Web. Connects candidates with live speaking partners worldwide in <3 seconds based on target band scores (5-9) and official IELTS criteria (FC, LR, GRA, P).",
-          "image": [
-            "https://pairtalk.online/plans_pricing.jpg",
-            "https://pairtalk.online/favicon.png"
-          ],
-          "brand": {
-            "@type": "Brand",
-            "name": "PairTalk"
-          },
-          "isAccessibleForFree": true,
-          "aggregateRating": {
-            "@type": "AggregateRating",
-            "ratingValue": "4.9",
-            "reviewCount": "184",
-            "bestRating": "5",
-            "worstRating": "1"
-          },
-          "review": [
-            {
-              "@type": "Review",
-              "reviewRating": {
-                "@type": "Rating",
-                "ratingValue": "5",
-                "bestRating": "5"
-              },
-              "author": {
-                "@type": "Person",
-                "name": "Farrukh K."
-              },
-              "datePublished": "2026-02-20",
-              "reviewBody": "PairTalk's criteria-matched voice practice connected me with serious speaking partners in seconds. Improved my fluency from Band 6.0 to 7.5."
-            },
-            {
-              "@type": "Review",
-              "reviewRating": {
-                "@type": "Rating",
-                "ratingValue": "5",
-                "bestRating": "5"
-              },
-              "author": {
-                "@type": "Person",
-                "name": "Dilnoza M."
-              },
-              "datePublished": "2026-02-28",
-              "reviewBody": "The in-call IELTS question simulator with authentic cue cards and 1-minute prep timer completely removed my exam nervousness."
-            }
-          ],
-          "offers": [
-            {
-              "@type": "Offer",
-              "name": "FREE Tier",
-              "price": "0",
-              "priceCurrency": "USD",
-              "priceValidUntil": "2026-12-31",
-              "availability": "https://schema.org/InStock",
-              "url": "https://pairtalk.online/#pricing",
-              "image": "https://pairtalk.online/plans_pricing.jpg",
-              "description": "Complimentary monthly practice calls, 15 min duration, 1 cloud audio recording with 24-hour retention.",
-              "shippingDetails": {
-                "@type": "OfferShippingDetails",
-                "shippingRate": {
-                  "@type": "MonetaryAmount",
-                  "value": "0.00",
-                  "currency": "USD"
-                },
-                "shippingDestination": {
-                  "@type": "DefinedRegion",
-                  "addressCountry": "US"
-                },
-                "deliveryTime": {
-                  "@type": "ShippingDeliveryTime",
-                  "handlingTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  },
-                  "transitTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  }
-                }
-              },
-              "hasMerchantReturnPolicy": {
-                "@type": "MerchantReturnPolicy",
-                "applicableCountry": "US",
-                "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
-                "merchantReturnDays": 14,
-                "returnMethod": "https://schema.org/ReturnOnline",
-                "returnFees": "https://schema.org/FreeReturn",
-                "merchantReturnLink": "https://pairtalk.online/privacy"
-              }
-            },
-            {
-              "@type": "Offer",
-              "name": "PLUS Plan",
-              "price": "1.58",
-              "priceCurrency": "USD",
-              "priceValidUntil": "2026-12-31",
-              "availability": "https://schema.org/InStock",
-              "url": "https://pairtalk.online/#pricing",
-              "image": "https://pairtalk.online/plans_pricing.jpg",
-              "description": "10 practice calls / month, 30 min duration, 3 cloud recordings with 7-day retention (79 Telegram Stars / 15,000 UZS).",
-              "shippingDetails": {
-                "@type": "OfferShippingDetails",
-                "shippingRate": {
-                  "@type": "MonetaryAmount",
-                  "value": "0.00",
-                  "currency": "USD"
-                },
-                "shippingDestination": {
-                  "@type": "DefinedRegion",
-                  "addressCountry": "US"
-                },
-                "deliveryTime": {
-                  "@type": "ShippingDeliveryTime",
-                  "handlingTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  },
-                  "transitTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  }
-                }
-              },
-              "hasMerchantReturnPolicy": {
-                "@type": "MerchantReturnPolicy",
-                "applicableCountry": "US",
-                "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
-                "merchantReturnDays": 14,
-                "returnMethod": "https://schema.org/ReturnOnline",
-                "returnFees": "https://schema.org/FreeReturn",
-                "merchantReturnLink": "https://pairtalk.online/privacy"
-              }
-            },
-            {
-              "@type": "Offer",
-              "name": "PRO Plan",
-              "price": "5.10",
-              "priceCurrency": "USD",
-              "priceValidUntil": "2026-12-31",
-              "availability": "https://schema.org/InStock",
-              "url": "https://pairtalk.online/#pricing",
-              "image": "https://pairtalk.online/plans_pricing.jpg",
-              "description": "25 practice calls / month, 60 min duration, 7 cloud recordings with 30-day retention, high priority queue (255 Telegram Stars / 55,000 UZS).",
-              "shippingDetails": {
-                "@type": "OfferShippingDetails",
-                "shippingRate": {
-                  "@type": "MonetaryAmount",
-                  "value": "0.00",
-                  "currency": "USD"
-                },
-                "shippingDestination": {
-                  "@type": "DefinedRegion",
-                  "addressCountry": "US"
-                },
-                "deliveryTime": {
-                  "@type": "ShippingDeliveryTime",
-                  "handlingTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  },
-                  "transitTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  }
-                }
-              },
-              "hasMerchantReturnPolicy": {
-                "@type": "MerchantReturnPolicy",
-                "applicableCountry": "US",
-                "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
-                "merchantReturnDays": 14,
-                "returnMethod": "https://schema.org/ReturnOnline",
-                "returnFees": "https://schema.org/FreeReturn",
-                "merchantReturnLink": "https://pairtalk.online/privacy"
-              }
-            },
-            {
-              "@type": "Offer",
-              "name": "BOSS Plan",
-              "price": "13.58",
-              "priceCurrency": "USD",
-              "priceValidUntil": "2026-12-31",
-              "availability": "https://schema.org/InStock",
-              "url": "https://pairtalk.online/#pricing",
-              "image": "https://pairtalk.online/plans_pricing.jpg",
-              "description": "50 practice calls / month, 90 min duration, 15 cloud recordings with 90-day retention, VIP priority queue (679 Telegram Stars / 149,000 UZS).",
-              "shippingDetails": {
-                "@type": "OfferShippingDetails",
-                "shippingRate": {
-                  "@type": "MonetaryAmount",
-                  "value": "0.00",
-                  "currency": "USD"
-                },
-                "shippingDestination": {
-                  "@type": "DefinedRegion",
-                  "addressCountry": "US"
-                },
-                "deliveryTime": {
-                  "@type": "ShippingDeliveryTime",
-                  "handlingTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  },
-                  "transitTime": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 0,
-                    "maxValue": 0,
-                    "unitCode": "DAY"
-                  }
-                }
-              },
-              "hasMerchantReturnPolicy": {
-                "@type": "MerchantReturnPolicy",
-                "applicableCountry": "US",
-                "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
-                "merchantReturnDays": 14,
-                "returnMethod": "https://schema.org/ReturnOnline",
-                "returnFees": "https://schema.org/FreeReturn",
-                "merchantReturnLink": "https://pairtalk.online/privacy"
-              }
-            }
-          ]
-        },
-        {
-          "@type": "FAQPage",
-          "@id": "https://pairtalk.online/#faq",
-          "mainEntity": [
-            {
-              "@type": "Question",
-              "name": "What is PairTalk and how does live IELTS Speaking matchmaking work?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "PairTalk is an autonomous peer-to-peer IELTS Speaking practice platform that operates natively inside Telegram and modern web browsers. Candidates configure their target whole-band scores (Band 5 to 9) across the four official IELTS criteria (Fluency, Vocabulary, Grammar, Pronunciation). When you tap 'Start Practicing', PairTalk's matchmaking radar pairs you with an active, criteria-matched study buddy worldwide in under 3 seconds inside an encrypted WebRTC voice room."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Who is PairTalk designed for?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "PairTalk is designed for serious IELTS Academic and General Training candidates aiming for Band 6.0, 6.5, 7.0, 7.5, 8.0, or higher who need consistent, daily speaking practice. It is ideal for self-studying learners who want to eliminate speaking anxiety, test their impromptu speaking skills, and practice without paying $20–$50/hour for private tutors."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Why is PairTalk better than searching for IELTS study buddies in Discord servers or Telegram group chats?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "In public group chats and Discord channels, candidates regularly face unresponsive study partners, ghosting, misaligned English proficiency levels, background noise, and privacy risks. PairTalk eliminates waiting and ghosting by connecting active candidates on demand in <3 seconds with strict criteria matching, studio-grade WebRTC SFU audio, and 100% anonymous aliases."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "How does PairTalk use the official IELTS Speaking Band Descriptors (FC, LR, GRA, P)?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "PairTalk aligns directly with the official British Council / IDP IELTS Speaking Band Descriptors: Fluency & Coherence (FC), Lexical Resource (LR), Grammatical Range & Accuracy (GRA), and Pronunciation (P). Learners set their individual target sub-scores, allowing the algorithm to match candidates with complementary strengths for maximum mutual learning synergy."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Can I practice IELTS Speaking Part 1, Part 2 (Cue Card), and Part 3 (Discussion) on PairTalk?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Yes. PairTalk voice sessions are structured to simulate the complete 2026 IELTS Speaking exam format. Partners can alternate roles as examiner and candidate across Part 1 introductory questions, Part 2 1-minute preparation and 2-minute cue card monologues, and Part 3 abstract two-way discussions."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "How much does IELTS Speaking practice cost on PairTalk compared to private tutors?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Private 1-on-1 IELTS tutors on Cambly, iTalki, or Preply typically cost $20 to $50 per hour. PairTalk is 100% free to start with complimentary monthly practice calls. Paid accelerator tiers (PLUS, PRO, BOSS) range from 79 to 679 Telegram Stars ($1.58 to $13.58 / 15,000 to 149,000 UZS) for up to 50 practice calls of up to 90 minutes each, delivering over 95% cost savings compared to traditional tutoring."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "How does PairTalk help candidates achieve Band 6.5, Band 7.0, or Band 8.0 in IELTS Speaking 2026?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Achieving IELTS Band 7+ requires spontaneous fluency without unnatural hesitation, flexible idiomatic vocabulary, complex clause structures with high accuracy, and natural rhythm with correct intonation. PairTalk provides daily high-repetition conversational exposure with criteria-matched candidates, eliminating speaking anxiety and building spontaneous English reflex."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Is PairTalk completely anonymous and how is candidate privacy protected?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "PairTalk enforces strict privacy. Each candidate is assigned a randomized anonymous identifier (e.g. P2P-0284DB68). Your real name, phone number, and Telegram username are never shared with partners. Live voice calls are encrypted via WebRTC SFU, and optional cloud audio recordings are automatically and permanently purged once the tier retention window expires."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "What is the official refund policy on PairTalk paid plans?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "PairTalk provides a server-enforced 100% money-back guarantee. You are eligible for a full refund if requested within 48 hours of subscription purchase AND you have consumed less than 10% of your monthly call allowance. Telegram Stars refunds are processed instantly via /refund in the bot, while bank card transfers settle within 1–3 business days."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "How do referral bonus calls and the Speaking Sprint work?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "When you invite a study partner using your unique referral link, both you and your partner receive permanent bonus practice calls added to your balance. Active participants also compete on the live Community Leaderboard during Speaking Championships to win complimentary VIP, BOSS, and PRO plan upgrades."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Do I need to download or install any external application to use PairTalk?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "No external downloads or account setups are needed. PairTalk runs directly inside Telegram as a Telegram Mini App across iOS, Android, macOS, Windows, and Web. Simply launch @PairTalkBot to start practicing immediately."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "What audio equipment and browser permissions are required for PairTalk?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Any smartphone, tablet, or computer with a functional microphone works. Headphones or earbuds are strongly recommended to prevent acoustic echo. Ensure you allow microphone access when prompted by Telegram or your browser."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "What should I do if my speaking partner is unresponsive, abusive, or refuses to speak English?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "You have total control: tap the Report Partner button on your active call screen. Select the reason and choose to permanently block them. The call ends immediately, you will never be matched with them again, and our moderation engine receives the audit report."
-              }
-            }
-          ]
-        }
-      ]
-    }
-    </script>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>`;
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PairTalk | IELTS Speaking Practice Partners on Telegram</title>
+<meta name="description" content="Practice IELTS speaking with a partner on Telegram. Use an alias, choose your target band, and practice Parts 1, 2, and 3 in voice conversations.">
+<link rel="canonical" href="https://pairtalk.online/">
+<meta property="og:type" content="website"><meta property="og:site_name" content="PairTalk">
+<meta property="og:title" content="PairTalk | IELTS Speaking Practice Partners on Telegram">
+<meta property="og:description" content="Find a speaking practice partner on Telegram and practice IELTS Parts 1, 2, and 3.">
+<meta property="og:url" content="https://pairtalk.online/">
+<meta name="twitter:card" content="summary"><meta name="twitter:title" content="PairTalk | IELTS Speaking Practice Partners on Telegram">
+<meta name="twitter:description" content="Find a speaking practice partner on Telegram and practice IELTS Parts 1, 2, and 3.">
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type":"WebSite","@id":"https://pairtalk.online/#website","name":"PairTalk","url":"https://pairtalk.online/","publisher":{"@id":"https://pairtalk.online/#organization"}},
+    {"@type":"Organization","@id":"https://pairtalk.online/#organization","name":"PairTalk","url":"https://pairtalk.online/"},
+    {"@type":"SoftwareApplication","@id":"https://pairtalk.online/#app","name":"PairTalk","url":"https://pairtalk.online/","applicationCategory":"EducationalApplication","operatingSystem":"Telegram","description":"Partner-based IELTS speaking practice with aliases and live voice conversations."}
+  ]
+}</script>
+</head><body><main>
+<h1>IELTS speaking practice with a partner</h1>
+<p>PairTalk connects learners on Telegram for voice practice. Choose a target band, use an alias, and take turns practicing IELTS Speaking Parts 1, 2, and 3.</p>
+<p>Matching depends on who is available. Target bands are learner-selected.</p>
+<p><a href="https://t.me/PairTalkBot">Open PairTalk in Telegram</a></p>
+</main></body></html>`;
 
 const getSeoPreRenderedHtml = (): string => {
   const landingDist = getLandingDistPath();
   if (landingDist) {
-    try {
-      const distIndex = path.join(landingDist, 'index.html');
-      if (fs.existsSync(distIndex)) {
-        const content = fs.readFileSync(distIndex, 'utf-8');
-        if (content && content.length > 50) {
-          return content;
-        }
-      }
-    } catch {
-      // Fallback
-    }
+    try { return fs.readFileSync(path.join(landingDist, 'index.html'), 'utf8'); }
+    catch { /* Use the public fallback if the public build becomes unavailable. */ }
   }
-
-  const clientDist = getClientDistPath();
-  if (clientDist) {
-    try {
-      const distIndex = path.join(clientDist, 'index.html');
-      if (fs.existsSync(distIndex)) {
-        const content = fs.readFileSync(distIndex, 'utf-8');
-        if (content && content.length > 50) {
-          return content;
-        }
-      }
-    } catch {
-      // Fallback to static SEO HTML
-    }
-  }
-
-  const landingSrcIndex = path.resolve(__dirname, '../../landing/index.html');
-  if (fs.existsSync(landingSrcIndex)) {
-    try {
-      const content = fs.readFileSync(landingSrcIndex, 'utf-8');
-      if (content && content.includes('Partner ghosted you again?')) {
-        return content;
-      }
-    } catch {
-      // Fallback
-    }
-  }
-
-  const srcIndex = path.resolve(__dirname, '../../client/index.html');
-  if (fs.existsSync(srcIndex)) {
-    try {
-      const content = fs.readFileSync(srcIndex, 'utf-8');
-      if (content && content.includes('Partner ghosted you again?')) {
-        return content;
-      }
-    } catch {
-      // Fallback
-    }
-  }
-
   return STATIC_SEO_FALLBACK_HTML;
 };
 
@@ -716,7 +254,8 @@ app.use((req, res, next) => {
     return res.redirect(301, `https://pairtalk.online${rawUrl}`);
   }
   if (req.headers['x-forwarded-proto'] === 'http' && env.NODE_ENV === 'production') {
-    return res.redirect(301, `https://pairtalk.online${rawUrl}`);
+    const authority = httpsAuthority(cleanHost, [env.MINI_APP_URL, env.ADMIN_PANEL_URL]);
+    return res.redirect(301, `https://${authority}${rawUrl}`);
   }
 
   // 1. Preserve Admin Portal
@@ -735,11 +274,11 @@ app.use((req, res, next) => {
     return next();
   }
 
-  // 3. Subdomain redirection for app.pairtalk.online and api.pairtalk.online
-  const isAppSubdomain = cleanHost === 'app.pairtalk.online';
+  // 3. Redirect external API-host navigation. Mini App fragments are invisible to HTTP;
+  // its shell must load before the client can verify Telegram launch data.
   const isApiSubdomain = cleanHost === 'api.pairtalk.online';
 
-  if (isAppSubdomain || isApiSubdomain) {
+  if (isApiSubdomain) {
     const hasTelegramHeader = Boolean(req.headers['x-telegram-init-data']);
     const hasTelegramQuery = Boolean(
       req.query?.tgWebAppData ||
@@ -772,6 +311,7 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/ielts', ieltsRoutes);
+app.use('/api/public', publicStatsRoutes);
 app.use('/api/admin/telemetry', adminAuthMiddleware, adminTelemetryRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/livekit', livekitWebhookRouter);
@@ -883,63 +423,17 @@ app.get('/sitemap.xml', (_req, res) => {
   res.send(sitemapXml);
 });
 
-// --- Static Asset Serving ---
-const landingDist = getLandingDistPath();
-if (landingDist) {
-  app.use(express.static(landingDist, { index: false }));
-}
-const clientDist = getClientDistPath();
-if (clientDist) {
-  app.use(express.static(clientDist, { index: false }));
-}
-const adminDist = getAdminDistPath();
-if (adminDist) {
-  app.use('/admin', express.static(adminDist, { index: false }));
-}
+// --- Host/path-specific frontend delivery ---
 const serverAssetsPath = path.resolve(__dirname, '../assets');
-if (fs.existsSync(serverAssetsPath)) {
-  app.use('/assets', express.static(serverAssetsPath));
-}
-
-// --- Root GET / & Pre-rendered SEO Landing Page ---
-app.get('/', (_req, res) => {
-  const lDist = getLandingDistPath();
-  if (lDist && fs.existsSync(path.join(lDist, 'index.html'))) {
-    return res.sendFile(path.join(lDist, 'index.html'));
-  }
-  const cDist = getClientDistPath();
-  if (cDist && fs.existsSync(path.join(cDist, 'index.html'))) {
-    return res.sendFile(path.join(cDist, 'index.html'));
-  }
-  res.type('text/html; charset=utf-8').send(getSeoPreRenderedHtml());
-});
-
-// --- Catch-All SPA Fallback ---
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/') || req.path === '/health') {
-    return next();
-  }
-  if (req.accepts('html')) {
-    const rawHost = (req.headers['x-forwarded-host'] as string) || req.hostname || (req.headers.host as string) || '';
-    const cleanHost = rawHost.split(':')[0].trim().toLowerCase();
-    if (cleanHost === 'admin.pairtalk.online' || cleanHost.startsWith('admin.')) {
-      const aDist = getAdminDistPath();
-      if (aDist && fs.existsSync(path.join(aDist, 'index.html'))) {
-        return res.sendFile(path.join(aDist, 'index.html'));
-      }
-    }
-    const lDist = getLandingDistPath();
-    if (lDist && fs.existsSync(path.join(lDist, 'index.html'))) {
-      return res.sendFile(path.join(lDist, 'index.html'));
-    }
-    const cDist = getClientDistPath();
-    if (cDist && fs.existsSync(path.join(cDist, 'index.html'))) {
-      return res.sendFile(path.join(cDist, 'index.html'));
-    }
-    return res.type('text/html; charset=utf-8').send(getSeoPreRenderedHtml());
-  }
-  next();
-});
+if (fs.existsSync(serverAssetsPath)) app.use('/assets', express.static(serverAssetsPath));
+app.use(createFrontendRouter({
+  landingDir: getLandingDistPath(),
+  clientDir: getClientDistPath(),
+  adminDir: getAdminDistPath(),
+  miniAppUrl: env.MINI_APP_URL,
+  adminPanelUrl: env.ADMIN_PANEL_URL,
+  publicFallback: getSeoPreRenderedHtml,
+}));
 
 const io = new SocketIOServer(server, {
   cors: {
@@ -961,6 +455,7 @@ let bot: Bot<MyContext> | null = null;
 let eventSubscriberHandle: EventSubscriberHandle | null = null;
 let stopPlanRefresh: (() => void) | null = null;
 let stopRefundRecovery: (() => Promise<void>) | null = null;
+let stopPostCallWorker: (() => Promise<void>) | null = null;
 let stopNotificationWorker: (() => Promise<void>) | null = null;
 
 let stopPolling: (() => Promise<void>) | null = null;
@@ -1036,6 +531,7 @@ async function bootstrap(): Promise<void> {
     const zombieTimer = startZombieSessionCleaner(io, bot ?? undefined);
     stopWorkers.push(() => clearInterval(zombieTimer));
     eventSubscriberHandle = startEventSubscriber(() => bot);
+    stopPostCallWorker = startPostCallWorker(() => bot);
     stopWorkers.push(startStoragePurgeCron());
     stopWorkers.push(startSubscriptionExpiryCron(() => bot));
 
@@ -1071,6 +567,7 @@ async function bootstrap(): Promise<void> {
       event: 'server_bootstrap_failed',
     }, error);
     stopPlanRefresh?.(); await stopRefundRecovery?.();
+    await stopPostCallWorker?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();
     surgeAlertService.stopScheduler();
@@ -1118,6 +615,7 @@ const gracefulShutdown = async (signal: string) => {
   });
   try {
     stopPlanRefresh?.();
+    await stopPostCallWorker?.();
     await stopRefundRecovery?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();

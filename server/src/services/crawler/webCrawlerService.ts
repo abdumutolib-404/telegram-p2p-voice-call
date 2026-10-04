@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import { createHash } from 'node:crypto';
 import { IeltsPart } from '@prisma/client';
 import { RawCandidateQuestion, CrawlTargetSource, VERIFIED_CRAWLER_TARGETS } from './sources';
 import { classifyTopic, cleanSubjectFromHeading, extractSubjectFromUrl, detectGroupStrongSubject } from './taxonomy';
@@ -33,8 +34,9 @@ function stripHtml(html: string): string {
 export class WebCrawlerService {
   private readonly defaultTimeoutMs = 12000;
   private readonly userAgent = 'PairTalk-ExamCrawler/2.0 (+https://pairtalk.online)';
-  private readonly visitedSetKey = 'pairtalk:crawler:visited_urls';
-  private readonly inMemoryVisited = new Set<string>();
+  private readonly visitedPrefix = 'pairtalk:crawler:visited:v2:';
+  private readonly visitedTtlMs = 24 * 60 * 60 * 1000;
+  private readonly inMemoryVisited = new Map<string, number>();
   private readonly minDomainDelayMs = 750; // Polite 750ms spacing between requests to same domain
   private readonly domainLastRequest = new Map<string, number>();
   private readonly domainQueues = new Map<string, Promise<void>>();
@@ -69,27 +71,36 @@ export class WebCrawlerService {
    */
   public async isUrlVisited(url: string): Promise<boolean> {
     const normalized = this.normalizeUrl(url);
+    const expiresAt = this.inMemoryVisited.get(normalized) ?? 0;
+    if (expiresAt <= Date.now()) this.inMemoryVisited.delete(normalized);
     try {
       const redis = getRedis();
-      const isMember = await redis.sismember(this.visitedSetKey, normalized);
-      return isMember === 1 || this.inMemoryVisited.has(normalized);
+      const visited = await redis.get(this.visitedKey(normalized));
+      return visited === '1' || this.inMemoryVisited.has(normalized);
     } catch {
       return this.inMemoryVisited.has(normalized);
     }
   }
 
   /**
-   * Marks a URL as crawled in Redis set pairtalk:crawler:visited_urls.
+   * Remembers a successful download for one day; old permanent-set entries are ignored.
    */
   public async markUrlVisited(url: string): Promise<void> {
     const normalized = this.normalizeUrl(url);
-    this.inMemoryVisited.add(normalized);
+    for (const [key, expiresAt] of this.inMemoryVisited) if (expiresAt <= Date.now()) this.inMemoryVisited.delete(key);
+    this.inMemoryVisited.delete(normalized);
+    this.inMemoryVisited.set(normalized, Date.now() + this.visitedTtlMs);
+    if (this.inMemoryVisited.size > 2048) this.inMemoryVisited.delete(this.inMemoryVisited.keys().next().value!);
     try {
       const redis = getRedis();
-      await redis.sadd(this.visitedSetKey, normalized);
+      await redis.set(this.visitedKey(normalized), '1', 'PX', this.visitedTtlMs);
     } catch {
       // Redis unavailable; in-memory set handles this cycle
     }
+  }
+
+  private visitedKey(normalized: string): string {
+    return this.visitedPrefix + createHash('sha256').update(normalized).digest('hex');
   }
 
   /**
@@ -569,12 +580,11 @@ export class WebCrawlerService {
     options?: { depth?: number; maxSubpages?: number; delayMs?: number },
   ): Promise<RawCandidateQuestion[]> {
     logger.info(`Crawling IELTS target URL: ${url}`, { service: 'crawler', url });
-    await this.markUrlVisited(url);
-
     const html = await this.fetchHtml(url);
     if (!html) return [];
 
     const directQuestions = this.parseHtmlContent(html, url);
+    await this.markUrlVisited(url);
 
     if (options?.depth === 1) {
       const maxSubpages = options.maxSubpages ?? 10;
@@ -587,16 +597,16 @@ export class WebCrawlerService {
         const alreadyVisited = await this.isUrlVisited(link);
         if (alreadyVisited) continue;
 
-        await this.markUrlVisited(link);
         if (delayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
 
+        fetchedSubpages++;
         const subHtml = await this.fetchHtml(link);
         if (subHtml) {
           const subQuestions = this.parseHtmlContent(subHtml, link);
+          await this.markUrlVisited(link);
           directQuestions.push(...subQuestions);
-          fetchedSubpages++;
         }
       }
     }
@@ -615,12 +625,11 @@ export class WebCrawlerService {
     delayMs = 250,
   ): Promise<RawCandidateQuestion[]> {
     logger.info(`Visiting IELTS hub page: ${hubUrl}`, { service: 'crawler', hubUrl });
-    await this.markUrlVisited(hubUrl);
-
     const hubHtml = await this.fetchHtml(hubUrl);
     if (!hubHtml) return [];
 
     const collectedQuestions: RawCandidateQuestion[] = [...this.parseHtmlContent(hubHtml, hubUrl)];
+    await this.markUrlVisited(hubUrl);
 
     // Depth-1 link spidering: extract matching internal subpage links
     const subLinks = this.extractInternalIeltsLinks(hubHtml, hubUrl);
@@ -647,23 +656,21 @@ export class WebCrawlerService {
         continue;
       }
 
-      // Record in Redis crawl memory
-      await this.markUrlVisited(link);
-
       if (delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
 
       logger.info(`Spidering depth-1 subpage: ${link}`, { service: 'crawler', link, hubUrl });
+      subpagesCrawled++;
       const subHtml = await this.fetchHtml(link);
       if (!subHtml) continue;
 
       const subQuestions = this.parseHtmlContent(subHtml, link);
+      await this.markUrlVisited(link);
       collectedQuestions.push(...subQuestions);
-      subpagesCrawled++;
     }
 
-    logger.info(`Completed depth-1 spidering for ${hubUrl}: crawled ${subpagesCrawled} subpages, found ${collectedQuestions.length} total questions`, {
+    logger.info(`Completed depth-1 spidering for ${hubUrl}: attempted ${subpagesCrawled} subpages, found ${collectedQuestions.length} total questions`, {
       service: 'crawler',
       hubUrl,
       subpagesCrawled,

@@ -1,0 +1,133 @@
+{
+  "recordedAt": "2026-10-02T23:06:15.047Z",
+  "scope": "Local whole-application remediation verification; provider staging and production release excluded",
+  "node": {
+    "files": 67,
+    "tests": 660,
+    "passed": true
+  },
+  "persistence": {
+    "checks": 31,
+    "passed": true,
+    "services": "dedicated loopback PostgreSQL and Redis",
+    "fixtureCleanup": true
+  },
+  "client": {
+    "files": 6,
+    "tests": 32,
+    "passed": true,
+    "build": true,
+    "lint": true,
+    "initialGzipReportedKB": 105.15,
+    "deferredLiveKitGzipReportedKB": 126.27
+  },
+  "gateway": {
+    "packages": 8,
+    "tests": true,
+    "postgresIntegration": true,
+    "linuxRace": true,
+    "linuxVet": true,
+    "limitation": "Local Linux race run and Windows PostgreSQL run were separate; CI combines them"
+  },
+  "admin": {
+    "build": true,
+    "lint": true,
+    "warning": "Existing react(only-export-components) Fast Refresh warning",
+    "browserEvidence": "admin-browser.json"
+  },
+  "landing": {
+    "checkedPages": 11,
+    "passed": true,
+    "protectedControls": "robots.txt, sitemap.xml, llms.txt, llms-full.txt and existing server handlers matched audit baseline"
+  },
+  "dependencies": {
+    "server": {
+      "checkedAt": "2026-10-02T22:59:20.925Z",
+      "productionOnly": true,
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "client": {
+      "checkedAt": "2026-10-02T22:54:15.062Z",
+      "productionOnly": true,
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "admin": {
+      "checkedAt": "2026-10-02T22:54:16.344Z",
+      "productionOnly": true,
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "landing": {
+      "checkedAt": "2026-10-02T22:54:15.070Z",
+      "productionOnly": true,
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "productionContainer": {
+    "tag": "pairtalk-whole-audit:local",
+    "manifestList": "sha256:14545ea74a0da17d1d7aa6d020a7ce047a5f5fdb9f9cf7bfb0835b0640fefda3",
+    "imageId": "sha256:14545ea74a0da17d1d7aa6d020a7ce047a5f5fdb9f9cf7bfb0835b0640fefda3",
+    "readOnly": true,
+    "externalNetwork": false,
+    "functionalChecks": [
+      "PASS readiness requires representative database and Redis operations",
+      "PASS anonymous admin access is rejected",
+      "PASS synthetic administrator can read actual isolated statistics",
+      "PASS wrong administrator identity is forbidden",
+      "PASS receipt authentication remains required",
+      "PASS cookie-only mutations require anti-CSRF header",
+      "PASS untrusted origins receive no CORS permission",
+      "PASS production gateway authenticates a signed Telegram launch through websocket",
+      "PASS production gateway commits call completion and durable effects through websocket",
+      "PASS production gateway authenticates a signed Telegram launch through polling",
+      "PASS production gateway commits call completion and durable effects through polling",
+      "PASS public host serves the prerendered landing",
+      "PASS app.pairtalk.online/ serves its own non-indexable shell and JavaScript",
+      "PASS admin.pairtalk.online/ serves its own non-indexable shell and JavaScript",
+      "PASS 127.0.0.1/client serves its own non-indexable shell and JavaScript",
+      "PASS 127.0.0.1/admin serves its own non-indexable shell and JavaScript",
+      "PASS frontend routing preserves missing-route statuses and protected API authentication",
+      "PASS HTTP upgrades preserve approved application hosts and reject untrusted redirect authorities",
+      "PASS signed Telegram authentication rejects indefinite suspension",
+      "PASS signed Telegram authentication rejects permanent suspension",
+      "PASS webhook body tampering fails checksum validation without changing the call",
+      "PASS early signed recording callback leaves the signaling ownership claim intact",
+      "PASS signed recording-start webhook preserves a concurrently completed PostgreSQL call",
+      "PASS signed failure callback from a losing egress preserves the winning recording"
+    ],
+    "lifecycleChecks": [
+      "PASS gateway readiness reports 503 without exposing dependency details during an isolated Redis interruption",
+      "PASS gateway readiness recovers after Redis connectivity is restored",
+      "PASS production entrypoint drains both services and exits cleanly on SIGTERM"
+    ],
+    "disposed": true
+  },
+  "unverified": [
+    "Real Telegram/Stars/LiveKit/storage journeys",
+    "Physical older devices",
+    "Production migrations/deployment",
+    "Remote GitHub CI",
+    "Active crawler shutdown drain"
+  ],
+  "pendingBusinessPolicy": "Calendar-month versus full-validity included calls and recordings",
+  "git": "Changes kept local; no audit commit or push performed"
+}

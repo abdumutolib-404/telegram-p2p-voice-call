@@ -103,3 +103,29 @@ func TestNewReverseProxy_InvalidURL(t *testing.T) {
 		t.Errorf("expected error for invalid URL")
 	}
 }
+
+func TestProxyRemovesUntrustedForwardingHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var headers http.Header
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { headers = r.Header.Clone(); w.WriteHeader(200) }))
+	defer backend.Close()
+	proxy, err := NewReverseProxy(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	if err := router.SetTrustedProxies(nil); err != nil {
+		t.Fatal(err)
+	}
+	router.NoRoute(proxy.Handle)
+	req := httptest.NewRequest("GET", "/api/check", nil)
+	req.RemoteAddr = "203.0.113.40:41234"
+	req.Header.Set("X-Forwarded-For", "192.0.2.9")
+	req.Header.Set("CF-Connecting-IP", "192.0.2.10")
+	req.Header.Set("Forwarded", "for=192.0.2.11;proto=https")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	router.ServeHTTP(newCloseNotifierRecorder(), req)
+	if headers.Get("CF-Connecting-IP") != "" || headers.Get("Forwarded") != "" || headers.Get("X-Real-IP") != "203.0.113.40" || headers.Get("X-Forwarded-For") != "203.0.113.40, 203.0.113.40" || headers.Get("X-Forwarded-Proto") != "http" {
+		t.Fatalf("untrusted forwarding headers crossed gateway boundary: %v", headers)
+	}
+}

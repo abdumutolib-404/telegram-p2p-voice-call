@@ -1,0 +1,49 @@
+# Replace this placeholder, or pass --app <unique-staging-app> at deployment.
+app = "pairtalk-staging-replace-me"
+primary_region = "fra"
+kill_signal = "SIGTERM"
+kill_timeout = 30
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "npm run db:deploy"
+  release_command_timeout = "5m"
+  strategy = "rolling"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3001"
+  HOST = "127.0.0.1"
+  RECORDINGS_DIR = "/app/server/recordings"
+  DISABLE_BOT_POLLING = "true"
+  DISABLE_BACKGROUND_CRAWLER = "true"
+  # Provider credentials, cloud store URLs, generated frontend URLs and verified
+  # proxy CIDRs must be supplied separately for this staging app. See the guide.
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "90s"
+    interval = "15s"
+    timeout = "5s"
+    method = "GET"
+    path = "/healthz"
+
+  [http_service.http_options.response.headers]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "1gb"

@@ -25,6 +25,14 @@ describe('Final Authentication Architecture Test Suite', () => {
   // SECTION 1: Public Client & Telegram Mini App Auth
   // =========================================================================
   describe('1. Public Client & Telegram Mini App Authentication', () => {
+    it('rejects a signed launch for an indefinitely suspended account', async () => {
+      const tgUser = { id: 88812349, first_name: 'IndefiniteSuspension' };
+      await prisma.user.create({ data: { telegramId: BigInt(tgUser.id), alias: 'P2P-Indefinite-Suspension', isBanned: true, bannedUntil: null } });
+      const response = await request(app).post('/api/auth/verify').set('x-telegram-init-data', generateInitData(tgUser)).send({});
+      expect(response.status).toBe(403);
+      expect(response.body.status).toBe('suspended');
+      expect(response.body.bannedUntil).toBeNull();
+    });
     it('1.1 Rejects browser access missing initData (403 Forbidden)', async () => {
       const res = await request(app).post('/api/auth/verify').send({});
       expect(res.status).toBe(403);

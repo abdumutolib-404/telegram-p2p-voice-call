@@ -2,99 +2,47 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-describe('Client Index HTML, Schema.org JSON-LD & SEO Validation Suite', () => {
-  const clientIndexPath = path.resolve(__dirname, '../../../client/index.html');
-  const html = fs.readFileSync(clientIndexPath, 'utf8');
+// Public SEO is verified by the landing build checks and public fallback tests.
+// The Mini App has its own shell; it must not advertise duplicate public offers or reviews.
+describe('Private Mini App document and launch contract', () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../../../client/index.html'), 'utf8');
 
-  it('verifies client/index.html exists and is non-empty', () => {
-    expect(html.length).toBeGreaterThan(1000);
+  it('declares an English HTML document and a recognizable application title', () => {
+    expect(html).toMatch(/<!doctype html>/i);
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('charset="UTF-8"');
+    expect(html).toContain('<title>PairTalk — Speaking Practice</title>');
   });
 
-  describe('1. OpenGraph & Viral Social Preview Cards', () => {
-    it('contains the informal partner-ghosting call-out in og:title', () => {
-      expect(html).toContain('content="Partner ghosted you again? No more excuses."');
-    });
-
-    it('contains descriptive og:description and site_name', () => {
-      expect(html).toContain('name="description"');
-      expect(html).toContain('property="og:description"');
-      expect(html).toContain('property="og:site_name"');
-      expect(html).toContain('property="og:type" content="website"');
-    });
-
-    it('configures Twitter summary_large_image card', () => {
-      expect(html).toContain('name="twitter:card" content="summary_large_image"');
-      expect(html).toContain('name="twitter:title" content="Partner ghosted you again? No more excuses."');
-    });
+  it('keeps the authenticated Mini App out of public search indexing', () => {
+    expect(html).toContain('name="robots" content="noindex, nofollow"');
+    expect(html).not.toContain('content="index, follow');
+    expect(html).not.toContain('rel="canonical" href="https://pairtalk.online/"');
   });
 
-  describe('2. Google Trends 2026 Keywords & Metadata', () => {
-    it('contains the breakout IELTS Speaking 2026 keyword in metadata', () => {
-      expect(html).toContain('ielts speaking 2026');
-    });
-
-    it('includes official band descriptors and exam format keywords', () => {
-      expect(html).toContain('ielts speaking band descriptors');
-      expect(html).toContain('ielts speaking part 1');
-      expect(html).toContain('ielts speaking part 2');
-      expect(html).toContain('ielts speaking part 3');
-      expect(html).toContain('ielts pronunciation practice');
-    });
-
-    it('contains the canonical link to pairtalk.online', () => {
-      expect(html).toContain('<link rel="canonical" href="https://pairtalk.online/"');
-    });
+  it('allows device zoom without imposing a maximum scale', () => {
+    const viewport = html.match(/<meta name="viewport" content="([^"]+)"/)?.[1];
+    expect(viewport).toContain('width=device-width');
+    expect(viewport).toContain('initial-scale=1.0');
+    expect(viewport).not.toContain('user-scalable=no');
+    expect(viewport).not.toContain('maximum-scale');
   });
 
-  describe('3. Machine-Readable Schema.org JSON-LD Graph Validation', () => {
-    // Extract JSON-LD payload from <script type="application/ld+json">
-    const match = html.match(/<script\s+type="application\/ld\+json">([\s\S]*?)<\/script>/i);
+  it('loads the official Telegram SDK and application entry once', () => {
+    expect(html.match(/src="https:\/\/telegram.org\/js\/telegram-web-app.js"/g)).toHaveLength(1);
+    expect(html.match(/<div id="root"><\/div>/g)).toHaveLength(1);
+    expect(html.match(/<script type="module" src="\/src\/main.tsx"><\/script>/g)).toHaveLength(1);
+  });
 
-    it('contains a valid JSON-LD script block', () => {
-      expect(match).not.toBeNull();
-      expect(match![1]).toBeDefined();
-    });
+  it('provides launch guidance when JavaScript is disabled', () => {
+    const guidance = html.match(/<noscript>([^<]+)<\/noscript>/)?.[1];
+    expect(guidance).toContain('Enable JavaScript');
+    expect(guidance).toContain('Telegram bot');
+  });
 
-    it('parses as valid, syntactically correct JSON', () => {
-      const parsed = JSON.parse(match![1]);
-      expect(parsed['@context']).toBe('https://schema.org');
-      expect(Array.isArray(parsed['@graph'])).toBe(true);
-    });
-
-    it('contains SoftwareApplication entity with Telegram/iOS/Android/Web support', () => {
-      const parsed = JSON.parse(match![1]);
-      const app = parsed['@graph'].find((e: any) => {
-        const types = Array.isArray(e['@type']) ? e['@type'] : [e['@type']];
-        return types.includes('SoftwareApplication');
-      });
-      expect(app).toBeDefined();
-      expect(app.name).toBe('PairTalk');
-      expect(app.applicationCategory).toBe('EducationalApplication');
-      expect(app.operatingSystem).toContain('Telegram');
-      expect(app.operatingSystem).toContain('iOS');
-      expect(app.operatingSystem).toContain('Android');
-    });
-
-    it('contains EducationalOrganization entity linked to PairTalkBot', () => {
-      const parsed = JSON.parse(match![1]);
-      const org = parsed['@graph'].find((e: any) => e['@type'] === 'EducationalOrganization');
-      expect(org).toBeDefined();
-      expect(org.name).toContain('PairTalk');
-      expect(org.sameAs).toContain('https://t.me/PairTalkBot');
-    });
-
-    it('contains FAQPage entity with questions covering 2026, band descriptors, and privacy', () => {
-      const parsed = JSON.parse(match![1]);
-      const faq = parsed['@graph'].find((e: any) => e['@type'] === 'FAQPage');
-      expect(faq).toBeDefined();
-      expect(Array.isArray(faq.mainEntity)).toBe(true);
-      expect(faq.mainEntity.length).toBeGreaterThanOrEqual(4);
-
-      const questions = faq.mainEntity.map((q: any) => q.name.toLowerCase());
-      expect(questions.some((q: string) => q.includes('2026'))).toBe(true);
-      expect(questions.some((q: string) => q.includes('band descriptors'))).toBe(true);
-      expect(questions.some((q: string) => q.includes('cost') || q.includes('price') || q.includes('free'))).toBe(true);
-      expect(questions.some((q: string) => q.includes('anonymous') || q.includes('privacy'))).toBe(true);
-    });
+  it('does not duplicate public structured data or unsupported marketing guarantees', () => {
+    for (const unsupported of ['application/ld+json', 'aggregateRating', 'FAQPage', '< 3 seconds', 'money-back guarantee', '95% cost savings', 'plans_pricing.jpg', 'name="keywords"']) {
+      expect(html).not.toContain(unsupported);
+    }
   });
 });

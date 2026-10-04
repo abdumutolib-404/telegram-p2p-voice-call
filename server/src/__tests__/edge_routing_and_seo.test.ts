@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { app } from '../index';
+import fs from 'node:fs';
+import path from 'node:path';
+// These integration-level route tests can run before frontend builds on a fresh checkout.
+// Dedicated frontendRouting tests always use all three built-shell fixtures.
+const privateFrontendStatus = (name: 'client' | 'admin') => [
+  path.resolve(__dirname, '../../public', name, 'index.html'),
+  path.resolve(__dirname, '../../../', name, 'dist/index.html'),
+].some(file => fs.existsSync(file)) ? 200 : 503;
 
 describe('Server Edge Routing, Robots.txt, Dynamic Sitemap & SEO Pre-Rendering', () => {
   describe('1. Robots.txt Crawler & Scraper Policy (/robots.txt)', () => {
@@ -104,75 +112,62 @@ describe('Server Edge Routing, Robots.txt, Dynamic Sitemap & SEO Pre-Rendering',
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
-    it('contains high-CTR OpenGraph and Twitter card metadata', async () => {
-      const res = await request(app).get('/');
-      const html = res.text;
-
-      expect(html).toContain('property="og:title" content="Partner ghosted you again? No more excuses."');
-      expect(html).toContain('property="og:description"');
-      expect(html).toContain('< 3 seconds');
-      expect(html).toContain('property="og:image" content="https://pairtalk.online/plans_pricing.jpg"');
-
-      expect(html).toContain('name="twitter:card" content="summary_large_image"');
-      expect(html).toContain('name="twitter:title" content="Partner ghosted you again? No more excuses."');
-      expect(html).toContain('name="twitter:image" content="https://pairtalk.online/plans_pricing.jpg"');
+    it('provides consistent public identity, canonical URL and social preview text', async () => {
+      const html = (await request(app).get('/')).text;
+      expect(html).toContain('IELTS Speaking Practice Partners on Telegram');
+      expect(html).toContain('name="description"');
+      expect(html).toContain('rel="canonical" href="https://pairtalk.online/"');
+      expect(html).toContain('property="og:url" content="https://pairtalk.online/"');
+      expect(html).toContain('property="og:title"');
+      expect(html).toContain('name="twitter:card"');
+      expect(html).toContain('<h1>IELTS speaking practice with a partner</h1>');
+      expect(html).toContain('https://t.me/PairTalkBot');
     });
 
-    it('contains Google Trends 2-4 word power keywords and search intent tags', async () => {
-      const res = await request(app).get('/');
-      const html = res.text;
-
-      expect(html).toContain('ielts speaking 2026');
-      expect(html).toContain('ielts speaking band descriptors');
-      expect(html).toContain('ielts speaking part 1');
-      expect(html).toContain('ielts speaking part 2');
-      expect(html).toContain('ielts speaking part 3');
-      expect(html).toContain('ielts pronunciation practice');
-      expect(html).toContain('ielts price');
-      expect(html).toContain('ielts 6.5 speaking');
-      expect(html).toContain('ielts band 7 speaking');
+    it('describes supported practice without inventing matching times, prices, ratings or refund guarantees', async () => {
+      const html = (await request(app).get('/')).text;
+      expect(html).toContain('Parts 1, 2, and 3');
+      expect(html).toContain('Target bands are learner-selected');
+      expect(html).toContain('Matching depends on who is available');
+      for (const unsupported of ['< 3 seconds', '100% money-back', '95% cost savings', 'aggregateRating', 'plans_pricing.jpg']) expect(html).not.toContain(unsupported);
     });
 
-    it('contains valid Schema.org JSON-LD graphs for SoftwareApplication, EducationalOrganization, and FAQPage', async () => {
-      const res = await request(app).get('/');
-      const html = res.text;
-
-      expect(html).toContain('type="application/ld+json"');
-      expect(html).toContain('"@context": "https://schema.org"');
-      expect(html).toContain('"@graph"');
-
-      expect(html).toContain('"@type": ["SoftwareApplication", "EducationalApplication"]');
-      expect(html).toContain('"name": "PairTalk"');
-      expect(html).toContain('FREE Tier');
-      expect(html).toContain('PLUS Plan');
-      expect(html).toContain('PRO Plan');
-      expect(html).toContain('BOSS Plan');
-
-      expect(html).toContain('"@type": "EducationalOrganization"');
-      expect(html).toContain('"name": "PairTalk IELTS Speaking Network"');
-
-      expect(html).toContain('"@type": "FAQPage"');
-      expect(html).toContain('What is PairTalk and how does live IELTS Speaking matchmaking work?');
+    it('uses linked public website, organization and application entities with no fabricated offers', async () => {
+      const html = (await request(app).get('/')).text;
+      const match = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+      expect(match).not.toBeNull();
+      const schema = JSON.parse(match![1]);
+      expect(schema['@context']).toBe('https://schema.org');
+      const types = schema['@graph'].map((entity: any) => entity['@type']);
+      expect(types).toEqual(['WebSite', 'Organization', 'SoftwareApplication']);
+      const website = schema['@graph'][0], organization = schema['@graph'][1], application = schema['@graph'][2];
+      expect(website.publisher['@id']).toBe(organization['@id']);
+      expect(application.applicationCategory).toBe('EducationalApplication');
+      expect(application.operatingSystem).toBe('Telegram');
+      expect(application.offers).toBeUndefined();
+      expect(application.aggregateRating).toBeUndefined();
     });
   });
 
   describe('4. Subdomain Edge Routing & Direct Navigation Shielding', () => {
-    it('redirects external browser direct on app.pairtalk.online to pairtalk.online (302)', async () => {
+    it('loads the non-indexable Mini App shell for external browser direct on app.pairtalk.online', async () => {
       const res = await request(app)
         .get('/')
         .set('Host', 'app.pairtalk.online');
 
-      expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('https://pairtalk.online');
+      expect(res.status).toBe(privateFrontendStatus('client'));
+      expect(res.headers.location).toBeUndefined();
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
     });
 
-    it('redirects external browser direct with X-Forwarded-Host to pairtalk.online (302)', async () => {
+    it('loads the non-indexable Mini App shell for external browser direct with X-Forwarded-Host', async () => {
       const res = await request(app)
         .get('/')
         .set('X-Forwarded-Host', 'app.pairtalk.online');
 
-      expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('https://pairtalk.online');
+      expect(res.status).toBe(privateFrontendStatus('client'));
+      expect(res.headers.location).toBeUndefined();
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
     });
 
     it('allows app.pairtalk.online requests with x-telegram-init-data header (200 OK)', async () => {
@@ -181,7 +176,7 @@ describe('Server Edge Routing, Robots.txt, Dynamic Sitemap & SEO Pre-Rendering',
         .set('Host', 'app.pairtalk.online')
         .set('x-telegram-init-data', 'query_id=AAHd&user=%7B%22id%22%3A123456%7D&auth_date=1620000000&hash=abc');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -190,7 +185,7 @@ describe('Server Edge Routing, Robots.txt, Dynamic Sitemap & SEO Pre-Rendering',
         .get('/?tgWebAppData=user%3D12345')
         .set('Host', 'app.pairtalk.online');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -200,7 +195,7 @@ describe('Server Edge Routing, Robots.txt, Dynamic Sitemap & SEO Pre-Rendering',
         .set('Host', 'app.pairtalk.online')
         .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Telegram-iOS/9.6.1');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 
@@ -210,7 +205,7 @@ describe('Server Edge Routing, Robots.txt, Dynamic Sitemap & SEO Pre-Rendering',
         .set('Host', 'app.pairtalk.online')
         .set('Referer', 'https://web.telegram.org/a/');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(privateFrontendStatus('client'));
       expect(res.headers['content-type']).toMatch(/text\/html/);
     });
 

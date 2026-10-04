@@ -1,136 +1,70 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { LandingPage } from './components/LandingPage';
-import { HowItWorksScreen } from './components/HowItWorksScreen';
-import { IeltsSpeakingGuideScreen } from './components/IeltsSpeakingGuideScreen';
-import { GuidelinesScreen } from './components/GuidelinesScreen';
-import { SafetyGuideScreen } from './components/SafetyGuideScreen';
-import { FaqScreen } from './components/FaqScreen';
-import { PrivacyScreen } from './components/PrivacyScreen';
-import { TermsScreen } from './components/TermsScreen';
+import { useEffect } from "react";
+import { SiteLayout } from "./components/SiteLayout";
+import { LandingPage } from "./components/LandingPage";
+import { StatsPage } from "./components/StatsPage";
+import { PricingPage } from "./components/PricingPage";
+import { GuidePage } from "./components/GuidePage";
+import { pages } from "./content";
+import { StatsProvider } from "./lib/publicStats";
+import type { PublicStats } from "./lib/publicStats";
 
-export type AppView =
-  | 'landing'
-  | 'how-it-works'
-  | 'ielts-speaking'
-  | 'community-guidelines'
-  | 'safety'
-  | 'faq'
-  | 'privacy'
-  | 'terms';
-
-const parseLocationToView = (): AppView => {
-  if (typeof window === 'undefined') return 'landing';
-  const loc = (window.location.pathname + window.location.hash).toLowerCase();
-  if (loc.includes('how-it-works')) return 'how-it-works';
-  if (loc.includes('ielts-speaking') || loc.includes('ielts')) return 'ielts-speaking';
-  if (loc.includes('community-guidelines') || loc.includes('guidelines') || loc.includes('safety')) return 'community-guidelines';
-  if (loc.includes('faq')) return 'faq';
-  if (loc.includes('privacy') || loc.includes('terms') || loc.includes('refund')) return 'privacy';
-  return 'landing';
-};
-
-export const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<AppView>(() => parseLocationToView());
-
+export function App({
+  initialPath,
+  initialStats,
+}: {
+  initialPath?: string;
+  initialStats?: PublicStats | null;
+}) {
+  const path =
+    (
+      initialPath ??
+      (typeof window === "undefined" ? "/" : window.location.pathname)
+    )
+      .replace(/\/index\.html$/, "/")
+      .replace(/\.html$/, "")
+      .replace(/\/$/, "") || "/";
   useEffect(() => {
-    const handleLocationChange = () => {
-      setActiveView(parseLocationToView());
+    const aliases: Record<string, string> = {
+      guidelines: "community-guidelines",
+      ielts: "ielts-speaking",
+      refund: "pricing",
     };
-
-    window.addEventListener('hashchange', handleLocationChange);
-    window.addEventListener('popstate', handleLocationChange);
-    return () => {
-      window.removeEventListener('hashchange', handleLocationChange);
-      window.removeEventListener('popstate', handleLocationChange);
-    };
-  }, []);
-
-  const navigateTo = useCallback((view: AppView | string) => {
-    let canonicalPath = '/';
-    let targetView: AppView = 'landing';
-
-    switch (view) {
-      case 'how-it-works':
-        canonicalPath = '/how-it-works';
-        targetView = 'how-it-works';
-        break;
-      case 'ielts-speaking':
-      case 'ielts':
-        canonicalPath = '/ielts-speaking';
-        targetView = 'ielts-speaking';
-        break;
-      case 'community-guidelines':
-      case 'guidelines':
-      case 'safety':
-        canonicalPath = '/community-guidelines';
-        targetView = 'community-guidelines';
-        break;
-      case 'faq':
-        canonicalPath = '/faq';
-        targetView = 'faq';
-        break;
-      case 'privacy':
-      case 'terms':
-      case 'refund':
-        canonicalPath = '/privacy';
-        targetView = 'privacy';
-        break;
-      case 'landing':
-      default:
-        canonicalPath = '/';
-        targetView = 'landing';
-        break;
-    }
-
-    if (typeof window !== 'undefined') {
-      if (typeof window.history.pushState === 'function') {
-        window.history.pushState(null, '', canonicalPath);
-      } else {
-        window.location.hash = targetView === 'landing' ? '' : `#${targetView}`;
-      }
-    }
-    setActiveView(targetView);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
-
-  const handleBackToLanding = useCallback(() => {
-    navigateTo('landing');
-  }, [navigateTo]);
-
-  if (activeView === 'how-it-works') {
-    return <HowItWorksScreen onBack={handleBackToLanding} onNavigate={navigateTo} />;
-  }
-
-  if (activeView === 'ielts-speaking') {
-    return <IeltsSpeakingGuideScreen onBack={handleBackToLanding} onNavigate={navigateTo} />;
-  }
-
-  if (activeView === 'community-guidelines') {
-    return <GuidelinesScreen onBack={handleBackToLanding} onNavigate={navigateTo} />;
-  }
-
-  if (activeView === 'safety') {
-    return <SafetyGuideScreen onBack={handleBackToLanding} onNavigate={navigateTo} />;
-  }
-
-  if (activeView === 'faq') {
-    return <FaqScreen onBack={handleBackToLanding} onNavigate={navigateTo} />;
-  }
-
-  if (activeView === 'privacy') {
-    return <PrivacyScreen onBack={handleBackToLanding} onNavigate={navigateTo} />;
-  }
-
-  if (activeView === 'terms') {
-    return <TermsScreen onBack={handleBackToLanding} onNavigate={navigateTo} />;
-  }
-
+    const hash = window.location.hash.slice(1);
+    const destination = aliases[hash] ?? hash;
+    if (
+      path === "/" &&
+      (pages[`/${destination}`] ||
+        destination === "stats" ||
+        destination === "pricing")
+    )
+      window.location.replace(`/${destination}`);
+  }, [path]);
   return (
-    <LandingPage
-      onOpenGuidelines={() => navigateTo('community-guidelines')}
-      onOpenPrivacy={() => navigateTo('privacy')}
-    />
+    <StatsProvider
+      initial={initialStats}
+      enabled={path === "/" || path === "/stats"}
+    >
+      <SiteLayout path={path}>
+        {path === "/" ? (
+          <LandingPage />
+        ) : path === "/stats" ? (
+          <StatsPage />
+        ) : path === "/pricing" ? (
+          <PricingPage />
+        ) : pages[path] ? (
+          <GuidePage page={pages[path]} />
+        ) : (
+          <section className="container page-intro">
+            <p className="eyebrow">404 · PAGE NOT FOUND</p>
+            <h1>A little off course.</h1>
+            <p>This page doesn’t exist. Let’s get you back to speaking.</p>
+            <a className="button" href="/">
+              Back to PairTalk
+            </a>
+          </section>
+        )}
+      </SiteLayout>
+    </StatsProvider>
   );
-};
-
+}
 export default App;

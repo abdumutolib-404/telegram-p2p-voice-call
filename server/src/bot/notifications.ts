@@ -4,9 +4,32 @@ import { logger } from '../utils/logger';
 import crypto from 'node:crypto';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
+import type { Prisma } from '@prisma/client';
 
 type SendMessageOptions = Parameters<Bot<MyContext>['api']['sendMessage']>[2];
 type SendMessageSignal = Parameters<Bot<MyContext>['api']['sendMessage']>[3];
+
+const notificationNamespace = crypto.createHash('sha256').update(env.BOT_TOKEN).digest('hex').slice(0, 24);
+
+/** Must run inside the business transaction when delivery depends on a committed award. */
+export async function persistNotification(
+  tx: Prisma.TransactionClient, telegramId: string, text: string,
+  options?: SendMessageOptions, urgent = false, dedupeKey?: string
+): Promise<boolean> {
+  const optionsJson = options ? JSON.stringify(options) : null;
+  if (text.length > 8192 || (optionsJson?.length ?? 0) > 16384 || (dedupeKey?.length ?? 0) > 256) {
+    throw new Error('Notification exceeds supported size.');
+  }
+  // PostgreSQL returns void; Prisma cannot deserialize it without an explicit supported cast.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${notificationNamespace},0))::text`;
+  // Deduplicate all outcomes, including uncertain delivery: replay must never resend those jobs.
+  if (dedupeKey && await tx.notificationJob.findFirst({ where: { namespace: notificationNamespace, dedupeKey } })) return false;
+  if (await tx.notificationJob.count({ where: { namespace: notificationNamespace, status: { in: ['QUEUED', 'SENDING'] } } }) >= 1000) {
+    throw new Error('Notification queue is full.');
+  }
+  await tx.notificationJob.create({ data: { namespace: notificationNamespace, telegramId, text, optionsJson, urgent, dedupeKey } });
+  return true;
+}
 
 interface QueueItem {
   telegramId: string;
@@ -23,7 +46,7 @@ export class NotificationQueue {
   private stopped = false;
   private controller: AbortController | null = null;
   private active: Promise<void> | null = null;
-  private readonly namespace = crypto.createHash('sha256').update(env.BOT_TOKEN).digest('hex').slice(0,24);
+  private readonly namespace = notificationNamespace;
 
   /** Persistent jobs survive restarts; uncertain sends require review instead of blind replay. */
   async recover(bot: Bot<MyContext>): Promise<void> {
@@ -67,15 +90,11 @@ export class NotificationQueue {
     telegramId: string,
     text: string,
     options?: SendMessageOptions,
-    isUrgent = false
+    isUrgent = false,
+    dedupeKey?: string
   ) {
-    if (env.NODE_ENV !== 'test') {
-      if (text.length > 8192 || JSON.stringify(options||{}).length > 16384) throw new Error('Notification exceeds supported size.');
-      await prisma.$transaction(async tx => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${this.namespace},0))`;
-        if (await tx.notificationJob.count({where:{namespace:this.namespace,status:{in:['QUEUED','SENDING']}}}) >= 1000) throw new Error('Notification queue is full.');
-        await tx.notificationJob.create({data:{namespace:this.namespace,telegramId,text,optionsJson:options?JSON.stringify(options):null,urgent:isUrgent}});
-      });
+    if (env.NODE_ENV !== 'test' || dedupeKey) {
+      await prisma.$transaction(tx => persistNotification(tx, telegramId, text, options, isUrgent, dedupeKey));
       void this.recover(bot).catch(error=>logger.warn('Notification worker unavailable',{service:'bot'},error));
       return;
     }

@@ -700,7 +700,7 @@ describe('Gemini 2.0 Flash AI Curation & Pipeline Sanitation', () => {
       const state = await aiCurationService.checkGeminiConnection(true);
 
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-2.5-flash' }));
-      expect(generateContentMock).toHaveBeenCalledWith('ping');
+      expect(generateContentMock).toHaveBeenCalledWith('ping', { signal: expect.any(AbortSignal) });
       expect(state.status).toBe('CONNECTED');
       expect(state.model).toBe('gemini-2.5-flash');
       expect(state.lastError).toBeNull();

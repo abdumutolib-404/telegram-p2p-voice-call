@@ -14,7 +14,28 @@ describe('Automatic Subscription Expiry & Limit Reminder Suite', () => {
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks(); vi.clearAllMocks();
+  });
+
+  it('persists expiry and advance-warning notices while the bot is temporarily unavailable', async () => {
+    const expired = await prisma.user.create({ data: { telegramId: 998877670n, alias: 'ExpiryOffline', plan: 'PLUS', subscriptionExpiresAt: new Date(Date.now() - 1000) } });
+    const soon = await prisma.user.create({ data: { telegramId: 998877671n, alias: 'WarningOffline', plan: 'PLUS', subscriptionExpiresAt: new Date(Date.now() + 3600000) } });
+    await checkAndProcessSubscriptionExpirations(null);
+    expect((await prisma.user.findUnique({ where: { id: expired.id } }))?.plan).toBe('FREE');
+    for (const user of [expired, soon]) expect(await prisma.notificationJob.count({ where: { telegramId: user.telegramId.toString(), status: 'QUEUED' } })).toBe(1);
+    await checkAndProcessSubscriptionExpirations(mockBot);
+    for (const user of [expired, soon]) expect(await prisma.notificationJob.count({ where: { telegramId: user.telegramId.toString() } })).toBe(1);
+  });
+
+  it('retries expiry when the notice cannot be durably persisted', async () => {
+    const expired = await prisma.user.create({ data: { telegramId: 998877672n, alias: 'ExpiryQueueFailure', plan: 'PLUS', subscriptionExpiresAt: new Date(Date.now() - 1000) } });
+    vi.spyOn(prisma.notificationJob, 'create').mockRejectedValueOnce(new Error('Synthetic notification persistence failure'));
+    await checkAndProcessSubscriptionExpirations(null);
+    expect((await prisma.user.findUnique({ where: { id: expired.id } }))?.plan).toBe('PLUS');
+    expect(await prisma.auditLog.count({ where: { targetId: expired.id, action: 'SUBSCRIPTION_EXPIRED' } })).toBe(0);
+    await checkAndProcessSubscriptionExpirations(null);
+    expect((await prisma.user.findUnique({ where: { id: expired.id } }))?.plan).toBe('FREE');
+    expect(await prisma.notificationJob.count({ where: { telegramId: expired.telegramId.toString() } })).toBe(1);
   });
 
   it('1. Reverts expired subscriptions to FREE and enqueues expiry notification', async () => {
@@ -62,7 +83,7 @@ describe('Automatic Subscription Expiry & Limit Reminder Suite', () => {
     const res1 = await checkAndProcessSubscriptionExpirations(mockBot);
     expect(res1.warnedCount).toBeGreaterThanOrEqual(1);
 
-    // Second run should deduplicate via Redis and send 0 additional warnings
+    // Second run should deduplicate against the saved notification and queue no additional warnings.
     const res2 = await checkAndProcessSubscriptionExpirations(mockBot);
     expect(res2.warnedCount).toBe(0);
 

@@ -7,6 +7,9 @@ dist/
 build/
 .output/
 
+# Local source archives
+/artifacts/*.zip
+
 # Environment variables
 .env
 .env.*

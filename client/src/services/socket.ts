@@ -33,9 +33,11 @@ export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 class SocketService {
   private socket: AppSocket | null = null;
+  private credential: string | null = null;
 
   public connect(initData: string): AppSocket {
-    if (this.socket && this.socket.connected) {
+    if (this.socket && this.credential === initData) {
+      if (!this.socket.connected) this.socket.connect();
       return this.socket;
     }
 
@@ -59,6 +61,7 @@ class SocketService {
         token: initData,
       },
     }) as AppSocket;
+    this.credential = initData;
 
     return this.socket;
   }
@@ -92,6 +95,7 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.credential = null;
   }
 }
 

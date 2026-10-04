@@ -1,0 +1,6 @@
+{
+  "errors": [],
+  "unexpectedErrors": 0,
+  "warningCount": 25,
+  "context": "Image has external networking disabled; official crawler IP-prefix feed fetch failures are expected here. Deliberately forged webhook and authentication tests produce expected warnings."
+}

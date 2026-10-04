@@ -1,0 +1,7 @@
+{
+  "scenario": "Recording owned by A, requested by authenticated non-recorder B",
+  "ownerStatus": 200,
+  "nonRecorderStatus": 403,
+  "nonRecorderReceivesDownloadUrl": false,
+  "outsiderStatus": 403
+}

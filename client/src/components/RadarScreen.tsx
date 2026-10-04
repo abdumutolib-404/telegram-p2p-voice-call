@@ -100,9 +100,9 @@ export const RadarScreen: React.FC<RadarScreenProps> = ({
       {/* Footer Info */}
       <div className="w-full max-w-sm pt-2 border-t border-slate-900/80 flex items-center justify-between text-[10px] font-mono text-slate-600">
         <span className="flex items-center gap-1">
-          <ShieldCheck className="w-3 h-3 text-emerald-500/70" /> ENCRYPTED SFU
+          <ShieldCheck className="w-3 h-3 text-emerald-500/70" /> ALIAS-BASED PRACTICE
         </span>
-        <span>LATENCY: &lt;100MS</span>
+        <span>LIVE VOICE</span>
       </div>
     </div>
   );

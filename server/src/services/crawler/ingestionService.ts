@@ -1,5 +1,5 @@
 import { prisma } from '../../config/database';
-import { getRedis } from '../../config/redis';
+import { CrawlerLease } from './lease';
 import { logger } from '../../utils/logger';
 import { generateQuestionFingerprint } from './fingerprint';
 import { SEED_TOPICS, classifyTopic, evaluateTopicClassification, formatCapitalizedTopicName, normalizeToCanonicalSlug } from './taxonomy';
@@ -21,8 +21,6 @@ export interface IngestionResult {
 }
 
 export class QuestionIngestionService {
-  private readonly crawlerLockKey = 'pairtalk:crawler:lock';
-  private readonly lockTtlMs = 60000; // 1 minute lock
 
   public async runIngestion(options?: {
     customSources?: RawCandidateQuestion[];
@@ -32,18 +30,10 @@ export class QuestionIngestionService {
     onNewTopics?: (newCount: number, topics: string[]) => Promise<void>;
   }): Promise<IngestionResult> {
     const startTime = Date.now();
-    const redis = getRedis();
+    const lease = new CrawlerLease();
 
-    // 1. Acquire distributed crawler lock
-    let hasLock = false;
-    try {
-      const lockRes = await redis.set(this.crawlerLockKey, String(process.pid), 'PX', this.lockTtlMs, 'NX');
-      hasLock = lockRes === 'OK';
-    } catch {
-      hasLock = true; // Fallback if redis unavailable
-    }
-
-    if (!hasLock && !options?.force) {
+    // A manual force request still respects active distributed ownership.
+    if (!await lease.acquire()) {
       logger.warn('Crawler execution skipped: another ingestion run is currently in progress.', {
         service: 'crawler',
         event: 'crawler_locked',
@@ -85,11 +75,13 @@ export class QuestionIngestionService {
       // 3. Ensure all 15 Canonical Cambridge IELTS Topic Families exist in database
       const topicMap = new Map<string, string>(); // slug -> topicId
       for (const t of SEED_TOPICS) {
+        await lease.assertOwned();
         let topic = await prisma.ieltsTopic.findUnique({ where: { slug: t.slug } });
         if (!topic) {
           // Guard against name uniqueness collision if legacy record has same name
           topic = await prisma.ieltsTopic.findUnique({ where: { name: t.name } });
           if (topic) {
+            await lease.assertOwned();
             topic = await prisma.ieltsTopic.update({
               where: { id: topic.id },
               data: {
@@ -100,6 +92,7 @@ export class QuestionIngestionService {
               },
             });
           } else {
+            await lease.assertOwned();
             topic = await prisma.ieltsTopic.create({
               data: {
                 name: t.name,
@@ -153,7 +146,9 @@ export class QuestionIngestionService {
       // Custom URL Crawl on-demand
       if (options?.customUrl && options.customUrl.startsWith('http')) {
         try {
+          await lease.assertOwned();
           const crawledFromUrl = await webCrawlerService.fetchAndExtractUrl(options.customUrl);
+          await lease.assertOwned();
           candidateQuestions.push(...crawledFromUrl);
           sourcesProcessed++;
         } catch (err) {
@@ -164,7 +159,9 @@ export class QuestionIngestionService {
       // Deep Crawl configured sources if flag set
       if (options?.deepCrawl) {
         try {
+          await lease.assertOwned();
           const crawledFromWeb = await webCrawlerService.crawlAllConfiguredSources();
+          await lease.assertOwned();
           candidateQuestions.push(...crawledFromWeb);
           sourcesProcessed += VERIFIED_CRAWLER_TARGETS.filter(t => t.enabled).length;
         } catch (err) {
@@ -194,9 +191,12 @@ export class QuestionIngestionService {
         };
       });
 
+      await lease.assertOwned();
       const curatedResults = await aiCurationService.curateQuestionBatch(curationInputs);
+      await lease.assertOwned();
 
       for (let i = 0; i < candidateQuestions.length; i++) {
+        await lease.assertOwned();
         const item = candidateQuestions[i];
         const curated = curatedResults[i];
 
@@ -238,6 +238,7 @@ export class QuestionIngestionService {
             SEED_TOPICS.find((s) => s.slug === 'leisure-habits-daily')!;
           let dbTopic = await prisma.ieltsTopic.findUnique({ where: { slug: seed.slug } });
           if (!dbTopic) {
+            await lease.assertOwned();
             dbTopic = await prisma.ieltsTopic.create({
               data: {
                 name: seed.name,
@@ -261,6 +262,7 @@ export class QuestionIngestionService {
 
         if (existing) {
           if (existing.topicId !== topicId || !existing.isActive || existing.part !== part) {
+            await lease.assertOwned();
             await prisma.ieltsQuestion.update({
               where: { id: existing.id },
               data: {
@@ -403,12 +405,7 @@ export class QuestionIngestionService {
         error: errMsg,
       };
     } finally {
-      // Release distributed lock
-      try {
-        await redis.del(this.crawlerLockKey);
-      } catch {
-        // ignore
-      }
+      await lease.release();
     }
   }
 }

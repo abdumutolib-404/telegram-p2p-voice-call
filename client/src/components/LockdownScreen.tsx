@@ -24,6 +24,8 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
 
   const [countdown, setCountdown] = useState<number>(retryAfterSeconds);
   const [suspensionRemaining, setSuspensionRemaining] = useState<string>('');
+  const [suspensionExpired, setSuspensionExpired] = useState(false);
+  const hasSuspensionDeadline = Boolean(bannedUntil && Number.isFinite(new Date(bannedUntil).getTime()));
 
   // Countdown timer for rate limiting
   useEffect(() => {
@@ -44,13 +46,16 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
 
   // Live countdown timer for temporary suspension
   useEffect(() => {
-    if (reason === 'suspended' && bannedUntil) {
+    setSuspensionExpired(false);
+    if (reason === 'suspended' && hasSuspensionDeadline && bannedUntil) {
       const updateSuspension = () => {
         const diffMs = new Date(bannedUntil).getTime() - Date.now();
         if (diffMs <= 0) {
+          setSuspensionExpired(true);
           setSuspensionRemaining('Expired. Re-authenticate to resume.');
           return;
         }
+        setSuspensionExpired(false);
         const hours = Math.floor(diffMs / (1000 * 60 * 60));
         const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
         const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
@@ -60,16 +65,16 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       const timer = setInterval(updateSuspension, 1000);
       return () => clearInterval(timer);
     }
-  }, [reason, bannedUntil]);
+  }, [reason, bannedUntil, hasSuspensionDeadline]);
 
-  // Cyberpunk Visual Configuration for all 8 deterministic access states
+  // Each access state provides a specific explanation and recovery action.
   const config = {
     browser_direct: {
       badge: 'SECURITY LOCKDOWN',
       badgeColor: 'border-cyan-500/40 text-cyan-400 bg-cyan-950/40',
       title: 'EXTERNAL ACCESS RESTRICTED',
       description:
-        'PairTalk operates exclusively within Telegram WebApp to enforce peer encryption, anonymous alias protection, and authenticated IELTS student matching.',
+        'Open PairTalk from the Telegram bot to sign in and find a speaking practice partner.',
       icon: ShieldAlert,
       iconColor: 'text-cyan-400',
     },
@@ -78,16 +83,17 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       badgeColor: 'border-rose-500/40 text-rose-400 bg-rose-950/40',
       title: 'PERMANENT MODERATION LOCK',
       description:
-        'Your candidate account has been permanently restricted due to severe or repeated violations of the PairTalk Community Guidelines.',
+        'Your account is restricted. You can request a moderation review through the Telegram bot.',
       icon: AlertOctagon,
       iconColor: 'text-rose-400',
     },
     suspended: {
-      badge: 'MODERATION TIMEOUT',
+      badge: 'ACCOUNT SUSPENDED',
       badgeColor: 'border-amber-500/40 text-amber-400 bg-amber-950/40',
-      title: 'TEMPORARY ACCOUNT SUSPENSION',
-      description:
-        'Your candidate account is currently placed in a temporary cooldown following partner moderation reports. Access will be automatically restored when the timer expires.',
+      title: hasSuspensionDeadline ? 'TEMPORARY ACCOUNT SUSPENSION' : 'ACCOUNT SUSPENDED',
+      description: hasSuspensionDeadline
+        ? 'Your account is suspended. Try again when the suspension ends.'
+        : 'Your account is suspended pending review. No end date has been set.',
       icon: Clock,
       iconColor: 'text-amber-400',
     },
@@ -96,7 +102,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       badgeColor: 'border-amber-500/40 text-amber-400 bg-amber-950/40',
       title: 'RATE LIMIT REACHED',
       description:
-        'Too many rapid connection requests detected. System cooldown engaged to maintain matchmaking queue stability.',
+        'You have made several requests in a short time. Wait for the timer, then try again.',
       icon: Flame,
       iconColor: 'text-amber-400',
     },
@@ -106,7 +112,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       title: 'PLAN LIMIT REACHED',
       description:
         message ||
-        'You have reached your practice call allowance. Upgrade your plan via @PairTalkBot or wait until your next monthly renewal date.',
+        'You have reached your practice call allowance. Open plans in the Telegram bot or return when your allowance renews.',
       icon: CreditCard,
       iconColor: 'text-purple-400',
     },
@@ -115,7 +121,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       badgeColor: 'border-indigo-500/40 text-indigo-400 bg-indigo-950/40',
       title: 'LAUNCH VIA BOT MENU',
       description:
-        'Please launch PairTalk using the verified Mini App Menu Button inside @PairTalkBot to authenticate your Telegram session.',
+        'Open PairTalk using the menu button in the Telegram bot to sign in.',
       icon: Lock,
       iconColor: 'text-indigo-400',
     },
@@ -124,7 +130,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       badgeColor: 'border-rose-500/40 text-rose-400 bg-rose-950/40',
       title: 'AUTHENTICATION SIGNATURE EXPIRED',
       description:
-        'Your Telegram authentication token is no longer fresh or HMAC signature verification failed. Please close and re-open the Mini App.',
+        'Your session could not be verified. Close and reopen PairTalk from the Telegram bot.',
       icon: KeyRound,
       iconColor: 'text-rose-400',
     },
@@ -133,7 +139,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       badgeColor: 'border-rose-500/40 text-rose-400 bg-rose-950/40',
       title: 'SIGNALING SERVER OFFLINE',
       description:
-        'Unable to establish secure telemetry with the PairTalk backend cluster. Please verify your connection or retry.',
+        'We could not connect to PairTalk. Check your internet connection and try again.',
       icon: WifiOff,
       iconColor: 'text-rose-400',
     },
@@ -175,7 +181,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
         </p>
 
         {/* Suspended Cooldown Timer */}
-        {reason === 'suspended' && (
+        {reason === 'suspended' && hasSuspensionDeadline && (
           <div className="w-full p-4 mb-5 rounded-2xl bg-[#0B101D] border border-amber-500/30 font-mono text-center">
             <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold mb-1">
               Active Cooldown Timer
@@ -184,7 +190,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
               {suspensionRemaining || 'Calculating cooldown...'}
             </div>
             <p className="text-[10px] text-slate-500 mt-2">
-              Temporary suspension after automated moderation penalty.
+              You can try again when the suspension ends.
             </p>
           </div>
         )}
@@ -240,7 +246,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
         )}
 
         {/* Action: Server Unavailable or Auth Rejected Retry */}
-        {(reason === 'server_unavailable' || reason === 'auth_rejected') && onRetry && (
+        {(reason === 'server_unavailable' || reason === 'auth_rejected' || (reason === 'suspended' && suspensionExpired)) && onRetry && (
           <button
             type="button"
             onClick={onRetry}
@@ -269,7 +275,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
           <AlertOctagon className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
           <div className="text-xs text-slate-300 font-mono">
             <p className="font-bold text-slate-200 uppercase tracking-wider mb-1 text-[11px]">
-              Access Protocol:
+              Open PairTalk:
             </p>
             <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[10.5px]">
               <li>Open <strong>@{botUsername}</strong> in Telegram.</li>
@@ -279,10 +285,10 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
         </div>
       </div>
 
-      {/* Footer Gateway Telemetry */}
+      {/* Product identity */}
       <div className="w-full max-w-sm pt-4 border-t border-slate-900 flex items-center justify-between text-[10px] font-mono text-slate-600">
-        <span>GATEWAY: DETERMINISTIC_V2</span>
-        <span>CODE: {reason.toUpperCase()}</span>
+        <span>PairTalk</span>
+        <span>Speaking practice</span>
       </div>
     </div>
   );

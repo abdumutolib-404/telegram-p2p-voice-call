@@ -7,6 +7,7 @@ import {
   S3Upload,
   EgressInfo,
   EgressStatus,
+  ServerError,
 } from 'livekit-server-sdk';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -24,7 +25,7 @@ export let roomServiceClient: RoomServiceClient | null = null;
 
 try {
   egressClient = new EgressClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
-  roomServiceClient = new RoomServiceClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
+  roomServiceClient = new RoomServiceClient(env.LIVEKIT_HOST, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, { requestTimeout: 2, failover: false });
 } catch (error: unknown) {
   logger.error('LiveKit client initialization failed', {
     service: 'livekit',
@@ -109,6 +110,22 @@ export async function deleteLiveKitRoom(roomName: string): Promise<void> {
     await Promise.race([deletePromise, timeoutPromise]);
   } catch {
     // Room may already have ended or been closed
+  }
+}
+
+/** Uncertain provider state must never authorize cancellation of a call on another gateway. */
+export async function areCallParticipantsPresent(roomName: string, userIds: readonly string[]): Promise<boolean> {
+  return await countCallParticipants(roomName, userIds) > 0;
+}
+
+export async function countCallParticipants(roomName: string, userIds: readonly string[]): Promise<number> {
+  if (!roomServiceClient) throw new Error('Room presence service is unavailable.');
+  try {
+    const participants = await roomServiceClient.listParticipants(roomName);
+    return new Set(participants.filter(participant => userIds.includes(participant.identity)).map(participant => participant.identity)).size;
+  } catch (error) {
+    if (error instanceof ServerError && error.code === 'not_found') return 0;
+    throw error;
   }
 }
 

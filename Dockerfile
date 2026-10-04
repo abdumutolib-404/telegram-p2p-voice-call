@@ -1,15 +1,20 @@
 # Multi-Stage Production Dockerfile for Telegram IELTS Speaking P2P Platform
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache ffmpeg openssl libssl3
 
 # --- Stage 1: Build Go Gateway ---
-FROM golang:alpine AS gateway-builder
+FROM golang:1.26-alpine AS gateway-builder
 WORKDIR /app/gateway
 COPY gateway/go.mod gateway/go.sum ./
 RUN go mod download
 COPY gateway/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /gateway-bin ./cmd/gateway
+
+# Optional Linux verification target; compiler tools never enter the production runner.
+FROM gateway-builder AS gateway-verification
+RUN apk add --no-cache gcc musl-dev
+RUN NODE_ENV=test CGO_ENABLED=1 go test -race ./... -count=1 && go vet ./...
 
 # --- Stage 2: Build Server ---
 FROM base AS server-builder

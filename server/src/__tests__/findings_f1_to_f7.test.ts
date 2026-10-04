@@ -449,12 +449,12 @@ describe('Findings F1 - F7 Targeted Regression Test Suite', () => {
           userAId: 'user_a',
           userBId: 'user_b',
           status: 'ACTIVE',
+          egressId: 'EG_FAIL_RETRY',
         },
       });
 
-      // Mock prisma.callSession.update to simulate transient DB outage
-      const origUpdate = prisma.callSession.update;
-      (prisma.callSession as any).update = vi.fn().mockRejectedValueOnce(new Error('PostgreSQL connection timeout'));
+      // Fail the conditional metadata write while the tracked webhook identity remains valid.
+      const write = vi.spyOn(prisma.callSession, 'updateMany').mockRejectedValueOnce(new Error('PostgreSQL connection timeout'));
 
       try {
         const res = await request(app)
@@ -471,8 +471,9 @@ describe('Findings F1 - F7 Targeted Regression Test Suite', () => {
 
         expect(res.status).toBe(500);
         expect(res.text).toContain('Database update failed');
+        expect(write).toHaveBeenCalledOnce();
       } finally {
-        (prisma.callSession as any).update = origUpdate;
+        write.mockRestore();
       }
     });
 

@@ -95,7 +95,7 @@ describe('Admin IELTS Crawler & Gemini Check Routes', () => {
       expect(res.body.gemini.model).toBe('gemini-2.5-flash');
       expect(res.body.gemini.lastError).toBeNull();
       expect(typeof res.body.gemini.latencyMs).toBe('number');
-      expect(mockGenerate).toHaveBeenCalledWith('ping');
+      expect(mockGenerate).toHaveBeenCalledWith('ping', { signal: expect.any(AbortSignal) });
     });
 
     it('returns FAILED state when live ping fails', async () => {

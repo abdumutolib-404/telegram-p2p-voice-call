@@ -22,13 +22,14 @@ type CallSessionWhere = {
   roomName?: string;
   userAId?: string;
   userBId?: string;
-  recordedByUserId?: string | null | { contains?: string };
+  recordedByUserId?: string | null | { contains?: string; startsWith?: string; endsWith?: string };
   status?: string | { in?: string[] };
   egressId?: string | null;
   recordingUrl?: string | null | { not?: null };
   recordingExpiresAt?: Date | null | { lte?: Date; gt?: Date };
   createdAt?: Date | { lte?: Date; gte?: Date };
   OR?: Array<CallSessionWhere>;
+  AND?: Array<CallSessionWhere>;
 };
 type CallSessionData = Record<string, unknown>;
 type RatingWhere = { callId?: string; raterId?: string; ratedId?: string; reported?: boolean };
@@ -246,6 +247,10 @@ function safeJson(value: unknown): string {
 }
 
 export class InMemoryPrismaMock {
+  private readonly notificationJobs = new Map<string, Record<string, unknown>>();
+  private readonly postCallJobs = new Map<string, Record<string, unknown>>();
+  notificationJob = jobModel(this.notificationJobs, 'id');
+  postCallJob = jobModel(this.postCallJobs, 'callId');
   private readonly users = new Map<string, UserRow>();
   private readonly callSessions = new Map<string, CallSessionRow>();
   private readonly callRatings = new Map<string, CallRatingRow>();
@@ -264,6 +269,11 @@ export class InMemoryPrismaMock {
 
   async $connect(): Promise<void> {}
   async $disconnect(): Promise<void> {}
+
+  async $queryRaw(query: TemplateStringsArray): Promise<unknown[]> {
+    if (!query.join('').includes('pg_advisory_xact_lock')) throw new Error('Unsupported mock SQL');
+    return []; // Mock transactions are serialized, including queue-capacity/deduplication claims.
+  }
 
   async $transaction<T>(operation: ((tx: InMemoryPrismaMock) => Promise<T>) | Array<Promise<unknown>>): Promise<T> {
     if (Array.isArray(operation)) {
@@ -729,12 +739,14 @@ export class InMemoryPrismaMock {
       if (!args?.where) {
         const count = this.callSessions.size;
         this.callSessions.clear();
+        this.postCallJobs.clear();
         return { count };
       }
       let count = 0;
       for (const [id, session] of this.callSessions) {
         if (this.matchesCallSession(session, args.where)) {
           this.callSessions.delete(id);
+          this.postCallJobs.delete(id);
           count += 1;
         }
       }
@@ -1120,7 +1132,7 @@ export class InMemoryPrismaMock {
       if (args?.take !== undefined) list = list.slice(0, args.take);
       return list.map((l) => ({ ...l }));
     },
-    count: async (): Promise<number> => this.auditLogs.size,
+    count: async (args?: { where?: Record<string, unknown> }): Promise<number> => (await this.auditLog.findMany(args)).length,
     deleteMany: async (): Promise<{ count: number }> => {
       const count = this.auditLogs.size;
       this.auditLogs.clear();
@@ -1424,10 +1436,12 @@ export class InMemoryPrismaMock {
     if (where.recordingUrl === null && session.recordingUrl !== null) return false;
     if (where.recordingUrl && typeof where.recordingUrl === 'object' && where.recordingUrl.not === null && session.recordingUrl === null) return false;
     if (where.recordedByUserId !== undefined) {
-      if (typeof where.recordedByUserId === 'object' && where.recordedByUserId !== null && 'contains' in where.recordedByUserId) {
-        if (!session.recordedByUserId || !session.recordedByUserId.includes((where.recordedByUserId as { contains: string }).contains)) {
-          return false;
-        }
+      if (typeof where.recordedByUserId === 'object' && where.recordedByUserId !== null) {
+        const filter = where.recordedByUserId;
+        if (session.recordedByUserId === null) return false;
+        if (filter.contains !== undefined && !session.recordedByUserId.includes(filter.contains)) return false;
+        if (filter.startsWith !== undefined && !session.recordedByUserId.startsWith(filter.startsWith)) return false;
+        if (filter.endsWith !== undefined && !session.recordedByUserId.endsWith(filter.endsWith)) return false;
       } else if (session.recordedByUserId !== where.recordedByUserId) {
         return false;
       }
@@ -1444,6 +1458,7 @@ export class InMemoryPrismaMock {
       if (filter.gte && session.createdAt.getTime() < new Date(filter.gte).getTime()) return false;
     }
     if (where.OR && !where.OR.some((condition) => this.matchesCallSession(session, condition))) return false;
+    if (where.AND && !where.AND.every((condition) => this.matchesCallSession(session, condition))) return false;
     return true;
   }
 
@@ -1465,4 +1480,66 @@ export class InMemoryPrismaMock {
     }
     return updated;
   }
+}
+
+// Persistence mocks retain uniqueness, CAS filters and rollback semantics for job regressions.
+function jobModel(rows: Map<string, Record<string, unknown>>, primary: 'id' | 'callId') {
+  type Query = { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> | Array<Record<string, 'asc' | 'desc'>>; take?: number };
+  const matches = (row: Record<string, unknown>, where?: Record<string, unknown>): boolean => {
+    if (!where) return true;
+    return Object.entries(where).every(([key, value]) => {
+      if (key === 'OR' && Array.isArray(value)) return value.some(item => matches(row, item));
+      if (key === 'AND' && Array.isArray(value)) return value.every(item => matches(row, item));
+      const actual = row[key];
+      if (value && typeof value === 'object' && !(value instanceof Date)) {
+        const filter = value as Record<string, unknown>;
+        if (Array.isArray(filter.in) && !filter.in.includes(actual)) return false;
+        for (const comparison of ['lt', 'lte', 'gt', 'gte']) {
+          if (filter[comparison] === undefined) continue;
+          if (actual == null) return false;
+          const a = actual instanceof Date ? actual.getTime() : Number(actual);
+          const b = filter[comparison] instanceof Date ? (filter[comparison] as Date).getTime() : Number(filter[comparison]);
+          if (comparison === 'lt' && !(a < b) || comparison === 'lte' && !(a <= b) || comparison === 'gt' && !(a > b) || comparison === 'gte' && !(a >= b)) return false;
+        }
+        return true;
+      }
+      return actual === value;
+    });
+  };
+  const list = (args?: Query) => {
+    let result = [...rows.values()].filter(row => matches(row, args?.where));
+    const orders = Array.isArray(args?.orderBy) ? args.orderBy : args?.orderBy ? [args.orderBy] : [];
+    result.sort((a, b) => { for (const order of orders) for (const [key, direction] of Object.entries(order)) {
+      const av = a[key] instanceof Date ? (a[key] as Date).getTime() : a[key] as string | number;
+      const bv = b[key] instanceof Date ? (b[key] as Date).getTime() : b[key] as string | number;
+      if (av !== bv) return (av < bv ? -1 : 1) * (direction === 'desc' ? -1 : 1);
+    } return 0; });
+    if (args?.take !== undefined) result = result.slice(0, args.take);
+    return result.map(row => ({ ...row }));
+  };
+  const updateMany = async (args: { where?: Record<string, unknown>; data: Record<string, unknown> }) => {
+    let count = 0;
+    for (const [id, row] of rows) if (matches(row, args.where)) {
+      const next: Record<string, unknown> = { ...row, updatedAt: new Date() };
+      for (const [key, value] of Object.entries(args.data)) next[key] = value && typeof value === 'object' && 'increment' in value ? Number(row[key]) + Number(value.increment) : value;
+      rows.set(id, next); count++;
+    }
+    return { count };
+  };
+  return {
+    create: async (args: { data: Record<string, unknown> }) => {
+      const now = new Date();
+      const row: Record<string, unknown> = { status: 'QUEUED', attempts: 0, retries: 0, urgent: false, owner: null, leaseUntil: null, failure: null, dedupeKey: null, reason: null, deniedUserId: null, retentionA: 0, retentionB: 0, nextAttemptAt: now, createdAt: now, updatedAt: now, id: crypto.randomUUID(), ...args.data };
+      const id = String(row[primary]);
+      if (rows.has(id) || row.dedupeKey && [...rows.values()].some(other => other.namespace === row.namespace && other.dedupeKey === row.dedupeKey)) throw new Error('Unique job constraint');
+      rows.set(id, row); return { ...row };
+    },
+    findFirst: async (args?: Query) => list(args)[0] ?? null,
+    findUnique: async (args: Query) => list(args)[0] ?? null,
+    findMany: async (args?: Query) => list(args),
+    count: async (args?: Query) => list(args).length,
+    updateMany,
+    update: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => { if (!(await updateMany(args)).count) throw new Error('Job not found'); return list(args)[0]; },
+    deleteMany: async (args?: Query) => { const found = list(args); for (const row of found) rows.delete(String(row[primary])); return { count: found.length }; },
+  };
 }

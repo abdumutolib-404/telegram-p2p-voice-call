@@ -9,6 +9,7 @@ import { getEffectiveEntitlement, calculateEffectiveCallDuration } from '../serv
 import { createCanonicalError } from '../types/canonical';
 import { isS3Configured, generatePresignedDownloadUrl, checkS3ObjectExists } from '../services/s3Storage';
 import { logger } from '../utils/logger';
+import { isUserSessionRecorder } from '../utils/recordingAccess';
 
 const router = Router();
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
@@ -47,6 +48,11 @@ const handleRecordingRetrieval = async (req: AuthenticatedTelegramRequest, res: 
     }
 
     const requesterUser = session.userA.telegramId.toString() === requesterIdStr ? session.userA : session.userB;
+    // Match the bot policy, including participant access for legacy null markers.
+    if (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId, requesterUser.id)) {
+      res.status(403).json(createCanonicalError('CALL_UNAUTHORIZED', 'Access denied to this recording.'));
+      return;
+    }
     const allowedRetentionDays = getEffectiveEntitlement(requesterUser).retentionDays;
     const sessionAgeMs = Date.now() - session.createdAt.getTime();
     if (sessionAgeMs > allowedRetentionDays * 24 * 60 * 60 * 1000) {

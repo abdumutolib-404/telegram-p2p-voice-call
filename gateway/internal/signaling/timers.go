@@ -17,7 +17,7 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 		roomLock.Lock()
 		defer roomLock.Unlock()
 
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
 		defer cancel()
 
 		session, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
@@ -87,7 +87,6 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 			return
 		}
 
-		_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, actualDuration)
 		_ = h.LiveKit.DeleteRoom(ctx, roomName)
 		h.mu.Lock()
 		delete(h.roomPeers, roomName)
@@ -153,7 +152,7 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 		roomLock.Lock()
 		defer roomLock.Unlock()
 
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
 		defer cancel()
 
 		session, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
@@ -162,7 +161,28 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 		}
 
 		// Cancel session without charging credits
-		_, _ = h.DB.CancelCallSession(ctx, session.ID)
+		connected, presenceErr := h.LiveKit.ConnectedParticipants(ctx, roomName, session.UserAID, session.UserBID)
+		if presenceErr != nil {
+			h.ScheduleConnectionHandshakeTimer(roomName, 30)
+			return
+		}
+		if connected == 2 {
+			if session.UserA == nil || session.UserB == nil {
+				h.ScheduleConnectionHandshakeTimer(roomName, 30)
+				return
+			}
+			limit := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
+			remaining := limit - int(time.Since(session.CreatedAt).Seconds())
+			if remaining < 1 {
+				remaining = 1
+			}
+			h.ScheduleAuthoritativeSessionTeardown(roomName, remaining)
+			return
+		}
+		claimed, err := h.DB.CancelCallSession(ctx, session.ID)
+		if err != nil || !claimed {
+			return
+		}
 		_ = h.LiveKit.DeleteRoom(ctx, roomName)
 
 		h.mu.Lock()

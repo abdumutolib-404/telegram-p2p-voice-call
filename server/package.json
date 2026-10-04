@@ -32,7 +32,6 @@
     "livekit-server-sdk": "^2.1.2",
     "node-cron": "^3.0.3",
     "socket.io": "^4.7.5",
-    "uuid": "^9.0.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
@@ -43,7 +42,6 @@
     "@types/node": "^20.12.7",
     "@types/node-cron": "^3.0.11",
     "@types/supertest": "^6.0.2",
-    "@types/uuid": "^9.0.8",
     "prisma": "^5.12.0",
     "socket.io-client": "^4.7.5",
     "supertest": "^6.3.4",
@@ -54,5 +52,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "overrides": {
+    "node-cron": {
+      "uuid": "11.1.1"
+    }
+  }
 }

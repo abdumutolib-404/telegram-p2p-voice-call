@@ -5,6 +5,8 @@ import { moderationService } from '../../services/moderation';
 import { notificationQueue } from '../notifications';
 import { notifyQuotaLimitReachedIfExhausted } from '../../services/subscriptionExpiry';
 import { logger } from '../../utils/logger';
+import { escapeHtml } from '../../utils/sanitize';
+import { saveCallQualityRating } from '../../services/callFeedback';
 
 export async function sendPostCallReviewCard(
   bot: Bot<MyContext>,
@@ -34,31 +36,21 @@ export async function sendPostCallReviewCard(
     ? `\n\n🎙️ <i>Audio saved. Retention: <b>${retentionDays} day${retentionDays > 1 ? 's' : ''}</b> (automatically deleted thereafter).</i>`
     : '';
 
-  try {
-    await notificationQueue.enqueue(
-      bot,
-      userTelegramId,
-      `📞 <b>Practice Session Complete!</b>\n\n` +
-        `• <b>Partner</b>: ${partnerAlias}\n` +
-        `• <b>Duration</b>: ${durationStr}` +
-        `${retentionNotice}`,
-      { parse_mode: 'HTML', reply_markup: inlineKb },
-      true
-    );
+  await notificationQueue.enqueue(
+    bot,
+    userTelegramId,
+    `📞 <b>Practice Session Complete!</b>\n\n` +
+      `• <b>Partner</b>: ${escapeHtml(partnerAlias)}\n` +
+      `• <b>Duration</b>: ${durationStr}` +
+      `${retentionNotice}`,
+    { parse_mode: 'HTML', reply_markup: inlineKb },
+    true,
+    `postcall:${callSessionId}:${userTelegramId}`
+  );
 
-    // Check and notify if user has reached their monthly plan limit
-    if (/^\d+$/.test(userTelegramId)) {
-      prisma.user.findUnique({ where: { telegramId: BigInt(userTelegramId) } }).then((u) => {
-        if (u) notifyQuotaLimitReachedIfExhausted(bot, u.id, u);
-      }).catch(() => undefined);
-    }
-  } catch (err) {
-    logger.warn('Failed to enqueue review card', {
-      service: 'bot',
-      event: 'postcall_review_enqueue_failed',
-      userTelegramId,
-      callSessionId,
-    }, err);
+  if (/^\d+$/.test(userTelegramId)) {
+    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userTelegramId) } });
+    if (user) await notifyQuotaLimitReachedIfExhausted(bot, user.id, user);
   }
 }
 
@@ -91,25 +83,15 @@ export function setupPostCallCallbackHandlers(bot: Bot<MyContext>) {
       return;
     }
 
-    // Check if already rated
-    const existing = await prisma.callRating.findFirst({
-      where: { callId, raterId: rater.id },
-    });
-    if (existing) {
+    const saved = await saveCallQualityRating(callId, rater.id, stars);
+    if (saved === 'DUPLICATE') {
       await ctx.answerCallbackQuery({ text: 'You have already submitted feedback for this session.' });
       return;
     }
-
-    const targetUserId = session.userAId === rater.id ? session.userBId : session.userAId;
-
-    await prisma.callRating.create({
-      data: {
-        callId,
-        raterId: rater.id,
-        ratedId: targetUserId,
-        stars,
-      },
-    });
+    if (saved !== 'CREATED') {
+      await ctx.answerCallbackQuery({ text: saved === 'MISSING_CALL' ? 'Call session not found.' : 'Unauthorized: You were not a participant in this call.' });
+      return;
+    }
 
     await ctx.answerCallbackQuery({ text: `Saved ${stars}-star rating!`, show_alert: true });
     await ctx.editMessageText(

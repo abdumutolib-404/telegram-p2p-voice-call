@@ -1,0 +1,12 @@
+{
+  "scope": "Actual rebuilt Mini App, ordinary browser launch without Telegram credentials",
+  "date": "2026-10-03",
+  "url": "http://127.0.0.1:4182/client",
+  "viewports": [
+    { "width": 375, "height": 812, "horizontalOverflow": false, "launchTargetHeight": 48, "brandImageLoaded": true },
+    { "width": 768, "height": 1024, "horizontalOverflow": false, "launchTargetHeight": 48 },
+    { "width": 1440, "height": 900, "horizontalOverflow": false, "launchTargetHeight": 48 }
+  ],
+  "keyboard": { "launchLinkReachedFromBrandLinkWithTab": true, "visibleFocusOutline": "solid" },
+  "limits": "This is a layout and keyboard check of the launch screen, not an accessibility certification or a real voice call. Authenticated React flows are verified separately in unit tests."
+}

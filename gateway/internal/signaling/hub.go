@@ -18,15 +18,15 @@ type ActiveEgress struct {
 }
 
 type Hub struct {
-	DB                   *database.DB
-	Matchmaking          *matchmaking.Engine
-	LiveKit              *livekit.Client
-	PubSub               *PubSubClient
-	BotToken             string
-	LiveKitHost          string
-	LiveKitAPIKey        string
-	LiveKitAPISecret     string
-	AdminTelegramIDs     []string
+	DB               *database.DB
+	Matchmaking      *matchmaking.Engine
+	LiveKit          *livekit.Client
+	PubSub           *PubSubClient
+	BotToken         string
+	LiveKitHost      string
+	LiveKitAPIKey    string
+	LiveKitAPISecret string
+	AdminTelegramIDs []string
 
 	userSockets           map[string]map[string]*ClientSocket // userId -> socketId -> socket
 	roomSockets           map[string]map[string]*ClientSocket // roomName -> socketId -> socket
@@ -39,9 +39,14 @@ type Hub struct {
 	roomDurationLimits    map[string]int                      // roomName -> durationSeconds
 	handshakeTimers       map[string]*time.Timer              // roomName -> timer
 
-	roomMutexes           sync.Map // roomName -> *sync.Mutex
-	userMutexes           sync.Map // userId -> *sync.Mutex
-	mu                    sync.RWMutex
+	roomMutexes      sync.Map // roomName -> *sync.Mutex
+	userMutexes      sync.Map // userId -> *sync.Mutex
+	mu               sync.RWMutex
+	eventSlots       chan struct{}
+	queuedEventSlots chan struct{}
+	ctx              context.Context
+	cancel           context.CancelFunc
+	closing          bool
 }
 
 func NewHub(
@@ -52,6 +57,7 @@ func NewHub(
 	botToken, lkHost, lkKey, lkSecret string,
 	adminTelegramIDs []string,
 ) *Hub {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Hub{
 		DB:                    db,
 		Matchmaking:           matchmaking,
@@ -72,6 +78,32 @@ func NewHub(
 		roomStartedAt:         make(map[string]int64),
 		roomDurationLimits:    make(map[string]int),
 		handshakeTimers:       make(map[string]*time.Timer),
+		eventSlots:            make(chan struct{}, 256),
+		queuedEventSlots:      make(chan struct{}, 1024),
+		ctx:                   ctx,
+		cancel:                cancel,
+	}
+}
+
+func (h *Hub) Context() context.Context {
+	if h.ctx != nil {
+		return h.ctx
+	}
+	return context.Background()
+}
+
+func (h *Hub) Close() {
+	if h.cancel != nil {
+		h.cancel()
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.closing = true
+	for _, timers := range []map[string]*time.Timer{h.serverSessionTimers, h.handshakeTimers, h.disconnectGraceTimers} {
+		for key, timer := range timers {
+			timer.Stop()
+			delete(timers, key)
+		}
 	}
 }
 
@@ -90,6 +122,11 @@ func (h *Hub) getUserMutex(userID string) *sync.Mutex {
 }
 
 func (h *Hub) Authenticate(ctx context.Context, initData string) (*database.User, bool) {
+	if ctx == nil {
+		ctx = h.Context()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	if initData == "" {
 		return nil, false
 	}
@@ -117,18 +154,23 @@ func (h *Hub) Authenticate(ctx context.Context, initData string) (*database.User
 	return user, true
 }
 
-func (h *Hub) AddSocket(socket *ClientSocket) {
-	if socket.UserID == "" {
-		return
-	}
+const maxAuthenticatedSocketsPerUser = 8
 
+func (h *Hub) AddSocket(socket *ClientSocket) bool {
 	h.mu.Lock()
+	socket.mu.Lock()
+	if h.closing || socket.Closed || socket.UserID == "" || (h.userSockets[socket.UserID][socket.ID] == nil && len(h.userSockets[socket.UserID]) >= maxAuthenticatedSocketsPerUser) {
+		socket.mu.Unlock()
+		h.mu.Unlock()
+		return false
+	}
 	sockets, ok := h.userSockets[socket.UserID]
 	if !ok {
 		sockets = make(map[string]*ClientSocket)
 		h.userSockets[socket.UserID] = sockets
 	}
 	sockets[socket.ID] = socket
+	socket.mu.Unlock()
 
 	// Cancel disconnect grace timer if user reconnected
 	graceTimer, hasGrace := h.disconnectGraceTimers[socket.UserID]
@@ -141,7 +183,7 @@ func (h *Hub) AddSocket(socket *ClientSocket) {
 	if hasGrace && h.DB != nil {
 		// Notify active call sessions of reconnection
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
 			defer cancel()
 			activeCall, err := h.DB.GetActiveCallForUser(ctx, socket.UserID)
 			if err == nil && activeCall != nil {
@@ -157,13 +199,14 @@ func (h *Hub) AddSocket(socket *ClientSocket) {
 	if h.DB != nil {
 		go h.checkAutoReconnect(socket)
 	}
+	return true
 }
 
 func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
 	if h.DB == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
 	defer cancel()
 
 	activeCall, err := h.DB.GetActiveCallForUser(ctx, socket.UserID)
@@ -230,7 +273,9 @@ func (h *Hub) RemoveSocket(socket *ClientSocket) {
 	socket.mu.Unlock()
 
 	h.mu.Lock()
+	registered := false
 	if sockets, ok := h.userSockets[socket.UserID]; ok {
+		registered = sockets[socket.ID] == socket
 		delete(sockets, socket.ID)
 		if len(sockets) == 0 {
 			delete(h.userSockets, socket.UserID)
@@ -248,7 +293,9 @@ func (h *Hub) RemoveSocket(socket *ClientSocket) {
 	h.mu.Unlock()
 
 	// Trigger disconnect cleanup
-	h.handleDisconnect(socket)
+	if registered {
+		h.handleDisconnect(socket)
+	}
 }
 
 func (h *Hub) JoinRoom(socket *ClientSocket, roomName string) {
@@ -361,6 +408,10 @@ func (h *Hub) ClearSessionTimer(roomName string) {
 func (h *Hub) SetSessionTimer(roomName string, timer *time.Timer) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.closing {
+		timer.Stop()
+		return
+	}
 	if existing, ok := h.serverSessionTimers[roomName]; ok {
 		existing.Stop()
 	}
@@ -395,6 +446,10 @@ func (h *Hub) ClearConnectionHandshakeTimer(roomName string) {
 func (h *Hub) SetConnectionHandshakeTimer(roomName string, timer *time.Timer) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.closing {
+		timer.Stop()
+		return
+	}
 	if existing, ok := h.handshakeTimers[roomName]; ok {
 		existing.Stop()
 	}

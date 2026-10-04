@@ -70,8 +70,11 @@ func (h *Hub) ReconcileActiveSessions(ctx context.Context) (int, error) {
 			}
 
 			claimed, err := h.DB.CompleteCallSession(ctx, session.ID, completedDuration, egressID, recordingURL, expiresAt)
-			if err == nil && claimed {
-				_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, completedDuration)
+			if err != nil {
+				return reconciledCount, err
+			}
+			if !claimed {
+				continue
 			}
 			_ = h.LiveKit.DeleteRoom(ctx, session.RoomName)
 			h.DeleteRoomMutex(session.RoomName)

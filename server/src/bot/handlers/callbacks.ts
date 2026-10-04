@@ -752,7 +752,7 @@ export function setupCallbackHandlers(bot: Bot<MyContext>) {
         return;
       }
 
-      const { isUserSessionRecorder } = await import('../../socket/signaling');
+      const { isUserSessionRecorder } = await import('../../utils/recordingAccess');
       if (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId, user.id)) {
         await ctx.answerCallbackQuery({
           text: 'This recording was saved by your practice partner and is only available to them.',

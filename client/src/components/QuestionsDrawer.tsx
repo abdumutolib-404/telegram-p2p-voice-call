@@ -28,7 +28,7 @@ interface QuestionsDrawerProps {
 type PartType = 'PART_1' | 'PART_2' | 'PART_3';
 type TimerState = 'READY' | 'PREPARING' | 'SPEAKING' | 'COMPLETED';
 
-// Verified Cambridge 2026 examination recall bank
+// Local practice prompts; these are not official exam recalls.
 const DEFAULT_TOPICS: IeltsTopicItem[] = [
   { id: 'all', name: 'All Topics', slug: 'all', relevance: 10 },
   { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
@@ -48,7 +48,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_1',
     questionText: 'Do you frequently use artificial intelligence tools in your daily study or work routine?',
     questionType: 'GENERAL',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
   },
   {
@@ -57,7 +57,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_1',
     questionText: 'How has mobile technology changed the way you communicate with family and friends?',
     questionType: 'GENERAL',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
   },
   {
@@ -66,7 +66,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_1',
     questionText: 'Do you prefer learning new skills online or in a traditional physical classroom?',
     questionType: 'GENERAL',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'education-career', name: 'Education & Career', slug: 'education-career', relevance: 9 },
   },
   {
@@ -75,7 +75,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_1',
     questionText: 'What do you like most about the city or town where you currently live?',
     questionType: 'GENERAL',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'hometown-urban-life', name: 'Hometown & Urban Life', slug: 'hometown-urban-life', relevance: 8 },
   },
   {
@@ -84,7 +84,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_1',
     questionText: 'Are there any quiet green parks near your neighborhood where people can relax?',
     questionType: 'GENERAL',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'environment-sustainability', name: 'Environment & Nature', slug: 'environment-sustainability', relevance: 8 },
   },
   {
@@ -93,7 +93,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_1',
     questionText: 'How do weather changes in your country affect your daily outdoor activities?',
     questionType: 'GENERAL',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'environment-sustainability', name: 'Environment & Nature', slug: 'environment-sustainability', relevance: 8 },
   },
 
@@ -110,7 +110,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
       'And explain why achieving this goal is particularly meaningful for your future',
     ]),
     questionType: 'CUE_CARD',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'work-ambition', name: 'Work & Ambition', slug: 'work-ambition', relevance: 9 },
   },
   {
@@ -125,7 +125,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
       'And explain how you managed the situation and what you learned from the experience',
     ]),
     questionType: 'CUE_CARD',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'travel-tourism', name: 'Travel & Journeys', slug: 'travel-tourism', relevance: 8 },
   },
   {
@@ -140,7 +140,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
       'And explain how you felt once you achieved proficiency in it',
     ]),
     questionType: 'CUE_CARD',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'education-career', name: 'Education & Career', slug: 'education-career', relevance: 9 },
   },
 
@@ -151,7 +151,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_3',
     questionText: 'Do you think modern young people are under more societal pressure to achieve ambitious career goals than previous generations?',
     questionType: 'ABSTRACT_DISCUSSION',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'work-ambition', name: 'Work & Ambition', slug: 'work-ambition', relevance: 9 },
   },
   {
@@ -160,7 +160,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_3',
     questionText: 'How can governments and international travelers balance economic tourism growth with the preservation of fragile cultural landmarks?',
     questionType: 'ABSTRACT_DISCUSSION',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'travel-tourism', name: 'Travel & Journeys', slug: 'travel-tourism', relevance: 8 },
   },
   {
@@ -169,7 +169,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_3',
     questionText: 'What ethical concerns arise when generative AI tools are used to produce educational or professional content?',
     questionType: 'ABSTRACT_DISCUSSION',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'technology-ai', name: 'Technology & AI', slug: 'technology-ai', relevance: 10 },
   },
   {
@@ -178,7 +178,7 @@ const DEFAULT_QUESTIONS: IeltsQuestionItem[] = [
     part: 'PART_3',
     questionText: 'Will traditional university degrees remain as influential in the job market as practical portfolios in the coming decade?',
     questionType: 'ABSTRACT_DISCUSSION',
-    source: 'OFFICIAL_RECALL',
+    source: 'PRACTICE_PROMPT',
     topic: { id: 'education-career', name: 'Education & Career', slug: 'education-career', relevance: 9 },
   },
 ];
@@ -191,6 +191,20 @@ const getFallbackQuestions = (part: PartType, topicId: string): IeltsQuestionIte
   });
 };
 
+function isTopic(value: unknown): value is IeltsTopicItem {
+  if (!value || typeof value !== 'object') return false;
+  const topic = value as Record<string, unknown>;
+  return typeof topic.id === 'string' && typeof topic.name === 'string' && typeof topic.slug === 'string' && typeof topic.relevance === 'number';
+}
+
+function isQuestion(value: unknown): value is IeltsQuestionItem {
+  if (!value || typeof value !== 'object') return false;
+  const question = value as Record<string, unknown>;
+  return typeof question.id === 'string' && typeof question.topicId === 'string' && typeof question.questionText === 'string'
+    && ['PART_1', 'PART_2', 'PART_3'].includes(String(question.part)) && typeof question.questionType === 'string' && typeof question.source === 'string'
+    && (question.cueCardBullets == null || typeof question.cueCardBullets === 'string') && (question.topic == null || isTopic(question.topic));
+}
+
 const getApiEndpoints = (endpointPath: string): string[] => {
   const urls: string[] = [];
   const envServerUrl = (import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
@@ -198,7 +212,7 @@ const getApiEndpoints = (endpointPath: string): string[] => {
     urls.push(`${envServerUrl}${endpointPath}`);
   }
   urls.push(endpointPath);
-  return urls;
+  return Array.from(new Set(urls.map(url => new URL(url, window.location.origin).toString())));
 };
 
 export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClose }) => {
@@ -208,35 +222,92 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
   const [questions, setQuestions] = useState<IeltsQuestionItem[]>(() => getFallbackQuestions('PART_1', 'all'));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [questionNotice, setQuestionNotice] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
   // Cue card timers
   const [timerState, setTimerState] = useState<TimerState>('READY');
   const [timerSeconds, setTimerSeconds] = useState(60);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerDeadlineRef = useRef<{ preparationEndsAt: number | null; speakingEndsAt: number } | null>(null);
 
   const clearTimer = useCallback(() => {
+    timerDeadlineRef.current = null;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
   }, []);
 
-  useEffect(() => {
-    return () => clearTimer();
+  const updateCueCardTimer = useCallback(() => {
+    const deadline = timerDeadlineRef.current;
+    if (!deadline) return;
+    const now = Date.now();
+    if (now >= deadline.speakingEndsAt) {
+      clearTimer();
+      setTimerState('COMPLETED');
+      setTimerSeconds(0);
+    } else if (deadline.preparationEndsAt !== null && now < deadline.preparationEndsAt) {
+      setTimerState('PREPARING');
+      setTimerSeconds(Math.ceil((deadline.preparationEndsAt - now) / 1000));
+    } else {
+      setTimerState('SPEAKING');
+      setTimerSeconds(Math.ceil((deadline.speakingEndsAt - now) / 1000));
+    }
   }, [clearTimer]);
+
+  const resetCueCardTimer = useCallback(() => {
+    clearTimer();
+    setTimerState('READY');
+    setTimerSeconds(60);
+  }, [clearTimer]);
+
+  useEffect(() => {
+    if (!isOpen) resetCueCardTimer();
+    return clearTimer;
+  }, [isOpen, clearTimer, resetCueCardTimer]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    document.addEventListener('visibilitychange', updateCueCardTimer);
+    return () => document.removeEventListener('visibilitychange', updateCueCardTimer);
+  }, [isOpen, updateCueCardTimer]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panelRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); closeRef.current(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [isOpen]);
 
   // Fetch topics from backend
   useEffect(() => {
+    if (!isOpen) return;
     let isCancelled = false;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 8000);
     const fetchTopics = async () => {
       const endpoints = getApiEndpoints('/api/ielts/topics');
       for (const url of endpoints) {
         try {
-          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (controller.signal.aborted) break;
+          const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
           if (res.ok && !isCancelled) {
             const data = await res.json();
-            if (data.success && Array.isArray(data.topics) && data.topics.length > 0) {
-              setTopics([{ id: 'all', name: 'All Topics', slug: 'all', relevance: 10 }, ...data.topics]);
+            if (isCancelled) return;
+            if (data.success && Array.isArray(data.topics)) {
+              const loaded = data.topics.filter(isTopic);
+              if (loaded.length === 0) continue;
+              setTopics([{ id: 'all', name: 'All Topics', slug: 'all', relevance: 10 }, ...loaded]);
               return;
             }
           }
@@ -245,29 +316,41 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
         }
       }
     };
-    void fetchTopics();
+    void fetchTopics().finally(() => clearTimeout(deadline));
     return () => {
       isCancelled = true;
+      controller.abort();
+      clearTimeout(deadline);
     };
-  }, []);
+  }, [isOpen]);
 
   // Fetch questions when activePart or selectedTopicId changes
   useEffect(() => {
+    if (!isOpen) return;
     let isCancelled = false;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 8000);
     const fetchQuestions = async () => {
       setIsLoading(true);
       const fallback = getFallbackQuestions(activePart, selectedTopicId);
-      const endpoints = getApiEndpoints(`/api/ielts/questions?part=${activePart}&topicId=${selectedTopicId}&limit=50`);
+      setQuestions(fallback);
+      setCurrentIndex(0);
+      setQuestionNotice('Loading questions…');
+      const query = new URLSearchParams({ part: activePart, topicId: selectedTopicId, limit: '50' });
+      const endpoints = getApiEndpoints(`/api/ielts/questions?${query}`);
 
       let loadedQuestions: IeltsQuestionItem[] | null = null;
       for (const url of endpoints) {
         try {
-          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (controller.signal.aborted) break;
+          const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
           if (res.ok && !isCancelled) {
             const data = await res.json();
-            if (data.success && Array.isArray(data.questions) && data.questions.length > 0) {
-              loadedQuestions = data.questions;
-              break;
+            if (isCancelled) return;
+            if (data.success && Array.isArray(data.questions)) {
+              if (data.questions.length === 0) { loadedQuestions = []; break; }
+              const loaded = data.questions.filter(isQuestion).filter((question: IeltsQuestionItem) => question.part === activePart);
+              if (loaded.length > 0) { loadedQuestions = loaded; break; }
             }
           }
         } catch {
@@ -278,8 +361,12 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
       if (!isCancelled) {
         if (loadedQuestions && loadedQuestions.length > 0) {
           setQuestions(loadedQuestions);
+          setQuestionNotice(null);
         } else {
-          setQuestions(fallback.length > 0 ? fallback : DEFAULT_QUESTIONS.filter((q) => q.part === activePart));
+          setQuestions(fallback);
+          setQuestionNotice(loadedQuestions === null
+            ? 'Live questions could not be loaded. Showing locally available practice prompts.'
+            : 'No live questions for this selection. Showing available practice prompts.');
         }
         setCurrentIndex(0);
         resetCueCardTimer();
@@ -287,50 +374,27 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
       }
     };
 
-    void fetchQuestions();
+    void fetchQuestions().finally(() => clearTimeout(deadline));
     return () => {
       isCancelled = true;
+      controller.abort();
+      clearTimeout(deadline);
     };
-  }, [activePart, selectedTopicId]);
-
-  const resetCueCardTimer = useCallback(() => {
-    clearTimer();
-    setTimerState('READY');
-    setTimerSeconds(60);
-  }, [clearTimer]);
+  }, [isOpen, activePart, selectedTopicId, resetCueCardTimer]);
 
   const startPreparationTimer = () => {
     clearTimer();
-    setTimerState('PREPARING');
-    setTimerSeconds(60);
-
-    timerRef.current = setInterval(() => {
-      setTimerSeconds((prev) => {
-        if (prev <= 1) {
-          clearTimer();
-          startSpeakingTimer();
-          return 120;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const now = Date.now();
+    timerDeadlineRef.current = { preparationEndsAt: now + 60000, speakingEndsAt: now + 180000 };
+    updateCueCardTimer();
+    timerRef.current = setInterval(updateCueCardTimer, 1000);
   };
 
   const startSpeakingTimer = () => {
     clearTimer();
-    setTimerState('SPEAKING');
-    setTimerSeconds(120);
-
-    timerRef.current = setInterval(() => {
-      setTimerSeconds((prev) => {
-        if (prev <= 1) {
-          clearTimer();
-          setTimerState('COMPLETED');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    timerDeadlineRef.current = { preparationEndsAt: null, speakingEndsAt: Date.now() + 120000 };
+    updateCueCardTimer();
+    timerRef.current = setInterval(updateCueCardTimer, 1000);
   };
 
   const formatTimerDisplay = (sec: number): string => {
@@ -345,14 +409,15 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
   let parsedBullets: string[] = [];
   if (currentQuestion?.cueCardBullets) {
     try {
-      parsedBullets = JSON.parse(currentQuestion.cueCardBullets);
+      const parsed: unknown = JSON.parse(currentQuestion.cueCardBullets);
+      parsedBullets = Array.isArray(parsed) ? parsed.filter((bullet): bullet is string => typeof bullet === 'string') : typeof parsed === 'string' ? [parsed] : [];
     } catch {
       parsedBullets = [currentQuestion.cueCardBullets];
     }
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-24 z-40 max-h-[72vh] bg-[#070B14]/95 backdrop-blur-xl border border-cyan-500/40 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fadeIn font-mono">
+    <div ref={panelRef} role="dialog" aria-label="IELTS practice questions" className="fixed inset-x-3 bottom-24 z-40 max-h-[72vh] bg-[#070B14]/95 backdrop-blur-xl border border-cyan-500/40 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fadeIn font-mono">
       {/* Header Bar */}
       <div className="px-4 py-3 bg-[#090E1B] border-b border-slate-800/80 flex items-center justify-between">
         <div className="flex items-center gap-2 text-cyan-400">
@@ -363,7 +428,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
           type="button"
           onClick={onClose}
           aria-label="Close questions"
-          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+          className="p-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
         >
           <X className="w-4 h-4" />
         </button>
@@ -373,6 +438,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
       <div className="flex border-b border-slate-800 bg-[#050811] text-xs">
         <button
           type="button"
+          aria-pressed={activePart === 'PART_1'}
           onClick={() => {
             setActivePart('PART_1');
             resetCueCardTimer();
@@ -387,6 +453,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
         </button>
         <button
           type="button"
+          aria-pressed={activePart === 'PART_2'}
           onClick={() => {
             setActivePart('PART_2');
             resetCueCardTimer();
@@ -401,6 +468,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
         </button>
         <button
           type="button"
+          aria-pressed={activePart === 'PART_3'}
           onClick={() => {
             setActivePart('PART_3');
             resetCueCardTimer();
@@ -421,6 +489,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
           <button
             key={t.id}
             type="button"
+            aria-pressed={selectedTopicId === t.id}
             onClick={() => setSelectedTopicId(t.id)}
             className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors cursor-pointer ${
               selectedTopicId === t.id
@@ -435,10 +504,11 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
 
       {/* Main Content Area */}
       <div className="p-4 flex-1 overflow-y-auto min-h-[160px] flex flex-col justify-between">
+        {questionNotice && <p role="status" className="text-xs text-slate-400 mb-3">{questionNotice}</p>}
         {isLoading && questions.length === 0 ? (
           <div className="flex items-center justify-center my-auto py-8 text-xs text-slate-400 gap-2">
             <Sparkles className="w-4 h-4 animate-spin text-cyan-400" />
-            <span>Loading authentic IELTS questions...</span>
+            <span>Loading questions…</span>
           </div>
         ) : !currentQuestion ? (
           <div className="text-center my-auto py-6 text-xs text-slate-500">
@@ -536,6 +606,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
                       <button
                         type="button"
                         onClick={resetCueCardTimer}
+                        aria-label="Reset cue-card timer"
                         className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors cursor-pointer"
                         title="Reset Timer"
                       >
@@ -569,7 +640,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
           </button>
 
           <span className="text-[11px] text-slate-500">
-            Swipe or tap Next
+            Choose Previous or Next
           </span>
 
           <button

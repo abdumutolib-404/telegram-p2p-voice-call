@@ -1,5 +1,18 @@
 #!/bin/sh
 set -eu
+# Fly's release command replaces CMD, not ENTRYPOINT. Execute its exact argv
+# only on the dedicated release Machine; never migrate on an ordinary boot.
+if [ "${RELEASE_COMMAND:-0}" = '1' ]; then
+  if [ "$#" -eq 0 ]; then
+    echo '[Release] Missing release command.' >&2
+    exit 64
+  fi
+  exec "$@"
+fi
+if [ "$#" -gt 0 ]; then
+  echo '[Startup] Command arguments require an explicit release invocation.' >&2
+  exit 64
+fi
 # Schema changes are a separately reviewed deployment step (npm run db:deploy).
 # Startup must never accept data loss or continue with missing persistent storage.
 GATEWAY_PID=''

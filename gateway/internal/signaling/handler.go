@@ -15,18 +15,27 @@ import (
 
 func (h *Hub) Dispatch(socket *ClientSocket, event string, payload []byte) {
 	switch event {
+	case "join_queue", "cancel_queue", "toggle_record", "finish_call", "peer_ready", "offer", "answer", "candidate", "leave":
+	default:
+		return
+	}
+	socket.enqueueEvent(func() { h.dispatchEvent(socket, event, payload) })
+}
+
+func (h *Hub) dispatchEvent(socket *ClientSocket, event string, payload []byte) {
+	switch event {
 	case "join_queue":
-		go h.handleJoinQueue(socket)
+		h.handleJoinQueue(socket)
 	case "cancel_queue":
-		go h.handleCancelQueue(socket)
+		h.handleCancelQueue(socket)
 	case "toggle_record":
-		go h.handleToggleRecord(socket, payload)
+		h.handleToggleRecord(socket, payload)
 	case "finish_call":
-		go h.handleFinishCall(socket, payload)
+		h.handleFinishCall(socket, payload)
 	case "peer_ready":
-		go h.handlePeerReady(socket, payload)
+		h.handlePeerReady(socket, payload)
 	case "offer", "answer", "candidate", "leave":
-		go h.handleWebRTCSignal(socket, event, payload)
+		h.handleWebRTCSignal(socket, event, payload)
 	}
 }
 
@@ -52,7 +61,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	userLock.Lock()
 	defer userLock.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(h.Context(), 10*time.Second)
 	defer cancel()
 
 	user, err := h.DB.GetUserByID(ctx, socket.UserID)
@@ -73,41 +82,34 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 
 	// Check active call session
 	activeCall, err := h.DB.GetActiveCallForUser(ctx, user.ID)
-	if err == nil && activeCall != nil {
-		maxDurMinutes := database.CalculateMixedPlanDuration(
-			activeCall.UserA.Plan,
-			activeCall.UserB.Plan,
-		)
-		maxDurationSeconds := maxDurMinutes * 60
-		elapsedSeconds := int(time.Since(activeCall.CreatedAt).Seconds())
-
-		if elapsedSeconds > maxDurationSeconds+60 {
-			// Auto-expire
-			_, _ = h.DB.CompleteCallSession(ctx, activeCall.ID, maxDurationSeconds, nil, nil, nil)
-			h.ClearSessionTimer(activeCall.RoomName)
-		} else {
-			// Check if room has live sockets
-			liveSockets := h.GetSocketsInRoom(activeCall.RoomName)
-			if len(liveSockets) == 0 {
-				// Auto-clear orphaned active call
-				_, _ = h.DB.CancelCallSession(ctx, activeCall.ID)
-				h.ClearSessionTimer(activeCall.RoomName)
-			} else {
-				socket.Emit("error", SocketErrorEvent{
-					Code:    "CALL_ALREADY_ACTIVE",
-					Message: "Another session is currently in an active call from this account. Please try again later.",
-				})
-				return
-			}
-		}
+	if err != nil {
+		socket.Emit("error", SocketErrorEvent{Message: "Unable to check your current call. Please try again."})
+		return
+	}
+	if activeCall != nil {
+		// Socket presence is local; a shared active call may be on another gateway.
+		socket.Emit("error", SocketErrorEvent{Code: "CALL_ALREADY_ACTIVE", Message: "Another session is currently in an active call from this account. Please try again later."})
+		return
 	}
 
 	// Check monthly quota
+	if err := h.DB.RefreshPlanConfiguration(ctx); err != nil {
+		socket.Emit("error", SocketErrorEvent{Message: "Unable to load current call limits. Please try again."})
+		return
+	}
 	ent := database.GetEffectiveEntitlement(user, h.AdminTelegramIDs)
-	callsUsed, _ := h.DB.GetUserCallsUsedThisPeriod(ctx, user.ID, user)
-	bonusCalls, _ := h.DB.GetActiveBonusCallsCount(ctx, user.ID)
+	callsUsed, err := h.DB.GetUserCallsUsedThisPeriod(ctx, user.ID, user)
+	if err != nil {
+		socket.Emit("error", SocketErrorEvent{Message: "Unable to check your call allowance. Please try again."})
+		return
+	}
+	bonusCalls, err := h.DB.GetActiveBonusCallsCount(ctx, user.ID)
+	if err != nil {
+		socket.Emit("error", SocketErrorEvent{Message: "Unable to check your bonus calls. Please try again."})
+		return
+	}
 
-	if !ent.IsAdmin && callsUsed >= ent.CallLimit && bonusCalls <= 0 {
+	if !ent.IsAdmin && ent.CallLimit < 999 && callsUsed >= ent.CallLimit && bonusCalls <= 0 {
 		socket.Emit("error", SocketErrorEvent{
 			Code:    "MATCHMAKING_QUOTA_EXCEEDED",
 			Message: fmt.Sprintf("You have reached your monthly limit of %d calls. Invite friends with '👥 Invite Friends' to earn bonus calls or upgrade your plan!", ent.CallLimit),
@@ -127,7 +129,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 			SubP:   user.SubP,
 		},
 		matchmaking.MatchOptions{
-			Plan:         user.Plan,
+			Plan:         ent.Plan,
 			WarningCount: user.WarningCount,
 		},
 	)
@@ -159,6 +161,16 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		return
 	}
 
+	sessionID := uuid.NewString()
+	roomName := matchResult.RoomName
+	user, partner, err = h.DB.AdmitCallSession(ctx, sessionID, roomName, user.ID, partner.ID)
+	if err != nil {
+		socket.Emit("error", SocketErrorEvent{Code: "ALREADY_IN_PROGRESS", Message: "The match could not be admitted. Please search again."})
+		for _, ps := range partnerSockets {
+			ps.Emit("error", SocketErrorEvent{Code: "ALREADY_IN_PROGRESS", Message: "The match could not be admitted. Please search again."})
+		}
+		return
+	}
 	durationLimitMinutes := database.CalculateEffectiveCallDuration(user, partner, h.AdminTelegramIDs)
 	durationLimitSeconds := durationLimitMinutes * 60
 	tokenTTL := durationLimitSeconds + 300
@@ -166,16 +178,6 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		tokenTTL = 60
 	} else if tokenTTL > 7200 {
 		tokenTTL = 7200
-	}
-
-	sessionID := uuid.NewString()
-	roomName := matchResult.RoomName
-
-	// Create call session in DB
-	if err := h.DB.CreateCallSession(ctx, sessionID, roomName, user.ID, partner.ID); err != nil {
-		_ = h.Matchmaking.RestoreQueue(ctx, user.ID, ownBucket, &user.Band, &user.Plan)
-		socket.Emit("queue_joined", QueueJoinedEvent{Status: "searching"})
-		return
 	}
 
 	tokenUser, err1 := livekit.GenerateLiveKitToken(h.LiveKitAPIKey, h.LiveKitAPISecret, roomName, user.ID, user.Alias, tokenTTL)
@@ -236,7 +238,7 @@ func (h *Hub) handleCancelQueue(socket *ClientSocket) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
 	defer cancel()
 
 	if h.Matchmaking != nil {
@@ -273,7 +275,7 @@ func (h *Hub) handlePeerReady(socket *ClientSocket, payload []byte) {
 
 		durationLimit := h.GetRoomDurationLimit(req.RoomName)
 		if durationLimit <= 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
 			session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
 			cancel()
 			if err == nil && session != nil && session.UserA != nil && session.UserB != nil {
@@ -311,7 +313,7 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 	roomLock.Lock()
 	defer roomLock.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
 	defer cancel()
 
 	session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
@@ -322,9 +324,21 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 
 	if req.Record {
 		// Verify recording limits
-		user, _ := h.DB.GetUserByID(ctx, requesterID)
+		if err := h.DB.RefreshPlanConfiguration(ctx); err != nil {
+			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Unable to check recording limits. Please try again."})
+			return
+		}
+		user, err := h.DB.GetUserByID(ctx, requesterID)
+		if err != nil || user == nil {
+			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Unable to check recording limits. Please try again."})
+			return
+		}
 		ent := database.GetEffectiveEntitlement(user, h.AdminTelegramIDs)
-		recUsed, _ := h.DB.GetUserRecordingsUsedThisPeriod(ctx, requesterID, user)
+		recUsed, err := h.DB.GetUserRecordingsUsedThisPeriod(ctx, requesterID, user)
+		if err != nil {
+			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Unable to check recording limits. Please try again."})
+			return
+		}
 
 		if !ent.IsAdmin && recUsed >= ent.RecordingLimit {
 			socket.Emit("record_status", RecordStatusEvent{Record: false})
@@ -431,7 +445,7 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 	roomLock.Lock()
 	defer roomLock.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
 	defer cancel()
 
 	session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
@@ -513,15 +527,20 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		expiresAt = &t
 	}
 
-	claimed, err := h.DB.CompleteCallSession(ctx, session.ID, durationSeconds, egressID, recordingURL, expiresAt)
+	isMicDenied := req.Reason == "microphone_permission_denied"
+	complete := h.DB.CompleteCallSession
+	if isMicDenied {
+		complete = h.DB.CompleteUnchargedCallSession
+	}
+	effects := database.CompletionEffects{Reason: req.Reason}
+	if isMicDenied {
+		effects.DeniedUserID = requesterID
+	}
+	claimed, err := complete(ctx, session.ID, durationSeconds, egressID, recordingURL, expiresAt, effects)
 	if err != nil || !claimed {
 		return
 	}
 
-	isMicDenied := req.Reason == "microphone_permission_denied"
-	if !isMicDenied {
-		_ = h.DB.RecordCompletedCallCredits(ctx, session.UserAID, session.UserBID, durationSeconds)
-	}
 	_ = h.LiveKit.DeleteRoom(ctx, req.RoomName)
 	h.mu.Lock()
 	delete(h.roomPeers, req.RoomName)
@@ -604,11 +623,17 @@ func (h *Hub) handleWebRTCSignal(socket *ClientSocket, event string, payload []b
 }
 
 func (h *Hub) handleDisconnect(socket *ClientSocket) {
+	h.mu.RLock()
+	closing := h.closing
+	h.mu.RUnlock()
+	if closing {
+		return
+	}
 	if socket.UserID == "" {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
 	defer cancel()
 
 	h.mu.RLock()
@@ -676,7 +701,7 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		roomLock.Lock()
 		defer roomLock.Unlock()
 
-		teardownCtx, tdCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		teardownCtx, tdCancel := context.WithTimeout(h.Context(), 10*time.Second)
 		defer tdCancel()
 
 		current, err := h.DB.GetCallSessionByRoomName(teardownCtx, activeCall.RoomName)
@@ -760,8 +785,10 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 				expiresAt = &t
 			}
 
-			_, _ = h.DB.CompleteCallSession(teardownCtx, current.ID, durationSeconds, egressID, recordingURL, expiresAt)
-			_ = h.DB.RecordCompletedCallCredits(teardownCtx, current.UserAID, current.UserBID, durationSeconds)
+			claimed, err := h.DB.CompleteCallSession(teardownCtx, current.ID, durationSeconds, egressID, recordingURL, expiresAt)
+			if err != nil || !claimed {
+				return
+			}
 			h.EmitToRoom(current.RoomName, "call_finished", CallFinishedEvent{
 				Duration: durationSeconds,
 				Reason:   "partner_disconnected",
@@ -810,6 +837,11 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 	})
 
 	h.mu.Lock()
+	if h.closing {
+		graceTimer.Stop()
+		h.mu.Unlock()
+		return
+	}
 	if existing, ok := h.disconnectGraceTimers[socket.UserID]; ok {
 		existing.Stop()
 	}

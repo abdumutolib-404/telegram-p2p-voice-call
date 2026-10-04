@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "postbuild": "node -e \"const fs=require('fs'); ['dist/_redirects','public/_redirects'].forEach(f=>{try{fs.unlinkSync(f)}catch{}})\"",
+    "postbuild": "node -e \"require('node:fs').rmSync('dist/_redirects',{force:true})\"",
     "lint": "oxlint",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,10 +25,11 @@
     "@types/react-dom": "^19.2.3",
     "@types/telegram-web-app": "^7.10.1",
     "@vitejs/plugin-react": "^6.0.4",
+    "jsdom": "^30.1.1",
     "oxlint": "^1.75.0",
     "tailwindcss": "^4.0.9",
     "typescript": "~6.0.2",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "vitest": "^5.0.3"
   }
 }
-

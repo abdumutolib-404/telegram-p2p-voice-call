@@ -81,6 +81,7 @@ export async function connectDB(): Promise<void> {
       realPrismaClient.manualPaymentRequest.findFirst({ select: { id: true } }),
       realPrismaClient.auditLog.findFirst({ select: { id: true } }),
       realPrismaClient.notificationJob.findFirst({ select: { id: true } }),
+      realPrismaClient.postCallJob.findFirst({ select: { callId: true } }),
     ]);
     logger.info('PostgreSQL Prisma client connected.', {
       service: 'database',

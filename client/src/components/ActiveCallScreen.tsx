@@ -27,7 +27,6 @@ interface ActiveCallScreenProps {
 
 export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   roomName,
-  userId,
   partnerAlias,
   partnerBand,
   callDurationLimit,
@@ -56,9 +55,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const handleFinishCall = useCallback((reason?: string) => {
     if (hasFinishedRef.current) return;
     hasFinishedRef.current = true;
-    socketService.finishCall(roomName, userId, reason);
     onFinishCall(reason);
-  }, [roomName, userId, onFinishCall]);
+  }, [onFinishCall]);
 
   const handleFinishCallRef = useRef(handleFinishCall);
   useEffect(() => {
@@ -348,7 +346,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           <div className="inline-flex items-center gap-2 mt-1.5 px-3 py-1 bg-cyan-950/40 border border-cyan-500/30 rounded-full text-xs font-mono text-cyan-300">
             <span>Target Band: <strong className="text-white">{(partnerBand || 7).toFixed(1)}</strong></span>
             <span>•</span>
-            <span className="text-emerald-400 font-bold">Verified Peer</span>
+            <span className="text-emerald-400 font-bold">Practice Partner</span>
           </div>
         </div>
 

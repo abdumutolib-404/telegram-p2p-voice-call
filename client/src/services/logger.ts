@@ -45,9 +45,9 @@ class FrontendLogger {
   private sanitize(data: unknown): unknown {
     if (!data) return data;
     if (typeof data === 'string') {
-      return data.replace(/(initData=)[^&]+/gi, '$1[REDACTED]')
+      return data.replace(/((?:initData|tgWebAppData|livekitToken|token|jwtToken|password|masterPassword|hash|auth_date|access_token)=)[^&\s"']+/gi, '$1[REDACTED]')
                  .replace(/(Bearer\s+)[^\s"']+/gi, '$1[REDACTED]')
-                 .replace(/(livekitToken=)[^&]+/gi, '$1[REDACTED]');
+                 .replace(/https?:\/\/[^\s/@]+:[^\s/@]+@/gi, 'https://[REDACTED]@');
     }
     if (typeof data === 'object') {
       try {
@@ -107,12 +107,13 @@ class FrontendLogger {
 
   public log(level: 'info' | 'warn' | 'error', category: string, message: string, details?: unknown) {
     const sanitizedDetails = this.sanitize(details);
+    const sanitizedMessage = this.sanitize(message) as string;
     const entry: LogEntry = {
       id: Math.random().toString(36).substring(2, 9),
       timestamp: new Date().toISOString(),
       level,
       category,
-      message,
+      message: sanitizedMessage,
       details: sanitizedDetails,
     };
 
@@ -124,11 +125,11 @@ class FrontendLogger {
     // Console output for standard DevTools inspection
     const prefix = `[Client:${category}]`;
     if (level === 'error') {
-      console.error(prefix, message, sanitizedDetails ?? '');
+      console.error(prefix, sanitizedMessage, sanitizedDetails ?? '');
     } else if (level === 'warn') {
-      console.warn(prefix, message, sanitizedDetails ?? '');
+      console.warn(prefix, sanitizedMessage, sanitizedDetails ?? '');
     } else {
-      console.log(prefix, message, sanitizedDetails ?? '');
+      console.log(prefix, sanitizedMessage, sanitizedDetails ?? '');
     }
 
     this.notifyListeners();

@@ -43,7 +43,7 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 
 		// Condition 2: both participants disconnected and not in 15s grace
 		bothDisconnected := false
-		if elapsedSeconds >= 30 {
+		if elapsedSeconds >= 90 {
 			liveSockets := h.GetSocketsInRoom(session.RoomName)
 			h.mu.RLock()
 			_, graceA := h.disconnectGraceTimers[session.UserAID]
@@ -51,6 +51,11 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 			h.mu.RUnlock()
 
 			bothDisconnected = len(liveSockets) == 0 && !graceA && !graceB
+			if bothDisconnected && !isPastMaxDurationWithMargin {
+				present, err := h.LiveKit.ParticipantsPresent(ctx, session.RoomName, session.UserAID, session.UserBID)
+				// Preserve a call on another gateway or whenever presence is uncertain.
+				bothDisconnected = err == nil && !present
+			}
 		}
 
 		if !isPastMaxDurationWithMargin && !bothDisconnected {
@@ -96,8 +101,6 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 		}
 		h.SetActiveEgress(session.RoomName, nil)
 
-		_ = h.LiveKit.DeleteRoom(ctx, session.RoomName)
-
 		var isRecA, isRecB bool
 		var retA, retB int
 
@@ -123,17 +126,21 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 				expiresAt = &t
 			}
 
-			claimed, _ := h.DB.CompleteCallSession(ctx, current.ID, finalDuration, egressID, recordingURL, expiresAt)
-			if claimed {
-				_ = h.DB.RecordCompletedCallCredits(ctx, current.UserAID, current.UserBID, finalDuration)
-				sweptCount++
+			claimed, err := h.DB.CompleteCallSession(ctx, current.ID, finalDuration, egressID, recordingURL, expiresAt)
+			if err != nil || !claimed {
+				roomLock.Unlock()
+				continue
 			}
+			sweptCount++
 		} else {
-			cancelled, _ := h.DB.CancelCallSession(ctx, current.ID)
-			if cancelled {
-				sweptCount++
+			cancelled, err := h.DB.CancelCallSession(ctx, current.ID)
+			if err != nil || !cancelled {
+				roomLock.Unlock()
+				continue
 			}
+			sweptCount++
 		}
+		_ = h.LiveKit.DeleteRoom(ctx, session.RoomName)
 
 		h.EmitToRoom(session.RoomName, "call_finished", CallFinishedEvent{
 			Duration: finalDuration,
@@ -197,7 +204,7 @@ func (h *Hub) StartZombieSessionCleaner(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				sweepCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				sweepCtx, cancel := context.WithTimeout(h.Context(), 30*time.Second)
 				_, _ = h.SweepZombieSessions(sweepCtx)
 				cancel()
 			}

@@ -20,6 +20,53 @@ describe('LiveKit Egress Webhook, S3 Pipeline & UX Hardening Test Suite', () => 
   });
 
   describe('1. LiveKit Webhook Egress Lifecycle & S3 Finalization', () => {
+    it('preserves a terminal call completed between webhook lookup and recording update', async () => {
+      const a = await prisma.user.create({ data: { telegramId: 8123400001n, alias: 'WebhookRaceA' } });
+      const b = await prisma.user.create({ data: { telegramId: 8123400002n, alias: 'WebhookRaceB' } });
+      const session = await prisma.callSession.create({ data: { roomName: 'webhook-terminal-race', userAId: a.id, userBId: b.id, status: 'ACTIVE', egressId: 'EG_TERMINAL_RACE' } });
+      const original = prisma.callSession.findFirst.bind(prisma.callSession);
+      vi.spyOn(prisma.callSession, 'findFirst').mockImplementationOnce(async args => {
+        const snapshot = await original(args);
+        await prisma.callSession.update({ where: { id: session.id }, data: { status: 'COMPLETED', duration: 35, endedAt: new Date() } });
+        return snapshot;
+      });
+      vi.spyOn(WebhookReceiver.prototype, 'receive').mockResolvedValue({ event: 'egress_started', egressInfo: { egressId: 'EG_TERMINAL_RACE', roomName: session.roomName, status: EgressStatus.EGRESS_ACTIVE } } as any);
+      expect((await request(app).post('/api/livekit/webhook').set('Authorization', 'mock_valid').send('{}')).status).toBe(200);
+      const updated = await prisma.callSession.findUnique({ where: { id: session.id } });
+      expect(updated?.status).toBe('COMPLETED');
+      expect(updated?.duration).toBe(35);
+      expect(updated?.egressId).toBe('EG_TERMINAL_RACE');
+    });
+    it('ignores failure notifications from a losing recording start in the same room', async () => {
+      const a = await prisma.user.create({ data: { telegramId: 8123400011n, alias: 'WebhookOwnerA' } });
+      const b = await prisma.user.create({ data: { telegramId: 8123400012n, alias: 'WebhookOwnerB' } });
+      const session = await prisma.callSession.create({ data: { roomName: 'webhook-egress-owner', userAId: a.id, userBId: b.id, status: 'ACTIVE', egressId: 'EG_WINNER', recordingUrl: 'recordings/winner.mp3' } });
+      vi.spyOn(WebhookReceiver.prototype, 'receive').mockResolvedValue({ event: 'egress_ended', egressInfo: { egressId: 'EG_LOSER', roomName: session.roomName, status: EgressStatus.EGRESS_FAILED } } as any);
+      expect((await request(app).post('/api/livekit/webhook').set('Authorization', 'mock_valid').send('{}')).status).toBe(200);
+      expect((await prisma.callSession.findUnique({ where: { id: session.id } }))?.recordingUrl).toBe('recordings/winner.mp3');
+    });
+    it('leaves initial recording ownership to the signaling operation rather than an early started callback', async () => {
+      const a = await prisma.user.create({ data: { telegramId: 8123400021n, alias: 'EarlyEgressA' } });
+      const b = await prisma.user.create({ data: { telegramId: 8123400022n, alias: 'EarlyEgressB' } });
+      const session = await prisma.callSession.create({ data: { roomName: 'webhook-early-start', userAId: a.id, userBId: b.id, status: 'ACTIVE' } });
+      vi.spyOn(WebhookReceiver.prototype, 'receive').mockResolvedValue({ event: 'egress_started', egressInfo: { egressId: 'EG_EARLY', roomName: session.roomName, status: EgressStatus.EGRESS_ACTIVE } } as any);
+      expect((await request(app).post('/api/livekit/webhook').set('Authorization', 'mock_valid').send('{}')).status).toBe(200);
+      expect((await prisma.callSession.findUnique({ where: { id: session.id } }))?.egressId).toBeNull();
+    });
+    it('preserves a recording owner changed after the webhook lookup', async () => {
+      const a = await prisma.user.create({ data: { telegramId: 8123400031n, alias: 'ReplacementEgressA' } });
+      const b = await prisma.user.create({ data: { telegramId: 8123400032n, alias: 'ReplacementEgressB' } });
+      const session = await prisma.callSession.create({ data: { roomName: 'webhook-replacement-owner', userAId: a.id, userBId: b.id, status: 'ACTIVE', egressId: 'EG_PREVIOUS', recordingUrl: 'recordings/previous.mp3' } });
+      const original = prisma.callSession.findFirst.bind(prisma.callSession);
+      vi.spyOn(prisma.callSession, 'findFirst').mockImplementationOnce(async args => {
+        const snapshot = await original(args);
+        await prisma.callSession.update({ where: { id: session.id }, data: { egressId: 'EG_REPLACEMENT', recordingUrl: 'recordings/replacement.mp3' } });
+        return snapshot;
+      });
+      vi.spyOn(WebhookReceiver.prototype, 'receive').mockResolvedValue({ event: 'egress_ended', egressInfo: { egressId: 'EG_PREVIOUS', roomName: session.roomName, status: EgressStatus.EGRESS_FAILED } } as any);
+      expect((await request(app).post('/api/livekit/webhook').set('Authorization', 'mock_valid').send('{}')).status).toBe(200);
+      expect((await prisma.callSession.findUnique({ where: { id: session.id } }))?.recordingUrl).toBe('recordings/replacement.mp3');
+    });
     it('1.1 Rejects webhook request with invalid signature (401)', async () => {
       const res = await request(app)
         .post('/api/livekit/webhook')

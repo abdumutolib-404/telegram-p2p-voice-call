@@ -1,0 +1,147 @@
+A  DIRECTORY_TREE.md
+ M Dockerfile
+ M client/index.html
+ M client/package-lock.json
+ M client/package.json
+ M client/src/App.tsx
+ M client/src/components/ActiveCallScreen.tsx
+ M client/src/components/LandingPage.tsx
+ M client/src/components/LockdownScreen.tsx
+ M client/src/components/QuestionsDrawer.tsx
+ M client/src/components/RadarScreen.tsx
+ M client/src/hooks/useLiveKit.ts
+ M client/src/services/logger.ts
+ M client/src/services/socket.ts
+ M docs/bot-quality.md
+ M docs/remediation-and-upgrade.md
+ M gateway/cmd/gateway/main.go
+ M gateway/internal/config/env.go
+ M gateway/internal/config/env_test.go
+ M gateway/internal/database/pool.go
+ M gateway/internal/database/queries.go
+ M gateway/internal/database/queries_test.go
+ M gateway/internal/livekit/client.go
+ M gateway/internal/proxy/reverse_proxy.go
+ M gateway/internal/proxy/reverse_proxy_test.go
+ M gateway/internal/signaling/handler.go
+ M gateway/internal/signaling/hub.go
+ M gateway/internal/signaling/reconciliation.go
+ M gateway/internal/signaling/socketio.go
+ M gateway/internal/signaling/timers.go
+ M gateway/internal/signaling/zombie.go
+ M landing/index.html
+ M landing/package-lock.json
+ M landing/package.json
+ M landing/public/favicon.ico
+ M landing/public/favicon.png
+ D landing/public/icons.svg
+ D landing/public/plans_pricing.jpg
+ M landing/src/App.tsx
+ D landing/src/components/FaqScreen.tsx
+ D landing/src/components/GuidelinesScreen.tsx
+ D landing/src/components/HowItWorksScreen.tsx
+ D landing/src/components/IeltsSpeakingGuideScreen.tsx
+ M landing/src/components/LandingPage.tsx
+ D landing/src/components/PrivacyScreen.tsx
+ D landing/src/components/SafetyGuideScreen.tsx
+ D landing/src/components/TermsScreen.tsx
+ M landing/src/index.css
+ M landing/src/main.tsx
+ D landing/src/telegram.d.ts
+ M landing/vite.config.ts
+ M scripts/check-backend.cjs
+ M scripts/isolated-command.cjs
+ M scripts/isolated-integration.ts
+ M server/package-lock.json
+ M server/package.json
+ M server/prisma/schema.prisma
+ M server/src/__tests__/admin_crawler_gemini_routes.test.ts
+ M server/src/__tests__/adversarial_edge_routing_challenge.test.ts
+ M server/src/__tests__/ai_curation.test.ts
+ M server/src/__tests__/auth_architecture.test.ts
+ M server/src/__tests__/client_schema_jsonld_and_seo.test.ts
+ M server/src/__tests__/edge_routing_and_seo.test.ts
+ M server/src/__tests__/egress_webhook_and_s3_pipeline.test.ts
+ M server/src/__tests__/eventSubscriber.test.ts
+ M server/src/__tests__/findings_f1_to_f7.test.ts
+ M server/src/__tests__/subscription_expiry_reminder.test.ts
+ M server/src/bot/handlers/postCall.ts
+ M server/src/bot/notifications.ts
+ M server/src/config/database.ts
+ M server/src/config/inMemoryPrismaMock.ts
+ M server/src/config/livekit.ts
+ M server/src/index.ts
+ M server/src/routes/auth.ts
+ M server/src/routes/livekitWebhook.ts
+ M server/src/services/callAdmission.ts
+ M server/src/services/crawler/aiCurationService.ts
+ M server/src/services/crawler/ingestionService.ts
+ M server/src/services/crawler/questionFilterService.ts
+ M server/src/services/crawler/webCrawlerService.ts
+ M server/src/services/eventSubscriber.ts
+ M server/src/services/moderation.ts
+ M server/src/services/plan.ts
+ M server/src/services/referralService.ts
+ M server/src/services/subscriptionExpiry.ts
+ M server/src/socket/signaling.ts
+ M server/src/utils/transactionLock.ts
+?? .dockerignore
+?? .github/
+?? artifacts/
+?? client/public/brand-mark.svg
+?? client/tests/
+?? client/vitest.config.ts
+?? docs/application-audit.md
+?? docs/unit-pricing-calculation.md
+?? docs/unit-pricing.md
+?? docs/verification/application-audit.json
+?? docs/verification/miniapp-launch.json
+?? gateway/cmd/gateway/health.go
+?? gateway/cmd/gateway/health_test.go
+?? gateway/internal/database/call_lifecycle.go
+?? gateway/internal/database/integration_test.go
+?? gateway/internal/database/plans.go
+?? gateway/internal/database/plans_test.go
+?? gateway/internal/livekit/presence_test.go
+?? gateway/internal/signaling/boundary_test.go
+?? gateway/internal/signaling/cleanup_integration_test.go
+?? landing/.env.example
+?? landing/REDESIGN.md
+?? landing/public/brand-mark.svg
+?? landing/public/social-preview.png
+?? landing/public/social-preview.svg
+?? landing/scripts/
+?? landing/src/components/GuidePage.tsx
+?? landing/src/components/PricingPage.tsx
+?? landing/src/components/SiteLayout.tsx
+?? landing/src/components/StatsPage.tsx
+?? landing/src/components/ThemeToggle.tsx
+?? landing/src/content.tsx
+?? landing/src/entry-server.tsx
+?? landing/src/lib/
+?? scripts/check-container-boundaries.cjs
+?? scripts/check-container-frontends.cjs
+?? scripts/check-container-lifecycle.cjs
+?? scripts/check-container-sockets.cjs
+?? scripts/check-isolated-container.cjs
+?? scripts/gateway-check.cjs
+?? scripts/prepare-verification-bindings.cjs
+?? scripts/start-isolated-container.cjs
+?? server/prisma/migrations/202610030001_post_call_outbox/
+?? server/src/__tests__/aiDeadline.test.ts
+?? server/src/__tests__/allowance_transactions.test.ts
+?? server/src/__tests__/callFeedback.test.ts
+?? server/src/__tests__/call_recovery_ownership.test.ts
+?? server/src/__tests__/crawlerLease.test.ts
+?? server/src/__tests__/crawlerRecovery.test.ts
+?? server/src/__tests__/frontendRouting.test.ts
+?? server/src/__tests__/httpsRouting.test.ts
+?? server/src/__tests__/livekit_presence.test.ts
+?? server/src/__tests__/publicStats.test.ts
+?? server/src/routes/publicStats.ts
+?? server/src/services/callCompletion.ts
+?? server/src/services/callFeedback.ts
+?? server/src/services/crawler/lease.ts
+?? server/src/services/crawler/orphanPurge.ts
+?? server/src/services/frontendRouting.ts
+?? server/src/services/postCallOutbox.ts
