@@ -16,6 +16,8 @@ import { sendAdminPaymentNotification, downloadTelegramReceiptFile } from '../pa
 import { validateReceipt } from '../receiptValidator';
 import { escapeHtml } from '../../utils/sanitize';
 import { logger } from '../../utils/logger';
+import { lockRow } from '../../utils/transactionLock';
+import { completeStarsRefund } from '../../services/starsRefund';
 
 async function editMessageOrCaption(ctx: MyContext, text: string, other?: Record<string, unknown>) {
   const isPhotoMessage = Boolean(ctx.callbackQuery?.message && 'photo' in ctx.callbackQuery.message);
@@ -482,6 +484,11 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         return;
       }
 
+      const profile = getPaidUserProfile(user);
+      if (profile.isActivePaid && isDowngrade(profile.plan, tier)) {
+        await ctx.answerPreCheckoutQuery(false, { error_message: 'This saved invoice is below your active plan. Please create a new invoice.' });
+        return;
+      }
       await ctx.answerPreCheckoutQuery(true);
     } catch (err) {
       logger.error('Pre-checkout query error', {
@@ -564,9 +571,15 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           return { status: 'duplicate' as const, user: null };
         }
 
-        const user = await tx.user.findUnique({ where: { telegramId } });
+        let user = await tx.user.findUnique({ where: { telegramId } });
         if (!user) {
           return { status: 'user_not_found' as const, user: null };
+        }
+        await lockRow(tx, 'User', user.id);
+        user = await tx.user.findUnique({ where: { telegramId } });
+        if (!user) return { status: 'user_not_found' as const, user: null };
+        if (await tx.starsTransaction.findUnique({ where: { telegramPaymentId: payment.telegram_payment_charge_id } })) {
+          return { status: 'duplicate' as const, user: null };
         }
 
         const isSuspended =
@@ -588,7 +601,16 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           return { status: 'suspended' as const, user };
         }
 
-        const targetTier = isDowngrade(user.plan, tier) ? user.plan : tier;
+        const profile = getPaidUserProfile(user);
+        if (profile.isActivePaid && isDowngrade(profile.plan, tier)) {
+          const purchase = await tx.starsTransaction.create({ data: {
+            orderNumber, userId: user.id, telegramPaymentId: payment.telegram_payment_charge_id,
+            starsAmount: payment.total_amount, planTier: tier, status: 'REFUND_PROCESSING', entitlementApplied: false,
+            refundRequestedAt: new Date(), refundAdminId: 'SYSTEM', refundReason: 'Saved invoice is below the active subscription',
+          } });
+          return { status: 'incompatible' as const, user, transactionId: purchase.id };
+        }
+        const targetTier = tier;
         const targetConfig = plans[targetTier as keyof typeof plans] || plans.PLUS;
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
@@ -627,6 +649,16 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         return;
       }
 
+      if (result.status === 'incompatible') {
+        try {
+          await completeStarsRefund(result.transactionId, bot.api);
+          await ctx.reply('This saved invoice is below your active plan. Your payment has been refunded and your current plan is unchanged.');
+        } catch (error) {
+          logger.warn('Stale invoice refund requires reconciliation', { service: 'payments', transactionId: result.transactionId }, error);
+          await ctx.reply(`Your current plan is unchanged. Refund confirmation is pending; contact support with Payment ID: ${payment.telegram_payment_charge_id}`);
+        }
+        return;
+      }
       if (result.status === 'suspended') {
         await ctx.reply(
           `⚠️ <b>Payment received</b>, but your account is currently suspended.\n` +

@@ -49,8 +49,8 @@ async function main() {
     const work = await prisma.postCallJob.findUnique({ where: { callId: call.id } });
     assert(work, 'Gateway completion must save durable work without requiring a subscriber');
     assert.equal(work.status, 'QUEUED');
-    if (denied) { assert.equal(work.reason, 'microphone_permission_denied'); assert.equal(work.deniedUserId, user.id); }
-    assert.equal((await prisma.user.findUnique({ where: { id: partner.id } })).dailyCallsUsed, denied ? 0 : 1);
+    if (denied) { assert.equal(work.reason, 'call_finished'); assert.equal(work.deniedUserId, null); }
+    assert.equal((await prisma.user.findUnique({ where: { id: partner.id } })).dailyCallsUsed, 1);
     socket.disconnect();
     console.log('PASS production gateway authenticates a signed Telegram launch through ' + transport);
     console.log('PASS production gateway commits call completion and durable effects through ' + transport);

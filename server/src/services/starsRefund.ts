@@ -26,7 +26,7 @@ export async function processStarsRefund(params: { transactionId: string; adminI
   return completeStarsRefund(transaction.id, provider);
 }
 
-async function completeStarsRefund(id: string, provider: Provider) {
+export async function completeStarsRefund(id: string, provider: Provider) {
   const purchase = await prisma.starsTransaction.findUnique({ where: { id }, include: { user: true } });
   if (!purchase || purchase.status !== 'REFUND_PROCESSING') throw new Error('Refund is not pending provider confirmation.');
   try {

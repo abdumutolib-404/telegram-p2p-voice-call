@@ -8,4 +8,4 @@
 - [Pricing](https://pairtalk.online/#pricing): Comparison of Free tier and paid accelerator plans (Plus, Pro, Boss) with audio recording retention limits.
 - [FAQ](https://pairtalk.online/faq): Verbatim answers on partner matching, audio requirements, privacy protections, and money-back guarantee.
 - [Safety & Etiquette](https://pairtalk.online/community-guidelines): Candidate code of conduct, anti-harassment policies, moderation ladder, and unban appeal procedures.
-- [Privacy Policy](https://pairtalk.online/privacy): Audio retention schedules, zero-knowledge PII safeguards, and refund policy terms.
+- [Privacy Policy](https://pairtalk.online/privacy): Audio retention schedules, practice aliases, encrypted transport, and refund policy terms.

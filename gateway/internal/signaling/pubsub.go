@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -14,11 +15,12 @@ const (
 )
 
 type PubSubClient struct {
-	rdb *redis.Client
+	rdb             *redis.Client
+	recordingSource string
 }
 
 func NewPubSubClient(rdb *redis.Client) *PubSubClient {
-	return &PubSubClient{rdb: rdb}
+	return &PubSubClient{rdb: rdb, recordingSource: uuid.NewString()}
 }
 
 func (p *PubSubClient) PublishCallFinished(ctx context.Context, msg CallFinishedPubSubMessage) error {
@@ -37,7 +39,7 @@ func (p *PubSubClient) StartCommandSubscriber(ctx context.Context, hub *Hub) {
 		return
 	}
 
-	pubsub := p.rdb.Subscribe(ctx, CommandsChannel)
+	pubsub := p.rdb.Subscribe(ctx, CommandsChannel, RecordingStateChannel)
 	go func() {
 		defer pubsub.Close()
 		ch := pubsub.Channel()
@@ -50,6 +52,13 @@ func (p *PubSubClient) StartCommandSubscriber(ctx context.Context, hub *Hub) {
 					return
 				}
 				var cmd CommandPubSubMessage
+				if msg.Channel == RecordingStateChannel {
+					var state RoomRecordingStatus
+					if json.Unmarshal([]byte(msg.Payload), &state) == nil && state.Source != p.recordingSource && state.RoomName != "" && len(state.RoomName) <= 128 && (state.State == "on" || state.State == "off" || state.State == "unknown") {
+						hub.EmitToRoom(state.RoomName, "room_recording_status", state)
+					}
+					continue
+				}
 				if err := json.Unmarshal([]byte(msg.Payload), &cmd); err != nil {
 					continue
 				}

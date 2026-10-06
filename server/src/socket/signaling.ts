@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import { admitCall } from '../services/callAdmission';
 import { completeCallSession } from '../services/callCompletion';
+import { registerReadyParticipant } from '../services/mediaAuthorization';
+import { setupRecordingStatus, publishRoomRecordingState, publishRoomRecordingSnapshot, getRoomRecordingState } from '../services/recordingStatus';
+import { changeRecordingIntent, trackRecordingKey } from '../services/recordingLifecycle';
 import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
@@ -8,7 +11,7 @@ import { matchmakingService, determineWeakAndStrongSkills } from '../services/ma
 import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration } from '../services/plan';
 import { getActiveBonusCallsCount } from '../services/referralService';
 import { checkRateLimit } from '../services/rateLimitMatrix';
-import { generateLiveKitToken, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, areCallParticipantsPresent, countCallParticipants, type EgressResult } from '../config/livekit';
+import { generateLiveKitToken, enableCallSubscriptions, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, areCallParticipantsPresent, countCallParticipants, type EgressResult } from '../config/livekit';
 import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
 import { wakePostCallWorker } from '../services/postCallOutbox';
@@ -160,17 +163,22 @@ export function scheduleConnectionHandshakeTimer(
             return;
           }
           if (connected === 2) {
+            await registerReadyParticipant(currentSession.id,currentSession.userAId);
+            if (!await registerReadyParticipant(currentSession.id,currentSession.userBId)) return;
             const elapsed = Math.floor((Date.now() - currentSession.createdAt.getTime()) / 1000);
             const remaining = Math.max(1, calculateEffectiveCallDuration(currentSession.userA, currentSession.userB) * 60 - elapsed);
             scheduleAuthoritativeSessionTeardown(roomName, remaining, effectiveBot ?? undefined, effectiveIo ?? undefined);
+            await enableCallSubscriptions(roomName,[currentSession.userAId,currentSession.userBId]);
+            return;
+          }
+          if (currentSession.mediaAuthorizedAt) {
+            scheduleAuthoritativeSessionTeardown(roomName,1,effectiveBot ?? undefined,effectiveIo ?? undefined);
             return;
           }
           // Fewer than two peers connected within 90s; provider has confirmed this.
-          const claimed = await prisma.callSession.updateMany({
-            where: { id: currentSession.id, status: 'ACTIVE' },
-            data: { status: 'CANCELLED', endedAt: new Date(), duration: 0 },
-          });
+          const claimed = await completeCallSession(currentSession.id,{status:'CANCELLED',endedAt:new Date(),duration:0});
           if (claimed.count !== 1) return;
+          const terminal = await prisma.callSession.findUnique({where:{id:currentSession.id}});
 
           await deleteLiveKitRoom(roomName);
           const readySet = activeRoomPeers.get(roomName);
@@ -182,12 +190,12 @@ export function scheduleConnectionHandshakeTimer(
 
           if (effectiveIo) {
             effectiveIo.to(roomName).emit('call_finished', {
-              duration: 0,
-              reason: 'partner_failed_to_join',
+              duration: terminal?.duration ?? 0,
+              reason: terminal?.status === 'COMPLETED' ? 'call_finished' : 'partner_failed_to_join',
             });
           }
 
-          if (effectiveBot) {
+          if (effectiveBot && terminal?.status === 'CANCELLED') {
             const userJoined = readySet ? readySet.has(currentSession.userAId) : false;
             const partnerJoined = readySet ? readySet.has(currentSession.userBId) : false;
 
@@ -264,9 +272,8 @@ export function scheduleAuthoritativeSessionTeardown(
           const claimed = await completeCallSession(currentSession.id, { endedAt, duration: durationSeconds });
           if (claimed.count !== 1) return;
 
-          const egress = activeEgresses.get(roomName);
-          const egressId = egress?.egressId ?? currentSession.egressId;
-          const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
+          const egressId = currentSession.egressId;
+          const recordingUrl = currentSession.recordingUrl || undefined;
           if (egressId) {
             try {
               await stopAudioEgress(egressId);
@@ -281,19 +288,6 @@ export function scheduleAuthoritativeSessionTeardown(
           }
           activeEgresses.delete(roomName);
 
-          const isUserARecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userAId));
-          const isUserBRecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userBId));
-          const retentionA = isUserARecorder ? getEffectiveEntitlement(currentSession.userA).retentionDays : 0;
-          const retentionB = isUserBRecorder ? getEffectiveEntitlement(currentSession.userB).retentionDays : 0;
-          const maxRetention = Math.max(retentionA, retentionB, 1);
-          const recordingExpiresAt = (recordingUrl && (isUserARecorder || isUserBRecorder))
-            ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
-            : null;
-
-          await prisma.callSession.update({
-            where: { id: currentSession.id },
-            data: { egressId: egressId ?? null, recordingUrl: recordingUrl ?? null, recordingExpiresAt },
-          });
 
           clearSessionTimer(roomName);
           clearConnectionHandshakeTimer(roomName);
@@ -327,6 +321,7 @@ export function scheduleAuthoritativeSessionTeardown(
 }
 
 export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
+  setupRecordingStatus(io);
   globalIo = io;
   if (bot) globalBot = bot;
 
@@ -806,7 +801,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
             if (transactionSucceeded) {
               await prisma.callSession.updateMany({
-                where: { roomName, status: 'ACTIVE' },
+                where: { roomName, status: 'ACTIVE', mediaAuthorizedAt: null },
                 data: { status: 'CANCELLED' },
               });
             }
@@ -887,6 +882,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       }
 
       const roomName = payload.roomName;
+      try { await runSerialized(roomOperationTails,roomName,async () => {
+      const readySession = await prisma.callSession.findUnique({ where: { roomName }, include: { userA: true, userB: true } });
+      if (!readySession || readySession.status !== 'ACTIVE' ||
+          (readySession.userAId !== requesterId && readySession.userBId !== requesterId)) return;
       let peers = activeRoomPeers.get(roomName);
       if (!peers) {
         peers = new Set<string>();
@@ -894,11 +893,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       }
       peers.add(requesterId);
 
-      // When both peers have joined and sent peer_ready, start the synchronized call
-      if (peers.size >= 2 && !roomStartedAt.has(roomName)) {
+      // Persist readiness across gateways before enabling provider reception.
+      if (await registerReadyParticipant(readySession.id,requesterId)) {
         clearConnectionHandshakeTimer(roomName);
-        const startedAt = Date.now();
-        roomStartedAt.set(roomName, startedAt);
+        const startedAt = readySession.createdAt.getTime();
+        const alreadyStarted = roomStartedAt.has(roomName);
 
         let durationLimitSeconds = roomDurationLimits.get(roomName);
         if (!durationLimitSeconds) {
@@ -915,10 +914,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         }
 
         // Authoritative server duration teardown starts now
-        scheduleAuthoritativeSessionTeardown(roomName, durationLimitSeconds, bot, io);
+        const remainingSeconds = Math.max(1, durationLimitSeconds - Math.floor((Date.now() - startedAt) / 1000));
+        scheduleAuthoritativeSessionTeardown(roomName, remainingSeconds, bot, io);
+        await enableCallSubscriptions(roomName,[readySession.userAId,readySession.userBId]);
+        roomStartedAt.set(roomName, startedAt);
 
         // Notify both clients with exact synchronized timestamp
-        io.to(roomName).emit('call_started', {
+        (alreadyStarted ? socket : io.to(roomName)).emit('call_started', {
           startedAt,
           durationSeconds: durationLimitSeconds,
           expiresAt: startedAt + (durationLimitSeconds * 1000),
@@ -927,6 +929,22 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         // Clean up direct call messages as both parties have joined
         await cleanupDirectCallMessages(roomName, bot).catch(() => undefined);
       }
+      }); } catch (error) { logger.warn('Media readiness could not complete; retry is safe', { service:'signaling',roomName },error); }
+    });
+
+    socket.on('get_recording_status',async (payload: unknown) => {
+      if (!isPeerReadyPayload(payload) || !socket.data.userId) return;
+      const observedAt = Date.now();
+      try {
+        const session = await prisma.callSession.findUnique({where:{roomName:payload.roomName}});
+        if (!session || session.status !== 'ACTIVE' || ![session.userAId,session.userBId].includes(socket.data.userId)) return;
+        const state = await getRoomRecordingState(session.egressId);
+        const current = await prisma.callSession.findUnique({where:{id:session.id}});
+        if (!current || current.status !== 'ACTIVE' || ![current.userAId,current.userBId].includes(socket.data.userId)) return;
+        socket.emit('record_status',{roomName:payload.roomName,record: Boolean(current.activeRecorderIds?.split(',').includes(socket.data.userId))});
+        // A slow lookup of an old egress must never supersede a newer capture event.
+        socket.emit('room_recording_status',{roomName:payload.roomName,state:current.egressId === session.egressId ? state : 'unknown',updatedAt:observedAt});
+      } catch (error) { logger.warn('Recording snapshot unavailable',{service:'signaling',roomName:payload.roomName},error); }
     });
 
     socket.on('toggle_record', async (payload: unknown) => {
@@ -958,11 +976,15 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           if (payload.record) {
+            if (!session.mediaAuthorizedAt) {
+              socket.emit('recording_error',{code:'CALL_NOT_READY',message:'Wait for both participants to connect before recording.'});
+              return;
+            }
             const user = await prisma.user.findUnique({ where: { id: requesterId } });
             const entitlement = getEffectiveEntitlement(user || {});
             const recordingsUsed = await getUserRecordingsUsedThisPeriod(requesterId, user);
             if (!entitlement.isAdmin && recordingsUsed >= entitlement.recordingLimit) {
-              socket.emit('record_status', { record: false });
+              socket.emit('record_status', { record: false, roomName: payload.roomName });
               socket.emit('recording_error', {
                 code: 'RECORDING_LIMIT_REACHED',
                 message: 'Your recording limit for this period has been reached.',
@@ -970,26 +992,24 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               return;
             }
 
-            if (session.egressId) {
+            if (session.egressId && session.activeRecorderIds) {
               activeEgresses.set(payload.roomName, {
                 egressId: session.egressId,
                 relativeUrl: session.recordingUrl ?? '',
               });
-              const newRecorders = addSessionRecorder(session.recordedByUserId, requesterId);
-              await prisma.callSession.updateMany({
-                where: { id: session.id, status: 'ACTIVE' },
-                data: { recordedByUserId: newRecorders },
-              });
-              socket.emit('record_status', { record: true });
+              if (!await changeRecordingIntent(session.id, requesterId, true, session.egressId)) return;
+              socket.emit('record_status', { record: true, roomName: payload.roomName });
+              await publishRoomRecordingSnapshot(payload.roomName,session.egressId);
               return;
             }
 
             try {
-              const egress = await startAudioEgress(payload.roomName);
-              const newRecorders = addSessionRecorder(session.recordedByUserId, requesterId);
+              await publishRoomRecordingState(payload.roomName,'unknown');
+              const egress = await startAudioEgress(payload.roomName, key => trackRecordingKey(session.id, key));
+              const newRecorders = requesterId;
               const updated = await prisma.callSession.updateMany({
-                where: { id: session.id, status: 'ACTIVE', egressId: null },
-                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl, recordedByUserId: newRecorders },
+                where: { id: session.id, status: 'ACTIVE', activeRecorderIds: null, egressId: session.egressId },
+                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl, recordedByUserId: newRecorders, activeRecorderIds: newRecorders },
               });
               if (updated.count !== 1) {
                 await stopAudioEgress(egress.egressId).catch((error: unknown) => {
@@ -1003,7 +1023,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               }
 
               activeEgresses.set(payload.roomName, egress);
-              socket.emit('record_status', { record: true });
+              socket.emit('record_status', { record: true, roomName: payload.roomName });
+              await publishRoomRecordingState(payload.roomName,'on');
               return;
             } catch (egressErr) {
               logger.warn('Recording start failed gracefully', {
@@ -1011,7 +1032,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 event: 'recording_start_failed',
                 roomName: payload.roomName,
               }, egressErr);
-              socket.emit('record_status', { record: false });
+              socket.emit('record_status', { record: false, roomName: payload.roomName });
               socket.emit('recording_error', {
                 code: 'RECORDING_UNAVAILABLE',
                 message: 'Audio recording is temporarily unavailable. Your voice call can proceed normally.',
@@ -1021,30 +1042,17 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           // If turning record OFF:
-          const newRecorders = removeSessionRecorder(session.recordedByUserId, requesterId);
-          if (newRecorders !== null) {
-            // Partner is still recording, so keep egress alive and just remove this requester
-            await prisma.callSession.updateMany({
-              where: { id: session.id, status: 'ACTIVE' },
-              data: { recordedByUserId: newRecorders },
-            });
-            socket.emit('record_status', { record: false });
-            return;
-          }
-
-          // No recorders left; stop egress
-          const egressId = session.egressId ?? activeEgresses.get(payload.roomName)?.egressId;
-          if (egressId) {
+          const egressId = session.egressId;
+          const changed = egressId ? await changeRecordingIntent(session.id, requesterId, false, egressId) : null;
+          if (egressId && changed?.stopped) {
+            await publishRoomRecordingState(payload.roomName,'unknown');
             try {
               await stopAudioEgress(egressId);
             } catch {}
-            await prisma.callSession.updateMany({
-              where: { id: session.id, status: 'ACTIVE', egressId },
-              data: { egressId: null, recordedByUserId: null },
-            });
             activeEgresses.delete(payload.roomName);
           }
-          socket.emit('record_status', { record: false });
+          socket.emit('record_status', { record: false, roomName: payload.roomName });
+          await publishRoomRecordingSnapshot(payload.roomName,egressId);
         });
       } catch (error: unknown) {
         logger.error('Toggle record failed', {
@@ -1054,7 +1062,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           requesterId,
         }, error);
         socket.emit('recording_error', { code: 'RECORDING_UNAVAILABLE', message: 'Unable to update recording status.' });
-        socket.emit('record_status', { record: false });
+        socket.emit('record_status', { record: false, roomName: payload.roomName });
       }
     });
 
@@ -1096,7 +1104,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           const startTime = roomStartedAt.get(payload.roomName) ?? session.createdAt.getTime();
           const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - startTime) / 1000));
           const claimed = await completeCallSession(session.id, {
-            endedAt, duration: durationSeconds, charge: payload.reason !== 'microphone_permission_denied',
+            endedAt, duration: durationSeconds,
             reason: payload.reason, deniedUserId: payload.reason === 'microphone_permission_denied' ? requesterId : undefined,
           });
           if (claimed.count !== 1) {
@@ -1106,10 +1114,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           clearSessionTimer(payload.roomName);
           clearConnectionHandshakeTimer(payload.roomName);
-
-          const egress = activeEgresses.get(payload.roomName);
-          const egressId = egress?.egressId ?? session.egressId;
-          const recordingUrl = egress?.relativeUrl || session.recordingUrl || undefined;
+          const egressId = session.egressId;
+          const recordingUrl = session.recordingUrl || undefined;
           if (egressId) {
             try {
               await stopAudioEgress(egressId);
@@ -1123,21 +1129,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             }
           }
           activeEgresses.delete(payload.roomName);
-
-          const isUserARecorder = Boolean(recordingUrl && isUserSessionRecorder(session.recordedByUserId, session.userAId));
-          const isUserBRecorder = Boolean(recordingUrl && isUserSessionRecorder(session.recordedByUserId, session.userBId));
-          const retentionA = isUserARecorder ? getEffectiveEntitlement(session.userA).retentionDays : 0;
-          const retentionB = isUserBRecorder ? getEffectiveEntitlement(session.userB).retentionDays : 0;
-          const maxRetention = Math.max(retentionA, retentionB, 1);
-          const recordingExpiresAt = (recordingUrl && (isUserARecorder || isUserBRecorder))
-            ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
-            : null;
-
-          await prisma.callSession.update({
-            where: { id: session.id },
-            data: { egressId: egressId ?? null, recordingUrl: recordingUrl ?? null, recordingExpiresAt },
-          });
-
           await deleteLiveKitRoom(payload.roomName);
           roomStartedAt.delete(payload.roomName);
           activeRoomPeers.delete(payload.roomName);
@@ -1163,8 +1154,6 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       void (async (): Promise<void> => {
         const disconnectedUserId = socket.data.userId as string | undefined;
         if (!disconnectedUserId) return;
-
-        const disconnectTimestamp = Date.now();
 
         try {
           removeUserSocket(disconnectedUserId, socket.id);
@@ -1207,13 +1196,12 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   if (!currentSession || currentSession.status !== 'ACTIVE') return;
 
                   const startTime = roomStartedAt.get(session.roomName) ?? currentSession.createdAt.getTime();
-                  const durationSeconds = Math.max(0, Math.floor((disconnectTimestamp - startTime) / 1000));
-                  const isCancelled = durationSeconds < 5;
-                  const endedAt = new Date(disconnectTimestamp);
-
-                  const egress = activeEgresses.get(session.roomName);
-                  const egressId = egress?.egressId ?? currentSession.egressId;
-                  const recordingUrl = egress?.relativeUrl || currentSession.recordingUrl || undefined;
+                  // Media can remain usable throughout signaling's reconnect grace.
+                  const endedAt = new Date();
+                  const isCancelled = !currentSession.mediaAuthorizedAt;
+                  const durationSeconds = isCancelled ? 0 : Math.max(0, Math.floor((endedAt.getTime() - startTime) / 1000));
+                  const egressId = currentSession.egressId;
+                  const recordingUrl = currentSession.recordingUrl || undefined;
 
                   const isUserARecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userAId));
                   const isUserBRecorder = Boolean(recordingUrl && isUserSessionRecorder(currentSession.recordedByUserId, currentSession.userBId));
@@ -1449,7 +1437,7 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
           const endedAt = new Date();
           // If past max duration with margin, call completed full entitlement -> COMPLETED.
           // Otherwise, if both dropped, call was interrupted/abandoned -> CANCELLED to protect call quotas.
-          const isCompleted = isPastMaxDurationWithMargin;
+          const isCompleted = isPastMaxDurationWithMargin || Boolean(current.mediaAuthorizedAt);
           const targetStatus = isCompleted ? 'COMPLETED' : 'CANCELLED';
           const finalDuration = isCompleted ? Math.min(elapsedSeconds, maxDurationMinutes * 60) : 0;
 
@@ -1460,12 +1448,11 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
           });
 
           if (claimed.count !== 1) return;
+          const terminal = await prisma.callSession.findUnique({where:{id:session.id}});
 
           clearSessionTimer(session.roomName);
-
-          const egress = activeEgresses.get(session.roomName);
-          const egressId = egress?.egressId ?? session.egressId;
-          const recordingUrl = egress?.relativeUrl || session.recordingUrl || undefined;
+          const egressId = session.egressId;
+          const recordingUrl = session.recordingUrl || undefined;
 
           if (egressId) {
             try {
@@ -1491,31 +1478,12 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
             }, lkErr);
           }
 
-          if (recordingUrl) {
-            const isUserARecorder = Boolean(isUserSessionRecorder(session.recordedByUserId, session.userAId));
-            const isUserBRecorder = Boolean(isUserSessionRecorder(session.recordedByUserId, session.userBId));
-            const retentionA = isUserARecorder ? getEffectiveEntitlement(session.userA).retentionDays : 0;
-            const retentionB = isUserBRecorder ? getEffectiveEntitlement(session.userB).retentionDays : 0;
-            const maxRetention = Math.max(retentionA, retentionB, 1);
-            const recordingExpiresAt = (isUserARecorder || isUserBRecorder)
-              ? new Date(Date.now() + maxRetention * 24 * 60 * 60 * 1000)
-              : null;
-
-            await prisma.callSession.update({
-              where: { id: session.id },
-              data: {
-                egressId: egressId ?? null,
-                recordingUrl: recordingUrl ?? null,
-                recordingExpiresAt,
-              },
-            }).catch(() => undefined);
-          }
 
           wakePostCallWorker();
 
           if (effectiveIo) {
             effectiveIo.to(session.roomName).emit('call_finished', {
-              duration: finalDuration,
+              duration: terminal?.duration ?? finalDuration,
               reason: isPastMaxDurationWithMargin ? 'call_duration_limit_reached' : 'all_participants_disconnected',
             });
           }
@@ -1526,8 +1494,8 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
             event: 'zombie_session_cleaned',
             sessionId: session.id,
             roomName: session.roomName,
-            status: targetStatus,
-            duration: finalDuration,
+            status: terminal?.status ?? targetStatus,
+            duration: terminal?.duration ?? finalDuration,
             reason: isPastMaxDurationWithMargin ? 'max_duration_exceeded' : 'both_participants_disconnected',
           });
         });

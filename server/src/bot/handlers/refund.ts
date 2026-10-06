@@ -232,10 +232,11 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
   bot.callbackQuery(/^submit_uzs_refund:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => undefined);
     const manualReqId = ctx.match[1];
+    if (!ctx.from?.id) return;
 
     try {
-      const req = await prisma.manualPaymentRequest.findUnique({
-        where: { id: manualReqId },
+      const req = await prisma.manualPaymentRequest.findFirst({
+        where: { id: manualReqId, telegramId: BigInt(ctx.from.id), status: { in: ['APPROVED', 'REFUND_PENDING'] } },
         include: { user: true },
       });
 

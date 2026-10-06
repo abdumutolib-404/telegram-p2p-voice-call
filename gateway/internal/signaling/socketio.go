@@ -26,6 +26,7 @@ var upgrader = websocket.Upgrader{
 const maxSocketPayload = 64 * 1024
 const maxSocketSessions = 8192
 const maxUnauthenticatedSessionsPerIP = 64
+const maxActivePolls = 1024
 
 type ClientSocket struct {
 	ID                  string
@@ -48,6 +49,8 @@ type ClientSocket struct {
 	disconnectScheduled bool
 	done                chan struct{}
 	onDisconnect        func()
+	pollActive          bool
+	postActive          bool
 }
 
 func (s *ClientSocket) writeTextMessage(msg string) error {
@@ -261,6 +264,7 @@ type SocketIOServer struct {
 	done          chan struct{}
 	closeOnce     sync.Once
 	closed        bool
+	pollSlots     chan struct{}
 }
 
 func NewSocketIOServer(hub *Hub, originAllowed ...func(string) bool) *SocketIOServer {
@@ -274,6 +278,7 @@ func NewSocketIOServer(hub *Hub, originAllowed ...func(string) bool) *SocketIOSe
 		sessions:      make(map[string]*EngineIOSession),
 		originAllowed: allow,
 		done:          make(chan struct{}),
+		pollSlots:     make(chan struct{}, maxActivePolls),
 	}
 
 	// Periodic session cleaner for abandoned polling sessions
@@ -639,8 +644,29 @@ func (s *SocketIOServer) handlePollingGet(c *gin.Context, sid string) {
 		return
 	}
 	done := socket.done
+	if socket.pollActive {
+		socket.mu.Unlock()
+		c.Status(http.StatusTooManyRequests)
+		return
+	}
+	select {
+	case s.pollSlots <- struct{}{}:
+	default:
+		socket.mu.Unlock()
+		c.Status(http.StatusTooManyRequests)
+		return
+	}
+	socket.pollActive = true
 	socket.LastActive = time.Now()
 	socket.mu.Unlock()
+	defer func() {
+		socket.mu.Lock()
+		socket.pollActive = false
+		socket.mu.Unlock()
+		<-s.pollSlots
+	}()
+	timer := time.NewTimer(20 * time.Second)
+	defer timer.Stop()
 
 	// Wait for packets or timeout after 20s
 	select {
@@ -656,7 +682,7 @@ func (s *SocketIOServer) handlePollingGet(c *gin.Context, sid string) {
 			}
 		}
 		c.Data(http.StatusOK, "text/plain; charset=UTF-8", []byte(strings.Join(allPkts, "\x1e")))
-	case <-time.After(20 * time.Second):
+	case <-timer.C:
 		c.Data(http.StatusOK, "text/plain; charset=UTF-8", []byte("6")) // noop
 	case <-c.Request.Context().Done():
 	case <-done:
@@ -676,12 +702,31 @@ func (s *SocketIOServer) handlePollingPost(c *gin.Context, sid string) {
 
 	socket := sess.Socket
 	socket.mu.Lock()
-	closed := socket.Closed
-	socket.mu.Unlock()
-	if closed {
+	if socket.Closed {
+		socket.mu.Unlock()
 		c.Status(http.StatusBadRequest)
 		return
 	}
+	if socket.postActive {
+		socket.mu.Unlock()
+		c.Status(http.StatusTooManyRequests)
+		return
+	}
+	select {
+	case s.pollSlots <- struct{}{}:
+	default:
+		socket.mu.Unlock()
+		c.Status(http.StatusTooManyRequests)
+		return
+	}
+	socket.postActive = true
+	socket.mu.Unlock()
+	defer func() {
+		socket.mu.Lock()
+		socket.postActive = false
+		socket.mu.Unlock()
+		<-s.pollSlots
+	}()
 	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, maxSocketPayload))
 	if err != nil {
 		var tooLarge *http.MaxBytesError

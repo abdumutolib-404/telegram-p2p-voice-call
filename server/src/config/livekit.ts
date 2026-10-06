@@ -58,8 +58,8 @@ export function generateRecordingFileName(roomName?: string): string {
   const hour = String(now.getUTCHours()).padStart(2, '0');
   const min = String(now.getUTCMinutes()).padStart(2, '0');
   const sec = String(now.getUTCSeconds()).padStart(2, '0');
-  const shortId = crypto.randomBytes(2).toString('hex').toUpperCase();
-  return `${year}-${month}-${day}_${hour}-${min}-${sec}_${shortId}.mp3`;
+  const namespace = crypto.createHash('sha256').update(roomName ?? '').digest('hex').slice(0, 32);
+  return `${year}-${month}-${day}_${hour}-${min}-${sec}_${namespace}_${crypto.randomUUID()}.mp3`;
 }
 
 /**
@@ -146,7 +146,8 @@ export async function generateLiveKitToken(
       name: participantName,
       ttl: ttlSeconds,
     });
-    accessToken.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+    // Allow microphone bootstrap, but no conversation or data before durable readiness.
+    accessToken.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: false, canPublishData: false });
     return await accessToken.toJwt();
   } catch (error: unknown) {
     logger.error('LiveKit token generation failed', {
@@ -157,6 +158,17 @@ export async function generateLiveKitToken(
     }, error);
     throw error;
   }
+}
+
+export async function enableCallSubscriptions(roomName: string, identities: string[]): Promise<void> {
+  if (!roomServiceClient) throw new Error('Media authorization is unavailable');
+  const client = roomServiceClient;
+  const results = await Promise.allSettled(identities.map(identity =>
+    client.updateParticipant(roomName, identity, {
+      permission: { canPublish: true, canSubscribe: true, canPublishData: true },
+    })));
+  const failure = results.find(result => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
@@ -176,7 +188,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessa
 /**
  * Starts audio-only RoomComposite Egress for two-way mixed call recording.
  */
-export async function startAudioEgress(roomName: string): Promise<EgressResult> {
+export async function startAudioEgress(roomName: string, prepare?: (key: string) => Promise<void>): Promise<EgressResult> {
   if (!roomName || roomName.length > 128) throw new TypeError('Invalid roomName');
   if (!egressClient) {
     const err = new Error('LiveKit Egress is disabled (no credentials configured).');
@@ -195,6 +207,7 @@ export async function startAudioEgress(roomName: string): Promise<EgressResult> 
 
   const fileName = generateRecordingFileName(roomName);
   const { output, relativeUrl } = buildAudioEncodedFileOutput(fileName);
+  if (prepare) await prepare(relativeUrl);
 
   try {
     if (!hasS3) {

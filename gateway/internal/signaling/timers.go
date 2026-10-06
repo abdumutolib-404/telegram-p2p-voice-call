@@ -43,16 +43,8 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 			}
 		}
 
-		egress := h.GetActiveEgress(roomName)
-		var egressID *string
-		var recordingURL *string
-		if egress != nil {
-			egressID = &egress.EgressID
-			recordingURL = &egress.RelativeURL
-		} else if session.EgressID != nil {
-			egressID = session.EgressID
-			recordingURL = session.RecordingURL
-		}
+		egressID := session.EgressID
+		recordingURL := session.RecordingURL
 
 		if egressID != nil && *egressID != "" {
 			_ = h.LiveKit.StopAudioEgress(ctx, *egressID)
@@ -160,7 +152,6 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 			return
 		}
 
-		// Cancel session without charging credits
 		connected, presenceErr := h.LiveKit.ConnectedParticipants(ctx, roomName, session.UserAID, session.UserBID)
 		if presenceErr != nil {
 			h.ScheduleConnectionHandshakeTimer(roomName, 30)
@@ -171,12 +162,27 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 				h.ScheduleConnectionHandshakeTimer(roomName, 30)
 				return
 			}
+			if _, err := h.DB.RegisterReadyParticipant(ctx, session.ID, session.UserAID); err != nil {
+				h.ScheduleConnectionHandshakeTimer(roomName, 30)
+				return
+			}
+			authorized, err := h.DB.RegisterReadyParticipant(ctx, session.ID, session.UserBID)
+			if err != nil || !authorized {
+				h.ScheduleConnectionHandshakeTimer(roomName, 30)
+				return
+			}
 			limit := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
 			remaining := limit - int(time.Since(session.CreatedAt).Seconds())
 			if remaining < 1 {
 				remaining = 1
 			}
 			h.ScheduleAuthoritativeSessionTeardown(roomName, remaining)
+			_ = h.LiveKit.EnableCallSubscriptions(ctx, roomName, session.UserAID, session.UserBID)
+			return
+		}
+		// An authorized conversation remains billable even after participants leave.
+		if session.MediaAuthorizedAt != nil {
+			h.ScheduleAuthoritativeSessionTeardown(roomName, 1)
 			return
 		}
 		claimed, err := h.DB.CancelCallSession(ctx, session.ID)

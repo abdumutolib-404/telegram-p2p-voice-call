@@ -6,9 +6,6 @@ import { verifyCrawler } from '../services/crawler/verifyCrawler';
 // In-memory fallback cache for jailed IPs when Redis is disconnected
 const memoryJailedIps = new Map<string, number>();
 
-// Consecutive 404 tracking for heuristic anomaly banishment
-const anomaly404Tracker = new Map<string, { count: number; firstAt: number }>();
-
 const PROBE_PATTERNS = [
   // Env and configuration leaks
   /\.env(?:\.|$|\/|~)/i,
@@ -126,12 +123,13 @@ export function isExploitProbe(path: string): boolean {
 
 /**
  * Pre-Routing Scanner Shield Middleware
- * Drops jailed IPs and instantly bans automated vulnerability scanners
+ * Rejects suspicious requests. Persistent IP penalties require a trusted decision;
+ * a browser can be induced to make these requests from an unrelated website.
  */
 export async function scannerShieldMiddleware(req: Request, res: Response, next: NextFunction) {
   const ip = getClientIp(req);
   const rawUrl = req.originalUrl || req.url || '';
-  const decoded = decodeSafely(rawUrl);
+  const decoded = decodeSafely(rawUrl.split('?')[0]);
   const userAgent = req.headers['user-agent'];
 
   // 0. Pre-check Crawler Authenticity
@@ -139,7 +137,6 @@ export async function scannerShieldMiddleware(req: Request, res: Response, next:
 
   // If a request spoofs a known crawler User-Agent from an unauthorized IP:
   if (crawlerCheck.isSpoofed) {
-    await jailIp(ip, `Spoofed Crawler User-Agent (${crawlerCheck.crawlerName})`, decoded);
     res.status(403).setHeader('Connection', 'close').end();
     return;
   }
@@ -152,31 +149,8 @@ export async function scannerShieldMiddleware(req: Request, res: Response, next:
 
   // 2. Exploit Probe Detection
   if (isExploitProbe(decoded)) {
-    await jailIp(ip, 'Malicious Scanner Probe', decoded);
     res.status(403).setHeader('Connection', 'close').end();
     return;
-  }
-
-  // 3. Track 404s after response finish for heuristic brute-force banishment (skip for genuine verified crawlers)
-  if (!crawlerCheck.isVerified) {
-    res.on('finish', () => {
-      if (res.statusCode === 404) {
-        const now = Date.now();
-        const current = anomaly404Tracker.get(ip) || { count: 0, firstAt: now };
-        if (now - current.firstAt > 30000) {
-          // Reset window every 30s
-          anomaly404Tracker.set(ip, { count: 1, firstAt: now });
-        } else {
-          current.count += 1;
-          anomaly404Tracker.set(ip, current);
-          if (current.count >= 15) {
-            // Banish aggressive 404 scrapers
-            anomaly404Tracker.delete(ip);
-            jailIp(ip, 'Excessive 404 Anomaly (>15 in 30s)', decoded).catch(() => {});
-          }
-        }
-      }
-    });
   }
 
   next();

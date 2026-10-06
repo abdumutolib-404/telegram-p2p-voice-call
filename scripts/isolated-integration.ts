@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {prisma,connectDB,disconnectDB} from '../server/src/config/database';
-import {connectRedis,disconnectRedis,getRedis} from '../server/src/config/redis';
+import {connectRedis,disconnectRedis,getRedis,createRedisSubscriber,pubClient} from '../server/src/config/redis';
 import {admitCall,activatePendingCall} from '../server/src/services/callAdmission';
 import {completeCallSession} from '../server/src/services/callCompletion';
+import {registerReadyParticipant} from '../server/src/services/mediaAuthorization';
+import {setupRecordingStatus,publishRoomRecordingState,stopRecordingStatus} from '../server/src/services/recordingStatus';
 import {processStarsRefund} from '../server/src/services/starsRefund';
 import {approveManualPaymentRequest} from '../server/src/services/plan';
 import {getUserRecordingsUsedThisPeriod} from '../server/src/services/plan';
@@ -35,6 +37,23 @@ async function main(){
  if(database.protocol!=='postgresql:'||database.hostname!=='127.0.0.1'||database.port!=='55432'||database.pathname!=='/pairtalk_check'||Array.from(database.searchParams).some(([key,value])=>poolOptions[key]!==value)||process.env.REDIS_URL!=='redis://127.0.0.1:56379'||process.env.NODE_ENV==='test')throw new Error('Integration checks require the dedicated loopback verification services and actual database mode.');
  await connectDB();assert(await connectRedis());
  await check('PostgreSQL representative read and Redis PING',async()=>{await prisma.user.findFirst();assert.equal(await getRedis().ping(),'PONG');});
+ await check('Recording status uses the shared Node/Go Redis wire contract without self echoes',async()=>{
+  const wire=createRedisSubscriber();assert(wire);assert(pubClient);
+  const room=crypto.randomUUID(),received:any[]=[],sent:any[]=[];
+  wire.on('message',(channel,message)=>{if(channel==='pairtalk:recording-state')received.push(JSON.parse(message));});
+  await wire.subscribe('pairtalk:recording-state');
+  setupRecordingStatus({local:{to:(target:string)=>({emit:(event:string,payload:any)=>{sent.push({target,event,payload});}})}} as any);
+  try {
+   const deadline=Date.now()+3000;
+   while(Number((await pubClient.call('PUBSUB','NUMSUB','pairtalk:recording-state') as any[])[1])<2) {assert(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,10));}
+   await publishRoomRecordingState(room,'on');
+   while(!received.some(item=>item.roomName===room&&item.state==='on')) {assert(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,10));}
+   assert.equal(sent.filter(item=>item.payload.roomName===room&&item.payload.state==='on').length,1);
+   await pubClient.publish('pairtalk:recording-state',JSON.stringify({roomName:room,state:'unknown',updatedAt:Date.now(),source:'synthetic-go-publisher'}));
+   while(!sent.some(item=>item.payload.roomName===room&&item.payload.state==='unknown')) {assert(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,10));}
+   assert(sent.every(item=>item.event==='room_recording_status'&&item.target===room));
+  } finally {await stopRecordingStatus();await wire.quit();}
+ });
  await check('Concurrent direct and matched calls share participant locks across roles',async()=>{
   const [a,b,c]=await Promise.all([user(),user(),user()]);const results=await Promise.allSettled([admitCall(a.id,b.id,crypto.randomUUID(),'PENDING'),admitCall(c.id,a.id,crypto.randomUUID(),'ACTIVE')]);assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
   assert.equal(await prisma.callSession.count({where:{OR:[{userAId:a.id},{userBId:a.id}],status:{in:['ACTIVE','PENDING']}}}),1);
@@ -73,12 +92,27 @@ async function main(){
   assert.equal(await prisma.postCallJob.count({where:{callId:call.id}}),0);
   assert.equal((await prisma.user.findUniqueOrThrow({where:{id:b.id}})).dailyCallsUsed,0);
  });
- await check('Short, cancelled, and permission-denied calls preserve allowance',async()=>{
+ await check('Short calls and never-authorized cancellations are free; caller charge flags cannot waive usage',async()=>{
   const[a,b]=await Promise.all([user(),user()]);
   for(const completion of [{duration:4},{duration:10,status:'CANCELLED' as const},{duration:10,charge:false}]){
    const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');assert.equal((await completeCallSession(call.id,{endedAt:new Date(),...completion})).count,1);
   }
-  for(const participant of [a,b])assert.equal((await prisma.user.findUniqueOrThrow({where:{id:participant.id}})).dailyCallsUsed,0);
+  for(const participant of [a,b])assert.equal((await prisma.user.findUniqueOrThrow({where:{id:participant.id}})).dailyCallsUsed,1);
+ });
+ await check('Readiness persists in PostgreSQL and prevents an empty-room cancellation refund',async()=>{
+  const[a,b,c]=await Promise.all([user(),user(),user()]);
+  const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');
+  assert.equal(await registerReadyParticipant(call.id,c.id),false);
+  assert.equal(await registerReadyParticipant(call.id,a.id),false);
+  assert.equal(await registerReadyParticipant(call.id,a.id),false);
+  assert.equal(await registerReadyParticipant(call.id,b.id),true);
+  assert.equal(await registerReadyParticipant(call.id,a.id),true);
+  await prisma.callSession.update({where:{id:call.id},data:{createdAt:new Date(Date.now()-60000)}});
+  assert.equal((await completeCallSession(call.id,{status:'CANCELLED',endedAt:new Date(),duration:0})).count,1);
+  const completed=await prisma.callSession.findUniqueOrThrow({where:{id:call.id}});
+  assert.equal(completed.status,'COMPLETED');assert(completed.duration!>=60);assert(completed.mediaAuthorizedAt);
+  assert.equal((await completeCallSession(call.id,{status:'CANCELLED',endedAt:new Date(),duration:0})).count,0);
+  for(const participant of [a,b])assert.equal((await prisma.user.findUniqueOrThrow({where:{id:participant.id}})).dailyCallsUsed,1);
  });
  await check('Recording usage requires participation and exact recorder ownership',async()=>{
   const[a,b,c]=await Promise.all([user(),user(),user()]);

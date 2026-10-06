@@ -10,6 +10,7 @@ import { topicNotificationService } from '../services/topicNotificationService';
 import { webCrawlerService } from '../services/crawler/webCrawlerService';
 import { getAdminBot } from './admin';
 import { logger } from '../utils/logger';
+import { escapeCsvField as escapeCsv } from '../utils/csv';
 
 const router = Router();
 
@@ -290,11 +291,6 @@ router.get('/questions/export', async (req: AdminAuthenticatedRequest, res: Resp
     const filenameTopic = topicId ? String(topicId).replace(/[^a-z0-9_-]/gi, '_') : 'all';
 
     if (isCsv) {
-      const escapeCsv = (val: unknown) => {
-        if (val === null || val === undefined) return '""';
-        return `"${String(val).replace(/"/g, '""')}"`;
-      };
-
       const headers = [
         'ID',
         'Part',

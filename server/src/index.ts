@@ -13,6 +13,7 @@ import { run, RunnerHandle } from '@grammyjs/runner';
 import { env } from './config/env';
 import { prisma, connectDB, disconnectDB } from './config/database';
 import { connectRedis, disconnectRedis, probeRedis, pubClient, subClient } from './config/redis';
+import { stopRecordingStatus } from './services/recordingStatus';
 import { primeAllCrawlerCaches } from './services/crawler/verifyCrawler';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
@@ -574,6 +575,7 @@ async function bootstrap(): Promise<void> {
     await stopPolling?.().catch(() => undefined);
     await eventSubscriberHandle?.stop().catch(() => undefined);
     io.close();
+    await stopRecordingStatus();
     await Promise.allSettled([disconnectDB(), disconnectRedis()]);
     process.exitCode = 1;
   }
@@ -629,6 +631,7 @@ const gracefulShutdown = async (signal: string) => {
     botLeaderLock.stopTimers();
     await botLeaderLock.release();
     io.close();
+    await stopRecordingStatus();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await disconnectDB().catch(() => undefined);
     await disconnectRedis().catch(() => undefined);

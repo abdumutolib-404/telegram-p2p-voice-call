@@ -3,7 +3,7 @@ import { Mic, MicOff, PhoneOff, Circle, AlertTriangle, ShieldCheck, Volume2, Wif
 import { socketService } from '../services/socket';
 import { AudioVisualizer } from './AudioVisualizer';
 import { QuestionsDrawer } from './QuestionsDrawer';
-import type { RecordStatusPayload } from '../types';
+import type { RecordStatusPayload, RoomRecordingStatusPayload } from '../types';
 
 interface ActiveCallScreenProps {
   roomName: string;
@@ -46,6 +46,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [partnerConnectedAt, setPartnerConnectedAt] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [roomRecordingState, setRoomRecordingState] = useState<RoomRecordingStatusPayload['state']>('unknown');
+  const recordingStateUpdatedAt = useRef(0);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
   const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
   const [showQuestionsDrawer, setShowQuestionsDrawer] = useState(false);
@@ -149,11 +151,26 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   useEffect(() => {
     const socket = socketService.getSocket();
     if (!socket) return;
+    recordingStateUpdatedAt.current = 0;
+    setRoomRecordingState('unknown');
+    setIsRecording(false);
 
     const handleRecordStatus = (data: RecordStatusPayload) => {
+      if (data.roomName && data.roomName !== roomName) return;
       setIsRecording(data.record);
       setIsTogglingRecord(false);
     };
+
+    const handleRoomRecordingStatus = (data: RoomRecordingStatusPayload) => {
+      if (data.roomName !== roomName || !['on','off','unknown'].includes(data.state) || !Number.isFinite(data.updatedAt) || data.updatedAt < recordingStateUpdatedAt.current) return;
+      // Equal millisecond timestamps do not prove that an off snapshot is newer.
+      if (data.updatedAt === recordingStateUpdatedAt.current && data.state === 'off') return;
+      recordingStateUpdatedAt.current = data.updatedAt;
+      setRoomRecordingState(data.state);
+    };
+    const requestSnapshot = () => socketService.getRecordingStatus(roomName);
+    const disconnected = () => setRoomRecordingState('unknown');
+    const reconnected = () => { disconnected(); requestSnapshot(); socketService.peerReady(roomName); };
 
     const handleRecordingError = (data: { code?: string; message?: string }) => {
       setIsTogglingRecord(false);
@@ -171,17 +188,27 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     };
 
     socket.on('record_status', handleRecordStatus);
+    socket.on('room_recording_status', handleRoomRecordingStatus);
+    socket.on('disconnect', disconnected);
+    socket.on('connect', reconnected);
     socket.on('recording_error', handleRecordingError);
     socket.on('partner_connection_lost', handlePartnerConnectionLost);
     socket.on('partner_reconnected', handlePartnerReconnected);
+    requestSnapshot();
+    // Recover lost cross-gateway notifications and retry partial media permission updates.
+    const refresh = window.setInterval(() => { requestSnapshot(); socketService.peerReady(roomName); }, 15000);
 
     return () => {
       socket.off('record_status', handleRecordStatus);
+      socket.off('room_recording_status', handleRoomRecordingStatus);
+      socket.off('disconnect', disconnected);
+      socket.off('connect', reconnected);
+      window.clearInterval(refresh);
       socket.off('recording_error', handleRecordingError);
       socket.off('partner_connection_lost', handlePartnerConnectionLost);
       socket.off('partner_reconnected', handlePartnerReconnected);
     };
-  }, []);
+  }, [roomName]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -359,17 +386,17 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         <div className="flex flex-col items-center gap-1 font-mono">
           <div
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all ${
-              isRecording
+              roomRecordingState === 'on'
                 ? 'bg-rose-500/15 border-rose-500/40 text-rose-400'
                 : 'bg-slate-900 border-slate-800 text-slate-400'
             }`}
           >
             <Circle
               className={`w-2.5 h-2.5 fill-current ${
-                isRecording ? 'animate-ping motion-reduce:animate-none text-rose-500' : 'text-slate-600'
+                roomRecordingState === 'on' ? 'animate-ping motion-reduce:animate-none text-rose-500' : 'text-slate-600'
               }`}
             />
-            <span>{isRecording ? 'SESSION RECORDING ON' : 'RECORDING OFF'}</span>
+            <span role="status" aria-live="polite">{roomRecordingState === 'on' ? 'ROOM RECORDING ON' : roomRecordingState === 'off' ? 'NO ROOM RECORDING REPORTED' : 'RECORDING STATUS UNCONFIRMED'}</span>
           </div>
           {recordingWarning && (
             <span className="text-xs text-amber-400 text-center px-4 animate-fadeIn">

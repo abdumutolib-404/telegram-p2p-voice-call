@@ -6,6 +6,7 @@ import { prisma } from '../config/database';
 import { env } from '../config/env';
 import { isS3Configured, deleteS3Object } from './s3Storage';
 import { logger } from '../utils/logger';
+import { forgetDeletedRecordingKeys } from './recordingLifecycle';
 
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
 
@@ -28,22 +29,27 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
   // Find all call sessions with expired recordings or abandoned sessions older than 24h
   const expiredSessions = await prisma.callSession.findMany({
     where: {
-      recordingUrl: { not: null },
-      OR: [
-        { recordingExpiresAt: { lte: now } },
-        { recordingExpiresAt: null, createdAt: { lte: cutoffDate } },
+      status: { in: ['COMPLETED', 'CANCELLED'] },
+      AND: [
+        { OR: [{ recordingUrl: { not: null } }, { recordingKeys: { isEmpty: false } }] },
+        { OR: [
+          { recordingExpiresAt: { lte: now } },
+          { recordingExpiresAt: null, createdAt: { lte: cutoffDate } },
+        ] },
       ],
     },
   });
 
   for (const session of expiredSessions) {
-    if (session.recordingUrl) {
+    const deleted = new Set<string>();
+    const keys = new Set([...(session.recordingKeys || []), ...(session.recordingUrl ? [session.recordingUrl] : [])]);
+    for (const key of keys) {
       let fileDeleted = false;
 
       // 1. If S3 is configured
       if (isS3Configured()) {
         try {
-          await deleteS3Object(session.recordingUrl);
+          await deleteS3Object(key);
           fileDeleted = true;
         } catch (s3Err) {
           logger.warn(`Could not delete S3 object for session ${session.id}`, {
@@ -55,7 +61,7 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
       } else {
         // 2. Local filesystem cleanup
         try {
-          const filePath = resolveSafeRecordingPath(session.recordingUrl);
+          const filePath = resolveSafeRecordingPath(key);
           if (!filePath) {
             logger.warn(`Path traversal or invalid recordingUrl for session ${session.id}: ${session.recordingUrl}`, {
               service: 'storage',
@@ -63,10 +69,7 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
               sessionId: session.id,
               recordingUrl: session.recordingUrl,
             });
-            await prisma.callSession.update({
-              where: { id: session.id },
-              data: { recordingUrl: null },
-            });
+            deleted.add(key);
             purgedCount++;
             continue;
           }
@@ -91,12 +94,12 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
       }
 
       if (fileDeleted) {
-        await prisma.callSession.update({
-          where: { id: session.id },
-          data: { recordingUrl: null },
-        });
+        deleted.add(key);
         purgedCount++;
       }
+    }
+    if (deleted.size) {
+      await forgetDeletedRecordingKeys(session.id, deleted);
     }
   }
 

@@ -30,16 +30,8 @@ func (h *Hub) ReconcileActiveSessions(ctx context.Context) (int, error) {
 				completedDuration = 1
 			}
 
-			egress := h.GetActiveEgress(session.RoomName)
-			var egressID *string
-			var recordingURL *string
-			if egress != nil {
-				egressID = &egress.EgressID
-				recordingURL = &egress.RelativeURL
-			} else if session.EgressID != nil {
-				egressID = session.EgressID
-				recordingURL = session.RecordingURL
-			}
+			egressID := session.EgressID
+			recordingURL := session.RecordingURL
 
 			if egressID != nil && *egressID != "" {
 				_ = h.LiveKit.StopAudioEgress(ctx, *egressID)

@@ -1,7 +1,0 @@
-{
-  "scenario": "S3 deletion denied",
-  "deleteAttempts": 1,
-  "metadataWrites": 0,
-  "purgedCount": 0,
-  "recordingTracked": true
-}

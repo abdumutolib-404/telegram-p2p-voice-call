@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { lockRow } from '../utils/transactionLock';
 import { getEffectiveEntitlement, getUserCallsUsedThisPeriod } from './plan';
 import { consumeOldestBonusCall } from './referralService';
+import { isUserSessionRecorder } from '../utils/recordingAccess';
 
 interface Completion {
   endedAt: Date;
@@ -28,8 +29,10 @@ export async function completeCallSession(id: string, completion: Completion): P
     const session = await tx.callSession.findUnique({ where: { id } });
     if (!session || session.status !== 'ACTIVE') return { count: 0 };
 
-    const status = completion.status ?? 'COMPLETED';
-    const charge = status === 'COMPLETED' && completion.charge !== false && completion.duration >= 5;
+    // An empty room cannot undo previously granted media permissions.
+    const status = completion.status === 'CANCELLED' && !session.mediaAuthorizedAt ? 'CANCELLED' : 'COMPLETED';
+    const duration = status === 'CANCELLED' ? 0 : Math.max(completion.duration, Math.max(0, Math.floor((completion.endedAt.getTime() - session.createdAt.getTime()) / 1000)));
+    const charge = status === 'COMPLETED' && duration >= 5;
     const allowances = [];
     if (charge) {
       for (const userId of participantIds) {
@@ -41,20 +44,31 @@ export async function completeCallSession(id: string, completion: Completion): P
       }
     }
 
-    const { charge: _charge, reason, deniedUserId, ...fields } = completion;
-    const data: Prisma.CallSessionUpdateManyMutationInput = { ...fields, status };
+    const { charge: _charge, reason: suppliedReason, deniedUserId: suppliedDeniedUserId, ...fields } = completion;
+    const deniedFailure = !charge && suppliedReason === 'microphone_permission_denied';
+    const reason = suppliedReason === 'microphone_permission_denied' && charge ? 'call_finished' : suppliedReason;
+    const deniedUserId = deniedFailure ? suppliedDeniedUserId : undefined;
+    const a = await tx.user.findUnique({ where: { id: session.userAId } });
+    const b = await tx.user.findUnique({ where: { id: session.userBId } });
+    if (!a || !b) throw new Error('Call participant is missing.');
+    const retentionA = getEffectiveEntitlement(a).retentionDays;
+    const retentionB = getEffectiveEntitlement(b).retentionDays;
+    const retention = Math.max(1,
+      isUserSessionRecorder(session.recordedByUserId, a.id) ? retentionA : 0,
+      isUserSessionRecorder(session.recordedByUserId, b.id) ? retentionB : 0);
+    const recordingExpiresAt = session.recordingUrl || session.recordingKeys?.length
+      ? new Date(completion.endedAt.getTime() + retention * 86400000) : null;
+    // Persistent latest-egress state is authoritative, including when another replica stopped/restarted it.
+    const data: Prisma.CallSessionUpdateManyMutationInput = { ...fields, duration, status, activeRecorderIds: null,
+      egressId: session.egressId, recordingUrl: session.recordingUrl, recordingExpiresAt };
     const claimed = await tx.callSession.updateMany({ where: { id, status: 'ACTIVE' }, data });
     if (claimed.count !== 1) return claimed;
     if (status === 'COMPLETED' || status === 'CANCELLED') {
-      const a = await tx.user.findUnique({ where: { id: session.userAId } });
-      const b = await tx.user.findUnique({ where: { id: session.userBId } });
-      if (!a || !b) throw new Error('Call participant is missing.');
-      if (deniedUserId && deniedUserId !== a.id && deniedUserId !== b.id) throw new Error('Invalid denied participant.');
+      if (suppliedDeniedUserId && suppliedDeniedUserId !== a.id && suppliedDeniedUserId !== b.id) throw new Error('Invalid denied participant.');
       await tx.postCallJob.create({ data: {
         callId: id, reason, deniedUserId,
         nextAttemptAt: new Date(Date.now() + 2000),
-        retentionA: getEffectiveEntitlement(a).retentionDays,
-        retentionB: getEffectiveEntitlement(b).retentionDays,
+        retentionA, retentionB,
       } });
     }
     for (const { user, used, entitlement } of allowances) {

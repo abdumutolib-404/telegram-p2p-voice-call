@@ -4,6 +4,7 @@ import path from 'node:path';
 const fixture = vi.hoisted(() => ({
   send: vi.fn(),
   findMany: vi.fn(),
+  findUnique: vi.fn(),
   update: vi.fn(),
   existsSync: vi.fn(),
   stat: vi.fn(),
@@ -18,7 +19,9 @@ const fixture = vi.hoisted(() => ({
 
 vi.mock('../config/env', () => ({ env: fixture.env }));
 vi.mock('../config/database', () => ({
-  prisma: { callSession: { findMany: fixture.findMany, update: fixture.update } },
+  prisma: { callSession: { findMany: fixture.findMany, findUnique: fixture.findUnique, update: fixture.update },
+    $transaction: async (fn: Function) => fn({ callSession: { findUnique: fixture.findUnique, update: fixture.update } }),
+  },
 }));
 vi.mock('../utils/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -44,7 +47,7 @@ vi.mock('node:fs/promises', () => ({
 import { deleteS3Object } from '../services/s3Storage';
 import { purgeExpiredRecordings } from '../services/storage';
 
-type Recording = { id: string; recordingUrl: string | null; recordingExpiresAt: Date };
+type Recording = { id: string; recordingUrl: string | null; recordingExpiresAt: Date; recordingKeys?: string[] };
 let recordings: Recording[];
 
 function expired(id: string): Recording {
@@ -56,8 +59,9 @@ beforeEach(() => {
   fixture.env.S3_KEY = 'synthetic-key';
   recordings = [expired('first')];
   fixture.findMany.mockImplementation(async () => recordings
-    .filter(recording => recording.recordingUrl !== null)
+    .filter(recording => recording.recordingUrl !== null || recording.recordingKeys?.length)
     .map(recording => ({ ...recording })));
+  fixture.findUnique.mockImplementation(async ({ where }) => recordings.find(row => row.id === where.id));
   fixture.update.mockImplementation(async ({ where, data }) => {
     const recording = recordings.find(recording => recording.id === where.id)!;
     Object.assign(recording, data);
@@ -154,5 +158,19 @@ describe('recording retention deletion', () => {
     expect(await purgeExpiredRecordings()).toEqual({ purgedCount: 1, freedSpaceBytes: 321 });
     expect(recordings.map(recording => recording.recordingUrl)).toEqual(['recordings/first.mp3', null]);
     expect(fixture.send).not.toHaveBeenCalled();
+  });
+  it('purges old and losing segments even with no latest URL, retaining failed keys for retry', async () => {
+    recordings = [{ ...expired('history'), recordingUrl: null, recordingKeys: ['recordings/old.mp3','recordings/loser.mp3'] }];
+    fixture.send.mockRejectedValueOnce(new Error('Synthetic unavailable object')).mockResolvedValue({});
+    expect(await purgeExpiredRecordings()).toEqual({ purgedCount: 1, freedSpaceBytes: 0 });
+    expect(recordings[0].recordingKeys).toEqual(['recordings/old.mp3']);
+    expect(await purgeExpiredRecordings()).toEqual({ purgedCount: 1, freedSpaceBytes: 0 });
+    expect(recordings[0].recordingKeys).toEqual([]);
+  });
+  it('does not discard a key appended by a late webhook during deletion', async () => {
+    recordings[0].recordingKeys = ['recordings/first.mp3'];
+    fixture.send.mockImplementationOnce(async () => { recordings[0].recordingKeys!.push('recordings/late.mp3'); });
+    await purgeExpiredRecordings();
+    expect(recordings[0].recordingKeys).toEqual(['recordings/late.mp3']);
   });
 });

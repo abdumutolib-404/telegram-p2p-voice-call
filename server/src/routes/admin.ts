@@ -199,58 +199,61 @@ else
 end
 `;
 
-async function verifyOtpChallengeAtomic(
+export async function verifyOtpChallengeAtomic(
   challengeId: string,
   providedOtp: string
 ): Promise<{ success: boolean; error?: string; remainingAttempts?: number }> {
   const providedHash = crypto.createHash('sha256').update(providedOtp.trim()).digest('hex');
   const now = Date.now();
 
-  try {
-    const redis = getRedis();
-    const resultRaw = await redis.eval(
-      VERIFY_OTP_LUA_SCRIPT,
-      1,
-      `otp:challenge:${challengeId}`,
-      providedHash,
-      String(now)
-    );
+  if (env.NODE_ENV === 'production' || !adminOtpChallengesFallback.has(challengeId)) {
+    try {
+      const redis = getRedis();
+      const resultRaw = await redis.eval(
+        VERIFY_OTP_LUA_SCRIPT,
+        1,
+        `otp:challenge:${challengeId}`,
+        providedHash,
+        String(now)
+      );
 
-    if (typeof resultRaw === 'string') {
-      const result = JSON.parse(resultRaw) as {
-        status: string;
-        attempts?: number;
-        remaining?: number;
-      };
-
-      if (result.status === 'SUCCESS') {
-        adminOtpChallengesFallback.delete(challengeId);
-        return { success: true };
-      }
-      if (result.status === 'EXPIRED') {
-        adminOtpChallengesFallback.delete(challengeId);
-        return { success: false, error: 'OTP has expired. Please request a new verification code.' };
-      }
-      if (result.status === 'MAX_ATTEMPTS' || result.status === 'MAX_ATTEMPTS_REACHED') {
-        adminOtpChallengesFallback.delete(challengeId);
-        return { success: false, error: 'Maximum OTP verification attempts exceeded.' };
-      }
-      if (result.status === 'INVALID_OTP') {
-        return {
-          success: false,
-          error: `Invalid verification code. ${result.remaining} attempts remaining.`,
-          remainingAttempts: result.remaining,
+      if (typeof resultRaw === 'string') {
+        const result = JSON.parse(resultRaw) as {
+          status: string;
+          attempts?: number;
+          remaining?: number;
         };
+
+        if (result.status === 'SUCCESS') {
+          adminOtpChallengesFallback.delete(challengeId);
+          return { success: true };
+        }
+        if (result.status === 'EXPIRED') {
+          adminOtpChallengesFallback.delete(challengeId);
+          return { success: false, error: 'OTP has expired. Please request a new verification code.' };
+        }
+        if (result.status === 'MAX_ATTEMPTS' || result.status === 'MAX_ATTEMPTS_REACHED') {
+          adminOtpChallengesFallback.delete(challengeId);
+          return { success: false, error: 'Maximum OTP verification attempts exceeded.' };
+        }
+        if (result.status === 'INVALID_OTP') {
+          return {
+            success: false,
+            error: `Invalid verification code. ${result.remaining} attempts remaining.`,
+            remainingAttempts: result.remaining,
+          };
+        }
       }
+    } catch (err) {
+      logger.warn('Redis OTP verification unavailable', {
+        service: 'adminAuth',
+        event: 'otp_eval_error',
+      }, err);
     }
-  } catch (err) {
-    logger.warn('Redis OTP eval error, checking memory fallback', {
-      service: 'adminAuth',
-      event: 'otp_eval_error',
-    }, err);
+    return { success: false, error: 'Invalid or consumed login challenge.' };
   }
 
-  // Memory fallback (if Redis was unavailable or key not found)
+  // Nonproduction challenges created while Redis was unavailable are memory-only.
   const challenge = adminOtpChallengesFallback.get(challengeId);
   if (!challenge || challenge.consumed) {
     return { success: false, error: 'Invalid or consumed login challenge.' };
@@ -284,14 +287,15 @@ async function verifyOtpChallengeAtomic(
   return { success: true };
 }
 
-async function saveOtpChallengeToRedis(challengeId: string, challenge: AdminOtpChallenge): Promise<void> {
-  adminOtpChallengesFallback.set(challengeId, challenge);
+export async function saveOtpChallengeToRedis(challengeId: string, challenge: AdminOtpChallenge): Promise<void> {
   try {
     const redis = getRedis();
     const ttlSeconds = Math.max(1, Math.ceil((challenge.expiresAt - Date.now()) / 1000));
     await redis.set(`otp:challenge:${challengeId}`, JSON.stringify(challenge), 'EX', ttlSeconds);
+    adminOtpChallengesFallback.delete(challengeId);
   } catch (err: unknown) {
     if (env.NODE_ENV === 'production') throw err;
+    adminOtpChallengesFallback.set(challengeId, challenge);
   }
 }
 

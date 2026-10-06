@@ -25,6 +25,9 @@ type CallSessionWhere = {
   recordedByUserId?: string | null | { contains?: string; startsWith?: string; endsWith?: string };
   status?: string | { in?: string[] };
   egressId?: string | null;
+  activeRecorderIds?: string | null;
+  mediaAuthorizedAt?: Date | null;
+  recordingKeys?: { isEmpty?: boolean };
   recordingUrl?: string | null | { not?: null };
   recordingExpiresAt?: Date | null | { lte?: Date; gt?: Date };
   createdAt?: Date | { lte?: Date; gte?: Date };
@@ -140,6 +143,10 @@ interface CallSessionRow {
   recordingUrl: string | null;
   recordingExpiresAt: Date | null;
   recordedByUserId: string | null;
+  activeRecorderIds: string | null;
+  readyParticipantIds: string[];
+  mediaAuthorizedAt: Date | null;
+  recordingKeys: string[];
   duration: number;
   createdAt: Date;
   endedAt: Date | null;
@@ -175,8 +182,11 @@ interface StarsTransactionRow {
   telegramPaymentId: string;
   starsAmount: number;
   planTier: string;
+  entitlementApplied: boolean;
   status: string;
   refundReason: string | null;
+  refundRequestedAt: Date | null;
+  refundAdminId: string | null;
   refundedAt: Date | null;
   createdAt: Date;
 }
@@ -663,6 +673,10 @@ export class InMemoryPrismaMock {
         recordingUrl: args.data.recordingUrl ? stringValue(args.data.recordingUrl) : null,
         recordingExpiresAt: args.data.recordingExpiresAt ? dateValue(args.data.recordingExpiresAt, now) : null,
         recordedByUserId: args.data.recordedByUserId ? stringValue(args.data.recordedByUserId) : null,
+        activeRecorderIds: args.data.activeRecorderIds ? stringValue(args.data.activeRecorderIds) : null,
+        readyParticipantIds: Array.isArray(args.data.readyParticipantIds) ? args.data.readyParticipantIds as string[] : [],
+        mediaAuthorizedAt: args.data.mediaAuthorizedAt ? dateValue(args.data.mediaAuthorizedAt, now) : null,
+        recordingKeys: Array.isArray(args.data.recordingKeys) ? args.data.recordingKeys as string[] : [],
         duration: numberValue(args.data.duration, 0),
         createdAt: dateValue(args.data.createdAt, now),
         endedAt: args.data.endedAt ? dateValue(args.data.endedAt, now) : null,
@@ -910,8 +924,11 @@ export class InMemoryPrismaMock {
         telegramPaymentId,
         starsAmount: numberValue(args.data.starsAmount, 0),
         planTier: stringValue(args.data.planTier),
+        entitlementApplied: args.data.entitlementApplied !== false,
         status: stringValue(args.data.status, 'PAID'),
         refundReason: args.data.refundReason ? stringValue(args.data.refundReason) : null,
+        refundRequestedAt: args.data.refundRequestedAt ? dateValue(args.data.refundRequestedAt, now) : null,
+        refundAdminId: args.data.refundAdminId ? stringValue(args.data.refundAdminId) : null,
         refundedAt: args.data.refundedAt ? dateValue(args.data.refundedAt, now) : null,
         createdAt: args.data.createdAt ? dateValue(args.data.createdAt, now) : now,
       };
@@ -1023,8 +1040,10 @@ export class InMemoryPrismaMock {
         ...(args.include?.user ? { user: this.users.get(row.userId) } : {}),
       };
     },
-    findFirst: async (args?: any): Promise<ManualPaymentRequestRow | null> => {
-      for (const row of this.manualPaymentRequests.values()) {
+      findFirst: async (args?: any): Promise<ManualPaymentRequestRow | null> => {
+        for (const row of this.manualPaymentRequests.values()) {
+          if (args?.where?.id && row.id !== args.where.id) continue;
+          if (args?.where?.telegramId !== undefined && row.telegramId !== BigInt(args.where.telegramId)) continue;
         if (args?.where?.userId && row.userId !== args.where.userId) continue;
         if (args?.where?.status && (typeof args.where.status === 'string' ? row.status !== args.where.status : !args.where.status.in?.includes(row.status))) continue;
         if (args?.where?.reviewedAt?.gt && (!row.reviewedAt || row.reviewedAt <= args.where.reviewedAt.gt)) continue;
@@ -1433,6 +1452,9 @@ export class InMemoryPrismaMock {
     if (typeof where.status === 'string' && session.status !== where.status) return false;
     if (typeof where.status === 'object' && where.status.in && !where.status.in.includes(session.status)) return false;
     if (where.egressId !== undefined && session.egressId !== where.egressId) return false;
+      if (where.activeRecorderIds !== undefined && session.activeRecorderIds !== where.activeRecorderIds) return false;
+      if (where.mediaAuthorizedAt !== undefined && session.mediaAuthorizedAt !== where.mediaAuthorizedAt) return false;
+    if (where.recordingKeys?.isEmpty !== undefined && (session.recordingKeys.length === 0) !== where.recordingKeys.isEmpty) return false;
     if (where.recordingUrl === null && session.recordingUrl !== null) return false;
     if (where.recordingUrl && typeof where.recordingUrl === 'object' && where.recordingUrl.not === null && session.recordingUrl === null) return false;
     if (where.recordedByUserId !== undefined) {
@@ -1476,7 +1498,10 @@ export class InMemoryPrismaMock {
   private mergeCallSession(session: CallSessionRow, data: CallSessionData): CallSessionRow {
     const updated = { ...session };
     for (const [key, value] of Object.entries(data)) {
-      (updated as unknown as Record<string, unknown>)[key] = value;
+      if (key === 'recordingKeys' && value && !Array.isArray(value) && typeof value === 'object') {
+        const operation = value as { push?: string | string[]; set?: string[] };
+        updated.recordingKeys = operation.set ?? [...session.recordingKeys, ...[operation.push ?? []].flat()];
+      } else (updated as unknown as Record<string, unknown>)[key] = value;
     }
     return updated;
   }

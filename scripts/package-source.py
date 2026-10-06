@@ -6,7 +6,7 @@ import subprocess
 import zipfile
 
 root = Path(__file__).resolve().parent.parent
-output = root / "artifacts" / "PairTalk-remediation-2026-10-02.zip"
+output = root / "artifacts" / "PairTalk-source.zip"
 files = subprocess.check_output(
     ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=root
 ).decode().split("\0")

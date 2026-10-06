@@ -24,7 +24,9 @@ export type RateLimitAction =
   | 'PROFILE_UPDATE'
   | 'DND'
   | 'ADMIN_LOGIN'
-  | 'ADMIN_OTP';
+  | 'ADMIN_OTP'
+  | 'PUBLIC_IELTS_READ'
+  | 'PUBLIC_IELTS_EXPORT';
 
 interface MatrixRule {
   maxRequests: number;
@@ -36,6 +38,8 @@ interface MatrixRule {
 }
 
 const MATRIX_RULES: Record<RateLimitAction, MatrixRule> = {
+  PUBLIC_IELTS_READ: { maxRequests: 60, windowSeconds: 60, penaltySeconds: 30 },
+  PUBLIC_IELTS_EXPORT: { maxRequests: 3, windowSeconds: 60, penaltySeconds: 60 },
   AUTH_PASSWORD: { maxRequests: 5, windowSeconds: 900, penaltySeconds: 900 },
   AUTH_OTP: { maxRequests: 5, windowSeconds: 300, penaltySeconds: 300 },
   AUTH_VERIFY: { maxRequests: 20, windowSeconds: 60, penaltySeconds: 300 },

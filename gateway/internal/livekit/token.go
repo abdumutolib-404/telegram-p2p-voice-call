@@ -30,10 +30,11 @@ func GenerateLiveKitToken(
 	at.SetValidFor(time.Duration(ttlSeconds) * time.Second)
 
 	grant := &auth.VideoGrant{
-		RoomJoin:     true,
-		Room:         roomName,
-		CanPublish:   boolPtr(true),
-		CanSubscribe: boolPtr(true),
+		RoomJoin:       true,
+		Room:           roomName,
+		CanPublish:     boolPtr(true),
+		CanSubscribe:   boolPtr(false),
+		CanPublishData: boolPtr(false),
 	}
 	at.AddGrant(grant)
 

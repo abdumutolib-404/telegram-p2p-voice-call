@@ -48,8 +48,11 @@ func TestGenerateLiveKitToken(t *testing.T) {
 		if grants.Video.CanPublish == nil || !*grants.Video.CanPublish {
 			t.Errorf("expected canPublish true")
 		}
-		if grants.Video.CanSubscribe == nil || !*grants.Video.CanSubscribe {
-			t.Errorf("expected canSubscribe true")
+		if grants.Video.CanSubscribe == nil || *grants.Video.CanSubscribe {
+			t.Errorf("subscription must await durable readiness")
+		}
+		if grants.Video.CanPublishData == nil || *grants.Video.CanPublishData {
+			t.Error("data publication bypassed readiness")
 		}
 	})
 

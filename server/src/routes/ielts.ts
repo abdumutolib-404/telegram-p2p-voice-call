@@ -1,10 +1,52 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { IeltsPart } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { getRedis } from '../config/redis';
+import { escapeCsvField as escapeCsv } from '../utils/csv';
+import { createActionRateLimiter } from '../middleware/rateLimit';
 
 const router = Router();
+const MAX_PUBLIC_EXPORT_ROWS = 1000;
+
+function limitConcurrency(maximum: number) {
+  let active = 0;
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (active >= maximum) {
+      res.setHeader('Retry-After', '5');
+      res.status(429).json({ error: 'Question service is busy. Please retry shortly.' });
+      return;
+    }
+    active++;
+    let released = false;
+    const release = () => {
+      if (!released) { released = true; active--; }
+    };
+    res.once('finish', release);
+    res.once('close', release);
+    next();
+  };
+}
+
+function parseFilters(query: Request['query']): { part: IeltsPart | null; topicId: string | null } {
+  const rawPart = query.part;
+  if (rawPart !== undefined && typeof rawPart !== 'string') throw new TypeError('part must be a single value');
+  const part = rawPart?.toUpperCase();
+  if (part && !['ALL', 'PART_1', 'PART_2', 'PART_3'].includes(part)) throw new TypeError('Unsupported question part');
+  const rawTopic = query.topicId;
+  if (rawTopic !== undefined && (typeof rawTopic !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(rawTopic))) throw new TypeError('Invalid topic ID or slug');
+  return { part: !part || part === 'ALL' ? null : part as IeltsPart, topicId: !rawTopic || rawTopic === 'all' ? null : rawTopic as string };
+}
+
+function parseInteger(value: unknown, fallback: number, maximum: number): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || !/^[1-9][0-9]{0,8}$/.test(value)) throw new TypeError('Invalid pagination');
+  const number = Number(value);
+  if (number > maximum) throw new TypeError('Pagination exceeds supported limit');
+  return number;
+}
+
+router.use(createActionRateLimiter('PUBLIC_IELTS_READ'), limitConcurrency(16));
 
 export async function invalidateIeltsQuestionCache(): Promise<void> {
   try {
@@ -53,15 +95,18 @@ router.get('/topics', async (_req: Request, res: Response): Promise<void> => {
 // GET /api/ielts/questions
 router.get('/questions', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { part, topicId, limit = '30', page = '1' } = req.query;
-    const parsedLimit = Math.min(50, Math.max(1, parseInt(String(limit), 10) || 30));
-    const parsedPage = Math.max(1, parseInt(String(page), 10) || 1);
+    const { part, topicId } = parseFilters(req.query);
+    const parsedLimit = parseInteger(req.query.limit, 30, 50);
+    const parsedPage = parseInteger(req.query.page, 1, 10000);
     const skip = (parsedPage - 1) * parsedLimit;
 
     const cacheKey = `cache:ielts:questions:${topicId || 'all'}:${part || 'all'}:${parsedPage}:${parsedLimit}`;
+    // The public cache has a finite key space: 4 parts × 10 pages × 50 sizes.
+    // User-selected topic IDs and arbitrarily deep pages never create cache entries.
+    const cacheable = topicId === null && parsedPage <= 10;
     const bypassCache = req.headers['x-bypass-cache'] === 'true' || req.query.fresh === 'true';
 
-    if (!bypassCache) {
+    if (cacheable && !bypassCache) {
       try {
         const redis = getRedis();
         const cached = await redis.get(cacheKey);
@@ -75,10 +120,8 @@ router.get('/questions', async (req: Request, res: Response): Promise<void> => {
     }
 
     const where: any = { isActive: true };
-    if (part && ['PART_1', 'PART_2', 'PART_3'].includes(String(part).toUpperCase())) {
-      where.part = String(part).toUpperCase() as IeltsPart;
-    }
-    if (topicId && typeof topicId === 'string' && topicId !== 'all') {
+    if (part) where.part = part;
+    if (topicId) {
       where.OR = [{ topicId }, { topic: { slug: topicId } }];
     }
 
@@ -106,29 +149,30 @@ router.get('/questions', async (req: Request, res: Response): Promise<void> => {
       },
     };
 
-    try {
+    if (cacheable && questions.length > 0) try {
       const redis = getRedis();
       await redis.set(cacheKey, JSON.stringify(result), 'EX', 300); // 5-minute TTL
     } catch {}
 
     res.json(result);
   } catch (err: unknown) {
+    if (err instanceof TypeError) { res.status(400).json({ error: err.message }); return; }
     logger.error('Failed fetching IELTS questions', { service: 'ielts_api' }, err);
     res.status(500).json({ error: 'Internal server error fetching questions' });
   }
 });
 
 // GET /api/ielts/questions/export
-router.get('/questions/export', async (req: Request, res: Response): Promise<void> => {
+router.get('/questions/export', createActionRateLimiter('PUBLIC_IELTS_EXPORT'), limitConcurrency(2), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { topicId, part, format = 'json' } = req.query;
+    const { topicId, part } = parseFilters(req.query);
+    const format = req.query.format ?? 'json';
+    if (typeof format !== 'string' || !['json', 'csv'].includes(format.toLowerCase())) throw new TypeError('Unsupported export format');
     const where: any = { isActive: true };
 
-    if (part && ['PART_1', 'PART_2', 'PART_3'].includes(String(part).toUpperCase())) {
-      where.part = String(part).toUpperCase() as IeltsPart;
-    }
+    if (part) where.part = part;
 
-    if (topicId && typeof topicId === 'string' && topicId !== 'all') {
+    if (topicId) {
       where.OR = [{ topicId }, { topic: { slug: topicId } }];
     }
 
@@ -136,18 +180,19 @@ router.get('/questions/export', async (req: Request, res: Response): Promise<voi
       where,
       orderBy: [{ topic: { name: 'asc' } }, { part: 'asc' }, { createdAt: 'desc' }],
       include: { topic: true },
+      take: MAX_PUBLIC_EXPORT_ROWS + 1,
     });
+
+    if (questions.length > MAX_PUBLIC_EXPORT_ROWS) {
+      res.status(413).json({ error: `Public exports support at most ${MAX_PUBLIC_EXPORT_ROWS} questions. Select a topic or part to narrow the export.` });
+      return;
+    }
 
     const isCsv = String(format).toLowerCase() === 'csv';
     const timestamp = new Date().toISOString().slice(0, 10);
     const filenameTopic = topicId ? String(topicId).replace(/[^a-z0-9_-]/gi, '_') : 'all';
 
     if (isCsv) {
-      const escapeCsv = (val: unknown) => {
-        if (val === null || val === undefined) return '""';
-        return `"${String(val).replace(/"/g, '""')}"`;
-      };
-
       const headers = [
         'ID',
         'Part',
@@ -189,6 +234,7 @@ router.get('/questions/export', async (req: Request, res: Response): Promise<voi
       questions,
     });
   } catch (err: unknown) {
+    if (err instanceof TypeError) { res.status(400).json({ error: err.message }); return; }
     logger.error('Public export questions failed', { service: 'ielts_api' }, err);
     res.status(500).json({ error: 'Internal server error exporting questions' });
   }

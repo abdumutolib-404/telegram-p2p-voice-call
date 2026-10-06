@@ -931,7 +931,7 @@ export async function revokePlanOnRefund(params: {
     const newerStars = await db.starsTransaction.findFirst({ where: { userId: tx.userId, status: 'PAID', createdAt: { gt: tx.createdAt } } });
     const newerManual = await db.manualPaymentRequest.findFirst({ where: { userId: tx.userId, status: { in: ['APPROVED', 'REFUND_PENDING'] }, reviewedAt: { gt: tx.createdAt } } });
     const user = await db.user.findUnique({ where: { id: tx.userId } });
-    const preserveSubscription = !!newerStars || !!newerManual || !!user?.customPlanName || user?.plan !== tx.planTier;
+    const preserveSubscription = tx.entitlementApplied === false || !!newerStars || !!newerManual || !!user?.customPlanName || user?.plan !== tx.planTier;
     const updatedUser = preserveSubscription ? user! : await db.user.update({ where: { id: tx.userId }, data: {
       plan: 'FREE', subscriptionStatus: 'REFUNDED', subscriptionExpiresAt: null, maxDuration: plansConfig.FREE.maxDuration, dailyLimit: plansConfig.FREE.dailyLimit, recordingLimitOverride:null,retentionOverride:null,
     } });

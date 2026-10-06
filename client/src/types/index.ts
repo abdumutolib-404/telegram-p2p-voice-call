@@ -69,6 +69,13 @@ export interface MatchFoundPayload {
 
 export interface RecordStatusPayload {
   record: boolean;
+  roomName?: string;
+}
+
+export interface RoomRecordingStatusPayload {
+  roomName: string;
+  state: 'on' | 'off' | 'unknown';
+  updatedAt: number;
 }
 
 export interface CallEndedPayload {

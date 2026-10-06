@@ -225,11 +225,9 @@ describe('Final Authentication Architecture Test Suite', () => {
       const testOtp = step1Res.body.testOtp;
 
       // Manually set challenge expiration to 1 second in the past
-      const challenge = getAdminChallenge(challengeId);
-      if (challenge) {
-        challenge.expiresAt = Date.now() - 1000;
-        await getRedis().set(`otp:challenge:${challengeId}`, JSON.stringify(challenge), 'EX', 300);
-      }
+      const challenge = JSON.parse((await getRedis().get(`otp:challenge:${challengeId}`))!);
+      challenge.expiresAt = Date.now() - 1000;
+      await getRedis().set(`otp:challenge:${challengeId}`, JSON.stringify(challenge), 'EX', 300);
 
       const res = await request(app)
         .post('/api/admin/auth/otp')

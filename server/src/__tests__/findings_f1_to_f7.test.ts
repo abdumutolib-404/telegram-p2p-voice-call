@@ -395,6 +395,7 @@ describe('Findings F1 - F7 Targeted Regression Test Suite', () => {
       const session = await prisma.callSession.create({
         data: {
           roomName: 'room_f5_valid_size_test',
+          egressId: 'EG_VALID_SIZE_456',
           userAId: 'user_a',
           userBId: 'user_b',
           status: 'COMPLETED',

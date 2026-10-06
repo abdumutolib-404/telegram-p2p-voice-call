@@ -182,6 +182,7 @@ end
           if (event === 'message:successful_payment') registeredPaymentHandler = handler;
         },
         callbackQuery: () => {},
+        api: { refundStarPayment: async () => true },
       };
       setupPaymentHandlers(mockBot as any);
     });
@@ -287,6 +288,9 @@ end
           telegramId: BigInt(99330022),
           alias: 'ProUserPayer',
           plan: 'PRO',
+          subscriptionStatus: 'ACTIVE',
+          subscriptionExpiresAt: new Date(Date.now() + 7 * 86400000),
+          dailyCallsUsed: 7,
           maxDuration: 60,
           dailyLimit: 999,
         },
@@ -314,6 +318,8 @@ end
       // User must remain PRO and not be downgraded to PLUS
       expect(userAfter?.plan).toBe('PRO');
       expect(userAfter?.maxDuration).toBe(60);
+      expect(userAfter?.dailyCallsUsed).toBe(7);
+      expect(userAfter?.subscriptionExpiresAt).toEqual(proUser.subscriptionExpiresAt);
 
       // Transaction is still recorded for audit
       const txs = await prisma.starsTransaction.findMany();

@@ -76,7 +76,7 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 		targetStatus := "CANCELLED"
 		finalDuration := 0
 		reason := "all_participants_disconnected"
-		if isPastMaxDurationWithMargin {
+		if isPastMaxDurationWithMargin || current.MediaAuthorizedAt != nil {
 			targetStatus = "COMPLETED"
 			finalDuration = maxDurationSeconds
 			if elapsedSeconds < maxDurationSeconds {
@@ -85,16 +85,8 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 			reason = "call_duration_limit_reached"
 		}
 
-		egress := h.GetActiveEgress(session.RoomName)
-		var egressID *string
-		var recordingURL *string
-		if egress != nil {
-			egressID = &egress.EgressID
-			recordingURL = &egress.RelativeURL
-		} else if current.EgressID != nil {
-			egressID = current.EgressID
-			recordingURL = current.RecordingURL
-		}
+		egressID := current.EgressID
+		recordingURL := current.RecordingURL
 
 		if egressID != nil && *egressID != "" {
 			_ = h.LiveKit.StopAudioEgress(ctx, *egressID)

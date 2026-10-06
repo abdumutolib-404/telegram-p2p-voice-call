@@ -7,8 +7,15 @@ dist/
 build/
 .output/
 
-# Local source archives
-/artifacts/*.zip
+# Local QA output and source archives
+/artifacts/
+
+# Generated build and tool caches
+dist-ssr/
+coverage/
+*.tsbuildinfo
+__pycache__/
+*.pyc
 
 # Environment variables
 .env

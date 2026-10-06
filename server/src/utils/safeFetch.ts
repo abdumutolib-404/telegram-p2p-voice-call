@@ -37,10 +37,14 @@ export async function safeFetch(url: string, options: { headers?: Record<string,
             else chunks.push(Buffer.from(chunk));
           });
           incoming.on('error', reject); incoming.on('end', () => {
-            const headers = new Headers();
-            for (const [key, value] of Object.entries(incoming.headers)) if (value) headers.set(key, Array.isArray(value) ? value.join(', ') : value);
-            const status = incoming.statusCode || 502;
-            resolve(new Response([204, 304].includes(status) ? null : Buffer.concat(chunks), { status, headers }));
+            try {
+              const headers = new Headers();
+              for (const [key, value] of Object.entries(incoming.headers)) if (value) headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+              const status = incoming.statusCode || 502;
+              resolve(new Response([204, 205, 304].includes(status) ? null : Buffer.concat(chunks), { status, headers }));
+            } catch (error) {
+              reject(error);
+            }
           });
         });
         req.on('error', reject);

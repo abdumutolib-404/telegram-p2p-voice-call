@@ -79,7 +79,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
             <span>Data Protection, Security &amp; Transparency Commitment</span>
           </p>
           <p>
-            PairTalk operates on a strict zero-knowledge privacy architecture designed specifically for educational practice. We believe that effective language acquisition requires complete psychological safety: you practice speaking in private, fully anonymous voice rooms without revealing personal identity or metadata.
+            PairTalk uses aliases to help you practice without sharing your Telegram profile with your partner. The service still processes account identifiers, call metadata, payments, and any recordings you request. Share only information you are comfortable disclosing during a call.
           </p>
         </div>
 
@@ -87,7 +87,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
         <div className="p-6 rounded-2xl bg-[#090D18] border border-slate-800 space-y-4">
           <div className="flex items-center gap-2.5 text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider">
             <EyeOff className="w-4 h-4" />
-            <span>1. ANONYMOUS CANDIDATE ALIASING &amp; ZERO PII TRANSMISSION</span>
+            <span>1. PRACTICE ALIASES &amp; ENCRYPTED TRANSPORT</span>
           </div>
           <div className="space-y-3 text-xs sm:text-sm text-slate-300 font-mono leading-relaxed">
             <div className="flex items-start gap-3">
@@ -99,13 +99,13 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
             <div className="flex items-start gap-3">
               <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
               <div>
-                <strong className="text-white">Encrypted WebRTC Media Transmission:</strong> Live voice audio is streamed through dedicated LiveKit Selective Forwarding Units (SFU) utilizing standard WebRTC DTLS-SRTP end-to-end encryption. Live voice streams are never eavesdropped on, monitored, or transcribed in real time.
+                <strong className="text-white">Encrypted WebRTC Transport:</strong> Audio travels over encrypted WebRTC connections to the LiveKit media service. This is transport encryption, not end-to-end encryption that hides audio from the media service. Participant-requested recordings are processed by that service.
               </div>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
               <div>
-                <strong className="text-white">Ephemeral Session Tokens:</strong> Authentication tokens granted for voice sessions expire automatically upon call termination. Unauthorized room joins or token reuse attempts fail closed.
+                <strong className="text-white">Room-Scoped Session Tokens:</strong> Voice tokens identify an authorized participant and a specific room, and have a limited lifetime. Ending a call triggers room cleanup; token expiry follows the token's configured lifetime.
               </div>
             </div>
           </div>
@@ -118,7 +118,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
             <span>2. OPTIONAL AUDIO RECORDINGS &amp; AUTHORITATIVE RETENTION WINDOWS</span>
           </div>
           <p className="text-xs sm:text-sm text-slate-300 font-mono leading-relaxed">
-            Audio recording is strictly opt-in and must be explicitly initiated by call participants. Recorded files are stored in private, encrypted cloud storage accessible exclusively to the two candidates who participated in the session.
+            A participant with recording allowance can request a recording of the room, including both voices. The call screen shows room recording status separately from your own saved-copy choice. Saved recordings require authorized access; the media and storage services process them. Your partner may also record outside PairTalk, which the app cannot detect.
           </p>
 
           <div className="overflow-x-auto rounded-xl border border-slate-800">

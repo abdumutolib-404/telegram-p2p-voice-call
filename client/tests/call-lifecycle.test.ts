@@ -16,6 +16,7 @@ const fixture = vi.hoisted(() => ({
 vi.mock('../src/services/socket', () => ({ socketService: {
   connect: () => fixture.socket, getSocket: () => fixture.socket, disconnect: vi.fn(),
   finishCall: fixture.finish, peerReady: fixture.peerReady, joinQueue: fixture.join, cancelQueue: fixture.cancel,
+  getRecordingStatus: vi.fn(),
 } }));
 vi.mock('../src/hooks/useLiveKit', () => ({ useLiveKit: () => fixture.voice }));
 vi.mock('../src/services/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));

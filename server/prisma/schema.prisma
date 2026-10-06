@@ -109,6 +109,10 @@ model CallSession {
   recordingUrl       String?
   recordingExpiresAt DateTime?
   recordedByUserId   String?
+  activeRecorderIds  String?
+  readyParticipantIds String[]    @default([])
+  mediaAuthorizedAt DateTime?
+  recordingKeys     String[]     @default([])
   duration           Int          @default(0) // call duration in seconds
   createdAt          DateTime     @default(now())
   endedAt            DateTime?
@@ -166,6 +170,7 @@ model StarsTransaction {
   telegramPaymentId String    @unique
   starsAmount       Int
   planTier          String    // "PLUS", "PRO", "BOSS"
+  entitlementApplied Boolean @default(true)
   status            String    @default("PAID") // "PAID", "REFUND_PENDING", "REFUNDED"
   refundReason      String?
   refundedAt        DateTime?

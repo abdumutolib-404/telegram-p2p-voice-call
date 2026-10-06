@@ -1,383 +1,56 @@
-# PairTalk WebSocket & Signaling Protocol Specification
-
-> **Standard**: Socket.IO v4 / Engine.IO v4 Real-Time Protocol Specification  
-> **Endpoint**: `wss://pairtalk.online/socket.io/?EIO=4&transport=websocket`  
-> **Ingress Layer**: Go 1.26.5 Voice Gateway (`gateway/internal/signaling`)
-
----
-
-## 1. Engine.IO v4 Protocol & Handshake Lifecycle
-
-PairTalk utilizes the **Engine.IO v4** protocol with full WebSocket-first transport and automatic HTTP long-polling fallback.
-
-### 1.1 Connection Handshake & Authentication
-
-During connection establishment, the client must transmit its Telegram Mini App `initData` signature string within the Socket.IO `auth` dictionary or HTTP query parameters:
-
-```javascript
-import { io } from 'socket.io-client';
-
-const socket = io('https://pairtalk.online', {
-  transports: ['websocket', 'polling'],
-  auth: {
-    initData: window.Telegram.WebApp.initData,
-  },
-  reconnection: true,
-  reconnectionAttempts: 10,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
-});
-```
-
-#### Handshake Sequence
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client as React Mini App
-    participant GW as Go Gateway Signaling Hub
-    participant RDB as Redis Cluster
-    participant PG as PostgreSQL 16
-
-    Client->>GW: HTTP GET /socket.io/?EIO=4&transport=polling<br/>(auth.initData in query/body)
-    GW->>GW: Validate Telegram HMAC-SHA256 Signature
-    alt Invalid or Tampered Signature
-        GW-->>Client: 403 Forbidden / Error Packet {"code":"auth_rejected"}
-        GW->>Client: Terminate TCP connection
-    else Signature Authenticated
-        GW->>PG: Resolve or Upsert User Record
-        GW-->>Client: Engine.IO Open Packet (0{"sid":"...","upgrades":["websocket"],"pingInterval":25000,"pingTimeout":20000})
-        Client->>GW: WebSocket Upgrade Request (101 Switching Protocols)
-        GW-->>Client: Engine.IO Ping (2probe)
-        Client-->>GW: Engine.IO Pong (3probe)
-        GW-->>Client: Socket.IO Connect Ack (40{"sid":"..."})
-    end
-```
-
-### 1.2 Engine.IO Packet Type Reference
-
-| Prefix | Name | Semantics |
-| :--- | :--- | :--- |
-| `0` | **Open** | Sent by Gateway on successful handshake with session ID, ping parameters, and transport upgrades. |
-| `1` | **Close** | Terminates connection. |
-| `2` | **Ping** | Heartbeat probe sent by Gateway every 25 seconds. |
-| `3` | **Pong** | Heartbeat response returned by Client within 20 seconds. |
-| `4` | **Message** | Encapsulates Socket.IO event payloads. |
-| `40` | **Connect** | Socket.IO namespace connection confirmation. |
-| `42` | **Event** | Socket.IO event transmission with event name and JSON payload. |
-
----
-
-## 2. Client-to-Server Event Catalog
-
-All incoming events are validated, rate-limited via distributed mutexes, and dispatched to the signaling state machine.
-
-### 2.1 `join_queue`
-
-Registers candidate into the criteria matchmaking radar.
-
-- **Action Rate Limit**: `MATCH_JOIN` (10 req / 60s, penalty 300s, 4s in-flight mutex lock).
-- **Payload Schema**:
-```json
-{
-  "band": 6.5,
-  "skills": {
-    "subFC": 6.0,
-    "subLR": 7.5,
-    "subGRA": 6.5,
-    "subP": 6.5
-  },
-  "options": {
-    "plan": "PRO",
-    "warningCount": 0
-  }
-}
-```
-- **Field Invariants**:
-  - `band`: Finite float between `4.0` and `9.0` (rounded to nearest `0.5`).
-  - `skills`: Sub-scores (`subFC`, `subLR`, `subGRA`, `subP`) must be finite values between `0.0` and `9.0`.
-  - `options.plan`: One of `"FREE"`, `"PLUS"`, `"PRO"`, `"BOSS"`.
-- **Outcomes**:
-  - Immediate match found: Returns `match_found` to both peers.
-  - Waiting in queue: Returns `queue_joined` (`{ "status": "waiting" }`).
+# Signaling and call lifecycle
 
----
+Reviewed 2026-10-05. The Mini App uses Socket.IO via [socket.ts](../client/src/services/socket.ts). The production Go gateway and Node signaling implementation must preserve the same client-facing lifecycle.
 
-### 2.2 `cancel_queue`
+## Connection and identity
 
-Removes user from all registered matchmaking buckets and priority pools.
+The client connects to `VITE_SERVER_URL` or the current origin, supplies launch data as `auth.token` and `X-Telegram-Init-Data`, and replaces the connection when launch credentials change. Identity is server-validated; payload user IDs and plan metadata do not grant permissions. The gateway also exposes its native WebSocket transport for the existing protocol harness.
 
-- **Action Rate Limit**: `MATCH_CANCEL` (10 req / 60s, idempotent).
-- **Payload**: `{}` (Empty JSON object).
-- **Outcome**: Returns `queue_cancelled` (`{ "success": true }`).
+## Client events
 
----
+| Event | Payload / purpose |
+| --- | --- |
+| join_queue | UserMatchData: band and criterion preferences; server rechecks identity, moderation, and entitlement |
+| cancel_queue | Current client's queue cancellation; repeat cancellation is safe |
+| peer_ready | `{ roomName }` after media-room setup |
+| get_recording_status | `{ roomName }` for the active participant's personal intent and room capture snapshot |
+| toggle_record | `{ roomName, record: boolean }` |
+| finish_call | `{ roomName, userId, reason? }`; payload identity/reason are not charge authority |
 
-### 2.3 `toggle_record`
+Room actions require membership in the persisted active session before allocating retained room state. Implementations apply their existing validation and rate limits. Do not introduce new events based solely on this guide.
 
-Initiates or terminates LiveKit cloud composite audio recording (MP3).
+## Server events
 
-- **Action Rate Limit**: `RECORD_START` (4 req / 20s, penalty 120s, 4s in-flight mutex).
-- **Payload Schema**:
-```json
-{
-  "roomName": "room_7b9d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
-  "record": true,
-  "requestId": "req_8a7f6c5b"
-}
-```
-- **Outcomes**:
-  - Success: Emits `record_status` (`{ "record": true }`) to all participants in the room.
-  - Failure: Emits `recording_error` (`{ "code": "RECORDING_FAILED", "message": "..." }`).
+| Event | Relevant fields |
+| --- | --- |
+| match_found | roomName, livekitToken (legacy token alias), livekitUrl, partnerAlias, partnerBand, duration limit in seconds |
+| call_started | startedAt and expiresAt in milliseconds; durationSeconds |
+| record_status | roomName and record boolean for this user's saved-copy intent |
+| room_recording_status | roomName, state (`on`, `off`, `unknown`), updatedAt in milliseconds |
+| recording_error | message and optional code |
+| call_finished | optional duration and reason |
+| partner_connection_lost | optional userId and gracePeriodSec |
+| partner_reconnected | optional userId and reconnectedAt |
+| error | message and optional code |
 
----
+Queue acknowledgements may be emitted by backend implementations. Consumer types and exact parsing live in [client types](../client/src/types/index.ts) and [Go signaling](../gateway/internal/signaling/handler.go); these are preferable to hand-built Engine.IO packet examples.
 
-### 2.4 `finish_call`
+## Readiness, timers, and completion
 
-Signals voluntary end of call by either participant.
+Initial room tokens allow microphone publication but deny subscriptions and data publication. Both canonical participants must become ready before the server durably records media authorization and enables provider subscriptions. Readiness is persisted across Node/Go replicas; repeated readiness retries permission updates without resetting the admission clock. The handshake window is 90 seconds and disconnect grace is 15 seconds.
 
-- **Action Rate Limit**: `FINISH_CALL` (12 req / 10s, idempotent).
-- **Payload Schema**:
-```json
-{
-  "roomName": "room_7b9d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
-  "reason": "user_completed",
-  "requestId": "req_99b8a7c6"
-}
-```
-- **Outcome**: Triggers immediate graceful teardown, emits `call_finished`, stops egress, and publishes `CALL_FINISHED` via Redis.
+The authoritative clock begins at persisted session admission (`createdAt`). When readiness completes, timeout is scheduled for the **remaining** duration, not a fresh full allowance. Reconnection and late readiness cannot reset that origin.
 
----
+Shared completion persists a terminal transition and accounting once. Completed sessions lasting at least five seconds consume call allowance, including when a client supplies a microphone-denied reason or a false charge hint. A session with durable media authorization cannot become a free cancellation merely because participants have left. Never-authorized failed joins remain free, and provider uncertainty triggers a retry. Genuine short failures remain free. Charged failures use ordinary completion messaging rather than promising unused allowance.
 
-### 2.5 `peer_ready`
+## Recording
 
-Signals that the client has successfully joined the LiveKit audio room and initialized local microphone capture.
+record_status represents active intent; it does not prove an output file is ready. Stop preserves saved ownership and the latest egress binding for delayed callbacks. Only the current binding updates the latest URL, while all generated keys remain tracked for deletion. Completion uses current persisted state rather than cached recording snapshots.
 
-- **Action Rate Limit**: `PEER_READY` (idempotent per call).
-- **Payload Schema**:
-```json
-{
-  "roomName": "room_7b9d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f"
-}
-```
-- **Outcome**:
-  - The server tracks readiness of both peers in the room.
-  - When both peers emit `peer_ready`, the server cancels the 90-second connection handshake timer, sets the authoritative start timestamp (`roomStartedAt`), schedules the authoritative duration teardown timer, and broadcasts `call_started` to both participants.
+room_recording_status describes room-wide capture independently of personal intent. Transitions are distributed over Redis to Node and Go sockets. Uncertain starts/stops or unavailable provider status use `unknown`, rather than a false off guarantee. Clients refresh the snapshot on reconnect and periodically while in a call, ignore other-room/stale updates, and label `off` as no recording reported. Egress requires media authorization first. Recording keys use a hashed room namespace and a fresh UUID per attempt, while existing saved paths remain retrievable.
 
----
+## Recovery and checks
 
-### 2.6 WebRTC Fallback Signaling Events
+Use the authenticated active-call endpoint when recovering a session. Tokens and remaining duration come from current server state. A stale client must not revive a completed call. Test duplicate readiness, unauthorized rooms, delay before readiness, reconnect during grace, repeated finish, recording stop/restart, and completion racing a webhook.
 
-Used for direct P2P mesh signaling if LiveKit SFU experiences network boundary degradation:
-
-| Event | Direction | Payload Structure |
-| :--- | :--- | :--- |
-| `offer` | Client -> Server | `{ "roomName": "...", "sdp": RTCSessionDescriptionInit }` |
-| `answer` | Client -> Server | `{ "roomName": "...", "sdp": RTCSessionDescriptionInit }` |
-| `candidate`| Client -> Server | `{ "roomName": "...", "candidate": RTCIceCandidateInit }` |
-| `leave` | Client -> Server | `{ "roomName": "..." }` |
-
----
-
-## 3. Server-to-Client Event Catalog
-
-### 3.1 `match_found`
-
-Emitted simultaneously to both matched peers when the matchmaking radar completes a match.
-
-```json
-{
-  "roomName": "room_7b9d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
-  "partnerId": "usr_11002233-4455-6677-8899-aabbccddeeff",
-  "partnerAlias": "P2P-Partner-4412",
-  "partnerBand": 7.0,
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "livekitToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "livekitUrl": "https://pairtalk.livekit.cloud",
-  "callDurationLimit": 3600,
-  "maxDurationSeconds": 3600
-}
-```
-
----
-
-### 3.2 `queue_joined`
-
-Emitted when candidate is registered into Redis matchmaking bucket and awaiting partner.
-
-```json
-{
-  "status": "waiting"
-}
-```
-
----
-
-### 3.3 `queue_cancelled`
-
-Emitted upon successful cancellation of queue search.
-
-```json
-{
-  "success": true
-}
-```
-
----
-
-### 3.4 `call_started`
-
-Emitted when both participants have joined the LiveKit room, initialized audio capture, and signaled readiness via `peer_ready`.
-
-```json
-{
-  "roomName": "room_7b9d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
-  "startedAt": 1788739200000,
-  "durationLimit": 3600
-}
-```
-
-- **Client Action**: Unfreezes the in-call timer from `00:00` and initiates synchronized countdown against `startedAt`.
-
----
-
-### 3.5 `partner_connection_lost`
-
-Emitted to the remaining peer when their partner's WebSocket disconnects unexpectedly.
-
-```json
-{
-  "userId": "usr_11002233-4455-6677-8899-aabbccddeeff",
-  "gracePeriodSec": 15
-}
-```
-
----
-
-### 3.5 `partner_reconnected`
-
-Emitted when the disconnected partner re-establishes their WebSocket connection within the 15-second window.
-
-```json
-{
-  "userId": "usr_11002233-4455-6677-8899-aabbccddeeff",
-  "reconnectedAt": "2026-09-06T17:35:12.450Z"
-}
-```
-
----
-
-### 3.6 `record_status`
-
-Emitted when LiveKit composite MP3 audio egress starts or stops.
-
-```json
-{
-  "record": true
-}
-```
-
----
-
-### 3.7 `recording_error`
-
-Emitted when cloud audio egress cannot be initialized or fails.
-
-```json
-{
-  "code": "RECORDING_LIMIT_REACHED",
-  "message": "Monthly recording quota reached for current subscription tier."
-}
-```
-
----
-
-### 3.8 `call_finished`
-
-Emitted when a call concludes (by limit, voluntary hangup, or grace expiration).
-
-```json
-{
-  "duration": 842,
-  "reason": "call_duration_limit_reached"
-}
-```
-
----
-
-### 3.9 `error`
-
-Emitted on signaling failures, rate limit blocks, or quota exhaustion.
-
-```json
-{
-  "code": "RATE_LIMITED",
-  "message": "Too many requests. Please wait 45 seconds before trying again.",
-  "retryAfterSeconds": 45
-}
-```
-
----
-
-## 4. Disconnect Grace Period & Authoritative Teardown Clock
-
-PairTalk enforces two strict state machine timing guarantees:
-
-### 4.1 15-Second Disconnect Grace Period
-
-```mermaid
-stateDiagram-v2
-    [*] --> InCall: Peers Joined Room
-    InCall --> PartnerLost: Peer A Disconnects
-    state PartnerLost {
-        [*] --> TimerRunning: Emit "partner_connection_lost" (grace: 15s)
-        TimerRunning --> Reconnected: Peer A Reconnects (< 15s)
-        Reconnected --> [*]: Cancel Timer & Emit "partner_reconnected"
-        TimerRunning --> GraceExpired: 15s Timer Fires
-        GraceExpired --> TerminateCall: Authoritative Room Teardown
-    }
-    PartnerLost --> InCall: Reconnected
-    PartnerLost --> [*]: Call Concluded
-```
-
-1. When a client's transport breaks, the Go Gateway detects the socket closure in `handler.go`.
-2. A 15-second timer (`time.AfterFunc`) is registered in `disconnectGraceTimers[userId]`.
-3. The partner receives `partner_connection_lost` with `gracePeriodSec: 15`.
-4. If the client reconnects within 15 seconds:
-   - The timer is cancelled via `timer.Stop()`.
-   - The room is notified with `partner_reconnected`.
-5. If the timer fires without reconnection:
-   - The session is authoritatively marked `COMPLETED` in PostgreSQL.
-   - LiveKit room is destroyed via `DeleteRoom()`.
-   - The partner receives `call_finished` (`reason: "partner_disconnected"`).
-
-### 4.2 Authoritative Duration Teardown Clock
-
-To eliminate client-side duration manipulation or orphaned WebRTC sessions, the Go Gateway runs an immutable duration timer:
-
-1. **Duration Calculation**:
-   $$\text{DurationLimit} = \max(\text{UserA.MaxDuration}, \text{UserB.MaxDuration})$$
-   (Subject to admin override constraints).
-2. **Timer Registration**:
-   `hub.ScheduleAuthoritativeSessionTeardown(roomName, durationSeconds)` registers an unalterable `time.AfterFunc` callback.
-3. **Execution Invariants**:
-   - The timer holds a mutex lock on `roomName`.
-   - Halts any running LiveKit MP3 audio egress.
-   - Calculates exact billable seconds: `int(time.Since(session.CreatedAt).Seconds())`.
-   - Persists completion status, recording URL, and retention timestamps in PostgreSQL.
-   - Emits `call_finished` (`reason: "call_duration_limit_reached"`).
-   - Broadcasts `CALL_FINISHED` to Redis channel `pairtalk:events`.
-
-### 4.3 90-Second Connection Handshake Timer
-
-To guarantee fairness and prevent burning candidate minutes while a remote partner is navigating or loading the web app:
-
-1. **Timer Arming**:
-   - When a match is formed (`match_found`) or a direct call is accepted, the server starts a **90-second connection handshake timer** (`ScheduleConnectionHandshakeTimer(roomName, 90)`).
-   - In-room elapsed countdown is held frozen at `00:00`.
-2. **Cancellation on Readiness**:
-   - Once **both** participants join the room and emit `peer_ready`, the handshake timer is cancelled.
-   - The authoritative duration timer is armed, and `call_started` is dispatched.
-3. **Expiration Cleanup**:
-   - If 90 seconds elapse without both peers achieving readiness, the session is cancelled cleanly with status `CANCELLED` and `duration: 0`.
-   - Neither participant is penalized, and zero monthly call credits are deducted.
+Sources: [Node signaling](../server/src/socket/signaling.ts), [Go handler](../gateway/internal/signaling/handler.go), [Go timers](../gateway/internal/signaling/timers.go), and both shared completion helpers. See [Verification](VERIFICATION.md).

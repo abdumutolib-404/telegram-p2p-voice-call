@@ -1,224 +1,114 @@
-# PairTalk Environment Configuration & Deployment Guide
+# Environment and deployment
 
-> **Standard**: Cloudflare / Stripe Production Engineering & Infrastructure Standards  
-> **Supported Environments**: Local Development, Docker Compose, Railway, Multi-Container Cloud Fabric
+Reviewed 2026-10-05 against repository configuration. Sample values are placeholders; existing local `.env` files must not be overwritten during maintenance.
 
----
+## Requirements
 
-## 1. Environment Variables Configuration Dictionary
+- Node 24 and npm; use committed lockfiles with `npm ci`.
+- Go at the version declared in [gateway/go.mod](../gateway/go.mod).
+- Docker Compose for local PostgreSQL 16 and Redis 7.
+- A separate LiveKit project for actual audio/recording tests.
+- Private S3-compatible storage for durable cloud recordings.
 
-### 1.1 Go Voice & Ingress Gateway (`gateway/`)
+There is no root npm package. Install `server`, `client`, `admin`, and `landing` separately.
 
-| Variable Name | Type | Default | Required in Prod | Description & Semantics |
-| :--- | :--- | :--- | :--- | :--- |
-| `PORT` | Integer | `3001` | Yes | Ingress listening port for public HTTP and WebSocket traffic. Set automatically by Railway to `$PORT`. |
-| `NODE_URL` | String | `http://127.0.0.1:3000` | Yes | Internal upstream address of the Node.js backend for reverse proxying. |
-| `DATABASE_URL` | String | `postgresql://...` | Yes | PostgreSQL connection string used by `jackc/pgx/v5` connection pool. |
-| `REDIS_URL` | String | `redis://127.0.0.1:6379`| Yes | Redis connection string used for matchmaking Lua scripts and Pub/Sub IPC. |
-| `BOT_TOKEN` | String | `""` | Yes | Telegram Bot token used to verify `initData` HMAC signatures on WebSocket handshakes. |
-| `LIVEKIT_HOST` / `LIVEKIT_URL` | String | `""` | Yes | WebSocket/HTTP host of LiveKit SFU (e.g. `https://pairtalk.livekit.cloud`). `LIVEKIT_URL` accepted as alias. |
-| `LIVEKIT_API_KEY` | String | `""` | Yes | LiveKit API Key used for minting room access tokens and composite egress. |
-| `LIVEKIT_API_SECRET`| String | `""` | Yes | LiveKit API Secret used for cryptographic JWT signing. |
-| `S3_KEY` | String | `""` | Optional | AWS IAM Access Key ID for cloud audio recording storage. |
-| `S3_SECRET` | String | `""` | Optional | AWS IAM Secret Access Key. |
-| `S3_BUCKET` | String | `""` | Optional | S3 bucket name (e.g. `pairtalk-recordings`). |
-| `S3_REGION` | String | `eu-north-1` | Optional | AWS region where the bucket is deployed. |
-| `S3_ENDPOINT` | String | `""` | Optional | Custom S3-compatible endpoint (leave empty for standard AWS; use for MinIO/R2). |
-| `S3_FORCE_PATH_STYLE`| Boolean| `false` | Optional | Set `true` for MinIO path-style bucket URLs. |
-| `ADMIN_TELEGRAM_IDS`| String | `""` | Yes | Comma-separated numeric Telegram IDs granted unlimited bypass privileges. |
-| `RECORDINGS_DIR` | String | `recordings` | Optional | Local fallback directory for temporary audio files. |
-| `NODE_ENV` | String | `development` | Yes | Set to `production` to activate Gin release mode and strict HMAC validation. |
+## Configuration sources
 
----
+Node loads `.env` from its working directory. Go loads its own `.env` and then `../server/.env`; process environment values take precedence. Root `.env` is used by Compose and is not automatically the Node application's environment.
 
-### 1.2 Node.js Application Server (`server/`)
+| Setting | Meaning |
+| --- | --- |
+| `PORT` | Go public port, default 3001. Set Node to 3000 when running both locally. |
+| `NODE_URL` | Go's Node upstream; default `http://127.0.0.1:3000` |
+| `HOST` | Optional Node bind address; defaults to `0.0.0.0` |
+| `NODE_ENV` | development, test, or production; test uses explicit mocks |
+| `DATABASE_URL`, `REDIS_URL` | Required real persistence outside test mode; schema is PostgreSQL |
+| `BOT_TOKEN` | Main Telegram bot; separate test bot for staging |
+| `PAYMENTS_BOT_TOKEN` | Optional payment bot |
+| `MASTER_PASSWORD` | Node admin password; `ADMIN_MASTER_PASSWORD` is accepted as a fallback alias |
+| `ADMIN_TELEGRAM_IDS`, `JWT_SECRET` | Authorized admins and signing secret |
+| `LIVEKIT_HOST` | LiveKit URL; `LIVEKIT_URL` is a fallback |
+| `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Credentials for server operations and webhook verification |
+| `MINI_APP_URL`, `ADMIN_PANEL_URL` | Complete public app/admin URLs |
+| `ALLOWED_ORIGINS` | Allowed browser origins |
+| `TRUSTED_PROXY_CIDRS` | Trusted immediate proxy peers; default loopback |
+| `RECORDINGS_DIR` | Local recording path; must be persistent/shared when used for delivery |
+| `S3_KEY`, `S3_SECRET`, `S3_BUCKET` | S3-compatible recording credentials and private bucket |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_FORCE_PATH_STYLE` | Provider-specific object-storage configuration |
+| `DISABLE_BOT_POLLING`, `DISABLE_BACKGROUND_CRAWLER` | Set to `true` for isolated checks without external polling/crawling |
+| `PRIVACY_POLICY_URL`, `COMMUNITY_GUIDELINES_URL` | Public policy links used by the bot |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional crawler curation settings |
+| `MANUAL_PAYMENT_*` | Regional payment support/requisites; see the server template |
 
-| Variable Name | Type | Default | Required in Prod | Description & Semantics |
-| :--- | :--- | :--- | :--- | :--- |
-| `PORT` | Integer | `3000` | Yes | Internal HTTP listening port for Express REST endpoints. |
-| `NODE_ENV` | String | `development` | Yes | `"development"`, `"test"`, or `"production"`. Production enforces strict security invariants. |
-| `DATABASE_URL` | String | - | Yes | PostgreSQL connection string for Prisma ORM. |
-| `REDIS_URL` | String | - | Yes | Redis connection string for `ioredis`, leader election, and sliding rate limiters. |
-| `BOT_TOKEN` | String | - | Yes | Telegram Bot API token from @BotFather. |
-| `PAYMENTS_BOT_TOKEN`| String | `""` | Optional | Dedicated outbound bot token for payment notification dispatches. |
-| `MINI_APP_URL` | String | - | Yes | Canonical public URL of the Mini App frontend (e.g. `https://pairtalk.online/client`). |
-| `ADMIN_PANEL_URL` | String | - | Yes | Canonical public URL of the Admin panel (e.g. `https://pairtalk.online/admin`). |
-| `ALLOWED_ORIGINS` | String | `""` | Yes | Comma-separated list of allowed CORS web origins. |
-| `ADMIN_TELEGRAM_IDS`| String | - | Yes | Comma-separated Telegram IDs of authorized operations administrators. |
-| `MASTER_PASSWORD` | String | - | Yes | Master password for Admin Stealth 2FA. Insecure default strictly rejected in production. |
-| `JWT_SECRET` | String | - | Yes | Secret key for signing admin session cookies. Insecure default strictly rejected in production. |
-| `LIVEKIT_HOST` | String | - | Yes | LiveKit SFU host. |
-| `LIVEKIT_API_KEY` | String | - | Yes | LiveKit API Key. |
-| `LIVEKIT_API_SECRET`| String | - | Yes | LiveKit API Secret. |
-| `MANUAL_PAYMENT_ADMIN_USERNAME` | String | `PairTalkSupport` | Optional | Support username displayed for payment assistance. |
-| `MANUAL_PAYMENT_ADMIN_CHAT_ID` | String | - | Yes | Telegram Chat ID receiving instant receipt notifications. |
-| `MANUAL_PAYMENT_CARD_HOLDER` | String | Default string | Optional | Organization name displayed on payment prompts. |
-| `MANUAL_PAYMENT_INSTRUCTIONS` | String | Default string | Optional | Step-by-step instructions displayed when selecting card transfer. |
-| `S3_KEY` | String | - | Optional | AWS IAM Access Key for S3 Presigned URLs. |
-| `S3_SECRET` | String | - | Optional | AWS IAM Secret Access Key. |
-| `S3_BUCKET` | String | - | Optional | S3 Bucket name for audio recordings. |
-| `S3_REGION` | String | `us-east-1` | Optional | AWS Region for recording bucket. |
-| `S3_ENDPOINT` | String | - | Optional | Custom S3 endpoint URL. |
-| `S3_FORCE_PATH_STYLE`| Boolean| `false` | Optional | Enable path-style S3 URLs. |
-| `PRIVACY_POLICY_URL`| String | `https://pairtalk.online/privacy` | Optional | Public privacy policy reference. |
-| `COMMUNITY_GUIDELINES_URL` | String | `https://pairtalk.online/community-guidelines` | Optional | Public guidelines reference. |
-| `GEMINI_API_KEY` | String | `""` | Optional | Google Gemini API key for automated IELTS question curation. |
-| `GEMINI_MODEL` | String | `gemini-2.0-flash` | Optional | Gemini model identifier for AI curation. |
+Full parsing and validation live in [Node env](../server/src/config/env.ts) and [Go env](../gateway/internal/config/env.go). Production rejects missing/insecure required credentials and unavailable persistence. Do not use SQLite merely because an old fallback URL mentions a local file.
 
----
+## Local persistence and application setup
 
-### 1.3 Client Mini App & Admin Panel (`client/`, `admin/`)
+1. Create root `.env` from [.env.example](../.env.example) if it does not exist. Set `POSTGRES_PASSWORD` for Compose, `ADMIN_MASTER_PASSWORD` for its app service, and the other required interpolation values. The service names are **db** and **redis**.
+2. Start only local persistence:
 
-| Variable Name | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `VITE_API_URL` | String | `""` (Same-origin) | Base HTTP URL for REST API calls (defaults to current origin). |
-| `VITE_WS_URL` | String | `""` (Same-origin) | Base WebSocket URL for Socket.IO signaling. |
-| `VITE_BOT_USERNAME` | String | `PairTalkBot` | Target Telegram Bot username for deep-linking. |
-
----
-
-## 2. Step-by-Step Local Development Setup
-
-Follow these steps to launch the complete local development ecosystem:
-
-### 2.1 Infrastructure Spin-Up
-
-Ensure Docker is running, then start the containerized databases:
-
-```bash
-# Start PostgreSQL 16 and Redis 7 in detached mode
-docker-compose up -d postgres redis
-
-# Check container health status
-docker-compose ps
+```text
+docker compose up -d db redis
+docker compose ps
 ```
 
-### 2.2 Server Database Migration & Dependencies
+Compose exposes PostgreSQL and Redis on loopback ports 5432 and 6379. The database name is `ielts_p2p`, user `postgres`; set the matching password in the application's DATABASE_URL. URL-encode special characters in credentials.
 
-```bash
-cd server
-npm install
+3. Create `server/.env` from [server/.env.example](../server/.env.example) if absent. Set development mode and explicit local URLs. In particular, use the Compose database name/password rather than the template's example URL. Disable bot polling/crawling until separate test credentials are configured.
+4. Install dependencies and migrate:
 
-# Push schema directly to local PostgreSQL
-npx prisma db push
-
-# Generate typed Prisma client
-npx prisma generate
+```text
+npm ci --prefix server
+npm ci --prefix client
+npm ci --prefix admin
+npm ci --prefix landing
+npm run db:deploy --prefix server
+npm run db:generate --prefix server
 ```
 
-### 2.3 Starting Services in Parallel
+Use migrations for an empty local database. Do not use `db push --accept-data-loss` or automatically baseline a populated database.
 
-**1. Go Gateway Core (Port 3001)**:
-```bash
-cd gateway
+5. Run Node and Go in separate terminals, with their working directories and ports explicit. PowerShell:
+
+```powershell
+# Terminal 1, from server/
+$env:PORT = '3000'
+npm run dev
+
+# Terminal 2, from gateway/
+$env:PORT = '3001'
+$env:NODE_URL = 'http://127.0.0.1:3000'
 go run ./cmd/gateway
-# Listening on :3001, proxying non-WS traffic to http://127.0.0.1:3000
 ```
 
-**2. Node Application Core (Port 3000)**:
-```bash
-cd server
-npm run dev
-# Express REST and grammY Bot listening on internal port 3000
+For browser development, use separate terminals:
+
+```text
+npm run dev --prefix client -- --port 5173
+npm run dev --prefix admin -- --port 5174
+npm run dev --prefix landing -- --port 5175
 ```
 
-**3. React Mini App Client (Port 5173)**:
-```bash
-cd client
-npm install
-npm run dev
-# Vite server running at http://localhost:5173
-```
+The ports are explicit choices; admin Vite does not automatically default to 5174. Client `VITE_SERVER_URL` and admin `VITE_API_URL` (or `VITE_SERVER_URL`) must point to the local gateway when frontend origins differ. Allow those origins in backend configuration. Real Mini App launches and microphone access need the appropriate HTTPS Telegram setup; an ordinary browser does not provide signed Telegram identity.
 
-**4. React Admin Panel (Port 5174)**:
-```bash
-cd admin
-npm install
-npm run dev
-# Vite server running at http://localhost:5174
-```
+## Frontend build configuration
 
----
+Vite variables are public build-time values. Never put tokens or passwords in them.
 
-## 3. Production Deployment Architecture (Docker & Railway)
+| Package | Settings |
+| --- | --- |
+| Client | `VITE_SERVER_URL`, optional `VITE_BASE_PATH` |
+| Admin | `VITE_API_URL` or `VITE_SERVER_URL`, optional `VITE_BASE_PATH` |
+| Landing | `VITE_BOT_USERNAME`, `VITE_PUBLIC_STATS_URL`; optional non-VITE `PUBLIC_STATS_BUILD_URL` for a dated build snapshot |
 
-### 3.1 Multi-Stage Production Dockerfile
+Use production mode when creating release bundles. Landing builds pre-render public HTML and a 404 page. Serve generated extensionless pages and a true HTTP 404 for unknown routes; do not blanket-rewrite all public URLs to the homepage.
 
-PairTalk includes an enterprise multi-stage build in the root [`Dockerfile`](file:///D:/telegram-p2p-voice-call/Dockerfile):
+## Production rollout
 
-```dockerfile
-# Stage 1: Build Go Gateway
-FROM golang:1.26-alpine AS gateway-builder
-WORKDIR /app/gateway
-COPY gateway/go.mod gateway/go.sum ./
-RUN go mod download
-COPY gateway/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /gateway-bin ./cmd/gateway
+[Dockerfile](../Dockerfile) builds all packages and packages Go and Node together. [docker-entrypoint.sh](../server/docker-entrypoint.sh) starts the required processes, checks readiness, and stops both if one exits. It **does not migrate on normal startup**. Apply migrations explicitly with `npm run db:deploy`; the optional Fly release invocation is separate.
 
-# Stage 2: Build Node Server & Prisma
-FROM node:20-alpine AS server-builder
-WORKDIR /app/server
-COPY server/package*.json ./
-RUN npm ci
-COPY server/ ./
-RUN npx prisma generate
-RUN npm run build
+For `202610050001_recording_lifecycle`, drain active calls, stop older workers, apply the additive migration, and deploy Node/Go from the same revision. Old code may erase saved owners or mistake retained egress metadata for active intent. Known URLs are backfilled; already-lost keys/owners cannot be reconstructed.
 
-# Stage 3: Build React Frontends
-FROM node:20-alpine AS client-builder
-WORKDIR /app
-COPY client/package*.json ./client/
-RUN cd client && npm ci
-COPY client/ ./client/
-RUN cd client && npm run build
+Expose only the intended gateway ingress. Configure proxy trust using actual peer networks and verify forwarded protocol/IP handling. Do not use a universal trust range to hide redirect errors. Cloud local-disk recordings disappear on ephemeral hosts unless durable storage is configured.
 
-# Stage 4: Minimal Runtime Container
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=gateway-builder /gateway-bin /usr/local/bin/gateway
-COPY --from=server-builder /app/server/dist ./server/dist
-COPY --from=server-builder /app/server/node_modules ./server/node_modules
-COPY --from=server-builder /app/server/package.json ./server/
-COPY --from=server-builder /app/server/prisma ./server/prisma
-COPY --from=client-builder /app/client/dist ./public/client
-
-# Supervised start script launches Node (3000) then Go (PORT)
-CMD ["sh", "-c", "node server/dist/index.js & gateway"]
-```
-
----
-
-### 3.2 Railway Multi-Container Network Ingress
-
-In production deployments (such as Railway):
-
-```mermaid
-flowchart LR
-    Ingress["Public Internet Traffic (HTTPS / WSS)"] --> RailwayEdge["Railway Edge Ingress Layer"]
-    RailwayEdge -->|Routes to $PORT| Gateway["Go Gateway Voice Core (:3001)"]
-    Gateway -->|Direct WSS /socket.io/*| GatewayWS["Gorilla WS Hub"]
-    Gateway -->|Direct GET /healthz| GatewayHealth["Go Health Responder"]
-    Gateway -->|Internal HTTP Proxy /*| NodeServer["Node.js Application Server (:3000)"]
-    NodeServer <--> Postgres[(Railway PostgreSQL 16)]
-    NodeServer <--> RedisCluster[(Railway Redis 7)]
-    Gateway <--> RedisCluster
-    Gateway <--> LiveKit["LiveKit SFU Cloud"]
-```
-
-1. **Ingress Routing**: Railway binds public traffic to the port designated by `$PORT` (typically 3001 or dynamically assigned).
-2. **Go Gateway Execution**: Go binds `$PORT`. Any non-WebSocket route is proxied internally to `http://127.0.0.1:3000`.
-3. **Node Server Execution**: Node runs in the background on `127.0.0.1:3000`. It only accepts local traffic from the Go proxy, ensuring complete boundary isolation.
-
----
-
-## 4. Production Readiness Checklist
-
-Before publishing to production, verify each invariant:
-
-- [ ] **Master Password**: Ensure `MASTER_PASSWORD` is changed from the default `admin123456`. Production startup will halt if the default password is used.
-- [ ] **JWT Secret**: Ensure `JWT_SECRET` is at least 32 cryptographically random bytes. Production startup will halt if the default key is used.
-- [ ] **Admin Telegram IDs**: Set `ADMIN_TELEGRAM_IDS` with valid numeric Telegram IDs. Stealth 2FA OTP codes are dispatched exclusively to these accounts.
-- [ ] **LiveKit Production Keys**: Confirm `LIVEKIT_HOST`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` reference production cloud credentials. Default `devkey`/`secret` is blocked in production mode.
-- [ ] **CORS Origins**: Configure `ALLOWED_ORIGINS` with exact production subdomains (`https://pairtalk.online`, `https://app.pairtalk.online`).
-- [ ] **Health Probes**: Ensure container orchestrator uses `/healthz` for gateway liveness and `/health` for deep system readiness.
-- [ ] **Git Remote Safety**: Ensure deployments pull strictly from the authoritative production repository with locked write access.
+See [deployment checklist](../DEPLOYMENT_GUIDE.md), [Fly staging](fly-staging.md), and [Operations](OPERATIONS.md). No provider account, DNS setting, secret, or deployment is changed by this guide.

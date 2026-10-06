@@ -4,6 +4,7 @@ import type {
   UserMatchData,
   MatchFoundPayload,
   RecordStatusPayload,
+  RoomRecordingStatusPayload,
   RecordingErrorPayload,
   CallEndedPayload,
   CallStartedPayload,
@@ -16,12 +17,14 @@ export interface ClientToServerEvents {
   toggle_record: (data: { roomName: string; record: boolean }) => void;
   finish_call: (data: { roomName: string; userId: string; reason?: string }) => void;
   peer_ready: (data: { roomName: string }) => void;
+  get_recording_status: (data: { roomName: string }) => void;
 }
 
 export interface ServerToClientEvents {
   match_found: (data: MatchFoundPayload) => void;
   call_started: (data: CallStartedPayload) => void;
   record_status: (data: RecordStatusPayload) => void;
+  room_recording_status: (data: RoomRecordingStatusPayload) => void;
   recording_error: (data: RecordingErrorPayload) => void;
   call_finished: (data: CallEndedPayload) => void;
   partner_connection_lost: (data: { userId?: string; gracePeriodSec?: number }) => void;
@@ -88,6 +91,10 @@ class SocketService {
 
   public peerReady(roomName: string): void {
     this.socket?.emit('peer_ready', { roomName });
+  }
+
+  public getRecordingStatus(roomName: string): void {
+    this.socket?.emit('get_recording_status', { roomName });
   }
 
   public disconnect(): void {

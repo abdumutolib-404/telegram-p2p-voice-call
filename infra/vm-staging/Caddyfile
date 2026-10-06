@@ -1,0 +1,17 @@
+{
+	# Caddy obtains and renews the certificate for API_HOST automatically.
+	email {$ACME_EMAIL}
+	servers {
+		# This is intentionally supplied as a private, space-separated list.
+		# Do not replace it with private_ranges: the public edge is Cloudflare.
+		trusted_proxies static {$CADDY_TRUSTED_PROXIES}
+		trusted_proxies_strict
+	}
+}
+
+{$API_HOST} {
+	encode zstd gzip
+	# Access logging is intentionally omitted: request URLs and headers can
+	# contain Telegram launch data or other bearer material.
+	reverse_proxy app:3001
+}

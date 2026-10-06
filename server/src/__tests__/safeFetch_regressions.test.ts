@@ -5,6 +5,23 @@ import {EventEmitter} from 'node:events';
 import {safeFetch,isPublicAddress} from '../utils/safeFetch';
 afterEach(()=>vi.restoreAllMocks());
 describe('Outbound SSRF boundaries',()=>{
+ it.each([204,205,304])('handles null-body HTTP %i without throwing from the end callback',async status=>{
+  vi.spyOn(dns,'lookup').mockResolvedValue([{address:'1.1.1.1',family:4}] as any);
+  vi.spyOn(https,'get').mockImplementation(((_url:any,_options:any,callback:any)=>{
+   const request=new EventEmitter();queueMicrotask(()=>{const response=Object.assign(new EventEmitter(),{statusCode:status,headers:{}});callback(response);expect(()=>response.emit('end')).not.toThrow();});return request;
+  }) as any);
+  const response=await safeFetch('https://synthetic.example');expect(response.status).toBe(status);expect(response.body).toBeNull();expect(await response.text()).toBe('');
+ });
+ it.each([{statusCode:101,headers:{}},{statusCode:200,headers:{'invalid header':'value'}}])('rejects invalid response reconstruction through the promise: %j',async metadata=>{
+  vi.spyOn(dns,'lookup').mockResolvedValue([{address:'1.1.1.1',family:4}] as any);
+  vi.spyOn(https,'get').mockImplementation(((_url:any,_options:any,callback:any)=>{const request=new EventEmitter();queueMicrotask(()=>{const response=Object.assign(new EventEmitter(),metadata);callback(response);expect(()=>response.emit('end')).not.toThrow();});return request;}) as any);
+  await expect(safeFetch('https://synthetic.example')).rejects.toThrow();
+ });
+ it('preserves ordinary response bodies',async()=>{
+  vi.spyOn(dns,'lookup').mockResolvedValue([{address:'1.1.1.1',family:4}] as any);
+  vi.spyOn(https,'get').mockImplementation(((_url:any,_options:any,callback:any)=>{const request=new EventEmitter();queueMicrotask(()=>{const response=Object.assign(new EventEmitter(),{statusCode:200,headers:{'content-type':'text/plain'}});callback(response);response.emit('data',Buffer.from('ordinary upstream'));response.emit('end');});return request;}) as any);
+  expect(await (await safeFetch('https://synthetic.example')).text()).toBe('ordinary upstream');
+ });
  it('rejects loopback, mapped IPv4, private, link-local and reserved addresses',()=>{for(const address of ['127.0.0.1','::1','::ffff:127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.1','fc00::1','fe80::1','0.0.0.0'])expect(isPublicAddress(address)).toBe(false);expect(isPublicAddress('1.1.1.1')).toBe(true);});
  it('rejects mixed public/private DNS answers before connecting',async()=>{vi.spyOn(dns,'lookup').mockResolvedValue([{address:'1.1.1.1',family:4},{address:'10.0.0.1',family:4}] as any);const network=vi.spyOn(https,'get');await expect(safeFetch('https://synthetic.example')).rejects.toThrow('private');expect(network).not.toHaveBeenCalled();});
  it('pins validated DNS and rejects a redirect whose new DNS answer is private',async()=>{

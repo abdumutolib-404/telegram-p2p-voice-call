@@ -98,3 +98,23 @@ func (c *Client) DeleteRoom(ctx context.Context, roomName string) error {
 	}
 	return nil
 }
+
+// Called only after durable media authorization has committed.
+func (c *Client) EnableCallSubscriptions(ctx context.Context, roomName string, identities ...string) error {
+	if c == nil || c.roomClient == nil {
+		return errors.New("media authorization is unavailable")
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var failure error
+	for _, identity := range identities {
+		_, err := c.roomClient.UpdateParticipant(requestCtx, &livekit.UpdateParticipantRequest{
+			Room: roomName, Identity: identity,
+			Permission: &livekit.ParticipantPermission{CanPublish: true, CanSubscribe: true, CanPublishData: true},
+		})
+		if err != nil {
+			failure = errors.Join(failure, err)
+		}
+	}
+	return failure
+}

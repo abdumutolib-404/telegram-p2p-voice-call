@@ -20,6 +20,21 @@ describe('LiveKit Egress Webhook, S3 Pipeline & UX Hardening Test Suite', () => 
   });
 
   describe('1. LiveKit Webhook Egress Lifecycle & S3 Finalization', () => {
+    it('archives superseded output without reviving stopped intent or replacing the latest recording', async () => {
+      const a = await prisma.user.create({ data: { telegramId: 8123400041n, alias: 'HistoryA' } });
+      const b = await prisma.user.create({ data: { telegramId: 8123400042n, alias: 'HistoryB' } });
+      const session = await prisma.callSession.create({ data: { roomName: 'webhook-history', userAId: a.id, userBId: b.id, egressId: 'EG_LATEST', recordingUrl: 'recordings/latest.mp3', recordedByUserId: a.id, activeRecorderIds: null } });
+      vi.spyOn(WebhookReceiver.prototype, 'receive').mockResolvedValue({ event: 'egress_ended', egressInfo: { egressId: 'EG_OLD', roomName: session.roomName, status: EgressStatus.EGRESS_COMPLETE, fileResults: [{ filename: 'recordings/old-final.mp3', size: 321n }] } } as any);
+      expect((await request(app).post('/api/livekit/webhook').send('{}')).status).toBe(200);
+      const old = await prisma.callSession.findUnique({ where: { id: session.id } });
+      expect(old?.egressId).toBe('EG_LATEST'); expect(old?.recordingUrl).toBe('recordings/latest.mp3');
+      expect(old?.recordedByUserId).toBe(a.id); expect(old?.activeRecorderIds).toBeNull();
+      expect(old?.recordingKeys).toContain('recordings/old-final.mp3');
+      vi.spyOn(WebhookReceiver.prototype, 'receive').mockResolvedValue({ event: 'egress_ended', egressInfo: { egressId: 'EG_LATEST', roomName: session.roomName, status: EgressStatus.EGRESS_COMPLETE, fileResults: [{ filename: 'recordings/latest-final.mp3', size: 321n }] } } as any);
+      await request(app).post('/api/livekit/webhook').send('{}');
+      const latest = await prisma.callSession.findUnique({ where: { id: session.id } });
+      expect(latest?.recordingUrl).toBe('recordings/latest-final.mp3'); expect(latest?.activeRecorderIds).toBeNull();
+    });
     it('preserves a terminal call completed between webhook lookup and recording update', async () => {
       const a = await prisma.user.create({ data: { telegramId: 8123400001n, alias: 'WebhookRaceA' } });
       const b = await prisma.user.create({ data: { telegramId: 8123400002n, alias: 'WebhookRaceB' } });

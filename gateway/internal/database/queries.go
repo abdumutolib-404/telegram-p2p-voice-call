@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -51,6 +52,8 @@ type CallSession struct {
 	EgressID           *string
 	RecordingURL       *string
 	RecordedByUserID   *string
+	ActiveRecorderIDs  *string
+	MediaAuthorizedAt  *time.Time
 	RecordingExpiresAt *time.Time
 	UserA              *User
 	UserB              *User
@@ -303,7 +306,7 @@ func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSes
 	query := `
 		SELECT
 			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
-			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt"
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt"
 		FROM "CallSession" cs
 		WHERE cs.status = 'ACTIVE' AND (cs."userAId" = $1 OR cs."userBId" = $1)
 		ORDER BY cs."createdAt" DESC
@@ -318,6 +321,8 @@ func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSes
 		recordingURL       sql.NullString
 		recordedByUserID   sql.NullString
 		recordingExpiresAt sql.NullTime
+		activeRecorderIDs  sql.NullString
+		mediaAuthorizedAt  sql.NullTime
 	)
 
 	err := row.Scan(
@@ -333,6 +338,8 @@ func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSes
 		&recordingURL,
 		&recordedByUserID,
 		&recordingExpiresAt,
+		&activeRecorderIDs,
+		&mediaAuthorizedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -353,6 +360,12 @@ func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSes
 	}
 	if recordingURL.Valid {
 		s.RecordingURL = &recordingURL.String
+	}
+	if activeRecorderIDs.Valid {
+		s.ActiveRecorderIDs = &activeRecorderIDs.String
+	}
+	if mediaAuthorizedAt.Valid {
+		s.MediaAuthorizedAt = &mediaAuthorizedAt.Time
 	}
 	if recordedByUserID.Valid {
 		s.RecordedByUserID = &recordedByUserID.String
@@ -380,7 +393,7 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 	query := `
 		SELECT
 			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
-			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt"
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt"
 		FROM "CallSession" cs
 		WHERE cs."roomName" = $1
 		LIMIT 1
@@ -394,6 +407,8 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 		recordingURL       sql.NullString
 		recordedByUserID   sql.NullString
 		recordingExpiresAt sql.NullTime
+		activeRecorderIDs  sql.NullString
+		mediaAuthorizedAt  sql.NullTime
 	)
 
 	err := row.Scan(
@@ -409,6 +424,8 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 		&recordingURL,
 		&recordedByUserID,
 		&recordingExpiresAt,
+		&activeRecorderIDs,
+		&mediaAuthorizedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -429,6 +446,12 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 	}
 	if recordingURL.Valid {
 		s.RecordingURL = &recordingURL.String
+	}
+	if activeRecorderIDs.Valid {
+		s.ActiveRecorderIDs = &activeRecorderIDs.String
+	}
+	if mediaAuthorizedAt.Valid {
+		s.MediaAuthorizedAt = &mediaAuthorizedAt.Time
 	}
 	if recordedByUserID.Valid {
 		s.RecordedByUserID = &recordedByUserID.String
@@ -460,7 +483,7 @@ func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
 	query := `
 		UPDATE "CallSession"
 		SET status = 'CANCELLED', "endedAt" = NOW(), duration = 0
-		WHERE id = $1 AND (status = 'ACTIVE' OR status = 'PENDING')
+		WHERE id = $1 AND (status = 'PENDING' OR (status = 'ACTIVE' AND "mediaAuthorizedAt" IS NULL))
 	`
 	tag, err := tx.Exec(ctx, query, id)
 	if err != nil {
@@ -478,39 +501,94 @@ func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
 	return true, nil
 }
 
-func (db *DB) UpdateSessionRecorders(ctx context.Context, id string, recorders *string) error {
-	query := `
-		UPDATE "CallSession"
-		SET "recordedByUserId" = $1
-		WHERE id = $2 AND status = 'ACTIVE'
-	`
-	_, err := db.Pool.Exec(ctx, query, recorders, id)
+// ChangeRecordingIntent serializes cross-replica intent without erasing saved-file owners.
+func (db *DB) ChangeRecordingIntent(ctx context.Context, id, userID, egressID string, recording bool) (bool, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	var active, owners sql.NullString
+	var a, b string
+	err = tx.QueryRow(ctx, `SELECT "activeRecorderIds","recordedByUserId","userAId","userBId" FROM "CallSession" WHERE id=$1 AND status='ACTIVE' AND "egressId"=$2 FOR UPDATE`, id, egressID).Scan(&active, &owners, &a, &b)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, errors.New("recording is not active")
+	}
+	if err != nil {
+		return false, err
+	}
+	if !active.Valid || (userID != a && userID != b) {
+		return false, errors.New("recording intent is unavailable")
+	}
+	ids := make(map[string]bool)
+	for _, part := range strings.Split(active.String, ",") {
+		if part != "" {
+			ids[part] = true
+		}
+	}
+	if recording {
+		ids[userID] = true
+	} else {
+		delete(ids, userID)
+	}
+	var intent *string
+	if len(ids) > 0 {
+		parts := make([]string, 0, len(ids))
+		for part := range ids {
+			parts = append(parts, part)
+		}
+		sort.Strings(parts)
+		joined := strings.Join(parts, ",")
+		intent = &joined
+	}
+	saved := owners.String
+	if recording {
+		owned := make(map[string]bool)
+		if !owners.Valid || saved == "BOTH" || saved == "ALL" {
+			owned[a] = true
+			owned[b] = true
+			saved = ""
+		}
+		for _, part := range strings.Split(saved, ",") {
+			if part != "" {
+				owned[part] = true
+			}
+		}
+		owned[userID] = true
+		parts := make([]string, 0, len(owned))
+		for part := range owned {
+			parts = append(parts, part)
+		}
+		sort.Strings(parts)
+		saved = strings.Join(parts, ",")
+	}
+	if _, err = tx.Exec(ctx, `UPDATE "CallSession" SET "activeRecorderIds"=$1, "recordedByUserId"=CASE WHEN $2 THEN $3 ELSE "recordedByUserId" END WHERE id=$4`, intent, recording, saved, id); err != nil {
+		return false, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return intent == nil, nil
+}
+
+func (db *DB) TrackRecordingKey(ctx context.Context, id, key string) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "recordingKeys"=array_append("recordingKeys",$1) WHERE id=$2 AND NOT ($1=ANY("recordingKeys"))`, key, id)
 	return err
 }
 
-// UpdateSessionEgressAtomic implements optimistic concurrency control on toggle_record
-// WHERE id = $1 AND status = 'ACTIVE' AND "egressId" IS NULL
-func (db *DB) UpdateSessionEgressAtomic(ctx context.Context, id, egressID, recordingURL, recorders string) (bool, error) {
-	query := `
-		UPDATE "CallSession"
-		SET "egressId" = $1, "recordingUrl" = $2, "recordedByUserId" = $3
-		WHERE id = $4 AND status = 'ACTIVE' AND "egressId" IS NULL
-	`
-	tag, err := db.Pool.Exec(ctx, query, egressID, recordingURL, recorders, id)
+func (db *DB) UpdateSessionEgressAtomic(ctx context.Context, id, egressID, recordingURL, recorders string, previousEgress ...*string) (bool, error) {
+	if err := db.TrackRecordingKey(ctx, id, recordingURL); err != nil {
+		return false, err
+	}
+	var previous *string
+	if len(previousEgress) > 0 {
+		previous = previousEgress[0]
+	}
+	tag, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "egressId"=$1,"recordingUrl"=$2,"recordedByUserId"=$3,"activeRecorderIds"=$3 WHERE id=$4 AND status='ACTIVE' AND "activeRecorderIds" IS NULL AND "egressId" IS NOT DISTINCT FROM $5`, egressID, recordingURL, recorders, id, previous)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
-}
-
-func (db *DB) ClearSessionEgress(ctx context.Context, id string) error {
-	query := `
-		UPDATE "CallSession"
-		SET "egressId" = NULL, "recordedByUserId" = NULL
-		WHERE id = $1 AND status = 'ACTIVE'
-	`
-	_, err := db.Pool.Exec(ctx, query, id)
-	return err
 }
 
 func (db *DB) GetActiveBonusCallsCount(ctx context.Context, userID string) (int, error) {
@@ -632,7 +710,7 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 	query := `
 		SELECT
 			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
-			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt"
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt"
 		FROM "CallSession" cs
 		WHERE cs.status = 'ACTIVE'
 	`
@@ -652,6 +730,8 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 			recordingURL       sql.NullString
 			recordedByUserID   sql.NullString
 			recordingExpiresAt sql.NullTime
+			activeRecorderIDs  sql.NullString
+			mediaAuthorizedAt  sql.NullTime
 		)
 
 		if err := rows.Scan(
@@ -667,6 +747,8 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 			&recordingURL,
 			&recordedByUserID,
 			&recordingExpiresAt,
+			&activeRecorderIDs,
+			&mediaAuthorizedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -683,6 +765,12 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 		}
 		if recordingURL.Valid {
 			s.RecordingURL = &recordingURL.String
+		}
+		if activeRecorderIDs.Valid {
+			s.ActiveRecorderIDs = &activeRecorderIDs.String
+		}
+		if mediaAuthorizedAt.Valid {
+			s.MediaAuthorizedAt = &mediaAuthorizedAt.Time
 		}
 		if recordedByUserID.Valid {
 			s.RecordedByUserID = &recordedByUserID.String

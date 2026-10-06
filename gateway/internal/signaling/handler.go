@@ -15,7 +15,7 @@ import (
 
 func (h *Hub) Dispatch(socket *ClientSocket, event string, payload []byte) {
 	switch event {
-	case "join_queue", "cancel_queue", "toggle_record", "finish_call", "peer_ready", "offer", "answer", "candidate", "leave":
+	case "join_queue", "cancel_queue", "toggle_record", "finish_call", "peer_ready", "get_recording_status", "offer", "answer", "candidate", "leave":
 	default:
 		return
 	}
@@ -34,6 +34,8 @@ func (h *Hub) dispatchEvent(socket *ClientSocket, event string, payload []byte) 
 		h.handleFinishCall(socket, payload)
 	case "peer_ready":
 		h.handlePeerReady(socket, payload)
+	case "get_recording_status":
+		h.handleRecordingStatus(socket, payload)
 	case "offer", "answer", "candidate", "leave":
 		h.handleWebRTCSignal(socket, event, payload)
 	}
@@ -253,52 +255,57 @@ func (h *Hub) handlePeerReady(socket *ClientSocket, payload []byte) {
 		return
 	}
 	var req PeerReadyPayload
-	if err := json.Unmarshal(payload, &req); err != nil || req.RoomName == "" {
+	if err := json.Unmarshal(payload, &req); err != nil || req.RoomName == "" || len(req.RoomName) > 128 {
 		return
 	}
 
+	if h.DB == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(h.Context(), 10*time.Second)
+	defer cancel()
+	session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
+	if err != nil || session == nil || session.Status != "ACTIVE" || (session.UserAID != socket.UserID && session.UserBID != socket.UserID) {
+		return
+	}
+	roomLock := h.getRoomMutex(req.RoomName)
+	roomLock.Lock()
+	defer roomLock.Unlock()
+	authorized, err := h.DB.RegisterReadyParticipant(ctx, session.ID, socket.UserID)
+	if err != nil || !authorized {
+		return
+	}
 	h.mu.Lock()
-	peers, ok := h.roomPeers[req.RoomName]
-	if !ok {
+	peers := h.roomPeers[req.RoomName]
+	if peers == nil {
 		peers = make(map[string]bool)
 		h.roomPeers[req.RoomName] = peers
 	}
 	peers[socket.UserID] = true
-	numPeers := len(peers)
-	_, alreadyStarted := h.roomStartedAt[req.RoomName]
+	startedAt := session.CreatedAt.UnixMilli()
+	h.roomStartedAt[req.RoomName] = startedAt
 	h.mu.Unlock()
-
-	if numPeers >= 2 && !alreadyStarted {
-		h.ClearConnectionHandshakeTimer(req.RoomName)
-		startedAt := time.Now().UnixMilli()
-		h.SetRoomStartedAt(req.RoomName, startedAt)
-
-		durationLimit := h.GetRoomDurationLimit(req.RoomName)
-		if durationLimit <= 0 {
-			ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
-			session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
-			cancel()
-			if err == nil && session != nil && session.UserA != nil && session.UserB != nil {
-				durationLimit = database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
-			} else {
-				durationLimit = 15 * 60
-			}
-			h.SetRoomDurationLimit(req.RoomName, durationLimit)
-		}
-
-		h.ScheduleAuthoritativeSessionTeardown(req.RoomName, durationLimit)
-
-		h.EmitToRoom(req.RoomName, "call_started", CallStartedEvent{
-			StartedAt:       startedAt,
-			DurationSeconds: durationLimit,
-			ExpiresAt:       startedAt + int64(durationLimit*1000),
-		})
+	h.ClearConnectionHandshakeTimer(req.RoomName)
+	durationLimit := h.GetRoomDurationLimit(req.RoomName)
+	if durationLimit <= 0 {
+		durationLimit = database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
+		h.SetRoomDurationLimit(req.RoomName, durationLimit)
 	}
+	remaining := durationLimit - int(time.Since(session.CreatedAt).Seconds())
+	if remaining < 1 {
+		remaining = 1
+	}
+	h.ScheduleAuthoritativeSessionTeardown(req.RoomName, remaining)
+	// Keep the durable gate even after a partial provider failure; retry on readiness.
+	if err := h.LiveKit.EnableCallSubscriptions(ctx, req.RoomName, session.UserAID, session.UserBID); err != nil {
+		return
+	}
+	h.EmitToRoom(req.RoomName, "call_started", CallStartedEvent{StartedAt: startedAt, DurationSeconds: durationLimit, ExpiresAt: startedAt + int64(durationLimit*1000)})
 }
 
 func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 	var req ToggleRecordPayload
-	if err := json.Unmarshal(payload, &req); err != nil || req.RoomName == "" {
+	if err := json.Unmarshal(payload, &req); err != nil || req.RoomName == "" || len(req.RoomName) > 128 {
 		socket.Emit("error", SocketErrorEvent{Message: "Invalid recording request."})
 		return
 	}
@@ -309,12 +316,18 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
+	defer cancel()
+	if h.DB == nil {
+		return
+	}
+	initial, authErr := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
+	if authErr != nil || initial == nil || initial.Status != "ACTIVE" || (initial.UserAID != requesterID && initial.UserBID != requesterID) {
+		return
+	}
 	roomLock := h.getRoomMutex(req.RoomName)
 	roomLock.Lock()
 	defer roomLock.Unlock()
-
-	ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
-	defer cancel()
 
 	session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
 	if err != nil || session == nil || session.Status != "ACTIVE" || (session.UserAID != requesterID && session.UserBID != requesterID) {
@@ -323,6 +336,10 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 	}
 
 	if req.Record {
+		if session.MediaAuthorizedAt == nil {
+			socket.Emit("recording_error", RecordingErrorEvent{Code: "CALL_NOT_READY", Message: "Wait for both participants to connect before recording."})
+			return
+		}
 		// Verify recording limits
 		if err := h.DB.RefreshPlanConfiguration(ctx); err != nil {
 			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Unable to check recording limits. Please try again."})
@@ -341,7 +358,7 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 		}
 
 		if !ent.IsAdmin && recUsed >= ent.RecordingLimit {
-			socket.Emit("record_status", RecordStatusEvent{Record: false})
+			socket.Emit("record_status", RecordStatusEvent{Record: false, RoomName: req.RoomName})
 			socket.Emit("recording_error", RecordingErrorEvent{
 				Code:    "RECORDING_LIMIT_REACHED",
 				Message: "Your recording limit for this period has been reached.",
@@ -349,20 +366,23 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 			return
 		}
 
-		if session.EgressID != nil && *session.EgressID != "" {
+		if session.EgressID != nil && *session.EgressID != "" && session.ActiveRecorderIDs != nil {
 			h.SetActiveEgress(req.RoomName, &ActiveEgress{
 				EgressID:    *session.EgressID,
 				RelativeURL: safeString(session.RecordingURL),
 			})
-			newRecorders := addSessionRecorder(session.RecordedByUserID, requesterID)
-			_ = h.DB.UpdateSessionRecorders(ctx, session.ID, &newRecorders)
-			socket.Emit("record_status", RecordStatusEvent{Record: true})
+			if _, err := h.DB.ChangeRecordingIntent(ctx, session.ID, requesterID, *session.EgressID, true); err != nil {
+				return
+			}
+			socket.Emit("record_status", RecordStatusEvent{Record: true, RoomName: req.RoomName})
+			h.publishRoomRecordingSnapshot(ctx, session)
 			return
 		}
 
-		egress, err := h.LiveKit.StartAudioEgress(ctx, req.RoomName)
+		h.publishRoomRecordingState(ctx, req.RoomName, "unknown")
+		egress, err := h.LiveKit.StartAudioEgress(ctx, req.RoomName, func(key string) error { return h.DB.TrackRecordingKey(ctx, session.ID, key) })
 		if err != nil {
-			socket.Emit("record_status", RecordStatusEvent{Record: false})
+			socket.Emit("record_status", RecordStatusEvent{Record: false, RoomName: req.RoomName})
 			socket.Emit("recording_error", RecordingErrorEvent{
 				Code:    "RECORDING_UNAVAILABLE",
 				Message: "Audio recording is temporarily unavailable. Your voice call can proceed normally.",
@@ -370,25 +390,12 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 			return
 		}
 
-		newRecorders := addSessionRecorder(session.RecordedByUserID, requesterID)
-		updated, err := h.DB.UpdateSessionEgressAtomic(ctx, session.ID, egress.EgressID, egress.RelativeURL, newRecorders)
+		newRecorders := requesterID
+		updated, err := h.DB.UpdateSessionEgressAtomic(ctx, session.ID, egress.EgressID, egress.RelativeURL, newRecorders, session.EgressID)
 		if err != nil || !updated {
 			// Optimistic concurrency lost: another participant started egress concurrently. Stop ours!
 			_ = h.LiveKit.StopAudioEgress(ctx, egress.EgressID)
-			freshSession, freshErr := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
-			if freshErr == nil && freshSession != nil {
-				combinedRecorders := addSessionRecorder(freshSession.RecordedByUserID, requesterID)
-				_ = h.DB.UpdateSessionRecorders(ctx, freshSession.ID, &combinedRecorders)
-				if freshSession.EgressID != nil {
-					h.SetActiveEgress(req.RoomName, &ActiveEgress{
-						EgressID:    *freshSession.EgressID,
-						RelativeURL: safeString(freshSession.RecordingURL),
-					})
-				}
-				socket.Emit("record_status", RecordStatusEvent{Record: true})
-			} else {
-				socket.Emit("record_status", RecordStatusEvent{Record: false})
-			}
+			socket.Emit("record_status", RecordStatusEvent{Record: false, RoomName: req.RoomName})
 			return
 		}
 
@@ -396,41 +403,29 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 			EgressID:    egress.EgressID,
 			RelativeURL: egress.RelativeURL,
 		})
-		socket.Emit("record_status", RecordStatusEvent{Record: true})
+		socket.Emit("record_status", RecordStatusEvent{Record: true, RoomName: req.RoomName})
+		h.publishRoomRecordingState(ctx, req.RoomName, "on")
 		return
 	}
 
-	// Turning record OFF
-	recordedBy := session.RecordedByUserID
-	if recordedBy != nil && (*recordedBy == "BOTH" || *recordedBy == "ALL") {
-		bothRec := session.UserAID + "," + session.UserBID
-		recordedBy = &bothRec
+	if session.EgressID != nil {
+		stopped, err := h.DB.ChangeRecordingIntent(ctx, session.ID, requesterID, *session.EgressID, false)
+		if err != nil {
+			return
+		}
+		if stopped {
+			h.publishRoomRecordingState(ctx, req.RoomName, "unknown")
+			_ = h.LiveKit.StopAudioEgress(ctx, *session.EgressID)
+			h.SetActiveEgress(req.RoomName, nil)
+		}
 	}
-	newRecorders, recordersLeft := removeSessionRecorder(recordedBy, requesterID)
-	if recordersLeft {
-		// Partner is still recording
-		_ = h.DB.UpdateSessionRecorders(ctx, session.ID, &newRecorders)
-		socket.Emit("record_status", RecordStatusEvent{Record: false})
-		return
-	}
-
-	// No recorders left: stop egress
-	egressID := safeString(session.EgressID)
-	if active := h.GetActiveEgress(req.RoomName); active != nil && egressID == "" {
-		egressID = active.EgressID
-	}
-
-	if egressID != "" {
-		_ = h.LiveKit.StopAudioEgress(ctx, egressID)
-		_ = h.DB.ClearSessionEgress(ctx, session.ID)
-		h.SetActiveEgress(req.RoomName, nil)
-	}
-	socket.Emit("record_status", RecordStatusEvent{Record: false})
+	socket.Emit("record_status", RecordStatusEvent{Record: false, RoomName: req.RoomName})
+	h.publishRoomRecordingSnapshot(ctx, session)
 }
 
 func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 	var req FinishCallPayload
-	if err := json.Unmarshal(payload, &req); err != nil || req.RoomName == "" {
+	if err := json.Unmarshal(payload, &req); err != nil || req.RoomName == "" || len(req.RoomName) > 128 {
 		socket.Emit("error", SocketErrorEvent{Message: "Invalid call completion request."})
 		return
 	}
@@ -441,12 +436,27 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
+	defer cancel()
+	if h.DB == nil {
+		return
+	}
+	initial, authErr := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
+	if authErr != nil || initial == nil || (initial.UserAID != requesterID && initial.UserBID != requesterID) {
+		return
+	}
+	if initial.Status != "ACTIVE" {
+		duration := 0
+		if initial.Duration != nil {
+			duration = *initial.Duration
+		}
+		socket.Emit("call_finished", CallFinishedEvent{Duration: duration})
+		return
+	}
+
 	roomLock := h.getRoomMutex(req.RoomName)
 	roomLock.Lock()
 	defer roomLock.Unlock()
-
-	ctx, cancel := context.WithTimeout(h.Context(), 15*time.Second)
-	defer cancel()
 
 	session, err := h.DB.GetCallSessionByRoomName(ctx, req.RoomName)
 	if err != nil || session == nil {
@@ -487,16 +497,8 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		}
 	}
 
-	egress := h.GetActiveEgress(req.RoomName)
-	var egressID *string
-	var recordingURL *string
-	if egress != nil {
-		egressID = &egress.EgressID
-		recordingURL = &egress.RelativeURL
-	} else if session.EgressID != nil {
-		egressID = session.EgressID
-		recordingURL = session.RecordingURL
-	}
+	egressID := session.EgressID
+	recordingURL := session.RecordingURL
 
 	if egressID != nil && *egressID != "" {
 		_ = h.LiveKit.StopAudioEgress(ctx, *egressID)
@@ -527,7 +529,10 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		expiresAt = &t
 	}
 
-	isMicDenied := req.Reason == "microphone_permission_denied"
+	isMicDenied := req.Reason == "microphone_permission_denied" && durationSeconds < 5
+	if req.Reason == "microphone_permission_denied" && !isMicDenied {
+		req.Reason = "call_finished"
+	}
 	complete := h.DB.CompleteCallSession
 	if isMicDenied {
 		complete = h.DB.CompleteUnchargedCallSession
@@ -731,16 +736,8 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		h.ClearSessionTimer(current.RoomName)
 		h.ClearConnectionHandshakeTimer(current.RoomName)
 
-		egress := h.GetActiveEgress(current.RoomName)
-		var egressID *string
-		var recordingURL *string
-		if egress != nil {
-			egressID = &egress.EgressID
-			recordingURL = &egress.RelativeURL
-		} else if current.EgressID != nil {
-			egressID = current.EgressID
-			recordingURL = current.RecordingURL
-		}
+		egressID := current.EgressID
+		recordingURL := current.RecordingURL
 
 		if egressID != nil && *egressID != "" {
 			_ = h.LiveKit.StopAudioEgress(teardownCtx, *egressID)

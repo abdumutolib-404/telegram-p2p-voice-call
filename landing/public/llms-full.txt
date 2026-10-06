@@ -12,7 +12,7 @@
 
 ## Authoritative Documentation & Policies
 - [Guidelines](https://pairtalk.online/community-guidelines): Official IELTS Speaking Code of Conduct, call environment etiquette, anti-solicitation safety protocols, moderation penalty ladder, and unban appeals.
-- [Privacy & Policy](https://pairtalk.online/privacy): Zero-knowledge PII protection, audio recording retention matrix (Free 24h, Plus 7d, Pro 30d, Boss 90d), Terms of Service, and 100% money-back guarantee.
+- [Privacy & Policy](https://pairtalk.online/privacy): Alias-based peer privacy, service data processing, voice transport encryption, audio recording retention matrix (Free 24h, Plus 7d, Pro 30d, Boss 90d), Terms of Service, and refund terms.
 - [How It Works](https://pairtalk.online/how-it-works): Comprehensive walkthrough of the matchmaking radar, criteria calibration, and 1-on-1 exam room simulation.
 - [IELTS Speaking Guide](https://pairtalk.online/ielts-speaking): Detailed breakdown of the 2026 IELTS Speaking exam format (Part 1 Interview, Part 2 Cue Card, Part 3 Discussion) and whole-band descriptors.
 - [FAQ](https://pairtalk.online/faq): Verified answers regarding pricing, practice formats, tutor comparisons, and refund procedures.
@@ -159,7 +159,7 @@ PairTalk uses dedicated **LiveKit Selective Forwarding Units (SFU)** deployed ac
 - **Opus HD Codec**: Adaptive bitrate audio encoding (24–64 kbps) optimized for voice clarity and accent intelligibility.
 - **Acoustic Echo Cancellation (AEC) & Noise Suppression (NS)**: Server- and client-side digital signal processing eliminates room echo and ambient noise.
 - **Cross-Device Audio Auto-Unlock**: Proprietary audio context unlock handlers overcome iOS Safari and Android WebView silent audio restrictions, ensuring instantaneous audio playback upon connection.
-- **Direct End-to-End Media Encryption**: All audio streams are encrypted in transit via DTLS-SRTP.
+- **Encrypted Media Transport**: WebRTC audio connections to the LiveKit media service use DTLS-SRTP. This is transport encryption, not encryption that hides media from the service; participant-requested recordings are processed there.
 
 ---
 
@@ -566,7 +566,7 @@ During any live speaking session, candidates have access to immediate safety con
 ## 6. Audio Security & Encrypted Infrastructure
 
 - **Live Media Encryption**: Real-time voice streams are encrypted in transit using Datagram Transport Layer Security (DTLS) and Secure Real-time Transport Protocol (SRTP).
-- **Ephemerality by Default**: Audio is **never recorded** unless both participants explicitly consent.
+- **Recording Visibility**: Either participant can enable room recording. Room capture can include both voices; each participant's saved-copy choice is separate. Check the room recording indicator, which shows unconfirmed status when provider information is unavailable. PairTalk cannot detect recording made outside the app.
 - **Automated Hard Purge**: All optional cloud recordings are purged automatically upon expiration of your plan's retention window (Free = 24 hours, Plus = 7 days, Pro = 30 days, Boss = 90 days).
 
 ---
@@ -609,20 +609,9 @@ We are committed to absolute data minimization, transparent data lifecycle manag
 
 ---
 
-## 2. Zero-Knowledge Architecture: What We Collect vs. What We Ignore
+## 2. Alias-Based Peer Privacy and Service Data Processing
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                DATA PROCESSING BOUNDARIES                              │
-├──────────────────────────────┬──────────────────────────┬──────────────────────────────┤
-│ COLLECTED MINIMAL METADATA:  │ WHAT WE NEVER COLLECT:   │ STORAGE DURATION:            │
-│ • Numeric Telegram User ID   │ • Real Names & Surnames  │ • Active account lifetime    │
-│ • Target Band Scores (5-9)   │ • Telephone Numbers      │ • In-memory queue (<10s)     │
-│ • Anonymous Alias (P2P-XXXX) │ • Contact Books & Avatars│ • Recordings (1-90 days max) │
-│ • Subscription Status & Stars│ • Live Unrecorded Audio  │ • Purged permanently upon    │
-│ • Session Timestamp & Peer ★ │ • IP / Geolocation logs  │   retention expiration       │
-└──────────────────────────────┴──────────────────────────┴──────────────────────────────┘
-```
+Aliases limit what a practice partner sees. The service processes account identifiers, authentication data, call metadata, ratings, billing records, and optional recordings. Infrastructure may process IP addresses for connections, rate limits, and security logs. LiveKit handles live audio and recording egress. This architecture is not zero-knowledge and does not hide audio from the media service.
 
 ### 2.1 Essential Service Data Collected
 - **Telegram Numeric User ID**: Required solely for cryptographic account authentication, session authorization, and state persistence.
@@ -630,19 +619,19 @@ We are committed to absolute data minimization, transparent data lifecycle manag
 - **Target IELTS Bands & Sub-scores**: Self-reported integers (5 to 9) for `FC`, `LR`, `GRA`, and `P` used to drive the matchmaking algorithm.
 - **Call Telemetry**: Session duration, completion status, and peer assessment scores used to calculate community ratings.
 
-### 2.2 Data We Explicitly Do Not Collect
-- We **never** extract your real name, phone number, Telegram bio, personal avatar, or address book.
-- We **never** inspect or listen to live voice streams.
+### 2.2 What a Practice Partner Sees
+- Practice partners see aliases and practice information rather than your Telegram profile or contact details.
+- Live voice transport is encrypted to the media service. The service and its recording provider process media; this is not end-to-end encryption that prevents provider access.
 
 ---
 
 ## 3. WebRTC Voice Encryption & Cloud Recording Retention Matrix
 
 ### 3.1 In-Transit Voice Stream Encryption
-All live peer-to-peer audio communications are routed through dedicated Selective Forwarding Units (SFUs) using **Datagram Transport Layer Security (DTLS)** and **Secure Real-time Transport Protocol (SRTP)** with AES-128/256 bit encryption.
+Live audio uses **Datagram Transport Layer Security (DTLS)** and **Secure Real-time Transport Protocol (SRTP)** between clients and the LiveKit media service. Transport encryption does not prevent the media service from processing audio.
 
 ### 3.2 Authoritative Cloud Recording Retention Matrix
-Cloud audio recording is **completely optional** and requires explicit consent. If activated, recorded audio files are retained strictly according to the plan tier:
+Cloud recording is optional. Either participant can start room capture, which can include both voices. Choosing to save your own copy does not control whether a partner records the room. Retention for saved copies follows the plan tier:
 
 | Plan Tier | Monthly Calls | Max Session Length | Cloud Recordings Included | Retention Window | Storage Purge Method |
 | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -892,7 +881,7 @@ Telegram Stars refunds are processed instantly by sending `/refund` to `@PairTal
 
 ### Q8: Is PairTalk completely anonymous and how is candidate privacy protected?
 **Answer:**  
-Yes, 100%. Every learner is assigned a permanent cryptographic alias (e.g. `P2P-0284DB68`). Your real name, phone number, Telegram `@username`, avatar photo, and IP address are never exposed to other learners. All live voice streams are encrypted end-to-end via WebRTC DTLS-SRTP, and optional cloud audio recordings are automatically purged when their retention window expires.
+Learners use a practice alias rather than sharing their Telegram profile with their partner. PairTalk still processes account identifiers and call metadata. Audio travels over encrypted WebRTC connections to LiveKit; the service can process media for participant-requested recordings. This is not a zero-knowledge or service-inaccessible end-to-end encryption guarantee. Recordings have configured retention windows, and cleanup workers remove expired files.
 
 ---
 

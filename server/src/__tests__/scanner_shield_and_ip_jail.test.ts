@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { app } from '../index';
-import { isExploitProbe, isIpJailed } from '../middleware/scannerShield';
+import { isExploitProbe, isIpJailed, scannerShieldMiddleware } from '../middleware/scannerShield';
 
 describe('Scanner Shield & Exploit Bot Firewall Test Suite', () => {
   describe('1. Exploit Probe Pattern Recognition', () => {
@@ -73,26 +73,39 @@ describe('Scanner Shield & Exploit Bot Firewall Test Suite', () => {
     });
   });
 
-  describe('3. Automated 24-Hour IP Jailing Enforcement', () => {
-    it('blocks subsequent legitimate requests from jailed IP', async () => {
+  describe('3. Request rejection without collateral IP punishment', () => {
+    it('cannot jail the real non-loopback browser address from a hostile resource request', async () => {
+      const ip = '198.51.100.151';
+      const response = () => {
+        const res = { statusCode: 200, status(code: number) { this.statusCode=code; return this; }, setHeader() { return this; }, end() {}, on() {} };
+        return res;
+      };
+      const probe = response();
+      await scannerShieldMiddleware({ ip, originalUrl: '/%2eenv', headers: { 'sec-fetch-site': 'cross-site' } } as any, probe as any, () => {});
+      expect(probe.statusCode).toBe(403); expect(await isIpJailed(ip)).toBe(false);
+      let allowed=false;
+      await scannerShieldMiddleware({ ip, originalUrl: '/health', headers: {} } as any, response() as any, () => { allowed=true; });
+      expect(allowed).toBe(true);
+    });
+    it('rejects a cross-site probe while preserving later legitimate requests', async () => {
       const botIp = '203.0.113.50';
 
       // 1. Bot probes an exploit path
       const probeRes = await request(app)
         .get('/.env')
+        .set('Sec-Fetch-Site', 'cross-site')
         .set('cf-connecting-ip', botIp);
       expect(probeRes.status).toBe(403);
 
       // 2. IP is now recorded in jail
       const jailed = await isIpJailed(botIp);
-      expect(jailed).toBe(true);
+      expect(jailed).toBe(false);
 
       // 3. Subsequent request to /health from same IP is dropped in 0ms with 403
       const subsequentRes = await request(app)
         .get('/health')
         .set('cf-connecting-ip', botIp);
-      expect(subsequentRes.status).toBe(403);
-      expect(subsequentRes.headers['connection']).toBe('close');
+      expect(subsequentRes.status).toBe(200);
     });
 
     it('permits unjailed benign client IPs to access /health normally', async () => {
@@ -107,6 +120,14 @@ describe('Scanner Shield & Exploit Bot Firewall Test Suite', () => {
   });
 
   describe('4. Resilient URL Decoding & Anomaly Safety', () => {
+    it('does not punish repeated missing resources or probe words in a query', async () => {
+      for (let i = 0; i < 16; i++) {
+        await request(app).get(`/missing-resource-${i}`).set('Sec-Fetch-Site', 'cross-site');
+      }
+      expect((await request(app).get('/health?search=.env')).status).toBe(200);
+      expect((await request(app).get('/%2eenv')).status).toBe(403);
+      expect((await request(app).get('/health')).status).toBe(200);
+    });
     it('safely handles malformed percent-encoded URIs without crashing', async () => {
       const res = await request(app)
         .get('/%99%ZZ%invalid')

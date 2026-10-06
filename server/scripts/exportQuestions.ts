@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { prisma } from '../src/config/database';
 import { IeltsPart } from '@prisma/client';
+import { escapeCsvField } from '../src/utils/csv';
 
 interface ExportOptions {
   topic?: string;
@@ -39,12 +40,6 @@ function parseArgs(): ExportOptions {
   }
 
   return options;
-}
-
-function escapeCsvField(val: unknown): string {
-  if (val === null || val === undefined) return '""';
-  const str = String(val).replace(/"/g, '""');
-  return `"${str}"`;
 }
 
 async function run(): Promise<void> {

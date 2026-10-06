@@ -171,6 +171,7 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
   describe('3. Telegram File ID Media Caching', () => {
     it('3.1 Redis stores and retrieves plans_pricing file_id', async () => {
       const redis = getRedis();
+
       const testFileId = 'BAACAgIAAxkBAAIJ123456789_test_file_id';
 
       await redis.set('bot:file_id:plans_pricing', testFileId, 'EX', 3600);
@@ -187,6 +188,8 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
   describe('4. Outside-Telegram UI Questions Drawer Redis Caching', () => {
     it('4.1 Caches GET /api/ielts/questions responses in Redis with 5-minute TTL', async () => {
       const redis = getRedis();
+      vi.spyOn(prisma.ieltsQuestion, 'findMany').mockResolvedValue([{ id: 'synthetic-cache-question', part: 'PART_1', questionText: 'Synthetic cache control question' }] as any);
+      vi.spyOn(prisma.ieltsQuestion, 'count').mockResolvedValue(1);
 
       // First request (cache miss -> database query -> cache write)
       const res1 = await request(app).get('/api/ielts/questions?part=PART_1&topicId=all&limit=10&page=1');

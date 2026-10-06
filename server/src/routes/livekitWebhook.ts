@@ -3,6 +3,8 @@ import { WebhookReceiver, EgressStatus, EgressInfo } from 'livekit-server-sdk';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { logger } from '../utils/logger';
+import { trackRecordingKey } from '../services/recordingLifecycle';
+import { publishRoomRecordingState } from '../services/recordingStatus';
 
 export const livekitWebhookRouter = Router();
 
@@ -75,7 +77,13 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
       return;
     }
 
-    if (!egressId || (session.egressId && session.egressId !== egressId) || (roomName && roomName !== session.roomName) || (eventName === 'egress_started' && !session.egressId)) {
+    // Signed callbacks can register older output for cleanup, but cannot become the latest recording.
+    if (egressId && roomName === session.roomName && eventName === 'egress_ended') {
+      for (const result of egressInfo.fileResults || []) {
+        if (result.filename) await trackRecordingKey(session.id, result.filename);
+      }
+    }
+    if (!egressId || session.egressId !== egressId || (roomName && roomName !== session.roomName)) {
       // Signaling atomically binds a successful start. An early callback must not steal that claim,
       // and a stopped losing start must not overwrite another recording in the same room.
       logger.info('Ignored untracked or mismatched egress notification', { service: 'livekit', event: 'webhook_egress_ignored', sessionId: session.id });
@@ -98,7 +106,10 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
         sessionId: session.id,
         egressId,
       });
+      await publishRoomRecordingState(session.roomName,'on');
     } else if (eventName === 'egress_ended') {
+      await prisma.callSession.updateMany({ where:recordingOwner,data:{activeRecorderIds:null} });
+      await publishRoomRecordingState(session.roomName,'off');
       if (status === EgressStatus.EGRESS_COMPLETE) {
         const fileResult = egressInfo.fileResults?.[0];
         const storageKey = fileResult?.filename || session.recordingUrl;

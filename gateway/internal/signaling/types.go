@@ -66,7 +66,8 @@ type SocketErrorEvent struct {
 }
 
 type RecordStatusEvent struct {
-	Record bool `json:"record"`
+	Record   bool   `json:"record"`
+	RoomName string `json:"roomName,omitempty"`
 }
 
 type RecordingErrorEvent struct {

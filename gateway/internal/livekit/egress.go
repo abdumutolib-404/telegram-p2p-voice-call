@@ -2,8 +2,7 @@ package livekit
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/livekit/protocol/livekit"
 )
 
@@ -19,25 +19,17 @@ type EgressResult struct {
 	RelativeURL string
 }
 
-func GenerateRecordingFileName() string {
+func GenerateRecordingFileName(roomNames ...string) string {
 	now := time.Now().UTC()
-	bytes := make([]byte, 2)
-	_, _ = rand.Read(bytes)
-	shortID := strings.ToUpper(hex.EncodeToString(bytes))
-
-	return fmt.Sprintf(
-		"%04d-%02d-%02d_%02d-%02d-%02d_%s.mp3",
-		now.Year(),
-		now.Month(),
-		now.Day(),
-		now.Hour(),
-		now.Minute(),
-		now.Second(),
-		shortID,
-	)
+	roomName := ""
+	if len(roomNames) > 0 {
+		roomName = roomNames[0]
+	}
+	namespace := sha256.Sum256([]byte(roomName))
+	return fmt.Sprintf("%s_%x_%s.mp3", now.Format("2006-01-02_15-04-05"), namespace[:16], uuid.NewString())
 }
 
-func (c *Client) StartAudioEgress(ctx context.Context, roomName string) (*EgressResult, error) {
+func (c *Client) StartAudioEgress(ctx context.Context, roomName string, prepare ...func(string) error) (*EgressResult, error) {
 	if roomName == "" || len(roomName) > 128 {
 		return nil, errors.New("invalid roomName")
 	}
@@ -51,8 +43,13 @@ func (c *Client) StartAudioEgress(ctx context.Context, roomName string) (*Egress
 		return nil, errors.New("cloud recording storage is not configured (S3 credentials required for LiveKit Cloud Egress)")
 	}
 
-	fileName := GenerateRecordingFileName()
+	fileName := GenerateRecordingFileName(roomName)
 	relativeURL := fmt.Sprintf("recordings/%s", fileName)
+	if len(prepare) > 0 {
+		if err := prepare[0](relativeURL); err != nil {
+			return nil, err
+		}
+	}
 
 	var output *livekit.EncodedFileOutput
 	if hasS3 {
