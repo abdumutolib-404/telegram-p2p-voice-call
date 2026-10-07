@@ -73,6 +73,14 @@ Install Railway CLI 5.42.1 or newer, authenticate and link the intended existing
 
 Single-replica configuration still permits an old/new deployment transition. Drain active calls and stop the older polling bot before coordinated backend rollouts; zero overlap after health checks alone does not prevent concurrent startup. R2 holds durable recordings, so no local storage volume is provisioned.
 
+#### Database startup failures
+
+The backend checks both the PostgreSQL connection and required tables before becoming ready. The log heading identifies the failing stage (configuration, connection, or schema) and includes a Prisma error code when available. A connected database service alone does not establish that the backend has the right URL or that migrations succeeded.
+
+For Railway-hosted PostgreSQL, add a reference variable on the **backend service**: DATABASE_URL=${{Postgres.DATABASE_URL}}, replacing Postgres with the actual database service name. Keep both services in the same project and environment for private networking. Local server/.env is intentionally excluded from the Docker image and does not configure Railway Variables. For an external database, use its provider connection URI and required TLS settings. See [Railway PostgreSQL](https://docs.railway.com/databases/postgresql) and [reference variables](https://docs.railway.com/variables).
+
+P1000 indicates authentication failure; P1001 indicates an unreachable database; P1011 indicates a TLS failure. P2021/P2022 indicate a missing table/column: inspect the **npm run db:deploy pre-deploy logs**, confirm migrations ran against this same database, and resolve any migration error before redeploying. Expand error.message for unknown failures. Never reset or automatically baseline a populated production database to bypass startup. See [Prisma error reference](https://docs.prisma.io/docs/orm/reference/error-reference).
+
 ### Fly.io
 
 Use [server/fly.toml](../server/fly.toml). Replace its example app name with your actual Fly app or pass --app. Store backend credentials in Fly secrets, not build arguments. Run from the repository root:
