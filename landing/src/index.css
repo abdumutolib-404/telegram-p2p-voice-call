@@ -3241,3 +3241,34 @@ html[data-effects="quiet"] [data-reveal="pending"] {
     scroll-behavior: auto;
   }
 }
+
+/* Live pricing shares plan data with the dashboard and administration. */
+.pricing-selector { background:var(--surface); border:1px solid var(--line); border-radius:24px; padding:32px; margin-bottom:40px; }
+.pricing-selector-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }
+.pricing-selector-heading h2 { margin-top:8px; font-size:clamp(22px,3vw,32px); max-width:600px; }
+.pricing-currencies { display:flex; gap:4px; padding:4px; border:1px solid var(--line); border-radius:14px; flex-shrink:0; }
+.pricing-currencies button { font:inherit; font-size:12px; border:0; background:transparent; color:var(--muted); padding:12px 14px; border-radius:10px; cursor:pointer; min-height:44px; }
+.pricing-currencies button[aria-pressed="true"] { background:var(--mint); color:#101a24; }
+.pricing-needs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px; margin:28px 0 18px; }
+.pricing-needs label { display:grid; gap:10px; font-size:13px; font-weight:650; }
+.pricing-needs input { width:100%; min-width:0; padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--paper); color:var(--ink); font:inherit; font-size:18px; }
+.pricing-needs input:disabled { opacity:.45; }
+.pricing-fineprint,.pricing-average { font-size:12px; line-height:1.7; color:var(--muted); }
+.pricing-recommendation { display:flex; align-items:center; gap:12px; padding:20px; margin:22px 0 10px; border-radius:16px; background:var(--accent-surface); line-height:1.6; }
+.pricing-recommendation svg { flex-shrink:0; color:var(--green); }
+.pricing-card-label { display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; }
+.pricing-card-label >span { font-size:10px; color:var(--muted); }
+.live-pricing-grid .plan-cost { font-size:clamp(24px,2.2vw,36px); }
+.live-pricing-grid .plan-cost span { font-size:11px; line-height:1.6; }
+.live-pricing-grid .check-list { flex:1; }
+.live-pricing-grid .button[aria-disabled="true"] { opacity:.5; pointer-events:none; }
+.pricing-average { min-height:62px; border-top:1px solid var(--line); padding-top:14px; }
+.pricing-table-wrap { overflow:auto; border:1px solid var(--line); border-radius:16px; margin:32px 0; }
+.pricing-table { width:100%; min-width:660px; border-collapse:collapse; background:var(--surface); font-size:13px; }
+.pricing-table caption { text-align:left; padding:20px; font-weight:700; }
+.pricing-table th,.pricing-table td { padding:16px; text-align:left; border-top:1px solid var(--line); }
+.pricing-table thead,.pricing-table th[scope="row"] { background:var(--surface-alt); }
+.pricing-error { display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+.pricing-error p { width:100%; }
+@media(max-width:900px) { .pricing-selector-heading { flex-direction:column; } .pricing-needs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .pricing-selector { padding:22px; } .pricing-needs { gap:16px; } .pricing-recommendation { padding:16px; font-size:14px; } .pricing-currencies { width:100%; } .pricing-currencies button { flex:1; padding-inline:8px; } }

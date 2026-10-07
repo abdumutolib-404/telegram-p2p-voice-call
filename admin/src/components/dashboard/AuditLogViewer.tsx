@@ -155,7 +155,7 @@ export function AuditLogViewer() {
       {copyError && <p role="alert" className="inline-error">{copyError}</p>}
       {/* Header */}
       <PageHeader
-        title="Audit Trail & System Telemetry"
+        title="Audit history"
         description="Administrative activity, before/after changes and recent server errors."
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -633,7 +633,7 @@ export function AuditLogViewer() {
                 padding: '1.25rem 1.5rem',
                 overflowY: 'auto',
                 display: 'grid',
-                gridTemplateColumns: window.innerWidth < 640 ? '1fr' : '1fr 1fr',
+                gridTemplateColumns: '1fr 1fr',
                 gap: '1rem',
               }}
             >

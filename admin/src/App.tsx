@@ -2,11 +2,10 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { Dialog } from './components/ui/Dialog';
 import { adminFetch } from './api/client';
 import { useVisiblePolling } from './hooks/useAdminTools';
 import type { ManualPaymentRequestItem, AppealItem } from './types';
-import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LogOut, LayoutDashboard, UsersRound, BookOpen, Trophy, SlidersHorizontal, CreditCard, ShieldCheck, ChartNoAxesCombined, History } from 'lucide-react';
 import './App.css';
 const Overview = lazy(() => import('./components/dashboard/OverviewDashboard').then(m => ({ default: m.OverviewDashboard })));
 const Users = lazy(() => import('./components/dashboard/UserManagement').then(m => ({ default: m.UserManagement })));
@@ -24,13 +23,12 @@ const items: { id: NavigationTab; label: string; group: string }[] = [
   { id: 'plans', label: 'Plans and limits', group: 'Finance' }, { id: 'payments', label: 'Payments', group: 'Finance' },
   { id: 'appeals', label: 'Appeals', group: 'Review' }, { id: 'analytics', label: 'Analytics', group: 'Review' }, { id: 'audit', label: 'Audit history', group: 'Review' },
 ];
+const icons = { overview: LayoutDashboard, users: UsersRound, questions: BookOpen, contest: Trophy, plans: SlidersHorizontal, payments: CreditCard, appeals: ShieldCheck, analytics: ChartNoAxesCombined, audit: History };
 function MainDashboard() {
   const { isAuthenticated, isLoading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<NavigationTab>(() => {
     const saved = localStorage.getItem('admin:tab'); return items.some(i => i.id === saved) ? saved as NavigationTab : 'overview';
   });
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin:collapsed') === 'true');
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [counts, setCounts] = useState<{ payments: number | null; appeals: number | null }>({ payments: null, appeals: null });
   const busy = useRef(false);
   const badgesDirty = useRef(false);
@@ -56,25 +54,23 @@ function MainDashboard() {
   useVisiblePolling(badges, 30000);
   const navigate = (tab: NavigationTab) => {
     if (tab !== activeTab && !window.dispatchEvent(new Event('admin:before-navigate', { cancelable: true }))) return;
-    setActiveTab(tab); localStorage.setItem('admin:tab', tab); setMobileOpen(false);
+    setActiveTab(tab); localStorage.setItem('admin:tab', tab);
   };
   if (isLoading) return <p role="status" className="shell-loading">Loading administration…</p>;
   if (!isAuthenticated) return <LoginModal />;
   const navigation = <nav aria-label="Administration">{items.map((item, index) => <div key={item.id}>
     {(index === 0 || item.group !== items[index - 1].group) && <div className="nav-group-header">{item.group}</div>}
     <button className={'nav-tab-btn ' + (activeTab === item.id ? 'active' : '')} title={item.label} aria-current={activeTab === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}>
-      <span>{item.label}</span>{(item.id === 'payments' || item.id === 'appeals') && <span className="nav-badge-pill warning">{counts[item.id] ?? '—'}</span>}
+      {(() => { const Icon = icons[item.id]; return <Icon size={17} aria-hidden="true"/>; })()}<span className="nav-label">{item.label}</span>{(item.id === 'payments' || item.id === 'appeals') && <span className="nav-badge-pill warning">{counts[item.id] ?? '—'}</span>}
     </button></div>)}</nav>;
-  return <div className={'admin-shell ' + (collapsed ? 'sidebar-collapsed' : '')}>
-    <aside aria-label="Administration sidebar" className="admin-sidebar"><a className="admin-brand" href="#main">pairtalk<span>.</span> <small>Admin</small></a>{navigation}
-      <button className="btn-secondary sidebar-toggle" onClick={() => { setCollapsed(!collapsed); localStorage.setItem('admin:collapsed', String(!collapsed)); }} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>{collapsed ? <PanelLeftOpen size={18}/> : <PanelLeftClose size={18}/>}</button>
+  return <div className="admin-shell">
+    <aside aria-label="Administration sidebar" className="admin-sidebar"><a className="admin-brand" href="#main">pairtalk<span>.</span> <small>Operations console</small></a>{navigation}
+      <div className="sidebar-footer"><ShieldCheck size={16} aria-hidden="true"/><span>Administrator workspace</span></div>
     </aside>
-    <div className="admin-workspace"><header className="admin-topbar"><button className="btn-secondary mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button>
-      <strong>{items.find(i => i.id === activeTab)?.label}</strong><button className="btn-secondary" onClick={() => { if (window.dispatchEvent(new Event('admin:before-navigate', { cancelable: true }))) logout(); }}><LogOut size={16}/> Sign out</button>
+    <div className="admin-workspace"><header className="admin-topbar"><div className="workspace-breadcrumb"><span>{items.find(i => i.id === activeTab)?.group}</span><span aria-hidden="true">/</span><strong>{items.find(i => i.id === activeTab)?.label}</strong></div><button className="btn-secondary" onClick={() => { if (window.dispatchEvent(new Event('admin:before-navigate', { cancelable: true }))) logout(); }}><LogOut size={16}/> Sign out</button>
     </header><main id="main" className="admin-main"><ErrorBoundary key={activeTab}><Suspense fallback={<p role="status">Loading screen…</p>}>
       {activeTab === 'overview' && <Overview onNavigateTab={navigate}/>}{activeTab === 'users' && <Users/>}{activeTab === 'questions' && <Questions/>}{activeTab === 'plans' && <Plans/>}{activeTab === 'payments' && <Payments/>}{activeTab === 'appeals' && <Appeals/>}{activeTab === 'analytics' && <Analytics/>}{activeTab === 'contest' && <Contest/>}{activeTab === 'audit' && <Audit/>}
     </Suspense></ErrorBoundary></main></div>
-    <Dialog open={mobileOpen} title="Navigation" onClose={() => setMobileOpen(false)} className="navigation-dialog"><button className="btn-secondary" aria-label="Close navigation" onClick={() => setMobileOpen(false)}><X size={20}/></button>{navigation}</Dialog>
   </div>;
 }
 export default function App() { return <AuthProvider><MainDashboard/></AuthProvider>; }

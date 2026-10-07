@@ -398,8 +398,8 @@ export function UserManagement() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {copyError && <p role="alert" className="inline-error">{copyError}</p>}
       <PageHeader
-        title="Candidate Roster"
-        description="Streamlined learner registry with deep controls organized into dedicated Limits, Plan, and Status panels"
+        title="Candidates"
+        description="Find learners and manage their call limits, plans and account status."
         actions={
           <button
             onClick={fetchUsers}
@@ -493,7 +493,7 @@ export function UserManagement() {
         </div>
       )}
 
-      {/* R6: STREAMLINED 4-COLUMN MAIN CANDIDATE TABLE */}
+      {/* Candidate roster with separate scores and account controls. */}
       {isLoading && users.length === 0 ? (
         <LoadingSkeleton message="Searching candidate roster..." rows={6} />
       ) : users.length === 0 ? (
@@ -514,10 +514,11 @@ export function UserManagement() {
           <table className="table-modern">
             <thead>
               <tr>
-                <th style={{ width: '25%' }}>Alias</th>
-                <th style={{ width: '20%' }}>Telegram ID</th>
-                <th style={{ width: '20%' }}>Plan</th>
-                <th style={{ width: '35%' }}>IELTS Band Scores</th>
+                <th>Alias</th>
+                <th>Telegram ID</th>
+                <th>Plan</th>
+                <th>IELTS scores</th>
+                <th>Controls</th>
               </tr>
             </thead>
             <tbody>
@@ -587,7 +588,7 @@ export function UserManagement() {
 
                     {/* Column 4: IELTS Band Scores */}
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {overallBand ? (
                             <span className="badge badge-gold num-tabular" style={{ fontWeight: 800, fontSize: '0.75rem' }}>
@@ -604,7 +605,10 @@ export function UserManagement() {
                           ) : null}
                         </div>
 
-                        {/* Direct Panel Action Triggers */}
+                      </div>
+                    </td>
+                    <td>
+                        {/* Dedicated controls column keeps candidate rows compact. */}
                         <div style={{ display: 'inline-flex', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                           <button
                             title="Speaking Limits Panel"
@@ -649,7 +653,6 @@ export function UserManagement() {
                             <ShieldAlert size={11} /> Status
                           </button>
                         </div>
-                      </div>
                     </td>
                   </tr>
                 );
@@ -666,14 +669,12 @@ export function UserManagement() {
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '540px',
-              maxHeight: '92vh',
-              overflowY: 'auto',
-              padding: '1.75rem',
+              maxWidth: '100%',
+              padding: '0',
+              border: '0',
+              boxShadow: 'none',
               boxSizing: 'border-box',
               backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-card)',
-              boxShadow: 'var(--shadow-lg)',
             }}
           >
             {/* Drawer Header */}

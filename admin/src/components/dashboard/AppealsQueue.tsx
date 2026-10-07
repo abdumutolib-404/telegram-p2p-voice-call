@@ -98,8 +98,8 @@ export function AppealsQueue() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
-        title="Moderation Appeals Queue"
-        description="Triage permanent ban unblock requests, review violation audit logs, and assess candidate statements"
+        title="Appeals"
+        description="Review candidate statements and moderation history before making a decision."
         actions={
           <button
             onClick={fetchAppeals}

@@ -120,13 +120,13 @@ export function initDataLockdownMiddleware(
     }
 
     if (!initData) {
-      res.status(403).json({ error: 'Access Restricted: Telegram WebApp initData missing.' });
+      res.status(403).json({ code: 'browser_direct', error: 'Access Restricted: Telegram WebApp initData missing.' });
       return;
     }
 
     const result = validateTelegramInitData(initData, env.BOT_TOKEN);
     if (!result.valid || !result.user) {
-      res.status(403).json({ error: 'Access Restricted: Invalid initData signature.' });
+      res.status(403).json({ code: 'auth_rejected', error: 'Access Restricted: Invalid initData signature.' });
       return;
     }
 

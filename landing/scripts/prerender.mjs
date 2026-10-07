@@ -7,6 +7,7 @@ import {
   metadata,
   structuredData,
   isPublicStats,
+  isPublicPricing,
 } from "../dist-ssr/entry-server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,6 +37,15 @@ if (endpoint) {
   } catch (error) {
     console.warn(`Statistics snapshot omitted: ${error.message}`);
   }
+}
+let pricingSnapshot = null;
+if (process.env.PUBLIC_PRICING_BUILD_URL) {
+  try {
+    const response = await fetch(process.env.PUBLIC_PRICING_BUILD_URL, { signal: AbortSignal.timeout(8000), headers: {Accept:'application/json'} });
+    const data = await response.json();
+    if (!response.ok || !isPublicPricing(data)) throw new Error('Invalid current pricing');
+    pricingSnapshot = data;
+  } catch (error) { console.warn(`Pricing snapshot omitted: ${error.message}`); }
 }
 for (const route of [...routes, "/404"]) {
   const meta = metadata(route);
@@ -70,7 +80,7 @@ for (const route of [...routes, "/404"]) {
   html = html
     .replace(
       '<div id="root"></div>',
-      `<div id="root">${render(route, snapshot)}</div>`,
+      `<div id="root">${render(route, snapshot, pricingSnapshot)}</div>`,
     )
     .replace(
       "<!--route-schema-->",
@@ -84,6 +94,7 @@ for (const route of [...routes, "/404"]) {
         ? `<script id="public-stats-snapshot" type="application/json">${safeJson(snapshot)}</script>`
         : "",
     );
+  if (route === "/pricing" && pricingSnapshot) html = html.replace("</body>", `<script id="public-pricing-snapshot" type="application/json">${safeJson(pricingSnapshot)}</script></body>`);
   if (route === "/404")
     html = html.replace(
       "index, follow, max-image-preview:large",

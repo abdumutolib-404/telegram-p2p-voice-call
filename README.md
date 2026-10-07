@@ -22,6 +22,7 @@ The production Docker image starts Node internally on port 3000 and the Go gatew
 - [Environment and local setup](docs/ENVIRONMENT_AND_DEPLOYMENT.md)
 - [Deployment checklist](DEPLOYMENT_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Shared pricing and comparison](docs/PLATFORM_PRICING.md)
 - [Documentation index](docs/README.md)
 - [Operations and release follow-ups](docs/OPERATIONS.md)
 - [Dated verification record](docs/VERIFICATION.md)
@@ -44,3 +45,6 @@ These helpers use a restricted synthetic environment. See [verification instruct
 The 2026-10-05 recording lifecycle migration requires a coordinated Node/Go rollout after active calls drain. Local checks pass; real Telegram transactions, two-device audio, and cloud recording retention still need staging validation. Previously lost recording references need separate reconciliation. Credentials reported exposed in the 2026-10-04 review still require owner-confirmed rotation.
 
 The application currently uses configurable Free/Plus/Pro/Boss subscriptions. Independent non-expiring credits and optional storage are planned, not implemented. Documentation cleanup does not change prices, balances, public policy pages, or crawler files.
+# Bot and dashboard responsibilities
+
+Registration, PDF terms acceptance and payments stay in Telegram. Calls, recordings, feedback and account preferences are in the private dashboard. See [the bot and dashboard guide](docs/BOT_AND_DASHBOARD.md) for consent versioning, access checks and the required database migration.

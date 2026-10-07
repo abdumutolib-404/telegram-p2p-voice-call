@@ -17,6 +17,7 @@ Admin access uses password plus Telegram OTP and the credentials handled by [adm
 | POST | /api/auth/verify | Signed launch verification |
 | GET | /api/auth/bot-info | Public bot information |
 | GET | /api/public/stats | Aggregate public statistics; no account/recording identifiers |
+| GET | /api/public/plans | Active public offers, exact Stars/UZS prices, allowances, revision and check time; no authentication |
 | GET | /api/ielts/topics | Question-topic catalog |
 | GET | /api/ielts/questions | Filtered questions |
 | GET | /api/ielts/questions/export | Question export; CSV formula-neutralized |

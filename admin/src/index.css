@@ -2,20 +2,20 @@
   --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Black Diamond Color Palette */
-  --bg-primary: #070A12;
-  --bg-secondary: #0B1020;
-  --bg-surface: #0F172A;
-  --bg-surface-elevated: #121A2B;
-  --bg-surface-hover: #162238;
-  --bg-surface-active: #1A2844;
-  --bg-input: #0B1220;
+  /* Operations workspace palette */
+  --bg-primary: #0b0f14;
+  --bg-secondary: #10161d;
+  --bg-surface: #141b23;
+  --bg-surface-elevated: #1a232e;
+  --bg-surface-hover: #202c38;
+  --bg-surface-active: #263443;
+  --bg-input: #10161d;
 
   /* Borders & Dividers — visible white-tinted */
   --border-card: rgba(255, 255, 255, 0.13);
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-input: rgba(255, 255, 255, 0.16);
-  --border-focus: #7C5CFC;
+  --border-focus: #5bd4b6;
   --border-strong: rgba(255, 255, 255, 0.22);
 
   /* Shadows & Depth */
@@ -27,15 +27,15 @@
   --text-primary: #F8FAFC;
   --text-secondary: #A8B3C7;
   --text-muted: #98A5BC;
-  --text-inverse: #070A12;
+  --text-inverse: #0b0f14;
 
   /* PairTalk Accents */
-  --primary: #6F4DE8;
-  --primary-hover: #6944FA;
-  --primary-light: #9B82FD;
-  --primary-bg: rgba(124, 92, 252, 0.12);
-  --primary-border: rgba(124, 92, 252, 0.28);
-  --primary-glow: 0 0 16px rgba(124, 92, 252, 0.25);
+  --primary: #5bd4b6;
+  --primary-hover: #83e4cb;
+  --primary-light: #83e4cb;
+  --primary-bg: rgba(91, 212, 182, 0.12);
+  --primary-border: rgba(91, 212, 182, 0.28);
+  --primary-glow: 0 0 16px rgba(91, 212, 182, 0.25);
 
   --accent-blue: #4F8CFF;
   --accent-blue-bg: rgba(79, 140, 255, 0.12);
@@ -88,7 +88,8 @@ html, body {
   padding: 0;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  overflow-x: hidden;
+  overflow-x: auto;
+  min-width: 1180px;
 }
 
 #root {
@@ -131,7 +132,7 @@ html, body {
 .glass-panel {
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: var(--shadow-sm);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -224,7 +225,7 @@ html, body {
 
 .input-modern:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(124, 92, 252, 0.2);
+  box-shadow: 0 0 0 3px rgba(91, 212, 182, 0.2);
 }
 
 .input-modern::placeholder {
@@ -234,9 +235,10 @@ html, body {
 /* Modern Dark Data Table */
 .table-container {
   width: 100%;
-  overflow-x: auto;
+  overflow: auto;
+  max-height: clamp(320px, calc(100dvh - 280px), 720px);
   border: 1px solid var(--border-card);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--bg-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -245,7 +247,7 @@ html, body {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.85rem;
+  font-size: 12px;
 }
 
 .table-modern thead th {
@@ -255,7 +257,10 @@ html, body {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 0.85rem 1.125rem;
+  padding: 10px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   border-bottom: 1px solid var(--border-card);
   white-space: nowrap;
 }
@@ -274,7 +279,7 @@ html, body {
 }
 
 .table-modern td {
-  padding: 0.95rem 1.125rem;
+  padding: 11px 14px;
   color: var(--text-primary);
   vertical-align: middle;
 }

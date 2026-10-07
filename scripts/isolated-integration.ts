@@ -18,7 +18,8 @@ import {WebCrawlerService} from '../server/src/services/crawler/webCrawlerServic
 import {NotificationQueue,notificationQueue} from '../server/src/bot/notifications';
 import {recoverPostCallJobs} from '../server/src/services/postCallOutbox';
 import {moderationService} from '../server/src/services/moderation';
-import {setupPostCallCallbackHandlers} from '../server/src/bot/handlers/postCall';
+import {saveCallQualityRating} from '../server/src/services/callFeedback';
+import {currentTerms} from '../server/src/services/terms';
 import {createManualPaymentRequest} from '../server/src/services/plan';
 import {checkAndProcessSubscriptionExpirations} from '../server/src/services/subscriptionExpiry';
 let passed=0;
@@ -26,7 +27,7 @@ async function check(name:string,fn:()=>Promise<void>) {await fn();passed++;cons
 const suffix=crypto.randomUUID();let counter=0;
 const fixtureUserIds:string[]=[];
 async function user(data:any={}) {
- const created=await prisma.user.create({data:{telegramId:BigInt(Date.now()+counter++),alias:`integration-${suffix}-${counter}`,plan:'PLUS',dailyLimit:10,maxDuration:30,...data}});
+ const created=await prisma.user.create({data:{telegramId:BigInt(Date.now()+counter++),alias:`integration-${suffix}-${counter}`,plan:'PLUS',dailyLimit:10,maxDuration:30,onboarded:true,termsAcceptedVersion:currentTerms.version,termsAcceptedAt:new Date(),termsDocumentSha256:currentTerms.sha256,...data}});
  fixtureUserIds.push(created.id);
  return created;
 }
@@ -268,12 +269,10 @@ async function main(){
   const updated=await prisma.user.findUniqueOrThrow({where:{id:target.id}});
   assert.equal(updated.warningCount,12);assert.equal(updated.isPermanentlyBanned,true);
  });
- await check('Concurrent rating callbacks save one feedback record',async()=>{
+ await check('Concurrent dashboard ratings save one feedback record',async()=>{
   const[a,b]=await Promise.all([user(),user()]);const call=await prisma.callSession.create({data:{roomName:crypto.randomUUID(),userAId:a.id,userBId:b.id,status:'COMPLETED',duration:35}});
-  let callback:((context:any)=>Promise<void>)|undefined;
-  setupPostCallCallbackHandlers({callbackQuery:(pattern:RegExp,handler:any)=>{if(pattern.source.startsWith('^rate_call:'))callback=handler;}} as any);
-  assert(callback);
-  await Promise.all(Array.from({length:12},()=>callback!({match:['rate_call:'+call.id+':5',call.id,'5'],from:{id:Number(a.telegramId)},answerCallbackQuery:async()=>{},editMessageText:async()=>{}})));
+  const ratings = await Promise.all(Array.from({length:12},()=>saveCallQualityRating(call.id,a.id,5)));
+  assert.equal(ratings.filter(result=>result==='CREATED').length,1);
   assert.equal(await prisma.callRating.count({where:{callId:call.id,raterId:a.id}}),1);
  });
  await check('Reciprocal reports use the same participant lock order and escalate once',async()=>{

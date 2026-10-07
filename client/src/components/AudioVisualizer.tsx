@@ -7,6 +7,7 @@ export interface AudioVisualizerProps {
   height?: number;
   className?: string;
   barColor?: string;
+  fitContainer?: boolean;
 }
 
 export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
@@ -15,7 +16,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   barCount = 24,
   height = 80,
   className = '',
-  barColor = '#06b6d4',
+  barColor = '#5bd4b6',
+  fitContainer = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
@@ -34,7 +36,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       const w = rect.width || 300;
-      const h = height;
+      const h = rect.height || height;
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       dimensionsRef.current = { width: w, height: h };
@@ -196,11 +198,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   }, [analyserNode, isMuted, barCount, height, barColor]);
 
   return (
-    <div className={`w-full flex items-center justify-center ${className}`}>
+    <div className={`w-full flex items-center justify-center ${className}`} style={{ height: fitContainer ? '100%' : `${height}px` }}>
       <canvas
         ref={canvasRef}
-        className="w-full max-w-md h-[80px]"
-        style={{ height: `${height}px` }}
+        className="w-full max-w-md h-full"
       />
     </div>
   );

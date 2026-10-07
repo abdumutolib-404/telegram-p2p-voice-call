@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/google/uuid"
 	lk "github.com/livekit/protocol/livekit"
+	"github.com/pairtalk/gateway/internal/auth"
 	"github.com/pairtalk/gateway/internal/database"
 	media "github.com/pairtalk/gateway/internal/livekit"
 	"google.golang.org/protobuf/proto"
@@ -35,7 +36,7 @@ func TestIntegrationRoomStateRequiresActiveParticipants(t *testing.T) {
 	defer db.Close()
 	a, b, outsider, room := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 	for i, id := range []string{a, b} {
-		if _, err = db.Pool.Exec(ctx, `INSERT INTO "User" (id,"telegramId",alias,"updatedAt") VALUES ($1,$2,$1,NOW())`, id, time.Now().UnixMicro()+int64(i)); err != nil {
+		if _, err = db.Pool.Exec(ctx, `INSERT INTO "User" (id,"telegramId",alias,"updatedAt",onboarded,"termsAcceptedVersion","termsAcceptedAt","termsDocumentSha256") VALUES ($1,$2,$1,NOW(),TRUE,$3,NOW(),$4)`, id, time.Now().UnixMicro()+int64(i), auth.TermsVersion, auth.TermsDocumentSHA256); err != nil {
 			t.Fatal(err)
 		}
 	}

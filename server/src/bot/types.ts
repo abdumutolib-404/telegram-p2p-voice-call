@@ -1,7 +1,9 @@
 import { Context, SessionFlavor } from 'grammy';
 
 export interface SessionData {
-  step: 'idle' | 'fc' | 'lr' | 'gra' | 'p' | 'confirm' | 'appeal' | 'awaiting_announcement' | 'awaiting_receipt' | 'awaiting_refund_card';
+  step: 'idle' | 'terms' | 'fc' | 'lr' | 'gra' | 'p' | 'confirm' | 'appeal' | 'awaiting_announcement' | 'awaiting_receipt' | 'awaiting_refund_card';
+  termsOffer?: { version: string; sha256: string; messageId: number };
+  pendingReferralPayload?: string;
   fc?: number;
   lr?: number;
   gra?: number;

@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"github.com/pairtalk/gateway/internal/auth"
 	"net/url"
 	"os"
 	"sync"
@@ -104,7 +105,7 @@ func isolatedDB(t *testing.T) (*DB, context.Context, []string) {
 		cancel()
 	})
 	for i, id := range ids {
-		_, err := db.Pool.Exec(ctx, `INSERT INTO "User" (id, "telegramId", alias, "updatedAt") VALUES ($1, $2, $3, NOW())`, id, time.Now().UnixMicro()+int64(i), "gateway-check-"+id)
+		_, err := db.Pool.Exec(ctx, `INSERT INTO "User" (id, "telegramId", alias, "updatedAt", onboarded, "termsAcceptedVersion", "termsAcceptedAt", "termsDocumentSha256") VALUES ($1, $2, $3, NOW(), TRUE, $4, NOW(), $5)`, id, time.Now().UnixMicro()+int64(i), "gateway-check-"+id, auth.TermsVersion, auth.TermsDocumentSHA256)
 		if err != nil {
 			t.Fatalf("create user fixture: %v", err)
 		}

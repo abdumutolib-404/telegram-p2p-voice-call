@@ -28,13 +28,13 @@ export const StatCard: React.FC<StatCardProps> = ({
       onKeyDown={onClick ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : undefined}
       style={{
         cursor: onClick ? 'pointer' : 'default',
-        minHeight: '128px',
+        minHeight: '104px',
         ...style,
       }}
     >
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
-          <span style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <span style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0' }}>
             {label}
           </span>
           {icon && (
@@ -45,7 +45,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <div className="num-tabular" style={{ fontSize: '1.85rem', fontWeight: 650, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+          <div className="num-tabular" style={{ fontSize: value === 'Unavailable' ? '1rem' : '1.65rem', fontWeight: 650, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
             {value}
           </div>
           {badge && <div>{badge}</div>}

@@ -39,7 +39,7 @@ beforeEach(() => {
   } } });
   window.history.replaceState(null, '', '/');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/auth')
-    ? { success: true, user: { id: 'synthetic-user', alias: 'Fixture alias', band: 7, plan: 'FREE' } }
+    ? { success: true, user: { id: 'synthetic-user', alias: 'Fixture alias', band: 7, plan: 'FREE', callsRemaining: 3 } }
     : { hasActiveCall: false }), { status: 200 })));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
@@ -50,7 +50,7 @@ async function emit(name: string, payload: unknown) {
 }
 async function search() {
   await act(async () => root.render(createElement(App)));
-  const button = Array.from(container.querySelectorAll('button')).find(element => element.textContent?.includes('START SPEAKING PRACTICE'));
+  const button = container.querySelector<HTMLButtonElement>('button[aria-label="Start speaking practice"]');
   expect(button, container.textContent ?? '').toBeTruthy();
   await act(async () => button!.click());
 }
@@ -65,7 +65,21 @@ it('sends one finish request when the user ends a call', async () => {
   const button = container.querySelector<HTMLButtonElement>('button[aria-label="End call"]');
   expect(button).toBeTruthy(); await act(async () => button!.click());
   expect(fixture.finish).toHaveBeenCalledTimes(1);
-  expect(container.textContent).toContain('CALL CONCLUDED');
+  expect(container.textContent).toContain('Call concluded');
+});
+
+it('returns to dashboard history after a completed call without starting another search', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/auth')
+    ? { success: true, user: { id: 'synthetic-user', alias: 'Fixture alias', band: 7, plan: 'FREE', callsRemaining: 3 } }
+    : url.includes('/dashboard/sessions') ? { sessions: [], nextCursor: null } : { hasActiveCall: false }), { status: 200 })));
+  await startCall();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="End call"]')!.click());
+  const history = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('History & audio'))!;
+  const searches = fixture.join.mock.calls.length;
+  await act(async () => history.click());
+  expect(container.textContent).toContain('Every conversation counts.');
+  expect(new URLSearchParams(window.location.search).get('view')).toBe('history');
+  expect(fixture.join).toHaveBeenCalledTimes(searches);
 });
 
 it('leaves the call screen and informs the server when the voice room disconnects', async () => {

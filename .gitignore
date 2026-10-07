@@ -9,6 +9,8 @@ build/
 
 # Local QA output and source archives
 /artifacts/
+/tmp/
+/output/
 
 # Generated build and tool caches
 dist-ssr/

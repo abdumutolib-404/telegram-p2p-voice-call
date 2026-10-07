@@ -27,13 +27,14 @@ describe('call feedback authorization and concurrency', () => {
     expect((await prisma.callRating.findFirst({ where: { callId: call.id, raterId: users[0].id } }))?.stars).toBe(4);
     expect(await prisma.callRating.count()).toBe(2);
   });
-  it('preserves reporting policy: a rating can be followed by one report, and a report prevents later rating', async () => {
+  it('allows one quality rating and one safety report independently', async () => {
     const { users, call } = await fixture();
     expect(await saveCallQualityRating(call.id, users[0].id, 4)).toBe('CREATED');
     await moderationService.processReport(users[1].id, users[0].id, call.id, 'Synthetic report');
     await expect(moderationService.processReport(users[1].id, users[0].id, call.id, 'Synthetic duplicate')).rejects.toThrow('already reported');
     await moderationService.processReport(users[0].id, users[1].id, call.id, 'Synthetic report');
-    expect(await saveCallQualityRating(call.id, users[1].id, 5)).toBe('DUPLICATE');
+    expect(await saveCallQualityRating(call.id, users[1].id, 5)).toBe('CREATED');
+    expect(await saveCallQualityRating(call.id, users[1].id, 1)).toBe('DUPLICATE');
     expect((await prisma.user.findUnique({ where: { id: users[1].id } }))?.warningCount).toBe(1);
   });
 });

@@ -216,8 +216,8 @@ export function ContestManagement() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
-        title="Hall of Fame & Championships"
-        description="Deterministic 3-state championship lifecycle with automated referral tracking and atomic prize distribution"
+        title="Contests"
+        description="Manage referral contests, review the leaderboard and award prizes."
         actions={
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
@@ -293,7 +293,7 @@ export function ContestManagement() {
             className="btn-primary"
             style={{ height: '40px', padding: '0 1.5rem', fontSize: '0.9rem' }}
           >
-            <Play size={15} /> Launch 4-Step Championship Wizard
+            <Play size={15} /> Create a contest
           </button>
         </div>
       )}
@@ -302,7 +302,7 @@ export function ContestManagement() {
       {championshipState === 'ACTIVE' && (
         <>
           {/* Active Banner & Quick Telemetry */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '1rem' }}>
             {/* Status & Live Countdown */}
             <div
               className="metric-card"
@@ -355,7 +355,7 @@ export function ContestManagement() {
           </div>
 
           {/* 2-Column Layout: Locked Configuration & Leaderboard snapshot */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem' }}>
             {/* Locked Configuration Details */}
             <div className="glass-panel" style={{ padding: '1.5rem', backgroundColor: 'var(--bg-surface)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
@@ -547,7 +547,7 @@ export function ContestManagement() {
           </div>
 
           {/* Podium Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem' }}>
             {/* 1st Place */}
             <div className="glass-card" style={{ padding: '1.25rem', borderColor: 'var(--gold-border)', backgroundColor: 'var(--gold-bg)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>

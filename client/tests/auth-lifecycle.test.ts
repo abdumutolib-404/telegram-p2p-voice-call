@@ -2,6 +2,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { App } from '../src/App';
+import { redirectToLanding } from '../src/services/dashboard';
+vi.mock('../src/services/dashboard', async original => ({ ...await original<typeof import('../src/services/dashboard')>(), redirectToLanding: vi.fn() }));
 
 const transport = vi.hoisted(() => ({
   socket: { connected: true, on: vi.fn(), off: vi.fn(), io: { on: vi.fn(), off: vi.fn() } },
@@ -150,15 +152,35 @@ it('leaves initialization with an actionable launch message when Telegram data n
   expect(transport.connect).not.toHaveBeenCalled();
 });
 
-it('shows a clear launch screen when the Telegram SDK is present in an ordinary browser', async () => {
+it('redirects an ordinary browser to the landing without exposing the dashboard', async () => {
   vi.useFakeTimers(); window.Telegram!.WebApp.initData = '';
   Object.assign(window.Telegram!.WebApp, { platform: 'unknown' });
   const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
   await act(async () => root.render(createElement(App)));
   await act(async () => vi.advanceTimersByTimeAsync(1000));
-  expect(container.textContent).toContain('Your next conversation starts in Telegram.');
-  expect(container.querySelector('a[href="https://t.me/PairTalkBot?startapp=1"]')).toBeTruthy();
-  expect(container.textContent).not.toContain('inside Telegram');
-  expect(container.textContent).not.toContain('<3 seconds');
+  expect(redirectToLanding).toHaveBeenCalledOnce();
+  expect(container.textContent).toBe('');
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('rejects a copied launch credential in an external-browser query string', async () => {
+  vi.useFakeTimers(); Object.assign(window.Telegram!.WebApp, { platform: 'unknown', initData: 'synthetic-copied-launch' });
+  window.history.replaceState(null, '', '/?initData=copied&tgWebAppData=copied&view=account');
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  await act(async () => root.render(createElement(App)));
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(redirectToLanding).toHaveBeenCalledOnce(); expect(fetchMock).not.toHaveBeenCalled(); expect(transport.connect).not.toHaveBeenCalled();
+});
+it('redirects a rejected signature and does not open a private policy route', async () => {
+  window.history.replaceState(null, '', '/#privacy');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'auth_rejected', error: 'Invalid signature' }), { status: 403 })));
+  await act(async () => root.render(createElement(App)));
+  expect(redirectToLanding).toHaveBeenCalledOnce(); expect(transport.connect).not.toHaveBeenCalled(); expect(container.textContent).not.toContain('Know what you share');
+});
+it('keeps history and account controls accessible with no call allowance', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ ...profile, user: { ...profile.user, callsRemaining: 0 } })).mockResolvedValueOnce(json({ hasActiveCall: false })));
+  await act(async () => root.render(createElement(App)));
+  expect(container.textContent).toContain('Practice fixture alias');
+  expect(container.querySelector<HTMLButtonElement>('button[aria-label="Start speaking practice"]')?.disabled).toBe(true);
+  expect(container.querySelector('nav[aria-label="Your dashboard"]')).toBeTruthy();
 });

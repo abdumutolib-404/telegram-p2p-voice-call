@@ -30,7 +30,7 @@ describe('durable completion events', () => {
     expect(cards).toHaveLength(2);
     const cardA = cards.find(card => card.telegramId === a.telegramId.toString())!;
     const cardB = cards.find(card => card.telegramId === b.telegramId.toString())!;
-    expect(cardA.text).toContain('2m 0s'); expect(cardA.optionsJson).toContain('play_rec:');
+    expect(cardA.text).toContain('2m 0s'); expect(cardA.optionsJson).toContain('view=history'); expect(cardA.optionsJson).toContain('call=' + call.id);
     expect(cardB.optionsJson).not.toContain('play_rec:'); expect(cardB.text).toContain('Candidate &lt;A&gt;');
     expect(cards.some(card => card.telegramId === '999999')).toBe(false);
     await handleCallFinishedEvent(event, bot);

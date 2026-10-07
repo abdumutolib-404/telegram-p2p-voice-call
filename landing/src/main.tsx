@@ -1,3 +1,4 @@
+import { isPublicPricing } from "../../server/src/contracts/pricing";
 import { StrictMode } from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import "@fontsource-variable/manrope/index.css";
@@ -13,9 +14,11 @@ try {
 } catch {
   /* A missing snapshot never blocks the site. */
 }
+let initialPricing = null;
+try { const parsed: unknown = JSON.parse(document.getElementById("public-pricing-snapshot")?.textContent || "null"); if (isPublicPricing(parsed)) initialPricing = parsed; } catch { /* Live prices will be checked on load. */ }
 const app = (
   <StrictMode>
-    <App initialStats={initialStats} />
+    <App initialStats={initialStats} initialPricing={initialPricing} />
   </StrictMode>
 );
 if (root.hasChildNodes()) hydrateRoot(root, app);

@@ -1,3 +1,4 @@
+import { Brand } from './Brand';
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Lock, AlertOctagon, Send, WifiOff, RefreshCw, Clock, Flame, CreditCard, KeyRound } from 'lucide-react';
 import type { LockdownReason } from '../types';
@@ -69,14 +70,22 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
 
   // Each access state provides a specific explanation and recovery action.
   const config = {
+    registration_required: {
+      badge: 'REGISTRATION', badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40', title: 'FINISH REGISTRATION',
+      description: 'Use /start in the Telegram bot to read the terms and set up your speaking profile.', icon: Send, iconColor: 'text-mint-400',
+    },
+    terms_required: {
+      badge: 'TERMS OF USE', badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40', title: 'READ THE CURRENT TERMS',
+      description: 'Use /start in the Telegram bot to read the PDF and decide whether to accept it.', icon: Send, iconColor: 'text-mint-400',
+    },
     browser_direct: {
       badge: 'SECURITY LOCKDOWN',
-      badgeColor: 'border-cyan-500/40 text-cyan-400 bg-cyan-950/40',
+      badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40',
       title: 'EXTERNAL ACCESS RESTRICTED',
       description:
         'Open PairTalk from the Telegram bot to sign in and find a speaking practice partner.',
       icon: ShieldAlert,
-      iconColor: 'text-cyan-400',
+      iconColor: 'text-mint-400',
     },
     banned: {
       badge: 'ACCOUNT RESTRICTED',
@@ -108,22 +117,22 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
     },
     exhausted_quota: {
       badge: 'LIMIT REACHED',
-      badgeColor: 'border-purple-500/40 text-purple-400 bg-purple-950/40',
+      badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40',
       title: 'PLAN LIMIT REACHED',
       description:
         message ||
         'You have reached your practice call allowance. Open plans in the Telegram bot or return when your allowance renews.',
       icon: CreditCard,
-      iconColor: 'text-purple-400',
+      iconColor: 'text-mint-400',
     },
     telegram_no_initdata: {
       badge: 'AUTHENTICATION GATE',
-      badgeColor: 'border-indigo-500/40 text-indigo-400 bg-indigo-950/40',
+      badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40',
       title: 'LAUNCH VIA BOT MENU',
       description:
         'Open PairTalk using the menu button in the Telegram bot to sign in.',
       icon: Lock,
-      iconColor: 'text-indigo-400',
+      iconColor: 'text-mint-400',
     },
     auth_rejected: {
       badge: 'SESSION EXPIRED',
@@ -155,23 +164,24 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
   const Icon = config.icon;
 
   return (
-    <div className="flex flex-col items-center justify-between min-h-screen p-6 bg-[#05070E] text-slate-100 font-sans text-center selection:bg-cyan-500">
-      <div className="w-full max-w-sm flex flex-col items-center mt-6">
+    <div className="app-shell lockdown-screen text-center">
+      <header className="app-header"><Brand /><span className="status-pill">Account access</span></header>
+      <div className="lockdown-card w-full flex flex-col items-center">
         {/* Visual Icon Badge */}
-        <div className="w-20 h-20 rounded-3xl bg-[#0B101D] border border-slate-800 flex items-center justify-center mb-5 shadow-2xl shadow-black/80">
+        <div className="w-20 h-20 rounded-3xl bg-[#141b23] border border-slate-800 flex items-center justify-center mb-5 shadow-2xl shadow-black/80">
           <Icon className={`w-10 h-10 ${config.iconColor}`} />
         </div>
 
         {/* Status Badge */}
         <div
-          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-mono font-bold tracking-widest uppercase border mb-3 ${config.badgeColor}`}
+          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-sans font-bold tracking-wide uppercase border mb-3 ${config.badgeColor}`}
         >
           <Lock className="w-3 h-3" />
           <span>{config.badge}</span>
         </div>
 
         {/* Title */}
-        <h1 className="text-lg font-mono font-black tracking-tight text-white mb-2 uppercase">
+        <h1 className="text-lg font-sans font-semibold tracking-tight text-white mb-2 uppercase">
           {config.title}
         </h1>
 
@@ -182,7 +192,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
 
         {/* Suspended Cooldown Timer */}
         {reason === 'suspended' && hasSuspensionDeadline && (
-          <div className="w-full p-4 mb-5 rounded-2xl bg-[#0B101D] border border-amber-500/30 font-mono text-center">
+          <div className="w-full p-4 mb-5 rounded-2xl bg-[#141b23] border border-amber-500/30 font-sans text-center">
             <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold mb-1">
               Active Cooldown Timer
             </div>
@@ -197,18 +207,18 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
 
         {/* Rate Limited Timer */}
         {reason === 'rate_limited' && (
-          <div className="w-full p-4 mb-5 rounded-2xl bg-[#0B101D] border border-amber-500/30 font-mono text-center">
+          <div className="w-full p-4 mb-5 rounded-2xl bg-[#141b23] border border-amber-500/30 font-sans text-center">
             <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold mb-1">
               Retry Available In
             </div>
-            <div className="text-2xl font-black text-white tracking-widest">{countdown}s</div>
+            <div className="text-2xl font-semibold text-white tracking-wide">{countdown}s</div>
             <p className="text-[10px] text-slate-500 mt-1">Automated burst protection active</p>
           </div>
         )}
 
         {/* Permanent Ban Appeal Instructions */}
         {reason === 'banned' && (
-          <div className="w-full p-4 mb-5 rounded-2xl bg-[#0B101D] border border-rose-500/30 text-left text-xs font-mono space-y-2">
+          <div className="w-full p-4 mb-5 rounded-2xl bg-[#141b23] border border-rose-500/30 text-left text-xs font-sans space-y-2">
             <div className="font-bold text-rose-400 uppercase tracking-wide flex items-center gap-1.5">
               <AlertOctagon className="w-3.5 h-3.5" />
               <span>Appeal Instructions</span>
@@ -216,7 +226,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
             <p className="text-[11px] text-slate-300">
               Submit a formal unban appeal to human moderators inside the Telegram Bot using the command:
             </p>
-            <code className="block p-2 bg-black/60 rounded-lg border border-slate-800 text-cyan-300 text-[11px] select-all">
+            <code className="block p-2 bg-black/60 rounded-lg border border-slate-800 text-mint-300 text-[11px] select-all">
               /appeal &lt;your explanation&gt;
             </code>
           </div>
@@ -227,7 +237,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
           <button
             type="button"
             onClick={onOpenPlans}
-            className="w-full py-3.5 px-6 mb-4 bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs font-bold uppercase tracking-wider rounded-2xl transition-transform active:scale-95 shadow-lg shadow-purple-600/30 cursor-pointer"
+            className="w-full py-3.5 px-6 mb-4 bg-mint-600 hover:bg-mint-500 text-slate-950 font-sans text-xs font-bold uppercase tracking-wider rounded-2xl transition-transform active:scale-95 shadow-lg shadow-mint-600/30 cursor-pointer"
           >
             Upgrade Plan & Get Credits
           </button>
@@ -239,7 +249,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
             type="button"
             disabled={countdown > 0}
             onClick={onRetry}
-            className="w-full py-3.5 px-6 mb-4 bg-amber-600 hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-mono text-xs font-bold uppercase tracking-wider rounded-2xl transition-transform active:scale-95 cursor-pointer"
+            className="w-full py-3.5 px-6 mb-4 bg-amber-600 hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-sans text-xs font-bold uppercase tracking-wider rounded-2xl transition-transform active:scale-95 cursor-pointer"
           >
             {countdown > 0 ? `Please wait (${countdown}s)` : 'Retry Connection'}
           </button>
@@ -250,7 +260,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
           <button
             type="button"
             onClick={onRetry}
-            className="w-full py-3.5 px-6 mb-4 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-cyan-500/25 cursor-pointer"
+            className="w-full py-3.5 px-6 mb-4 bg-mint-600 hover:bg-mint-500 text-slate-950 font-sans text-xs font-bold uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-mint-500/25 cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />
             <span>Retry Connection</span>
@@ -258,22 +268,22 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
         )}
 
         {/* Action: Browser Direct or No InitData Launch */}
-        {(reason === 'browser_direct' || reason === 'telegram_no_initdata') && (
+        {(reason === 'browser_direct' || reason === 'telegram_no_initdata' || reason === 'registration_required' || reason === 'terms_required') && (
           <a
-            href={botAppUrl}
+            href={reason === 'registration_required' || reason === 'terms_required' ? `https://t.me/${botUsername}?start=register` : botAppUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-3.5 px-6 mb-4 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-cyan-500/25"
+            className="w-full py-3.5 px-6 mb-4 bg-mint-600 hover:bg-mint-500 text-slate-950 font-sans text-xs font-bold uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-mint-500/25"
           >
             <Send className="w-4 h-4 fill-current" />
-            <span>Launch in Telegram</span>
+            <span>{reason === 'registration_required' || reason === 'terms_required' ? 'Continue in the bot' : 'Launch in Telegram'}</span>
           </a>
         )}
 
         {/* How to Access Guide Card */}
-        <div className="w-full p-4 rounded-2xl bg-[#090D18] border border-slate-800 text-left flex items-start gap-3">
-          <AlertOctagon className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-slate-300 font-mono">
+        <div className="w-full p-4 rounded-2xl bg-[#141b23] border border-slate-800 text-left flex items-start gap-3">
+          <AlertOctagon className="w-4 h-4 text-mint-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-slate-300 font-sans">
             <p className="font-bold text-slate-200 uppercase tracking-wider mb-1 text-[11px]">
               Open PairTalk:
             </p>
@@ -286,7 +296,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       </div>
 
       {/* Product identity */}
-      <div className="w-full max-w-sm pt-4 border-t border-slate-900 flex items-center justify-between text-[10px] font-mono text-slate-600">
+      <div className="app-footer">
         <span>PairTalk</span>
         <span>Speaking practice</span>
       </div>

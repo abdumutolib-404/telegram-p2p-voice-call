@@ -29,7 +29,7 @@ export function LoginModal() {
       const res = await requestOtp(masterPassword);
       setChallengeId(res.challengeId);
       setStep('otp');
-      setSuccessMsg('6-digit verification code dispatched to Admin Telegram account.');
+      setSuccessMsg('A six-digit verification code was sent to your administrator Telegram account.');
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -65,19 +65,17 @@ export function LoginModal() {
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(7, 10, 18, 0.85)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '1.5rem',
-      }}
-    >
+    <div className="login-layout">
+      <aside className="login-introduction">
+        <div className="admin-brand">pairtalk<span>.</span><small>Operations console</small></div>
+        <h1>A clear view of<br/>every conversation.</h1>
+        <p>Manage candidates, review payments and keep speaking practice running from one workspace.</p>
+        <ul>
+          <li>Calls and service health</li>
+          <li>Payments and candidate support</li>
+          <li>Questions, limits and audit history</li>
+        </ul>
+      </aside>
       <div
         className="glass-panel"
         style={{
@@ -108,11 +106,11 @@ export function LoginModal() {
             {step === 'password' ? <Lock size={22} /> : <Key size={22} />}
           </div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 650, margin: '0 0 0.35rem 0', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
-            PairTalk Operations Console
+            Administrator sign in
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
             {step === 'password'
-              ? 'Enter Master Password to request Telegram 2FA OTP'
+              ? 'Use your administrator password to continue.'
               : 'Enter the 6-digit code dispatched to Telegram'}
           </p>
         </div>
@@ -217,7 +215,7 @@ export function LoginModal() {
                 </>
               ) : (
                 <>
-                  Request 2FA OTP <ArrowRight size={15} />
+                  Send verification code <ArrowRight size={15} />
                 </>
               )}
             </button>

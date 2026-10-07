@@ -3,7 +3,7 @@ import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { createActionRateLimiter, getClientIp } from '../middleware/rateLimit';
-import { generateUniqueAlias } from '../bot/commands/start';
+import { hasAcceptedCurrentTerms } from '../services/terms';
 import { getEffectiveEntitlement, getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../services/plan';
 import { getActiveBonusCallsCount } from '../services/referralService';
 import { logger } from '../utils/logger';
@@ -14,6 +14,7 @@ const authLimiter = createActionRateLimiter('AUTH_VERIFY', getClientIp);
 
 router.post('/verify', authLimiter, async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store');
     const header = req.headers['x-telegram-init-data'];
     const headerValue = typeof header === 'string' ? header : undefined;
     const initData = headerValue ?? (typeof req.body?.initData === 'string' ? req.body.initData : undefined);
@@ -52,22 +53,8 @@ router.post('/verify', authLimiter, async (req, res) => {
 
     // Step 2: Rate Limiting is evaluated via authLimiter middleware
 
-    // Resolve or upsert user with authentic Whole-Band defaults
-    const alias = generateUniqueAlias();
-    const dbUser = await prisma.user.upsert({
-      where: { telegramId: tgUser.id },
-      update: {},
-      create: {
-        telegramId: tgUser.id,
-        alias,
-        band: 6.0,
-        subFC: 6,
-        subLR: 6,
-        subGRA: 6,
-        subP: 6,
-        plan: 'FREE',
-      },
-    });
+    const dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
+    if (!dbUser) { res.status(403).json({ code: 'registration_required', error: 'Finish registration with /start in the Telegram bot.' }); return; }
 
     setRequestContextUserId(dbUser.id);
 
@@ -110,7 +97,10 @@ router.post('/verify', authLimiter, async (req, res) => {
       return;
     }
 
-    // Step 4: Quota Validation
+    if (!dbUser.onboarded) { res.status(403).json({ code: 'registration_required', error: 'Finish registration with /start in the Telegram bot.' }); return; }
+    if (!hasAcceptedCurrentTerms(dbUser)) { res.status(403).json({ code: 'terms_required', error: 'Read and accept the current Terms of Use with /start in the Telegram bot.' }); return; }
+
+    // The account dashboard remains usable when call allowance is exhausted.
     const callsUsed = await getUserCallsUsedThisPeriod(dbUser.id, dbUser);
     const recUsed = await getUserRecordingsUsedThisPeriod(dbUser.id, dbUser);
     const activeBonusCalls = await getActiveBonusCallsCount(dbUser.id);
@@ -129,7 +119,7 @@ router.post('/verify', authLimiter, async (req, res) => {
       activeBonusCalls <= 0;
 
     const callsRemaining = Math.max(0, effectiveLimit - callsUsed) + activeBonusCalls;
-    const accessStatus = isQuotaExhausted ? 'exhausted_quota' : 'granted';
+    const accessStatus = 'granted';
 
     // Step 5: Device-in-call supervision (check for ongoing active session)
     const activeCall = await prisma.callSession.findFirst({
@@ -148,7 +138,7 @@ router.post('/verify', authLimiter, async (req, res) => {
       success: true,
       status: accessStatus,
       access: accessStatus,
-      reason: isQuotaExhausted ? 'exhausted_quota' : undefined,
+      canStartCall: !isQuotaExhausted,
       hasActiveCall,
       activeCall: activeCall ? {
         id: activeCall.id,
@@ -168,6 +158,12 @@ router.post('/verify', authLimiter, async (req, res) => {
         callsRemaining,
         totalCallsLimit: effectiveLimit,
         isBanned: false,
+        dnd: dbUser.dnd,
+        planExpiresAt: dbUser.subscriptionExpiresAt,
+        maxCallDuration: entitlement.maxCallDuration,
+        recordingsRemaining: Math.max(0, entitlement.recordingLimit - recUsed),
+        recordingsLimit: entitlement.recordingLimit,
+        recordingRetentionDays: entitlement.retentionDays,
         profile,
       },
     });

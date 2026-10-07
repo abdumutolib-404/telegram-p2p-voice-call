@@ -417,12 +417,12 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
   }
 
   return (
-    <div ref={panelRef} role="dialog" aria-label="IELTS practice questions" className="fixed inset-x-3 bottom-24 z-40 max-h-[72vh] bg-[#070B14]/95 backdrop-blur-xl border border-cyan-500/40 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fadeIn font-mono">
+    <div id="practice-questions" ref={panelRef} role="dialog" aria-label="IELTS practice questions" className="questions-drawer">
       {/* Header Bar */}
-      <div className="px-4 py-3 bg-[#090E1B] border-b border-slate-800/80 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-cyan-400">
+      <div className="px-4 py-3 bg-[#141b23] border-b border-slate-800/80 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-mint-400">
           <BookOpen className="w-4 h-4" />
-          <span className="text-xs font-bold uppercase tracking-wider text-white">IELTS Questions Simulator</span>
+          <span className="text-xs font-bold tracking-normal text-white">Practice prompts</span>
         </div>
         <button
           type="button"
@@ -435,7 +435,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
       </div>
 
       {/* Part Switcher Navigation */}
-      <div className="flex border-b border-slate-800 bg-[#050811] text-xs">
+      <div className="flex border-b border-slate-800 bg-[#0b0f14] text-xs">
         <button
           type="button"
           aria-pressed={activePart === 'PART_1'}
@@ -443,9 +443,9 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             setActivePart('PART_1');
             resetCueCardTimer();
           }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors cursor-pointer ${
+          className={`flex-1 py-2.5 text-center font-bold tracking-normal transition-colors cursor-pointer ${
             activePart === 'PART_1'
-              ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400'
+              ? 'bg-mint-500/20 text-mint-300 border-b-2 border-mint-400'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -458,9 +458,9 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             setActivePart('PART_2');
             resetCueCardTimer();
           }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors cursor-pointer ${
+          className={`flex-1 py-2.5 text-center font-bold tracking-normal transition-colors cursor-pointer ${
             activePart === 'PART_2'
-              ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400'
+              ? 'bg-mint-500/20 text-mint-300 border-b-2 border-mint-400'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -473,9 +473,9 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             setActivePart('PART_3');
             resetCueCardTimer();
           }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-wider transition-colors cursor-pointer ${
+          className={`flex-1 py-2.5 text-center font-bold tracking-normal transition-colors cursor-pointer ${
             activePart === 'PART_3'
-              ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400'
+              ? 'bg-mint-500/20 text-mint-300 border-b-2 border-mint-400'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -484,7 +484,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
       </div>
 
       {/* Horizontal Topic Filter Scroll */}
-      <div className="px-3 py-2 bg-[#060A16] border-b border-slate-800/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-[11px]">
+      <div className="px-3 py-2 bg-[#0b0f14] border-b border-slate-800/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-[11px]">
         {topics.map((t) => (
           <button
             key={t.id}
@@ -493,7 +493,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             onClick={() => setSelectedTopicId(t.id)}
             className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors cursor-pointer ${
               selectedTopicId === t.id
-                ? 'bg-cyan-400 text-slate-950 font-bold shadow-[0_0_10px_rgba(6,182,212,0.4)]'
+                ? 'bg-mint-400 text-slate-950 font-bold'
                 : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -503,11 +503,11 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
       </div>
 
       {/* Main Content Area */}
-      <div className="p-4 flex-1 overflow-y-auto min-h-[160px] flex flex-col justify-between">
+      <div className="question-content p-4 flex-1 overflow-y-auto min-h-0 flex flex-col justify-between">
         {questionNotice && <p role="status" className="text-xs text-slate-400 mb-3">{questionNotice}</p>}
         {isLoading && questions.length === 0 ? (
           <div className="flex items-center justify-center my-auto py-8 text-xs text-slate-400 gap-2">
-            <Sparkles className="w-4 h-4 animate-spin text-cyan-400" />
+            <Sparkles className="w-4 h-4 animate-spin text-mint-400" />
             <span>Loading questions…</span>
           </div>
         ) : !currentQuestion ? (
@@ -518,7 +518,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
           <div className="space-y-3 my-auto">
             {/* Question Counter & Topic Badge */}
             <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span className="font-bold text-cyan-400">
+              <span className="font-bold text-mint-400">
                 Question {currentIndex + 1} of {questions.length}
               </span>
               <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-slate-300">
@@ -527,7 +527,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             </div>
 
             {/* Prompt Text */}
-            <div className="text-sm font-semibold text-white leading-relaxed bg-[#0A0F1E] border border-slate-800/80 p-3.5 rounded-2xl shadow-inner">
+            <div className="text-sm font-semibold text-white leading-relaxed bg-[#141b23] border border-slate-800/80 p-3.5 rounded-2xl shadow-inner">
               {currentQuestion.questionText}
             </div>
 
@@ -535,8 +535,8 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             {activePart === 'PART_2' && (
               <div className="space-y-3 pt-1">
                 {parsedBullets.length > 0 && (
-                  <div className="bg-[#050811] border border-slate-800 p-3 rounded-xl text-xs space-y-1.5 text-slate-300">
-                    <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">You should say:</p>
+                  <div className="bg-[#0b0f14] border border-slate-800 p-3 rounded-xl text-xs space-y-1.5 text-slate-300">
+                    <p className="text-slate-400 font-bold tracking-normal text-[10px]">You should say:</p>
                     <ul className="list-disc list-inside space-y-1 text-slate-200 font-sans">
                       {parsedBullets.map((bullet, idx) => (
                         <li key={idx}>{bullet}</li>
@@ -546,7 +546,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
                 )}
 
                 {/* Preparation & Speaking Countdown Box */}
-                <div className="p-3 bg-gradient-to-r from-slate-900 to-[#0A0F1E] border border-cyan-500/30 rounded-2xl flex items-center justify-between gap-3">
+                <div className="p-3 bg-gradient-to-r from-slate-900 to-[#141b23] border border-mint-500/30 rounded-2xl cue-timer flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <div
                       className={`w-9 h-9 rounded-xl flex items-center justify-center ${
@@ -560,14 +560,14 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
                       <Clock className="w-4 h-4 animate-pulse" />
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400">
+                      <div className="text-[10px] font-bold text-slate-400">
                         {timerState === 'READY' && 'Exam Prep Timer'}
                         {timerState === 'PREPARING' && 'Preparation Phase (1:00)'}
                         {timerState === 'SPEAKING' && 'Candidate Speaking (2:00)'}
                         {timerState === 'COMPLETED' && 'Time Complete'}
                       </div>
                       <div
-                        className={`text-lg font-black tracking-wider ${
+                        className={`text-lg font-semibold tracking-normal ${
                           timerState === 'PREPARING'
                             ? 'text-amber-400'
                             : timerState === 'SPEAKING'
@@ -621,7 +621,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
         )}
 
         {/* Navigation Arrows */}
-        <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-800/80">
+        <div className="question-navigation flex items-center justify-between pt-3 mt-3 border-t border-slate-800/80">
           <button
             type="button"
             disabled={currentIndex === 0}
@@ -632,7 +632,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 text-xs font-bold transition-all cursor-pointer ${
               currentIndex === 0
                 ? 'opacity-40 border-slate-800 text-slate-500 cursor-not-allowed'
-                : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-cyan-500/50 hover:text-cyan-300'
+                : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-mint-500/50 hover:text-mint-300'
             }`}
           >
             <ChevronLeft className="w-3.5 h-3.5" />
@@ -653,7 +653,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 text-xs font-bold transition-all cursor-pointer ${
               currentIndex >= questions.length - 1
                 ? 'opacity-40 border-slate-800 text-slate-500 cursor-not-allowed'
-                : 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                : 'border-mint-500/50 bg-mint-500/10 text-mint-300 hover:bg-mint-500/20'
             }`}
           >
             <span>Next</span>

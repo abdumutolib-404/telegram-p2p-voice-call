@@ -5,17 +5,20 @@ import { Bot, session } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import { MyContext, SessionData } from './types';
 import { setupStartCommand } from './commands/start';
+import { setupTermsHandlers } from './handlers/terms';
 import { setupAdminCommand } from './commands/admin';
 import { setupMenuHandlers } from './handlers/menu';
 import { setupPaymentHandlers } from './handlers/payments';
 import { setupRefundHandlers } from './handlers/refund';
 import { setupCallbackHandlers } from './handlers/callbacks';
-import { setupPostCallCallbackHandlers } from './handlers/postCall';
+import { setupDashboardNavigation } from './handlers/dashboardNavigation';
 import { prisma } from '../config/database';
 import { checkRateLimit } from '../services/rateLimitMatrix';
 import { getRedis } from '../config/redis';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { hasAcceptedCurrentTerms } from '../services/terms';
+import { offerTerms } from './handlers/terms';
 
 interface MemorySessionEntry {
   data: SessionData;
@@ -187,7 +190,7 @@ export function createBot(token: string): Bot<MyContext> {
     const isAdmin = env.ADMIN_TELEGRAM_IDS.includes(String(fromId));
     const isRateLimitExempt = isAdmin;
     const isBanExempt =
-      text.startsWith('/start') ||
+      text.startsWith('/start') || text.startsWith('/terms') || text.startsWith('/refund') || text.startsWith('/paysupport') || callbackData.startsWith('terms_') ||
       text.startsWith('/appeal') ||
       text === '💬 Support' ||
       callbackData === 'submit_appeal' ||
@@ -319,13 +322,26 @@ export function createBot(token: string): Bot<MyContext> {
   });
 
   // Register commands & handlers
+  bot.use(async (ctx, next) => {
+    // Settled payments, refunds and support must not depend on renewed consent.
+    if (ctx.preCheckoutQuery || ctx.message?.successful_payment) return next();
+    const data = ctx.callbackQuery?.data || '';
+    const text = ctx.message?.text || '';
+    const buying = /^(?:select_plan|buy_plan|manual_pay):/.test(data) || /^(?:\/plans(?:\s|$)|⭐ (?:Upgrade|Subscription|Plans))/.test(text) || ctx.session.step === 'awaiting_receipt';
+    if (buying && ctx.from) {
+      const user = await prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from.id) } });
+      if (!user?.onboarded || !hasAcceptedCurrentTerms(user)) { await offerTerms(ctx); return; }
+    }
+    return next();
+  });
   setupStartCommand(bot);
+  setupTermsHandlers(bot);
   setupAdminCommand(bot);
   setupMenuHandlers(bot);
+  setupDashboardNavigation(bot);
   setupPaymentHandlers(bot);
   setupRefundHandlers(bot);
   setupCallbackHandlers(bot);
-  setupPostCallCallbackHandlers(bot);
 
   return bot;
 }

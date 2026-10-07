@@ -214,10 +214,10 @@ export function ManualPaymentsQueue() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {copyError && <p role="alert" className="inline-error">{copyError}</p>}
       <PageHeader
-        title="Manual Payments (UZS)"
-        description="Verify candidate offline card/bank transfers, inspect receipts, and manage fulfillment"
+        title="Payments"
+        description="Review UZS payment receipts, approvals and refund requests."
         actions={
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'nowrap' }}>
             {/* Segmented Tab Controls */}
             <div style={{ display: 'inline-flex', backgroundColor: 'var(--bg-surface-elevated)', borderRadius: '8px', padding: '0.25rem', border: '1px solid var(--border-card)' }}>
               <button

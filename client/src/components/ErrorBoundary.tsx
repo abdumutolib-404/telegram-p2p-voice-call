@@ -1,3 +1,4 @@
+import { Brand } from './Brand';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertOctagon, RefreshCw, Copy, Check, Terminal } from 'lucide-react';
 import { logger } from '../services/logger';
@@ -68,6 +69,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-950 text-white text-center">
+          <div className="mb-8"><Brand /></div>
           <div className="w-20 h-20 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center mb-6 shadow-lg shadow-red-500/10">
             <AlertOctagon className="w-10 h-10 text-red-500" />
           </div>
@@ -78,7 +80,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </p>
 
           <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-6 text-left overflow-hidden">
-            <p className="text-xs font-mono text-red-400 font-semibold mb-2 truncate">
+            <p className="text-xs font-sans text-red-400 font-semibold mb-2 truncate">
               {this.state.error?.name}: {this.state.error?.message}
             </p>
             {this.state.error?.stack && (
@@ -93,7 +95,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.handleCopyLogs}
               className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 border border-slate-700"
             >
-              {this.state.copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-indigo-400" />}
+              {this.state.copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-mint-400" />}
               <span>{this.state.copied ? 'Logs Copied!' : 'Copy Diagnostic Logs'}</span>
             </button>
 
@@ -101,13 +103,13 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={() => this.setState((prev) => ({ showLogs: !prev.showLogs }))}
               className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 border border-slate-700"
             >
-              <Terminal className="w-4 h-4 text-indigo-400" />
+              <Terminal className="w-4 h-4 text-mint-400" />
               <span>{this.state.showLogs ? 'Hide Logs' : 'View Network Logs'}</span>
             </button>
 
             <button
               onClick={this.handleReload}
-              className="py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 shadow-md shadow-indigo-600/30"
+              className="py-2.5 px-4 bg-mint-600 hover:bg-mint-300 text-slate-950 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 shadow-md shadow-mint-600/30"
             >
               <RefreshCw className="w-4 h-4" />
               <span>Reload App</span>
@@ -117,7 +119,7 @@ export class ErrorBoundary extends Component<Props, State> {
           {this.state.showLogs && (
             <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-4 text-left">
               <h3 className="text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
-                <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                <Terminal className="w-3.5 h-3.5 text-mint-400" />
                 <span>Captured Client Logs ({logs.length})</span>
               </h3>
               <div className="bg-slate-950 p-3 rounded-lg max-h-48 overflow-y-auto font-mono text-[10px] space-y-1.5">
@@ -127,7 +129,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   logs.map((log) => (
                     <div key={log.id} className="leading-tight">
                       <span className="text-slate-500">[{log.timestamp.split('T')[1].slice(0, 8)}]</span>{' '}
-                      <span className={log.level === 'error' ? 'text-red-400' : log.level === 'warn' ? 'text-amber-400' : 'text-indigo-300'}>
+                      <span className={log.level === 'error' ? 'text-red-400' : log.level === 'warn' ? 'text-amber-400' : 'text-mint-300'}>
                         [{log.category}]
                       </span>{' '}
                       <span className="text-slate-300">{log.message}</span>

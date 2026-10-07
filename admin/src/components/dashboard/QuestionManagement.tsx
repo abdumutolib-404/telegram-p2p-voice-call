@@ -472,7 +472,7 @@ export const QuestionManagement: React.FC = () => {
   return (
     <div className="qm-container">
       {fetchError&&<p role="alert" className="inline-error">{fetchError}<button className="btn-secondary" onClick={()=>void fetchQuestions()}>Retry</button></p>}
-      {(activeTab==='questions'||activeTab==='cueCards')&&<div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}><button className="btn-secondary" disabled={page<=1||loading} onClick={()=>setPage(page-1)}>Previous page</button><span>Page {page} of {totalPages} · {total} matching questions</span><button className="btn-secondary" disabled={page>=totalPages||loading} onClick={()=>setPage(page+1)}>Next page</button></div>}
+      {(activeTab==='questions'||activeTab==='cueCards')&&<div className="qm-pagination"><button className="btn-secondary" disabled={page<=1||loading} onClick={()=>setPage(page-1)}>Previous page</button><span>Page {page} of {totalPages} · {total} matching questions</span><button className="btn-secondary" disabled={page>=totalPages||loading} onClick={()=>setPage(page+1)}>Next page</button></div>}
       {/* 1. EXECUTIVE COMMAND HUD HEADER */}
       <div className="qm-hero">
         <div className="qm-hero-top">
@@ -482,9 +482,9 @@ export const QuestionManagement: React.FC = () => {
             </div>
             <div>
               <h1 className="qm-hero-title">
-                <span>IELTS Question Simulator Studio</span>
-                <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
-                  <span className="dot dot-pulse" style={{ backgroundColor: 'var(--success)' }} />
+                <span>IELTS questions</span>
+                <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
+                  <span className="dot" style={{ backgroundColor: 'var(--text-muted)' }} />
                   {crawlerStatus?.latestLog?.status === 'RUNNING' ? 'Latest run: running' : crawlerStatus?.latestLog ? 'Latest run: ' + crawlerStatus.latestLog.status.toLowerCase() : 'Crawler status unavailable'}
                 </span>
               </h1>
@@ -565,7 +565,7 @@ export const QuestionManagement: React.FC = () => {
           className={`qm-tab-pill ${activeTab === 'questions' ? 'active' : ''}`}
         >
           <BookOpen size={16} />
-          <span>Questions Library ({questions.length})</span>
+          <span>Questions ({questions.length})</span>
         </button>
 
         <button
@@ -575,7 +575,7 @@ export const QuestionManagement: React.FC = () => {
           className={`qm-tab-pill ${activeTab === 'cueCards' ? 'active' : ''}`}
         >
           <Sparkles size={16} />
-          <span>Cue Card Task Cards ({cueCardQuestions.length})</span>
+          <span>Cue cards ({cueCardQuestions.length})</span>
         </button>
 
         <button
@@ -585,7 +585,7 @@ export const QuestionManagement: React.FC = () => {
           className={`qm-tab-pill ${activeTab === 'topics' ? 'active' : ''}`}
         >
           <Layers size={16} />
-          <span>Topic Taxonomies ({topics.length})</span>
+          <span>Topics ({topics.length})</span>
         </button>
 
         <button
@@ -595,7 +595,7 @@ export const QuestionManagement: React.FC = () => {
           className={`qm-tab-pill ${activeTab === 'crawler' ? 'active' : ''}`}
         >
           <Cpu size={16} />
-          <span>Crawler Engine &amp; Web Sync</span>
+          <span>Crawler</span>
         </button>
 
         <button
@@ -605,7 +605,7 @@ export const QuestionManagement: React.FC = () => {
           className={`qm-tab-pill ${activeTab === 'bulkImport' ? 'active' : ''}`}
         >
           <Upload size={16} />
-          <span>Bulk Ingestion</span>
+          <span>Bulk import</span>
         </button>
       </div>
 
@@ -1033,7 +1033,7 @@ export const QuestionManagement: React.FC = () => {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem' }}>
             {cueCardQuestions.map((q) => {
               let bullets: string[] = [];
               if (q.cueCardBullets) {
@@ -1137,7 +1137,7 @@ export const QuestionManagement: React.FC = () => {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem' }}>
             {topics.map((t) => (
               <div key={t.id} className="glass-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
                 <div>
@@ -1312,7 +1312,7 @@ export const QuestionManagement: React.FC = () => {
               <span>Autonomous Crawler Architecture Pipeline</span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.85rem' }}>
               <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
                 <div style={{ color: 'var(--info)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>1. Web Fetcher</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Multi-source HTTP scraper with safe timeout &amp; bot headers</div>
@@ -1333,7 +1333,7 @@ export const QuestionManagement: React.FC = () => {
           </div>
 
           {/* Actions: Weekly Searcher + Daily Filter + Custom URL */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem' }}>
             {/* 1. Weekly Searcher Engine */}
             <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
               <div>

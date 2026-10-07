@@ -1,3 +1,5 @@
+import type { PublicPricing } from "../../server/src/contracts/pricing";
+export { isPublicPricing } from "../../server/src/contracts/pricing";
 import { renderToString } from "react-dom/server";
 import { App } from "./App";
 import { pages, faqs } from "./content";
@@ -15,8 +17,8 @@ export const routes = [
   "/privacy",
   "/terms",
 ];
-export function render(path: string, stats: PublicStats | null) {
-  return renderToString(<App initialPath={path} initialStats={stats} />);
+export function render(path: string, stats: PublicStats | null, pricing: PublicPricing | null = null) {
+  return renderToString(<App initialPath={path} initialStats={stats} initialPricing={pricing} />);
 }
 export function metadata(path: string) {
   const custom: Record<string, { title: string; description: string }> = {
@@ -31,7 +33,7 @@ export function metadata(path: string) {
         "Explore completed speaking calls, practice hours, participating learners, and post-call ratings on PairTalk, with transparent definitions and dated snapshots.",
     },
     "/pricing": {
-      title: "PairTalk Plans | Free IELTS Speaking Practice & Paid Options",
+      title: "Compare PairTalk Prices | Stars, UZS, Calls & Recordings",
       description:
         "Start IELTS speaking practice for free. Compare PairTalk plan options and learn about call allowances, recording retention, and refund eligibility.",
     },

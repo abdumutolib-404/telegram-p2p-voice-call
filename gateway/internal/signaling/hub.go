@@ -146,7 +146,7 @@ func (h *Hub) Authenticate(ctx context.Context, initData string) (*database.User
 		return nil, false
 	}
 
-	user, err := h.DB.GetUserByTelegramID(ctx, tgUser.ID)
+	user, err := h.DB.GetRegisteredUserByTelegramID(ctx, tgUser.ID, auth.TermsVersion, auth.TermsDocumentSHA256)
 	if err != nil || user == nil {
 		return nil, false
 	}

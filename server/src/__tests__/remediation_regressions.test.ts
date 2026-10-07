@@ -9,9 +9,10 @@ import { decodePaymentProof } from '../utils/paymentProof';
 import { request } from '../../../admin/src/api/request';
 import { telegramTransport } from '../bot/telegramTransport';
 import { DistributedLeaderLock } from '../services/leaderLock';
+import { currentTerms } from '../services/terms';
 
 async function purchase(overrides: Record<string, unknown> = {}) {
-  const user = await prisma.user.create({data:{telegramId:BigInt(Math.floor(Math.random()*1e10)+1e10), alias:'synthetic-'+crypto.randomUUID(),plan:'PLUS',subscriptionStatus:'ACTIVE',dailyLimit:10,maxDuration:30}});
+  const user = await prisma.user.create({data:{telegramId:BigInt(Math.floor(Math.random()*1e10)+1e10), alias:'synthetic-'+crypto.randomUUID(),plan:'PLUS',subscriptionStatus:'ACTIVE',dailyLimit:10,maxDuration:30,onboarded:true,termsAcceptedVersion:currentTerms.version,termsAcceptedAt:new Date(),termsDocumentSha256:currentTerms.sha256}});
   const tx = await prisma.starsTransaction.create({data:{userId:user.id,telegramPaymentId:crypto.randomUUID(),starsAmount:1,planTier:'PLUS',status:'PAID',...overrides}});
   return {user,tx};
 }

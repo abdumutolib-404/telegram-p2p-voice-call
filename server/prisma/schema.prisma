@@ -76,6 +76,9 @@ model User {
   isPermanentlyBanned Boolean                @default(false)
   dnd                 Boolean                @default(false)
   onboarded           Boolean                @default(false)
+  termsAcceptedVersion String?
+  termsAcceptedAt     DateTime?
+  termsDocumentSha256 String?
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -92,9 +95,22 @@ model User {
   manualPayments      ManualPaymentRequest[]
   favorites           FavoritePartner[]      @relation("UserFavorites")
   favoritedBy         FavoritePartner[]      @relation("PartnerFavorites")
+  termsAcceptances     TermsAcceptance[]
 
   @@index([subscriptionExpiresAt])
   @@index([isBanned])
+}
+
+model TermsAcceptance {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version        String
+  documentSha256 String
+  acceptedAt     DateTime @default(now())
+  source         String   @default("TELEGRAM_BOT")
+
+  @@unique([userId, version, documentSha256])
 }
 
 model CallSession {

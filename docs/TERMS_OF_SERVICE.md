@@ -28,6 +28,6 @@ Current subscription usage is not a lifetime credit ledger. Independent non-expi
 
 ## Finalization requirements
 
-Before publication, confirm the operating entity, support contact, jurisdiction/eligibility, purchase rules, privacy notices, service limitations, licensing, and any liability terms. Do not backdate acceptance or assume the proposed versioned-acceptance/PDF workflow already exists.
+Before publication, confirm the operating entity, support contact, jurisdiction/eligibility, purchase rules, privacy notices, service limitations, licensing, and any liability terms. Do not backdate acceptance. The versioned PDF and bot consent workflow are now implemented; [Bot and dashboard](BOT_AND_DASHBOARD.md) documents the current artifact and acceptance audit. This repository draft is not the PDF offered to customers.
 
 This repository draft deliberately removes unsupported guarantees and does not invent a new effective date, liability cap, erasure deadline, or compliance certification. The current technical state is documented in [Architecture](ARCHITECTURE.md) and [Operations](OPERATIONS.md).

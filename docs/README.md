@@ -12,6 +12,7 @@ Reviewed against the working tree on 2026-10-05. These files describe the reposi
 | [Signaling](WEBSOCKET_EVENTS.md) | Client events, readiness, reconnection, and accounting |
 | [State and storage](STATE_AND_STORAGE.md) | Durable models, recording ownership/history, and cleanup |
 | [Workflows](CIRCULATION_WORKFLOWS.md) | Call, payment, recording, and notification lifecycle |
+| [Shared pricing](PLATFORM_PRICING.md) | Admin publication, live comparison, client choices and Telegram quotes |
 | [Operations](OPERATIONS.md) | Recovery, release requirements, and unresolved decisions |
 | [Verification](VERIFICATION.md) | Reproducible checks and dated evidence |
 | [Cross-device audio](WEBRTC_CROSS_DEVICE_AUDIO_GUIDE.md) | Audio implementation and physical-device test checklist |

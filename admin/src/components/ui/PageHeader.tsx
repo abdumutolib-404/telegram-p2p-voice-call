@@ -21,7 +21,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        flexWrap: 'wrap',
+        flexWrap: 'nowrap',
         gap: '1rem',
         marginBottom: '0.25rem',
         ...style,
@@ -31,7 +31,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <h1
             style={{
-              fontSize: '1.75rem',
+              fontSize: '1.5rem',
               fontWeight: 650,
               margin: 0,
               color: 'var(--text-primary)',

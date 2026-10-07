@@ -17,8 +17,12 @@ import { stopRecordingStatus } from './services/recordingStatus';
 import { primeAllCrawlerCaches } from './services/crawler/verifyCrawler';
 import authRoutes from './routes/auth';
 import callRoutes from './routes/calls';
+import dashboardRoutes, { setDashboardBot } from './routes/dashboard';
+import { initDataLockdownMiddleware } from './middleware/initDataLockdown';
+import { requireRegisteredMember } from './middleware/registeredMember';
 import ieltsRoutes from './routes/ielts';
 import publicStatsRoutes from './routes/publicStats';
+import publicPricingRoutes, { setPublicBotUsername } from './routes/publicPricing';
 import adminRoutes, { setAdminBot } from './routes/admin';
 import adminTelemetryRouter from './routes/adminTelemetry';
 import { adminAuthMiddleware } from './middleware/adminAuth';
@@ -52,7 +56,8 @@ import { closeExternalConnections } from './utils/safeFetch';
 };
 
 const app = express();
-app.set('trust proxy', process.env.TRUSTED_PROXY_CIDRS?.split(',').map(value => value.trim()).filter(Boolean) || 'loopback');
+const trustedProxyCidrs = process.env.TRUSTED_PROXY_CIDRS?.split(',').map(value => value.trim()).filter(Boolean) || [];
+app.set('trust proxy', trustedProxyCidrs.length ? trustedProxyCidrs : 'loopback');
 const server = http.createServer(app);
 
 const extractOrigin = (urlStr: string | undefined): string | null => {
@@ -311,9 +316,11 @@ app.use((req, res, next) => {
 });
 
 app.use('/api/auth', authRoutes);
-app.use('/api/calls', callRoutes);
+app.use('/api/calls', initDataLockdownMiddleware, requireRegisteredMember, callRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ielts', ieltsRoutes);
 app.use('/api/public', publicStatsRoutes);
+app.use('/api/public', publicPricingRoutes);
 app.use('/api/admin/telemetry', adminAuthMiddleware, adminTelemetryRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/livekit', livekitWebhookRouter);
@@ -474,6 +481,17 @@ function startBotWithRetry(botInstance: Bot<MyContext>): () => Promise<void> {
     onElected: async () => {
       const pollingEpoch = ++epoch;
       if (!botInstance.isInited()) await botInstance.init();
+      setPublicBotUsername(botInstance.botInfo.username);
+      if (stopped || pollingEpoch !== epoch || !botLeaderLock.isCurrentLeader()) return;
+      await botInstance.api.setMyCommands([
+        { command: 'start', description: 'Register or open your dashboard' },
+        { command: 'terms', description: 'Read the Terms of Use PDF' },
+        { command: 'plans', description: 'Payments and allowances' },
+        { command: 'refund', description: 'Request a payment refund' },
+        { command: 'paysupport', description: 'Billing help' },
+        { command: 'appeal', description: 'Request review of a permanent ban' },
+      ]);
+      await botInstance.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Open dashboard', web_app: { url: env.MINI_APP_URL } } });
       if (stopped || pollingEpoch !== epoch || !botLeaderLock.isCurrentLeader()) return;
       logger.info('Starting Telegram polling owner', {service:'bot',event:'bot_started'});
       const runner = startTelegramPolling(botInstance);
@@ -496,6 +514,7 @@ if (env.NODE_ENV !== 'test' && process.env.DISABLE_BOT_POLLING !== 'true' && env
   try {
     bot = createBot(env.BOT_TOKEN);
     setAdminBot(bot);
+    setDashboardBot(bot);
   } catch (error: unknown) {
     logger.error('Telegram bot instance creation failed', {
       service: 'bot',
@@ -518,6 +537,7 @@ async function bootstrap(): Promise<void> {
     await loadPlanConfiguration();
     stopPlanRefresh = startPlanConfigurationRefresh();
     setAdminBot(bot);
+    setDashboardBot(bot);
 
     // Start bot polling under distributed leader election only after Redis and DB are ready
     if (bot) {

@@ -1,6 +1,67 @@
 # Environment and deployment
 
-Reviewed 2026-10-05 against repository configuration. Sample values are placeholders; existing local `.env` files must not be overwritten during maintenance.
+Reviewed 2026-10-07 against repository configuration. Production targets are **Cloudflare Pages for the frontends, Cloudflare R2 for recordings, and Fly.io OR Railway for the combined Node/Go backend**. PostgreSQL, Redis and LiveKit remain backend dependencies. No provider credentials are bundled in the repository.
+
+## Which environment file to use
+
+- **`server/.env`** is the local backend configuration. Its existing values were preserved when reorganized. New blank fields still need your provider settings. Before copying configuration into your backend host's Variables/Secrets, select `NODE_ENV=production` and replace any local URLs with the actual published addresses. Do not commit or upload this file into Pages.
+- [server/.env.example](../server/.env.example) is the production backend reference. Required provider fields are blank, rather than invented credentials or fake domains.
+- Root [.env.example](../.env.example) is only for local Docker Compose. Its database password is a local choice, not your production database credential.
+- [admin/.env.example](../admin/.env.example), [client/.env.example](../client/.env.example) and [landing/.env.example](../landing/.env.example) contain public frontend build settings.
+
+## Copy provider values without changing them
+
+The application controls the variable names; the provider controls the values. For example, LiveKit may label its export `LIVEKIT_URL`; put that exact value into PairTalk's `LIVEKIT_HOST`.
+
+| PairTalk variable | Value to copy |
+| --- | --- |
+| `BOT_TOKEN` | BotFather's HTTP API token |
+| `DATABASE_URL` | PostgreSQL provider's connection URI reachable from the backend |
+| `REDIS_URL` | Redis provider's connection URI, preserving `redis://` or `rediss://` |
+| `LIVEKIT_HOST` | LiveKit Project URL beginning with `wss://` |
+| `LIVEKIT_API_KEY` | LiveKit API Key |
+| `LIVEKIT_API_SECRET` | LiveKit API Secret |
+| `S3_KEY` | Cloudflare R2 S3 **Access Key ID** |
+| `S3_SECRET` | Cloudflare R2 S3 **Secret Access Key** |
+| `S3_BUCKET` | Exact private R2 bucket name |
+| `S3_ENDPOINT` | S3 API endpoint shown for that bucket/account, including jurisdiction if present |
+| `MINI_APP_URL` | Published client Pages HTTPS URL |
+| `ADMIN_PANEL_URL` | Published admin Pages HTTPS URL |
+
+LiveKit's Project URL is a WebSocket URL; do not replace `wss://` with `https://`. See [LiveKit connection documentation](https://docs.livekit.io/intro/basics/connect/). R2 uses S3 credentials, not a general Cloudflare API token; see [R2 authentication](https://developers.cloudflare.com/r2/api/tokens/).
+
+For R2, set **`S3_REGION=auto`** and **`S3_FORCE_PATH_STYLE=true`**. The ordinary endpoint is `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`; copy your displayed endpoint rather than inventing an account ID. These S3 variable names are already consumed by both backend services. See [R2 S3 API configuration](https://developers.cloudflare.com/r2/api/s3/api/). Keep the bucket private. `RECORDINGS_DIR` is temporary local working space, not durable cloud storage.
+
+`MASTER_PASSWORD` and `JWT_SECRET` are secrets you choose for PairTalk; a cloud provider does not supply them. `ADMIN_TELEGRAM_IDS` contains your administrators' numeric Telegram user IDs. `ALLOWED_ORIGINS` contains the landing, client and admin browser origins, without paths. Include custom Pages preview origins explicitly when they must read public prices from a production backend. Keep optional payment/curation fields blank until those features are configured.
+
+The shared PostgreSQL URI must work with both Prisma and Go. Select a provider-issued PostgreSQL connection URI without Prisma-only query options such as `schema`, `pgbouncer`, `connection_limit` or `pool_timeout`; do not use an HTTP database API URL. Localhost database/Redis URLs only work when those services actually run beside the backend.
+
+## Production: Cloudflare Pages
+
+Create three Pages projects from the same repository. Each uses its own root directory, build command **`npm run build`**, and output directory **`dist`**. Set the Node build version to 24 to match this repository. See [Pages build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/).
+
+| Project root | Public build variables |
+| --- | --- |
+| `landing` | `VITE_BOT_USERNAME`, `VITE_PUBLIC_STATS_URL` pointing to `/api/public/stats`, `VITE_PUBLIC_PRICING_URL` pointing to `/api/public/plans`; optional `PUBLIC_STATS_BUILD_URL` and `PUBLIC_PRICING_BUILD_URL` for dated snapshots |
+| `client` | `VITE_SERVER_URL` = backend HTTPS origin; `VITE_PUBLIC_SITE_URL` = landing origin; `VITE_BASE_PATH=/` |
+| `admin` | `VITE_API_URL` = backend HTTPS origin; `VITE_PUBLIC_SITE_URL` = landing origin; `VITE_BASE_PATH=/` |
+
+Vite variables appear in browser bundles. Backend tokens, database credentials, LiveKit secrets and R2 keys belong exclusively in Fly/Railway secrets. Once Pages assigns the frontend domains, set the backend's `MINI_APP_URL`, `ADMIN_PANEL_URL`, policy URLs and `ALLOWED_ORIGINS` to their actual published addresses, then rebuild frontends whenever their public API origin changes. The admin layout is intentionally for laptops/desktops, with a minimum workspace width of 1180 CSS pixels.
+
+The three interfaces share the same published pricing catalog. Keep the repository checkout available to frontend builds: `platform/` and `server/src/contracts/` contain their shared reader and public pricing types. See [shared pricing](PLATFORM_PRICING.md) for freshness, comparison and build snapshots.
+
+## Production: choose Fly.io OR Railway
+
+Both hosts use the existing root [Dockerfile](../Dockerfile) to package Go and Node together. Keep the repository root as the build context. The entrypoint runs Node privately on port 3000 and exposes Go on `PORT`; set **`HOST=127.0.0.1`** for Node. Use one backend replica initially: Telegram polling and the background crawler run inside this container. Additional replicas require a deliberate worker arrangement.
+
+| Host | Backend settings |
+| --- | --- |
+| Fly.io | Use your actual production app name, `PORT=3001`, and `[http_service] internal_port=3001`; enable HTTPS. Use the root Dockerfile and supply backend settings through Fly secrets. The existing staging app name is not your production app name. |
+| Railway | Build with the root Dockerfile. Let the container entrypoint start both services; leave a custom start command unset. Use Railway's supplied `PORT` and direct the public service domain to that port. Put backend settings in Variables. |
+
+Configure the ingress readiness check at **`/healthz`**. Fly's port must match `internal_port`; Railway uses `PORT` for health probes. See [Fly app configuration](https://docs.fly.io/reference/configuration/) and [Railway health checks](https://docs.railway.com/deployments/healthchecks). Supply real proxy peer networks through `TRUSTED_PROXY_CIDRS` and verify forwarded HTTPS/client-IP handling. The loopback default is not a complete cloud proxy configuration.
+
+Migrate before starting the new revision, using the built container in release mode: `RELEASE_COMMAND=1` with `npm run db:deploy` from `/app/server`. On Fly this can be an explicit release command; on Railway it can be a pre-deploy command with release mode enabled only for that command. Do not set `RELEASE_COMMAND=1` globally on the running web service. Normal container startup does not run migrations. The rollout precautions below still apply.
 
 ## Requirements
 
@@ -8,7 +69,7 @@ Reviewed 2026-10-05 against repository configuration. Sample values are placehol
 - Go at the version declared in [gateway/go.mod](../gateway/go.mod).
 - Docker Compose for local PostgreSQL 16 and Redis 7.
 - A separate LiveKit project for actual audio/recording tests.
-- Private S3-compatible storage for durable cloud recordings.
+- Private Cloudflare R2 storage for durable production recordings.
 
 There is no root npm package. Install `server`, `client`, `admin`, and `landing` separately.
 
@@ -27,7 +88,7 @@ Node loads `.env` from its working directory. Go loads its own `.env` and then `
 | `PAYMENTS_BOT_TOKEN` | Optional payment bot |
 | `MASTER_PASSWORD` | Node admin password; `ADMIN_MASTER_PASSWORD` is accepted as a fallback alias |
 | `ADMIN_TELEGRAM_IDS`, `JWT_SECRET` | Authorized admins and signing secret |
-| `LIVEKIT_HOST` | LiveKit URL; `LIVEKIT_URL` is a fallback |
+| `LIVEKIT_HOST` | LiveKit Project WebSocket URL (`wss://`); `LIVEKIT_URL` is a fallback |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Credentials for server operations and webhook verification |
 | `MINI_APP_URL`, `ADMIN_PANEL_URL` | Complete public app/admin URLs |
 | `ALLOWED_ORIGINS` | Allowed browser origins |
@@ -44,7 +105,7 @@ Full parsing and validation live in [Node env](../server/src/config/env.ts) and 
 
 ## Local persistence and application setup
 
-1. Create root `.env` from [.env.example](../.env.example) if it does not exist. Set `POSTGRES_PASSWORD` for Compose, `ADMIN_MASTER_PASSWORD` for its app service, and the other required interpolation values. The service names are **db** and **redis**.
+1. Create root `.env` from [.env.example](../.env.example) if it does not exist. Set `POSTGRES_PASSWORD`, `ADMIN_MASTER_PASSWORD`, and the other required interpolation values. Compose validates the full configuration even when selecting only the database/cache services. The service names are **db** and **redis**.
 2. Start only local persistence:
 
 ```text

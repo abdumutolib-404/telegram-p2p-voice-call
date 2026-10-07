@@ -7,7 +7,7 @@ const bot = (import.meta.env.VITE_BOT_USERNAME || "PairTalkBot").replace(
   /^@/,
   "",
 );
-export const practiceUrl = `https://t.me/${bot}?startapp=1`;
+export const practiceUrl = `https://t.me/${bot}?start=register`;
 export const supportUrl = "https://t.me/PairTalkSupport";
 export function Brand() {
   return (
@@ -44,7 +44,7 @@ export function SiteLayout({
     ["/how-it-works", "How it works"],
     ["/ielts-speaking", "Speaking guide"],
     ["/stats", "Our community"],
-    ["/pricing", "Pricing"],
+    ["/pricing", "Compare prices"],
   ];
   return (
     <>

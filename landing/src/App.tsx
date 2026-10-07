@@ -1,3 +1,4 @@
+import type { PublicPricing } from "../../server/src/contracts/pricing";
 import { useEffect } from "react";
 import { SiteLayout } from "./components/SiteLayout";
 import { LandingPage } from "./components/LandingPage";
@@ -11,9 +12,11 @@ import type { PublicStats } from "./lib/publicStats";
 export function App({
   initialPath,
   initialStats,
+  initialPricing,
 }: {
   initialPath?: string;
   initialStats?: PublicStats | null;
+  initialPricing?: PublicPricing | null;
 }) {
   const path =
     (
@@ -50,7 +53,7 @@ export function App({
         ) : path === "/stats" ? (
           <StatsPage />
         ) : path === "/pricing" ? (
-          <PricingPage />
+          <PricingPage initialPricing={initialPricing} />
         ) : pages[path] ? (
           <GuidePage page={pages[path]} />
         ) : (

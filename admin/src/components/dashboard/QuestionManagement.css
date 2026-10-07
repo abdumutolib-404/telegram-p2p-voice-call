@@ -14,31 +14,40 @@
   color: var(--text-primary);
 }
 
+.qm-pagination {
+  display: flex;
+  order: 1;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* 1. Hero Command HUD */
 .qm-hero {
   position: relative;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(11, 16, 32, 0.98) 100%);
-  border: 1px solid rgba(124, 92, 252, 0.25);
-  border-radius: 18px;
+  background: var(--bg-surface);
+  border: 1px solid rgba(91, 212, 182, 0.25);
+  border-radius: 8px;
   padding: 1.5rem 1.75rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: none;
   overflow: hidden;
 }
 
 .qm-hero::before {
-  content: '';
+  content: none;
   position: absolute;
   top: -80px;
   right: -80px;
   width: 240px;
   height: 240px;
-  background: radial-gradient(circle, rgba(124, 92, 252, 0.15) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(91, 212, 182, 0.15) 0%, transparent 70%);
   pointer-events: none;
 }
 
 .qm-hero-top {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 1.25rem;
@@ -54,14 +63,14 @@
 .qm-hero-icon {
   width: 52px;
   height: 52px;
-  border-radius: 14px;
-  background: rgba(124, 92, 252, 0.15);
-  border: 1px solid rgba(124, 92, 252, 0.35);
+  border-radius: 8px;
+  background: rgba(91, 212, 182, 0.15);
+  border: 1px solid rgba(91, 212, 182, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9B82FD;
-  box-shadow: 0 0 20px rgba(124, 92, 252, 0.2);
+  color: var(--primary-light);
+  box-shadow: none;
   flex-shrink: 0;
 }
 
@@ -73,7 +82,7 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .qm-hero-subtitle {
@@ -85,12 +94,12 @@
 /* Hero Stats Grid */
 .qm-hero-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.85rem;
 }
 
 .qm-stat-box {
-  background: rgba(11, 18, 32, 0.8);
+  background: var(--bg-input);
   border: 1px solid var(--border-card);
   border-radius: 12px;
   padding: 0.85rem 1rem;
@@ -124,7 +133,7 @@
 /* 2. Segmented Pill Tab Bar */
 .qm-tabs-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
   background: var(--bg-surface);
@@ -155,37 +164,38 @@
 }
 
 .qm-tab-pill.active {
-  background: linear-gradient(135deg, #7C5CFC 0%, #4F8CFF 100%);
-  color: #FFFFFF;
+  background: var(--primary-bg);
+  color: var(--primary-light);
   font-weight: 700;
   border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 12px rgba(124, 92, 252, 0.35);
+  box-shadow: none;
 }
 
 /* 3. Filter & Control Bar */
 .qm-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 0.85rem 1rem;
 }
 
 .qm-controls-left {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.65rem;
   flex: 1;
+  min-width: 0;
 }
 
 .qm-search-box {
   position: relative;
-  min-width: 240px;
+  min-width: 180px;
   flex: 1;
 }
 
@@ -213,7 +223,7 @@
 
 .qm-search-input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(124, 92, 252, 0.25);
+  box-shadow: 0 0 0 2px rgba(91, 212, 182, 0.25);
 }
 
 .qm-pill-group {
@@ -270,14 +280,14 @@
 /* 4. Question Cards Grid */
 .qm-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.15rem;
 }
 
 .qm-qcard {
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
@@ -291,7 +301,7 @@
   border-color: var(--border-strong);
   background: var(--bg-surface-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  transform: translateY(-2px);
+  transform: none;
 }
 
 .qm-qcard.part-1 {

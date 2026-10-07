@@ -7,19 +7,11 @@ import { RadarScreen } from './components/RadarScreen';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { PrivacyScreen } from './components/PrivacyScreen';
 import { GuidelinesScreen } from './components/GuidelinesScreen';
-import { LandingPage } from './components/LandingPage';
+import { Dashboard } from './components/Dashboard';
+import { redirectToLanding } from './services/dashboard';
 import { logger } from './services/logger';
-import {
-  Loader2,
-  PhoneOff,
-  RefreshCw,
-  AlertTriangle,
-  Radio,
-  ShieldCheck,
-  BookOpen,
-  Shield,
-  PhoneCall,
-} from 'lucide-react';
+import { ReadyScreen } from './components/ReadyScreen';
+import { SessionStatusScreen } from './components/SessionStatusScreen';
 
 type ActiveView = 'main' | 'privacy' | 'guidelines';
 
@@ -172,6 +164,7 @@ export const App: React.FC = () => {
 
     const getRawInitData = (): string => {
       const tg = window.Telegram?.WebApp;
+      if (!tg || tg.platform === 'unknown') return '';
       if (tg?.initData && tg.initData.trim() !== '') {
         return tg.initData;
       }
@@ -189,9 +182,6 @@ export const App: React.FC = () => {
 
       const searchMatch = window.location.search.match(/[?&]tgWebAppData=([^&]+)/);
       if (searchMatch) return safeDecode(searchMatch[1]);
-
-      const initDataMatch = window.location.search.match(/[?&]initData=([^&]+)/);
-      if (initDataMatch) return safeDecode(initDataMatch[1]);
 
       return '';
     };
@@ -212,7 +202,7 @@ export const App: React.FC = () => {
     if (!rawInitData || rawInitData.trim() === '') {
       logger.warn('TELEGRAM', 'TELEGRAM_INIT_DATA_MISSING');
       const webApp = window.Telegram?.WebApp;
-      const isTelegramWebview = Boolean(webApp && webApp.platform !== 'unknown') || /Telegram/i.test(navigator.userAgent);
+      const isTelegramWebview = Boolean(webApp && webApp.platform !== 'unknown');
       const reason: LockdownReason = isTelegramWebview ? 'telegram_no_initdata' : 'browser_direct';
       setLockdownReason(reason);
       setErrorMessage(
@@ -222,6 +212,7 @@ export const App: React.FC = () => {
       );
       logger.warn('STATE', `APP_LOCKDOWN: ${reason}`);
       setAppState('lockdown');
+      if (!isTelegramWebview) redirectToLanding();
       return;
     }
 
@@ -281,10 +272,16 @@ export const App: React.FC = () => {
           logger.warn('AUTH', 'QUOTA_EXHAUSTED: Monthly practice calls depleted');
           setLockdownReason('exhausted_quota');
           setErrorMessage(errData.message || 'You have exhausted your monthly call limit.');
+        } else if (errorCode === 'REGISTRATION_REQUIRED' || errorCode === 'TERMS_REQUIRED') {
+          setLockdownReason(errorCode === 'TERMS_REQUIRED' ? 'terms_required' : 'registration_required');
+          setErrorMessage(errData.error || 'Complete registration in the Telegram bot.');
         } else if (res.status === 403 || errorCode === 'AUTH_REJECTED') {
           logger.error('AUTH', 'AUTH_REJECTED: Server rejected initData signature');
           setLockdownReason('auth_rejected');
           setErrorMessage(errData.error || errData.message || 'Authentication failed or session expired.');
+          setInitData('');
+          socketService.disconnect();
+          redirectToLanding();
         } else {
           logger.error('AUTH', `AUTH_FAILED: Server returned HTTP ${res.status}`);
           setLockdownReason('server_unavailable');
@@ -301,13 +298,6 @@ export const App: React.FC = () => {
         logger.info('AUTH', 'AUTH_SUCCESS: Profile verified');
 
         // Check if user has depleted calls quota
-        const callsRem = data.user.callsRemaining ?? 3;
-        if (callsRem <= 0 && data.user.plan === 'FREE') {
-          setLockdownReason('exhausted_quota');
-          setErrorMessage('You have exhausted your free monthly practice quota. Upgrade to PLUS, PRO, or BOSS to continue.');
-          setAppState('lockdown');
-          return;
-        }
 
         // Preserve authentic IELTS half-band scores (Math.round(band * 2) / 2)
         const toHalfBand = (score: number) => Math.max(5, Math.min(9, Math.round(score * 2) / 2));
@@ -325,12 +315,12 @@ export const App: React.FC = () => {
           strongSkill: data.user.strongSkill || 'FC',
           plan: data.user.plan || 'FREE',
           planExpiresAt: data.user.planExpiresAt || null,
-          callsRemaining: data.user.callsRemaining ?? 3,
-          totalCallsLimit: data.user.totalCallsLimit ?? (data.user.plan === 'BOSS' ? 50 : data.user.plan === 'PRO' ? 25 : data.user.plan === 'PLUS' ? 10 : 3),
-          maxCallDuration: data.user.maxCallDuration ?? (data.user.plan === 'BOSS' ? 90 : data.user.plan === 'PRO' ? 60 : data.user.plan === 'PLUS' ? 30 : 15),
-          recordingsRemaining: data.user.recordingsRemaining ?? 1,
-          recordingsLimit: data.user.recordingsLimit ?? (data.user.plan === 'BOSS' ? 15 : data.user.plan === 'PRO' ? 7 : data.user.plan === 'PLUS' ? 3 : 1),
-          recordingRetentionDays: data.user.recordingRetentionDays ?? (data.user.plan === 'BOSS' ? 90 : data.user.plan === 'PRO' ? 30 : data.user.plan === 'PLUS' ? 7 : 1),
+          callsRemaining: data.user.callsRemaining ?? 0,
+          totalCallsLimit: data.user.totalCallsLimit,
+          maxCallDuration: data.user.maxCallDuration,
+          recordingsRemaining: data.user.recordingsRemaining,
+          recordingsLimit: data.user.recordingsLimit,
+          recordingRetentionDays: data.user.recordingRetentionDays,
           dnd: data.user.dnd ?? false,
         });
 
@@ -568,7 +558,7 @@ export const App: React.FC = () => {
   // VIEW ROUTING DISPATCHER (Clean JSX returns AFTER all hooks executed)
   // =========================================================================
 
-  if (activeView === 'privacy') {
+  if (activeView === 'privacy' && appState === 'ready') {
     return (
       <PrivacyScreen
         onBack={() => {
@@ -579,7 +569,7 @@ export const App: React.FC = () => {
     );
   }
 
-  if (activeView === 'guidelines') {
+  if (activeView === 'guidelines' && appState === 'ready') {
     return (
       <GuidelinesScreen
         onBack={() => {
@@ -590,28 +580,12 @@ export const App: React.FC = () => {
     );
   }
 
-  // 1. Idle Booting Screen
-  if (appState === 'idle') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#05070E] text-white p-6 font-sans">
-        <div className="w-16 h-16 rounded-3xl bg-[#090D18] border border-slate-800 flex items-center justify-center mb-4 shadow-2xl">
-          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin motion-reduce:animate-none" />
-        </div>
-        <div className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400">
-          INITIALIZING GATEWAY...
-        </div>
-      </div>
-    );
-  }
+  if (appState === 'idle') return <SessionStatusScreen state="loading" />;
 
   // 2. Deterministic Access-Control Lockdown Screen / Public Landing Page
   if (appState === 'lockdown') {
     if (lockdownReason === 'browser_direct') {
-      if (typeof window !== 'undefined' && (window.location.hostname === 'app.pairtalk.online' || window.location.hostname.startsWith('app.'))) {
-        window.location.replace('https://pairtalk.online');
-        return null;
-      }
-      return <LandingPage />;
+      return null;
     }
 
     return (
@@ -625,153 +599,26 @@ export const App: React.FC = () => {
     );
   }
 
-  // 3. Ready Screen (Clean Cyberpunk Matchmaking Launcher)
   if (appState === 'ready') {
-    if (pendingDirectCall) {
-      const partnerAlias = pendingDirectCall.partnerAlias || 'Partner';
-      return (
-        <div className="flex flex-col justify-between min-h-screen p-5 md:p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-emerald-500">
-          {/* Top Minimal Bar */}
-          <div className="w-full max-w-md mx-auto flex items-center justify-between pt-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-md shadow-emerald-500/10">
-                <PhoneCall className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400">DIRECT CALL IN PROGRESS</div>
-                <div className="text-xs font-mono font-bold text-white tracking-tight">{partnerAlias}</div>
-              </div>
-            </div>
-
-            {pendingDirectCall.partnerBand !== undefined && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300">
-                <span className="text-[10px] text-slate-500 uppercase">BAND</span>
-                <span className="font-bold text-emerald-400">{(pendingDirectCall.partnerBand).toFixed(1)}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Center Interstitial Card */}
-          <div className="w-full max-w-md mx-auto my-auto py-6 text-center">
-            <div className="relative w-24 h-24 mx-auto mb-5 rounded-3xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-cyan-600 p-0.5 shadow-2xl shadow-emerald-500/20 flex items-center justify-center">
-              <div className="w-full h-full bg-[#090D18] rounded-3xl flex items-center justify-center border border-emerald-500/30">
-                <PhoneCall className="w-10 h-10 text-emerald-400 animate-pulse motion-reduce:animate-none" />
-              </div>
-            </div>
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase border border-emerald-500/40 text-emerald-400 bg-emerald-950/40 mb-3">
-              <ShieldCheck className="w-3 h-3" />
-              <span>DIRECT VOICE SESSION</span>
-            </div>
-
-            <h1 className="text-2xl font-mono font-black tracking-tight text-white uppercase mb-2">
-              ACTIVE CALL WAITING
-            </h1>
-
-            <p className="text-xs text-slate-400 max-w-xs mx-auto mb-8 leading-relaxed font-mono">
-              A voice call session with <span className="text-emerald-400 font-bold">{partnerAlias}</span> is active. Tap below to activate your audio and join immediately.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleJoinDirectCall}
-              className="w-full py-4 px-8 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 rounded-2xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-transform active:scale-95 shadow-xl shadow-emerald-500/25 cursor-pointer"
-            >
-              <PhoneCall className="w-5 h-5" />
-              <span>📞 Join Voice Call with {partnerAlias}</span>
-            </button>
-          </div>
-
-          {/* Bottom Bar */}
-          <div className="w-full max-w-md mx-auto pt-4 border-t border-slate-900 flex items-center justify-between text-[11px] font-mono text-slate-500">
-            <span>PAIRIAL VOICE CONNECT</span>
-            <button
-              type="button"
-              onClick={() => setPendingDirectCall(null)}
-              className="hover:text-slate-300 transition-colors cursor-pointer"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    const alias = userData.alias || (userData.telegramId ? `P2P-${String(userData.telegramId).slice(-8).toUpperCase()}` : 'P2P-CANDIDATE');
     return (
-      <div className="flex flex-col justify-between min-h-screen p-5 md:p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-cyan-500">
-        {/* Top Minimal Bar */}
-        <div className="w-full max-w-md mx-auto flex items-center justify-between pt-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-500/10">
-              <Radio className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-[9px] font-mono font-bold uppercase tracking-wider text-cyan-400">PAIRIAL P2P</div>
-              <div className="text-xs font-mono font-bold text-white tracking-tight">{alias}</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300">
-            <span className="text-[10px] text-slate-500 uppercase">BAND</span>
-            <span className="font-bold text-cyan-400">{(userData.band || 7).toFixed(1)}</span>
-          </div>
-        </div>
-
-        {/* Center Hero Card */}
-        <div className="w-full max-w-md mx-auto my-auto py-6 text-center">
-          <div className="relative w-24 h-24 mx-auto mb-5 rounded-3xl bg-gradient-to-tr from-cyan-600 via-indigo-600 to-purple-600 p-0.5 shadow-2xl shadow-cyan-500/20 flex items-center justify-center">
-            <div className="w-full h-full bg-[#090D18] rounded-3xl flex items-center justify-center border border-cyan-500/30">
-              <PhoneCall className="w-10 h-10 text-cyan-400" />
-            </div>
-          </div>
-
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase border border-cyan-500/40 text-cyan-400 bg-cyan-950/40 mb-3">
-            <ShieldCheck className="w-3 h-3" />
-            <span>IELTS SPEAKING RADAR</span>
-          </div>
-
-          <h1 className="text-2xl font-mono font-black tracking-tight text-white uppercase mb-2">
-            READY TO PRACTICE?
-          </h1>
-
-          <p className="text-xs text-slate-400 max-w-xs mx-auto mb-8 leading-relaxed font-mono">
-            Autonomous matchmaking pairs you with a fellow candidate at your target band for focused IELTS Speaking practice.
-          </p>
-
-          <button
-            type="button"
-            onClick={handleStartSearching}
-            className="w-full py-4 px-8 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 text-slate-950 rounded-2xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-transform active:scale-95 shadow-xl shadow-cyan-500/25 cursor-pointer"
-          >
-            <Radio className="w-5 h-5 animate-pulse motion-reduce:animate-none" />
-            <span>START SPEAKING PRACTICE</span>
-          </button>
-        </div>
-
-        {/* Bottom Policy Links */}
-        <div className="w-full max-w-md mx-auto pt-4 border-t border-slate-900 flex items-center justify-between text-[11px] font-mono text-slate-500">
-          <button
-            type="button"
-            onClick={() => setActiveView('guidelines')}
-            className="hover:text-cyan-400 flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Guidelines</span>
-          </button>
-
-          <span>PAIRIAL V2.0</span>
-
-          <button
-            type="button"
-            onClick={() => setActiveView('privacy')}
-            className="hover:text-cyan-400 flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>Privacy & Refunds</span>
-          </button>
-        </div>
-      </div>
+      <Dashboard initData={initData} userData={userData} onProfileUpdated={setUserData} onAccessLost={initAuth} onOpenActiveCall={initAuth} renderPractice={navigation => <ReadyScreen
+        navigation={navigation}
+        userData={userData}
+        onStart={
+          pendingDirectCall ? handleJoinDirectCall : handleStartSearching
+        }
+        onGuidelines={() => setActiveView('guidelines')}
+        onPrivacy={() => setActiveView('privacy')}
+        directPartner={
+          pendingDirectCall
+            ? {
+                alias: pendingDirectCall.partnerAlias || 'Partner',
+                band: pendingDirectCall.partnerBand,
+              }
+            : undefined
+        }
+        onDismissDirect={() => setPendingDirectCall(null)}
+      />} />
     );
   }
 
@@ -786,18 +633,8 @@ export const App: React.FC = () => {
     );
   }
 
-  // 5. Connecting Call Screen
-  if (appState === 'connecting') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#05070E] text-white p-6 font-sans">
-        <div className="w-16 h-16 rounded-3xl bg-[#090D18] border border-cyan-500/40 flex items-center justify-center mb-4 shadow-xl shadow-cyan-500/20">
-          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin motion-reduce:animate-none" />
-        </div>
-        <h2 className="text-lg font-mono font-bold text-white mb-1 uppercase">PARTNER MATCHED</h2>
-        <p className="text-xs font-mono text-slate-400">Establishing encrypted SFU voice channel...</p>
-      </div>
-    );
-  }
+  if (appState === 'connecting')
+    return <SessionStatusScreen state="connecting" />;
 
   // 6. Active Voice Call Screen
   if (appState === 'in_call' && matchData) {
@@ -823,50 +660,20 @@ export const App: React.FC = () => {
     );
   }
 
-  // 7. Ended / Cancelled Screen
   const isCancelled = !errorMessage && !matchData;
-
   return (
-    <div className="flex flex-col justify-between min-h-screen p-6 bg-[#05070E] text-slate-100 font-sans selection:bg-cyan-500">
-      <div className="w-full max-w-sm mx-auto my-auto flex flex-col items-center text-center">
-        <div className="w-20 h-20 rounded-3xl bg-[#090D18] border border-slate-800 flex items-center justify-center mb-5 shadow-2xl">
-          {errorMessage ? (
-            <AlertTriangle className="w-10 h-10 text-amber-400" />
-          ) : (
-            <PhoneOff className="w-10 h-10 text-slate-400" />
-          )}
-        </div>
-
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase border border-slate-800 text-slate-400 bg-slate-950 mb-3">
-          <span>{errorMessage ? 'SESSION ALERT' : isCancelled ? 'SEARCH CANCELLED' : 'SESSION COMPLETE'}</span>
-        </div>
-
-        <h1 className="text-xl font-mono font-black tracking-tight text-white uppercase mb-2">
-          {errorMessage ? 'CONNECTION ISSUE' : isCancelled ? 'SEARCH CANCELLED' : 'CALL CONCLUDED'}
-        </h1>
-
-        <p className="text-xs text-slate-400 max-w-xs mb-6 leading-relaxed font-mono">
-          {errorMessage ||
-            (isCancelled
-              ? 'Matchmaking search was cancelled. Tap below when you are ready to begin searching again.'
-              : 'Thank you for practicing! Check your Telegram chat for partner ratings and session recordings.')}
-        </p>
-
-        <button
-          type="button"
-          onClick={handleRestart}
-          className="w-full py-3.5 px-6 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-cyan-600/25 cursor-pointer"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>{isCancelled ? 'Try Again' : 'Find Next Partner'}</span>
-        </button>
-      </div>
-
-      <div className="w-full max-w-sm mx-auto pt-4 border-t border-slate-900 flex items-center justify-between text-[10px] font-mono text-slate-600">
-        <span>STATUS: IDLE</span>
-        <span>PAIRIAL V2</span>
-      </div>
-    </div>
+    <SessionStatusScreen
+      state="ended"
+      onDashboard={() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', 'history');
+        window.history.replaceState(null, '', url);
+        void initAuth();
+      }}
+      error={errorMessage}
+      cancelled={isCancelled}
+      onRestart={handleRestart}
+    />
   );
 };
 

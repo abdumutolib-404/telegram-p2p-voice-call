@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build:
@@ -14,10 +12,8 @@ services:
       - ADMIN_MASTER_PASSWORD=${ADMIN_MASTER_PASSWORD:?Set an administrator password}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
       - JWT_SECRET=${JWT_SECRET:?Set a JWT signing secret}
-      # NOTE: LIVEKIT_HOST defaults to ws://livekit:7880 but no livekit service is defined here.
-      # For production, set LIVEKIT_HOST and LIVEKIT_URL to your LiveKit Cloud or self-hosted instance.
-      - LIVEKIT_HOST=${LIVEKIT_HOST:-ws://livekit:7880}
-      - LIVEKIT_URL=${LIVEKIT_URL:-wss://livekit:7880}
+      # No LiveKit service is bundled here; copy your provider's actual Project URL.
+      - LIVEKIT_HOST=${LIVEKIT_HOST:?Set the LiveKit project WebSocket URL}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?Set a LiveKit API key}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?Set a LiveKit API secret}
       - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:?Set a database password}@db:5432/ielts_p2p

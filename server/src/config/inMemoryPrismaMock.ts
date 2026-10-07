@@ -30,7 +30,7 @@ type CallSessionWhere = {
   recordingKeys?: { isEmpty?: boolean };
   recordingUrl?: string | null | { not?: null };
   recordingExpiresAt?: Date | null | { lte?: Date; gt?: Date };
-  createdAt?: Date | { lte?: Date; gte?: Date };
+  createdAt?: Date | { lt?: Date; lte?: Date; gt?: Date; gte?: Date };
   OR?: Array<CallSessionWhere>;
   AND?: Array<CallSessionWhere>;
 };
@@ -66,6 +66,9 @@ interface UserRow {
   isPermanentlyBanned: boolean;
   dnd: boolean;
   onboarded: boolean;
+  termsAcceptedVersion: string | null;
+  termsAcceptedAt: Date | null;
+  termsDocumentSha256: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -269,6 +272,7 @@ export class InMemoryPrismaMock {
   private readonly manualPaymentRequests = new Map<string, ManualPaymentRequestRow>();
   private readonly auditLogs = new Map<string, AuditLogRow>();
   private readonly favoritePartners = new Map<string, FavoriteRow>();
+  private readonly termsAcceptanceRows = new Map<string, { id: string; userId: string; version: string; documentSha256: string; acceptedAt: Date; source: string }>();
   private readonly referralRewards = new Map<string, ReferralRewardRow>();
   private readonly contests = new Map<string, ContestRow>();
   private readonly ieltsTopics = new Map<string, IeltsTopicRow>();
@@ -298,6 +302,19 @@ export class InMemoryPrismaMock {
     this.txQueue = next;
     return (await next) as T;
   }
+
+  termsAcceptance = {
+    upsert: async (args: { where: { userId_version_documentSha256: { userId: string; version: string; documentSha256: string } }; create: { userId: string; version: string; documentSha256: string; acceptedAt: Date }; update: Record<string, unknown> }) => {
+      const data = args.where.userId_version_documentSha256;
+      const key = `${data.userId}:${data.version}:${data.documentSha256}`;
+      const existing = this.termsAcceptanceRows.get(key);
+      if (existing) return { ...existing };
+      const row = { id: crypto.randomUUID(), source: 'TELEGRAM_BOT', ...args.create };
+      this.termsAcceptanceRows.set(key, row);
+      return { ...row };
+    },
+    findMany: async (args?: { where?: { userId?: string } }) => [...this.termsAcceptanceRows.values()].filter(row => !args?.where?.userId || row.userId === args.where.userId).map(row => ({ ...row })),
+  };
 
   user = {
     create: async (args: { data: UserData }): Promise<UserRow> => {
@@ -330,6 +347,9 @@ export class InMemoryPrismaMock {
         isPermanentlyBanned: booleanValue(args.data.isPermanentlyBanned, false),
         dnd: booleanValue(args.data.dnd, false),
         onboarded: booleanValue(args.data.onboarded, false),
+        termsAcceptedVersion: args.data.termsAcceptedVersion ? String(args.data.termsAcceptedVersion) : null,
+        termsAcceptedAt: args.data.termsAcceptedAt ? dateValue(args.data.termsAcceptedAt, now) : null,
+        termsDocumentSha256: args.data.termsDocumentSha256 ? String(args.data.termsDocumentSha256) : null,
         createdAt: dateValue(args.data.createdAt, now),
         updatedAt: dateValue(args.data.updatedAt, now),
       };
@@ -700,7 +720,7 @@ export class InMemoryPrismaMock {
       };
     },
 
-    findFirst: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { userA?: boolean; userB?: boolean } }): Promise<any> => {
+    findFirst: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { userA?: boolean; userB?: boolean; ratings?: boolean } }): Promise<any> => {
       const list = [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where));
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       if (list.length === 0) return null;
@@ -709,12 +729,16 @@ export class InMemoryPrismaMock {
         ...session,
         ...(args?.include?.userA ? { userA: this.users.get(session.userAId) } : {}),
         ...(args?.include?.userB ? { userB: this.users.get(session.userBId) } : {}),
+        ...(args?.include?.ratings ? { ratings: [...this.callRatings.values()].filter(rating => rating.callId === session.id) } : {}),
       };
     },
 
-    findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number; include?: { userA?: boolean; userB?: boolean; ratings?: boolean } }): Promise<any[]> => {
+    findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' } | Array<{ createdAt?: 'asc' | 'desc'; id?: 'asc' | 'desc' }>; cursor?: { id: string }; skip?: number; take?: number; include?: { userA?: boolean; userB?: boolean; ratings?: boolean } }): Promise<any[]> => {
       let list = [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where));
-      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (Array.isArray(args?.orderBy)) list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+      else if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (args?.cursor) { const index = list.findIndex(session => session.id === args.cursor!.id); list = index < 0 ? [] : list.slice(index + (args.skip ?? 0)); }
+      else if (args?.skip) list = list.slice(args.skip);
       if (args?.take !== undefined) list = list.slice(0, args.take);
       return list.map((session) => ({
         ...session,
@@ -1160,6 +1184,7 @@ export class InMemoryPrismaMock {
   };
 
   favoritePartner = {
+    count: async (args?: { where?: FavoriteWhere }): Promise<number> => [...this.favoritePartners.values()].filter(row => (!args?.where?.userId || row.userId === args.where.userId) && (!args?.where?.partnerId || row.partnerId === args.where.partnerId)).length,
     create: async (args: { data: Record<string, unknown> }): Promise<FavoriteRow> => {
       const id = stringValue(args.data.id, crypto.randomUUID());
       const row: FavoriteRow = {
@@ -1475,7 +1500,9 @@ export class InMemoryPrismaMock {
       if (expFilter.gt && (!session.recordingExpiresAt || session.recordingExpiresAt.getTime() <= expFilter.gt.getTime())) return false;
     }
     if (where.createdAt && !(where.createdAt instanceof Date)) {
-      const filter = where.createdAt as { lte?: Date | string; gte?: Date | string };
+      const filter = where.createdAt as { lt?: Date | string; lte?: Date | string; gt?: Date | string; gte?: Date | string };
+      if (filter.lt && session.createdAt.getTime() >= new Date(filter.lt).getTime()) return false;
+      if (filter.gt && session.createdAt.getTime() <= new Date(filter.gt).getTime()) return false;
       if (filter.lte && session.createdAt.getTime() > new Date(filter.lte).getTime()) return false;
       if (filter.gte && session.createdAt.getTime() < new Date(filter.gte).getTime()) return false;
     }

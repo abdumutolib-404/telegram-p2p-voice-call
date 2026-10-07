@@ -1,3 +1,5 @@
+import { loadPlanConfiguration } from '../../services/planConfiguration';
+import { planIds, publicPlan, planPeriod, formatPlanPrice } from '../../contracts/pricing';
 import { Bot, InlineKeyboard } from 'grammy';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
@@ -20,6 +22,7 @@ import { lockRow } from '../../utils/transactionLock';
 import { completeStarsRefund } from '../../services/starsRefund';
 
 async function editMessageOrCaption(ctx: MyContext, text: string, other?: Record<string, unknown>) {
+  if (!ctx.callbackQuery) return ctx.reply(text, { parse_mode: 'HTML', ...other });
   const isPhotoMessage = Boolean(ctx.callbackQuery?.message && 'photo' in ctx.callbackQuery.message);
 
   if (isPhotoMessage) {
@@ -66,6 +69,7 @@ async function editMessageOrCaption(ctx: MyContext, text: string, other?: Record
 }
 
 export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' | 'BOSS') {
+  await loadPlanConfiguration();
   const plans = getPlansConfig();
   const planConfig = plans[tier];
   if (!planConfig) {
@@ -147,6 +151,8 @@ export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' |
 }
 
 export async function renderPlansOverview(ctx: MyContext) {
+  const plans = await loadPlanConfiguration();
+  const offers = planIds.filter(id => plans[id].active).map(id => publicPlan(id, plans[id]));
   ctx.session.pendingPaymentPlan = undefined;
   ctx.session.step = 'idle';
 
@@ -168,12 +174,9 @@ export async function renderPlansOverview(ctx: MyContext) {
       .text('✖️ Cancel Pending Request', `cancel_manual_pay:${pendingRequest.id}`)
       .row();
   } else {
-    inlineKb
-      .text(`⚡ PLUS (${formatPriceDisplay('PLUS')})`, 'select_plan:PLUS')
-      .row()
-      .text(`🚀 PRO (${formatPriceDisplay('PRO')})`, 'select_plan:PRO')
-      .row()
-      .text(`👑 BOSS (${formatPriceDisplay('BOSS')})`, 'select_plan:BOSS');
+    for (const offer of offers) {
+      if (offer.id !== 'FREE') inlineKb.text(`${offer.name} (${formatPlanPrice(offer,'XTR')} / ${formatPlanPrice(offer,'UZS')})`, `select_plan:${offer.id}`).row();
+    }
   }
 
   let pendingBanner = '';
@@ -197,28 +200,11 @@ export async function renderPlansOverview(ctx: MyContext) {
       `Current Plan: <b>${escapeHtml(profile.planDisplayName)}</b>\n` +
       (profile.isActivePaid && profile.expiration ? `Expires: <code>${escapeHtml(profile.expiration)}</code>\n\n` : '\n') +
       pendingBanner +
-      `🆓 <b>FREE Plan</b> (0 UZS / 0 Stars)\n` +
-      `• Max Call Duration: 15 minutes\n` +
-      `• Monthly Calls: 3\n` +
-      `• Monthly Recordings: 1\n` +
-      `• Recording Retention: 1 day\n\n` +
-      `⚡ <b>PLUS Plan</b> (${formatPriceDisplay('PLUS')})\n` +
-      `• Max Call Duration: 30 minutes\n` +
-      `• Monthly Calls: 10\n` +
-      `• Monthly Recordings: 3 (7-day retention)\n` +
-      `• Matchmaking: Priority Queue\n\n` +
-      `🚀 <b>PRO Plan</b> (${formatPriceDisplay('PRO')})\n` +
-      `• Max Call Duration: 60 minutes\n` +
-      `• Monthly Calls: 25\n` +
-      `• Monthly Recordings: 7 (30-day retention)\n` +
-      `• Matchmaking: Fast-Track High Priority\n\n` +
-      `👑 <b>BOSS Plan</b> (${formatPriceDisplay('BOSS')})\n` +
-      `• Max Call Duration: 90 minutes\n` +
-      `• Monthly Calls: 50\n` +
-      `• Monthly Recordings: 15 (90-day retention)\n` +
-      `• Matchmaking: VIP Top-Priority Queue\n\n` +
+      offers.map(offer => `<b>${escapeHtml(offer.name)}</b> (${formatPlanPrice(offer,'XTR')} / ${formatPlanPrice(offer,'UZS')})\n` +
+        `• Allowance: ${planPeriod(offer)}\n• Calls: ${offer.unlimitedCalls ? 'Unlimited' : offer.calls}\n• Minutes per call: ${offer.maxCallMinutes}\n` +
+        `• Recordings: ${offer.recordings}\n• Recording retention: ${offer.retentionDays} days\n\n`).join('') +
       `🛡️ <b>Refund Policy:</b>\n` +
-      `Eligible within 48 hours of purchase OR if less than 10% of monthly call allowance has been used.\n\n` +
+      `Eligible within 48 hours of purchase OR if less than 10% of purchased call allowance has been used.\n\n` +
       `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
       (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
     { reply_markup: inlineKb }

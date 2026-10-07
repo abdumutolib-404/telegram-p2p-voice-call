@@ -16,6 +16,7 @@ import { prisma } from '../config/database';
 import { moderationService } from '../services/moderation';
 import { wakePostCallWorker } from '../services/postCallOutbox';
 import { validateTelegramInitData } from '../middleware/initDataLockdown';
+import { hasAcceptedCurrentTerms } from '../services/terms';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { MyContext } from '../bot/types';
@@ -423,7 +424,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       }
 
       const dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
-      if (!dbUser) {
+      if (!dbUser?.onboarded || !hasAcceptedCurrentTerms(dbUser)) {
         logger.warn('Socket authentication rejected: User profile not found', {
           service: 'signaling',
           event: 'socket:auth_user_not_found',

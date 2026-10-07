@@ -302,6 +302,11 @@ func (db *DB) GetUserByTelegramID(ctx context.Context, telegramID int64) (*User,
 	return scanUser(db.Pool.QueryRow(ctx, query, telegramID))
 }
 
+func (db *DB) GetRegisteredUserByTelegramID(ctx context.Context, telegramID int64, version, documentHash string) (*User, error) {
+	query := `SELECT ` + userSelectColumns + ` FROM "User" WHERE "telegramId" = $1 AND onboarded = TRUE AND "termsAcceptedVersion" = $2 AND "termsDocumentSha256" = $3 AND "termsAcceptedAt" IS NOT NULL`
+	return scanUser(db.Pool.QueryRow(ctx, query, telegramID, version, documentHash))
+}
+
 func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSession, error) {
 	query := `
 		SELECT

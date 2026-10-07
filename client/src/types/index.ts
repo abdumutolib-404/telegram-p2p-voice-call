@@ -23,6 +23,8 @@ export type LockdownReason =
   | 'browser_direct'
   | 'telegram_no_initdata'
   | 'auth_rejected'
+  | 'registration_required'
+  | 'terms_required'
   | 'server_unavailable'
   | 'banned'
   | 'suspended'
@@ -116,10 +118,10 @@ export interface PaidPlanInfo {
   uzsPrice: string;
   validityDays: number;
   callLimit: number;
+  unlimitedCalls: boolean;
   maxDurationMinutes: number;
   recordingsLimit: number;
   retentionDays: number;
-  queuePriority: string;
   accentColor: string;
   borderColor: string;
   bgGlow: string;

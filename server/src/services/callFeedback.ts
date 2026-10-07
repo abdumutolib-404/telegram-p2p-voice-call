@@ -15,7 +15,7 @@ export async function saveCallQualityRating(callId: string, raterId: string, sta
     const call = await tx.callSession.findUnique({ where: { id: callId } });
     if (!call) return 'MISSING_CALL';
     if (call.userAId !== raterId && call.userBId !== raterId) return 'UNAUTHORIZED';
-    if (await tx.callRating.findFirst({ where: { callId, raterId } })) return 'DUPLICATE';
+    if (await tx.callRating.findFirst({ where: { callId, raterId, reported: false } })) return 'DUPLICATE';
     await tx.callRating.create({ data: {
       callId, raterId, ratedId: call.userAId === raterId ? call.userBId : call.userAId, stars,
     } });

@@ -8,6 +8,7 @@ import { prisma } from '../config/database';
 import { validateTelegramInitData } from '../middleware/initDataLockdown';
 import { getAdminChallenge, clearAdminChallenges } from '../routes/admin';
 import { getRedis } from '../config/redis';
+import { currentTerms } from '../services/terms';
 
 describe('Final Authentication Architecture Test Suite', () => {
   const botToken = env.BOT_TOKEN;
@@ -50,7 +51,7 @@ describe('Final Authentication Architecture Test Suite', () => {
       expect(res.body.error).toContain('Invalid initData signature.');
     });
 
-    it('1.3 Authenticates authentic Telegram Mini App user directly without requiring /start command', async () => {
+    it('1.3 Requires bot registration for an authentic Telegram Mini App launch', async () => {
       const tgUser = { id: 88812345, first_name: 'MiniAppUser', username: 'miniapp_user' };
       const initData = generateInitData(tgUser);
 
@@ -59,16 +60,12 @@ describe('Final Authentication Architecture Test Suite', () => {
         .set('x-telegram-init-data', initData)
         .send({});
 
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.user).toBeDefined();
-      expect(res.body.user.telegramId).toBe('88812345');
-      expect(res.body.user.alias).toMatch(/^P2P-/);
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('registration_required');
 
-      // Verify DB record was created automatically
+      // Opening a signed web launch must not silently register the user.
       const dbUser = await prisma.user.findUnique({ where: { telegramId: BigInt(88812345) } });
-      expect(dbUser).toBeDefined();
-      expect(dbUser?.telegramId).toBe(BigInt(88812345));
+      expect(dbUser).toBeNull();
     });
 
     it('1.4 Allows user with exhausted daily quota to authenticate via /api/auth/verify', async () => {
@@ -80,6 +77,10 @@ describe('Final Authentication Architecture Test Suite', () => {
         data: {
           telegramId: BigInt(88812346),
           alias: 'P2P-Partner-Quota',
+          onboarded: true,
+          termsAcceptedVersion: currentTerms.version,
+          termsAcceptedAt: new Date(),
+          termsDocumentSha256: currentTerms.sha256,
           band: 6.5,
           dailyLimit: 3,
           dailyCallsUsed: 3, // Exhausted quota

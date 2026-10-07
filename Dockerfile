@@ -32,6 +32,8 @@ WORKDIR /app/client
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ ./
+COPY platform/ /app/platform/
+COPY server/src/contracts/ /app/server/src/contracts/
 RUN npm run build
 
 # --- Stage 3: Build Landing Page ---
@@ -40,6 +42,8 @@ WORKDIR /app/landing
 COPY landing/package*.json ./
 RUN npm ci
 COPY landing/ ./
+COPY platform/ /app/platform/
+COPY server/src/contracts/ /app/server/src/contracts/
 RUN npm run build
 
 # --- Stage 4: Build Admin Panel ---
@@ -48,6 +52,8 @@ WORKDIR /app/admin
 COPY admin/package*.json ./
 RUN npm ci
 COPY admin/ ./
+COPY platform/ /app/platform/
+COPY server/src/contracts/ /app/server/src/contracts/
 RUN npm run build
 
 # --- Stage 5: Production Runner ---

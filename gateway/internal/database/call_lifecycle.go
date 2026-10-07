@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/pairtalk/gateway/internal/auth"
 )
 
 // Node invitation/admission transactions use the same ordered participant locks.
@@ -54,6 +55,13 @@ func (db *DB) AdmitCallSession(ctx context.Context, id, roomName, userAID, userB
 	}
 	for _, userID := range []string{userAID, userBID} {
 		u := users[userID]
+		var registered bool
+		if err := tx.QueryRow(ctx, `SELECT onboarded AND "termsAcceptedAt" IS NOT NULL AND COALESCE("termsAcceptedVersion"=$2,FALSE) AND COALESCE("termsDocumentSha256"=$3,FALSE) FROM "User" WHERE id=$1`, userID, auth.TermsVersion, auth.TermsDocumentSHA256).Scan(&registered); err != nil {
+			return nil, nil, err
+		}
+		if !registered {
+			return nil, nil, errors.New("participant must complete bot registration and accept terms")
+		}
 		if u.IsPermanentlyBanned || (u.BannedUntil != nil && u.BannedUntil.After(time.Now())) || (u.IsBanned && u.BannedUntil == nil) {
 			return nil, nil, errors.New("participant is suspended")
 		}
