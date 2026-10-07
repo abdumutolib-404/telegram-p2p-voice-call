@@ -21,7 +21,7 @@ node scripts/gateway-check.cjs <private-runtime.json> test ./... -count=1
 node scripts/gateway-check.cjs <private-runtime.json> vet ./...
 ```
 
-The CI workflow additionally runs Go race checks on Linux. Remove only the exact owned disposable containers when finished; do not remove application volumes or use global Docker cleanup.
+For Go race checks, run the gateway test command with -race in a supported Linux environment. Remove only the exact owned disposable containers when finished; do not remove application volumes or use global Docker cleanup.
 
 Frontend checks:
 
@@ -35,7 +35,7 @@ npm run build --prefix landing
 npm run check --prefix landing
 ```
 
-Set NODE_ENV=production for frontend release builds when an inherited environment sets test mode. [verify.yml](../.github/workflows/verify.yml) defines the full CI gate, including migration/schema checks and isolated integration. Browser fixtures are available through `scripts/admin-mock-browser.cjs`; they do not authorize real admin actions.
+Set NODE_ENV=production for frontend release builds when an inherited environment sets test mode. The owner removed the GitHub verification workflow on October 7; these commands remain the manual verification checklist, including migration/schema checks and isolated integration. Run each frontend's deploy:check script for a Workers dry run. Browser fixtures are available through `scripts/admin-mock-browser.cjs`; they do not authorize real admin actions.
 
 ## 2026-10-05 security remediation
 

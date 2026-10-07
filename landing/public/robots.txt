@@ -1,5 +1,5 @@
-# Robots.txt for PairTalk (https://pairtalk.online)
-# Explicitly allowing modern AI search crawlers & major search engine indexing
+# Public crawler permissions for PairTalk (https://pairtalk.online)
+# Authenticated services enforce their own access controls; robots.txt is not authentication.
 
 # AI documentation indices
 # https://pairtalk.online/llms.txt
@@ -17,6 +17,8 @@ User-agent: CCBot
 Allow: /
 Disallow: /api/
 Disallow: /admin
+Disallow: /client
+Disallow: /dashboard
 
 # --- Social & Messenger Unfurlers ---
 User-agent: TelegramBot
@@ -27,12 +29,16 @@ User-agent: Applebot-Extended
 Allow: /
 Disallow: /api/
 Disallow: /admin
+Disallow: /client
+Disallow: /dashboard
 
 # --- Default Crawlers ---
 User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /admin
+Disallow: /client
+Disallow: /dashboard
 
 # --- Sitemap Directive ---
 Sitemap: https://pairtalk.online/sitemap.xml

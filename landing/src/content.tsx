@@ -14,11 +14,11 @@ export const faqs = [
   },
   {
     q: "Do I need anything besides Telegram?",
-    a: "You need a Telegram account, an internet connection, and a working microphone. Open PairTalk from the bot and allow microphone access when prompted. Headphones can help reduce echo; there is no separate PairTalk app to install.",
+    a: "You need a Telegram account, an internet connection, and a working microphone. Register in the bot, read the Terms of Use PDF, and agree before opening your dashboard from Telegram. Allow microphone access when joining a call. Headphones can help reduce echo; there is no separate PairTalk app to install.",
   },
   {
     q: "Can I start for free?",
-    a: "Yes. The free plan includes a limited practice allowance. Paid plans provide more calls and longer sessions. Check the bot for current prices, call limits, and recording allowances before purchasing.",
+    a: "Yes. The free plan includes a limited practice allowance. Compare currently published plans on the pricing page, including Stars and UZS prices, calls, recordings, and retention. Telegram checkout confirms the exact charge before payment.",
   },
   {
     q: "Will my partner see my Telegram details?",
@@ -46,7 +46,7 @@ export const faqs = [
   },
   {
     q: "Can I request a refund?",
-    a: "The existing policy requires a request within 48 hours of purchase and use of less than 10% of the purchased call allowance, subject to the subscription terms. Use /refund in the bot or contact support.",
+    a: "The current bot policy allows a refund request within 48 hours of purchase or when less than 10% of the purchased call allowance has been used. Purchase ownership, purchase state, and account restrictions also apply. Use /refund in the bot or contact support.",
   },
 ];
 export const pages: Record<string, Guide> = {
@@ -65,15 +65,22 @@ export const pages: Record<string, Guide> = {
         body: (
           <>
             <p>
-              Open the PairTalk bot in Telegram and launch the Mini App. Your
-              Telegram account is used to sign you in; you do not need a
-              separate PairTalk password. Read the community guidelines before
-              joining.
+              Open the PairTalk bot in Telegram to register. Read the Terms of
+              Use PDF and choose Agree and continue before registration
+              proceeds. Then open your dashboard using the bot’s Open dashboard
+              button. Your Telegram account signs you in; you do not need a
+              separate PairTalk password.
             </p>
             <p>
               Use a quiet space and headphones if possible. Allow microphone
               access when your device asks. The public website never needs
               access to your microphone.
+            </p>
+            <p>
+              Calls, post-call ratings, reports, and account settings live in
+              your dashboard. Registration, payments, and refund requests remain
+              in Telegram. A direct dashboard URL does not provide account
+              access.
             </p>
           </>
         ),
@@ -611,8 +618,8 @@ export const pages: Record<string, Guide> = {
               in the app. The existing policy provides for requests to access or
               delete account data through{" "}
               <a href="https://t.me/PairTalkSupport">@PairTalkSupport</a> or the
-              bot’s support commands. Its stated account-purge target is within
-              24 hours.
+              bot’s billing support command, <code>/paysupport</code>. Its
+              stated account-purge target is within 24 hours.
             </p>
             <p>
               Contact support for questions about a recording, payment record,
@@ -628,12 +635,12 @@ export const pages: Record<string, Guide> = {
         body: (
           <>
             <p>
-              The existing refund policy requires a request within 48 hours of
-              purchase and use of less than 10% of the monthly call allowance.
-              Accounts sanctioned for policy violations are excluded under that
-              policy. Eligible Telegram Stars refunds use the bot flow;
-              supported card refunds are reviewed and ordinarily settle within
-              1–3 business days.
+              The current bot refund policy allows a request within 48 hours of
+              purchase or when less than 10% of the purchased call allowance has
+              been used. Accounts sanctioned for policy violations are excluded
+              under that policy. Eligible Telegram Stars refunds use the bot
+              flow; supported card refunds are reviewed and ordinarily settle
+              within 1–3 business days.
             </p>
             <p>
               See the <a href="/terms#payments">subscription terms</a> and
@@ -648,7 +655,7 @@ export const pages: Record<string, Guide> = {
     title: "Terms of Service | PairTalk Speaking Practice",
     description:
       "PairTalk service terms: eligibility, peer practice, fair use, subscriptions, refunds, intellectual property, and support.",
-    eyebrow: "TERMS OF SERVICE · EXISTING POLICY",
+    eyebrow: "TERMS OF SERVICE",
     heading: "The terms of practicing together.",
     intro:
       "Using PairTalk means agreeing to these service terms and the community guidelines. PairTalk is an independent educational practice tool.",
@@ -662,6 +669,12 @@ export const pages: Record<string, Guide> = {
               By accessing or using PairTalk through the website, Telegram bot,
               or Mini App, you agree to these terms. If you do not agree, do not
               use the service.
+            </p>
+            <p>
+              Registration in the Telegram bot requires reading the versioned
+              Terms of Use PDF and explicitly agreeing before continuing. You
+              can request the document again using <code>/terms</code>.
+              Recording a call requires separate agreement with your partner.
             </p>
             <p>
               You must be at least 13 years old, or the minimum age of digital
@@ -709,9 +722,9 @@ export const pages: Record<string, Guide> = {
               unless promotional terms state otherwise.
             </p>
             <p>
-              The existing refund policy requires a request within 48 hours of
-              purchase and less than 10% of the purchased allowance used.
-              Sanctioned accounts are excluded under the policy. Use{" "}
+              The current bot refund policy allows a request within 48 hours of
+              purchase or when less than 10% of the purchased allowance has been
+              used. Sanctioned accounts are excluded under the policy. Use{" "}
               <code>/refund</code> or contact support. See the{" "}
               <a href="/privacy#refunds">refund policy</a> for payment-specific
               settlement information.

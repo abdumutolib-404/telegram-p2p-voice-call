@@ -31,7 +31,7 @@ Use Node 24, npm with the committed lockfiles, and the Go version declared in `g
 
 ## Verification
 
-[.github/workflows/verify.yml](.github/workflows/verify.yml) is the maintained check list. After installing dependencies and generating Prisma, fast backend checks are:
+[docs/VERIFICATION.md](docs/VERIFICATION.md) is the maintained check list. After installing dependencies and generating Prisma, fast backend checks are:
 
 ```text
 node scripts/verify.cjs build
@@ -44,7 +44,7 @@ These helpers use a restricted synthetic environment. See [verification instruct
 
 The 2026-10-05 recording lifecycle migration requires a coordinated Node/Go rollout after active calls drain. Local checks pass; real Telegram transactions, two-device audio, and cloud recording retention still need staging validation. Previously lost recording references need separate reconciliation. Credentials reported exposed in the 2026-10-04 review still require owner-confirmed rotation.
 
-The application currently uses configurable Free/Plus/Pro/Boss subscriptions. Independent non-expiring credits and optional storage are planned, not implemented. Documentation cleanup does not change prices, balances, public policy pages, or crawler files.
+The application currently uses configurable Free/Plus/Pro/Boss subscriptions. Independent non-expiring credits and optional storage are planned, not implemented. The October 7 public-documentation review aligns search metadata, crawler files, and AI-readable explanations with the implemented product; it does not change prices or balances. See [public search and deployment guidance](docs/ENVIRONMENT_AND_DEPLOYMENT.md#public-search-and-ai-documents).
 # Bot and dashboard responsibilities
 
 Registration, PDF terms acceptance and payments stay in Telegram. Calls, recordings, feedback and account preferences are in the private dashboard. See [the bot and dashboard guide](docs/BOT_AND_DASHBOARD.md) for consent versioning, access checks and the required database migration.

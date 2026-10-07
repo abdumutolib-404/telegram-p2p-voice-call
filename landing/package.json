@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/prerender.mjs",
-    "check": "node scripts/check-build.mjs",
+    "check": "node --test scripts/public-markdown.test.mjs && node scripts/check-build.mjs",
     "preview": "vite preview",
     "deploy": "wrangler deploy",
     "deploy:preview": "wrangler versions upload",
@@ -24,6 +24,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "parse5": "8.0.1",
     "prettier": "^3.9.9",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",

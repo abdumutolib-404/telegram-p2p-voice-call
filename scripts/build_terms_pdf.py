@@ -19,6 +19,9 @@ from pypdf import PdfReader
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "2026-10-07"
+manifest_path = ROOT / "server/assets/terms-manifest.json"
+if manifest_path.exists() and json.loads(manifest_path.read_text(encoding="utf-8"))["version"] == VERSION:
+    raise SystemExit("This terms version is already published. Review the changes and choose a new VERSION before exporting; existing accepted documents must not be overwritten.")
 source = (ROOT / "landing/src/content.tsx").read_text(encoding="utf-8")
 
 def sections(route):
@@ -36,11 +39,10 @@ def sections(route):
 
 terms, privacy = sections("/terms"), sections("/privacy")
 assert len(terms) == 6 and len(privacy) == 5, "Published policy format changed; review the exporter."
-# Preserve the implemented, more generous rule rather than exporting stale AND wording.
+# Verify that the public wording still matches the implemented refund rule.
 refund = terms['payments'][1][1]
-old_rule = 'The existing refund policy requires a request within 48 hours of purchase and less than 10% of the purchased allowance used.'
-assert old_rule in refund, 'Review the published refund rule before exporting a new agreement.'
-terms['payments'][1][1] = refund.replace(old_rule, 'The current bot refund policy allows a request within 48 hours of purchase or when less than 10% of the purchased allowance has been used.')
+refund_rule = 'The current bot refund policy allows a request within 48 hours of purchase or when less than 10% of the purchased allowance has been used.'
+assert refund_rule in refund, 'Review the published refund rule before exporting a new agreement.'
 output = ROOT / "output/pdf/pairtalk-terms-of-use.pdf"
 output.parent.mkdir(parents=True, exist_ok=True)
 asset = ROOT / "server/assets/pairtalk-terms-of-use.pdf"
@@ -66,7 +68,7 @@ story.append(Paragraph("Payments & service conditions", title))
 section(terms["payments"])
 section(terms["intellectual-property"])
 story.append(Spacer(1, 16))
-story.append(Paragraph('Published policies: <link href="https://pairtalk.online/terms" color="#245C43">pairtalk.online/terms</link> and <link href="https://pairtalk.online/privacy#refunds" color="#245C43">pairtalk.online/privacy#refunds</link>. The refund eligibility in this PDF reflects the current bot rule where older website wording differs. Current allowances and prices must be checked before purchase.', small))
+story.append(Paragraph('Published policies: <link href="https://pairtalk.online/terms" color="#245C43">pairtalk.online/terms</link> and <link href="https://pairtalk.online/privacy#refunds" color="#245C43">pairtalk.online/privacy#refunds</link>. The refund eligibility in this PDF reflects the current bot rule. Current allowances and prices must be checked before purchase.', small))
 story.append(PageBreak())
 story.append(Paragraph("Privacy, recordings & support", title))
 section(privacy["account-data"])

@@ -1,928 +1,113 @@
-# PairTalk
+# PairTalk: product and public documentation reference
 
-> Autonomous peer-to-peer IELTS Speaking preparation platform operating natively inside Telegram and on the Web. Matches candidates with criteria-aligned study partners worldwide in <3 seconds for Part 1, 2, and 3 simulations inside studio-grade WebRTC encrypted voice rooms.
+> PairTalk is an independent service for English learners to practice IELTS speaking with another learner in a Telegram Mini App. This reference describes the implemented platform and links to its public explanations. It is not an official IELTS assessment, a checkout quote, or a replacement for the registration agreement.
 
-## Core Capabilities & Architecture
-- **Deterministic Matchmaking Radar**: Instant sub-3-second pairing with live speaking partners based on whole-band target scores (Band 5 to 9).
-- **Official Rubric Calibration**: Aligned with British Council / IDP IELTS Speaking Band Descriptors across Fluency & Coherence (FC), Lexical Resource (LR), Grammatical Range & Accuracy (GRA), and Pronunciation (P).
-- **100% Anonymous Aliases**: Candidates operate under randomized cryptographic aliases (e.g. `P2P-0284DB68`). Telegram usernames, phone numbers, and real names are never transmitted to peers.
-- **Studio-Grade WebRTC SFU**: Encrypted live voice calls with cross-device audio unlock and jitter-free packet relay via LiveKit.
-- **Speaking Sprint & Community Rewards**: Real-time community leaderboards and permanent bonus practice calls for friend referrals.
-- **Server-Enforced 100% Refund Policy**: Unconditional refund within 48 hours of purchase and <10% quota usage via `/refund` in Telegram.
+Reviewed: 2026-10-07.
+Public website: https://pairtalk.online/
+Documentation index: https://pairtalk.online/llms.txt
+Registration: https://t.me/PairTalkBot?start=register
+Support: https://t.me/PairTalkSupport
 
-## Authoritative Documentation & Policies
-- [Guidelines](https://pairtalk.online/community-guidelines): Official IELTS Speaking Code of Conduct, call environment etiquette, anti-solicitation safety protocols, moderation penalty ladder, and unban appeals.
-- [Privacy & Policy](https://pairtalk.online/privacy): Alias-based peer privacy, service data processing, voice transport encryption, audio recording retention matrix (Free 24h, Plus 7d, Pro 30d, Boss 90d), Terms of Service, and refund terms.
-- [How It Works](https://pairtalk.online/how-it-works): Comprehensive walkthrough of the matchmaking radar, criteria calibration, and 1-on-1 exam room simulation.
-- [IELTS Speaking Guide](https://pairtalk.online/ielts-speaking): Detailed breakdown of the 2026 IELTS Speaking exam format (Part 1 Interview, Part 2 Cue Card, Part 3 Discussion) and whole-band descriptors.
-- [FAQ](https://pairtalk.online/faq): Verified answers regarding pricing, practice formats, tutor comparisons, and refund procedures.
+## Reading current information
 
-## Plans & Pricing Structure
-- **FREE**: $0. Complimentary monthly calls, 15 min duration, 1 cloud recording (24-hour retention).
-- **PLUS**: $1.58 / 79 Telegram Stars (15,000 UZS). 10 calls/month, 30 min duration, 3 cloud recordings (7-day retention).
-- **PRO**: $5.10 / 255 Telegram Stars (55,000 UZS). 25 calls/month, 60 min duration, 7 cloud recordings (30-day retention), high-priority matching queue.
-- **BOSS**: $13.58 / 679 Telegram Stars (149,000 UZS). 50 calls/month, 90 min duration, 15 cloud recordings (90-day retention), VIP priority matching queue.
+Each public HTML page has a Markdown counterpart built from the same content. Start with the document relevant to the question. Policies are at /terms and /privacy; the versioned Terms of Use PDF is delivered during bot registration and can be requested with /terms. The public overview does not replace that agreement.
 
-## Access Points & Endpoints
-- Web Platform: https://pairtalk.online
-- Telegram Mini App: https://t.me/PairTalkBot?startapp=1
-- Telegram Bot: https://t.me/PairTalkBot
-- Customer Support: https://t.me/PairTalkSupport
-- Expanded Context: https://pairtalk.online/llms-full.txt
-- Agent Discovery: https://pairtalk.online/.well-known/agents.json
+Prices and community figures are dynamic. Their live pages and public APIs are the sources for current available values. Markdown exports and pre-rendered HTML can contain dated build snapshots; they are not proof that a quote or total is current. If the backend is unavailable, say the data is unavailable rather than supplying sample figures.
 
+## What PairTalk provides
 
----
+- One-to-one voice practice with another available English learner.
+- Self-assessed whole-band practice preferences from 5 to 9 and speaking-skill preferences.
+- Partner matching influenced by level, preferences, and availability.
+- Speaking prompts and a way to rehearse Part 1 questions, Part 2 long turns, and Part 3 discussions.
+- Partner aliases, post-call ratings and reports, saved partners, call history, and account settings in the authenticated dashboard.
+- Optional recordings subject to agreement, available allowance, and the account's retention settings.
+- A public comparison of published subscription offers and a public aggregate statistics page.
 
-# Complete Authoritative Documentation Library
+Partners are peers, not promised teachers or official examiners. Preferences, peer ratings, and session feedback do not certify an IELTS band. PairTalk does not guarantee a matching time, a particular partner, or an examination result. It is not affiliated with or endorsed by IELTS, Cambridge, the British Council, or IDP.
 
+Sources: [overview](https://pairtalk.online/index.md), [how it works](https://pairtalk.online/how-it-works.md), [FAQ](https://pairtalk.online/faq.md).
 
+## Registration, Telegram, and dashboard access
 
-# PairTalk: How It Works — Technical & Pedagogical Architecture
+1. Open the PairTalk Telegram bot and begin registration.
+2. Read the Terms of Use PDF. Choose Agree and continue to accept the offered version, or decline to stop registration.
+3. Complete registration and open the dashboard through the bot's Open dashboard button.
+4. Choose practice preferences, join the matching queue, and follow the call and microphone prompts.
+5. After a call, give feedback or submit a report in the dashboard. Manage account settings and practice history there.
 
-**Document Version:** 2026.2.0  
-**Effective Date:** August 2026  
-**Scope:** Global Autonomous Peer-to-Peer IELTS Speaking Simulation Network  
+Registration, payment initiation, refunds, and billing support remain in Telegram. The dashboard requires server-verified Telegram authentication and registration; a direct URL does not grant access. Public information can be read without a Telegram account or microphone access.
 
----
+Public bot commands include /start, /terms, /plans, /refund, /paysupport, and /appeal. Do not recommend removed commands such as /support as an account-management interface. Do not request or reproduce Telegram authentication data, payment tokens, or private dashboard content.
 
-## 1. Executive Overview
+Sources: [registration and practice flow](https://pairtalk.online/how-it-works.md), [terms](https://pairtalk.online/terms.md).
 
-**PairTalk** is an autonomous, high-concurrency peer-to-peer IELTS Speaking preparation platform. Operating directly within Telegram Mini Apps and standard modern web browsers, PairTalk connects motivated candidates across 80+ countries in under three seconds. 
+## Practice format and learning limits
 
-By replacing slow, unresponsive study groups and expensive 1-on-1 private tutors ($20–$50/hour) with real-time criteria-matched voice simulation rooms, PairTalk delivers high-repetition, exam-authentic speaking practice accessible to every candidate.
+The speaking guide explains the three IELTS Speaking parts, the four assessment criteria, original practice questions, and a repeatable partner routine. Learners can take turns asking and answering, give specific feedback, and repeat a difficult answer. These are practice activities, not an official administered test.
 
----
+For authoritative examination rules and assessment materials, use [IELTS](https://ielts.org/). PairTalk's guide links to official format information. Do not describe original practice prompts as leaked, predicted, or guaranteed examination questions.
 
-## 2. Sub-3-Second Matchmaking Architecture
+Source: [IELTS speaking guide](https://pairtalk.online/ielts-speaking.md).
 
-```
- Candidate A (Band 7.0)                 Redis In-Memory Queue                 Candidate B (Band 7.0)
- ┌──────────────────────┐             ┌─────────────────────────┐             ┌──────────────────────┐
- │ • FC: 7  • LR: 7     │ ──Join───>  │ Bucket: "7"             │  <──Join─── │ • FC: 7  • LR: 7     │
- │ • GRA: 7 • P: 7      │             │ • Non-blocking atomic pop│             │ • GRA: 7 • P: 7      │
- │ • Alias: P2P-0284DB68│             │ • Latency < 50ms        │             │ • Alias: P2P-4A91E02C│
- └──────────────────────┘             └────────────┬────────────┘             └──────────────────────┘
-                                                   │
-                                       Pair Matched in < 3s
-                                                   │
-                                                   ▼
-                                      ┌─────────────────────────┐
-                                      │  LiveKit SFU Voice Room │
-                                      │  (Encrypted Audio Opus) │
-                                      └─────────────────────────┘
-```
+## Pricing, allowances, recordings, and retention
 
-### 2.1 Low-Latency Queue Pipeline
-Traditional matchmaking systems rely on polling databases or persistent WebSocket pools that degrade under peak load. PairTalk utilizes a distributed, in-memory **Redis** queue cluster:
-1. **Atomic Ingestion**: When a candidate taps *Start Practicing*, the request is serialized with target criteria and pushed to an atomic Redis list keyed by target band score.
-2. **Deterministic FIFO Pairing**: A worker process executes non-blocking `LPOP` / `RPOPLPUSH` operations with atomic lock guards (`SET NX EX`), guaranteeing zero race conditions and preventing duplicate matching.
-3. **Queue Fallback Expansion**: If an exact whole-band match is not found within 2.5 seconds, the algorithm expands tolerance by $\pm 1$ band tier to ensure immediate connection without prolonged wait times.
-4. **Sub-3s Guarantee**: Average match resolution takes **1.2 to 2.4 seconds** globally.
+The implemented model uses configurable subscription offers, including Free, Plus, Pro, and Boss. An administrator publishes current prices and allowances. The landing comparison, dashboard plan chooser, and Telegram checkout read the same published configuration.
 
----
+The catalog describes prices in Telegram Stars (XTR) and UZS, included calls, maximum minutes per call, recordings, retention days, and subscription validity. Only active published offers should be presented as available. Account-specific rewards or allowances can differ from public offers and are shown in the authenticated dashboard.
 
-## 3. Whole-Band 4-Criteria Pairing Logic
+The comparison can recommend an available plan for desired calls, session length, recordings, and retention. It selects the least expensive matching plan in the chosen currency. Recording retention is irrelevant when zero recordings are needed.
 
-PairTalk adheres strictly to the official British Council / IDP IELTS 4-criteria assessment framework using **whole bands only** (5, 6, 7, 8, 9):
+Average cost per included call is bundle price divided by the included call allowance. It is a comparison estimate, not a separately sold call or a price calculated from actual usage. Stars and UZS are independently quoted amounts; there is no fixed conversion to USD or between payment channels.
 
-| Criterion | Abbreviation | Core Competency Evaluated |
-| :--- | :---: | :--- |
-| **Fluency & Coherence** | `FC` | Speech rate, continuity, natural hesitation vs. language search, logical sequencing, cohesive connectives. |
-| **Lexical Resource** | `LR` | Range of vocabulary, idiomatic precision, paraphrase flexibility, collocation awareness, avoidance of repetition. |
-| **Grammatical Range & Accuracy** | `GRA` | Mix of simple and complex sentence structures, tense consistency, error-free clause percentage. |
-| **Pronunciation** | `P` | Intonation, phonemic accuracy, word and sentence stress, rhythm, global intelligibility without regional strain. |
+Free allowances use a calendar month; paid allowances use the published subscription period. Unused paid allowances expire according to the subscription terms. Permanent unused credits, individual recording-credit purchases, and optional per-credit retention purchases were discussed as ideas and are not implemented products.
 
-### 3.1 Overall Band Calculation
-The overall calibrated target band is calculated as the rounded arithmetic mean of the four sub-scores:
-$$\text{Overall Band} = \text{round}\left(\frac{\text{FC} + \text{LR} + \text{GRA} + \text{P}}{4}\right) \in \{5, 6, 7, 8, 9\}$$
+Recordings are optional and require separate partner agreement. The current account's recording allowance and retention determine availability. Retention is a duration for recorded audio, not an unlimited storage entitlement. Expired recordings are scheduled for deletion. Do not promise permanent preservation, immediate deletion after one delivery, or a particular retention period without checking the current allowance and policy.
 
-### 3.2 Complementary Skill Synergy
-Beyond raw score matching, PairTalk’s algorithm identifies complementary strengths. For example, a candidate targeting Band 7 who demonstrates strong Grammar (`GRA: 8`) but requires work on Pronunciation (`P: 6`) can be paired with a partner excelling in Pronunciation (`P: 8`), fostering reciprocal peer learning during qualitative debriefs.
+Sources: [live pricing](https://pairtalk.online/pricing), [pricing explanation](https://pairtalk.online/pricing.md), [privacy](https://pairtalk.online/privacy.md).
+Public pricing JSON: https://api.pairtalk.online/api/public/plans
+Catalog freshness fields: revision and checkedAt.
 
----
+## Refund requests
 
-## 4. Exam Simulation Lifecycle & Part 1, 2, 3 Flow
+The implemented bot rule permits a request within 48 hours of purchase OR when less than 10% of the purchased call allowance has been used. Purchase ownership, transaction or purchase state, and account restrictions also apply. This is not an unconditional money-back guarantee. Use /refund in the bot or contact billing support. The registration PDF and published terms explain the policy; the transaction flow determines eligibility for a specific purchase.
 
-Each PairTalk voice session follows the official IELTS Speaking test structure:
+Sources: [subscription terms](https://pairtalk.online/terms#payments), [refund policy](https://pairtalk.online/privacy#refunds), [pricing explanation](https://pairtalk.online/pricing.md).
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              PAIRTALK SESSION TIMELINE                                 │
-├─────────────────────┬────────────────────────────────────┬─────────────────────────────┤
-│  PART 1 (4-5 Mins)  │         PART 2 (3-4 Mins)          │      PART 3 (4-5 Mins)      │
-│  Introduction &     │  Cue Card Monologue                │  Abstract Two-Way           │
-│  Familiar Topics    │  • 1:00 min timed preparation      │  Discussion & Analysis      │
-│  (Work, Home, Hobbies)│ • 2:00 min uninterrupted speaking│  (Societal & Global Trends) │
-└─────────────────────┴────────────────────────────────────┴─────────────────────────────┘
-```
+## Public statistics and interpretation
 
-### 4.1 Part 1: Warm-up & Introduction (4–5 minutes)
-- Focus on general questions regarding familiar topics (studies, hometown, accommodation, leisure, technology).
-- Builds initial rapport, reduces speaking anxiety, and tests sentence-level fluency.
+- Completed calls count sessions marked completed with a positive recorded duration. Active and cancelled sessions are excluded. Each qualifying session counts once, not once per participant.
+- Practice hours sum qualifying session durations divided by 3,600. They are session hours, not doubled participant hours.
+- Practicing learners count distinct accounts that participated in a qualifying completed call. They are not registered-account totals, daily active users, or current online counts.
+- Post-call ratings are voluntary 1-5 session feedback. An average and distribution appear only after at least five valid ratings. They are not an official test score or a technical audio-quality benchmark.
+- Duplicate participant ratings for a session are reduced to the latest entry. Negative ratings remain included. Rating count is not the number of rated sessions.
+- Monthly trends cover six calendar months, including the incomplete current month, using UTC.
+- Only aggregates are public. Telegram IDs, aliases, audio, reports, private comments, and payment records are excluded.
 
-### 4.2 Part 2: Individual Long Turn / Cue Card (3–4 minutes)
-- **Automated 1-Minute Prep Timer**: The in-call HUD displays a randomized cue card topic with four prompting bullet points. Both candidates receive a synchronized 60-second timer to take mental or written notes.
-- **2-Minute Speaking Phase**: The designated candidate speaks for 1 to 2 uninterrupted minutes. An on-screen countdown signals pacing checkpoints at 1:00, 1:30, and 2:00 minutes.
-- **Follow-up Rounding-off Question**: The partner asks one or two brief rounding-off questions.
+Snapshots carry an updatedAt timestamp and may lag activity. Totals can include internal test sessions and are not independently audited. No statistic by itself demonstrates improvement in IELTS scores. Do not invent user counts, country coverage, quality scores, matching benchmarks, or testimonials.
 
-### 4.3 Part 3: Deep Analytical Discussion (4–5 minutes)
-- Explores abstract, speculative, and societal themes connected to Part 2.
-- Emphasizes justification, hypothesis formulation (`If governments were to...`), contrasting perspectives, and complex discourse markers.
+Sources: [live statistics](https://pairtalk.online/stats), [definitions and limitations](https://pairtalk.online/stats.md).
+Public statistics JSON: https://api.pairtalk.online/api/public/stats
 
----
+## Privacy, safety, and moderation
 
-## 5. Role Alternation Protocol
+Partners see PairTalk aliases instead of Telegram contact details. The service still processes account and session information to operate; an alias does not make all speech anonymous. Voice calls use WebRTC transport encryption. Do not claim that transport encryption makes audio inaccessible to the media provider.
 
-To ensure both participants obtain equal speaking and evaluation practice:
-1. **First Half (Candidate A Speaking, Candidate B Examining)**: Candidate B reads prompt cards, keeps time, and listens actively for grammatical slips and lexical range.
-2. **Second Half (Candidate B Speaking, Candidate A Examining)**: Roles invert seamlessly with a fresh topic card.
-3. **Session Duration Caps**: Free tier sessions provide up to 15 minutes; PLUS, PRO, and BOSS tiers allow extended deep dives up to 30, 60, and 90 minutes respectively.
+Keep personal information private, leave uncomfortable calls, and use the reporting flow for inappropriate behavior. Do not send money to practice partners or publish another person's audio without permission. Moderation can impose warnings, suspensions, or bans; /appeal is available for permanent-ban review. Contact support for account deletion or data requests.
 
----
+Sources: [safety](https://pairtalk.online/safety.md), [community guidelines](https://pairtalk.online/community-guidelines.md), [privacy](https://pairtalk.online/privacy.md).
 
-## 6. Peer Assessment & Reciprocal Feedback Loop
+## Public document map
 
-Upon call completion, both candidates enter the **Post-Call Assessment Screen**:
-
-1. **Sub-Criteria Scoring**: Each learner rates their partner on integer whole bands (5 to 9) across `FC`, `LR`, `GRA`, and `P`.
-2. **Structured Qualitative Feedback**: Quick-select tags for positive reinforcement (*"Natural Idioms"*, *"Fluid Transitions"*, *"Accurate Word Stress"*) and constructive improvement areas (*"Filler Word Overuse"*, *"Monotone Intonation"*, *"Tense Inconsistency"*).
-3. **Reputation & Calibration Weighting**: Ratings submitted by experienced, high-reputation candidates carry higher statistical weight, mitigating malicious or inaccurate ratings.
-4. **Community Trust Engine**: Accounts maintaining an average peer rating $\ge 4.2★$ receive priority matchmaking placement and leaderboard badges.
-
----
-
-## 7. Studio-Grade WebRTC SFU Audio Infrastructure
-
-PairTalk uses dedicated **LiveKit Selective Forwarding Units (SFU)** deployed across low-latency edge regions (Frankfurt, Singapore, Virginia):
-
-- **Opus HD Codec**: Adaptive bitrate audio encoding (24–64 kbps) optimized for voice clarity and accent intelligibility.
-- **Acoustic Echo Cancellation (AEC) & Noise Suppression (NS)**: Server- and client-side digital signal processing eliminates room echo and ambient noise.
-- **Cross-Device Audio Auto-Unlock**: Proprietary audio context unlock handlers overcome iOS Safari and Android WebView silent audio restrictions, ensuring instantaneous audio playback upon connection.
-- **Encrypted Media Transport**: WebRTC audio connections to the LiveKit media service use DTLS-SRTP. This is transport encryption, not encryption that hides media from the service; participant-requested recordings are processed there.
-
----
-
-## 8. Cloud Recording & Retention Lifecycle
-
-| Subscription Plan | Monthly Calls | Max Call Duration | Cloud Audio Recordings | Retention Window | Storage Purge Method |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **FREE** | Complimentary | 15 mins | 1 recording | **24 hours (1 day)** | Automated cron hard-delete |
-| **PLUS** | 10 calls | 30 mins | 3 recordings | **7 days** | Automated cron hard-delete |
-| **PRO** | 25 calls | 60 mins | 7 recordings | **30 days** | Automated cron hard-delete |
-| **BOSS** | 50 calls | 90 mins | 15 recordings | **90 days** | Automated cron hard-delete |
-
-*Note: Recording is entirely optional. Both participants must have recording permissions enabled, and either participant can disable recording at any point during the call.*
-
----
-
-## 9. 100% Anonymity & Security
-
-- **Cryptographic Alias**: You are identified only as `P2P-XXXXXXXX` (e.g., `P2P-0284DB68`).
-- **Zero PII Exposure**: Real name, phone number, Telegram `@username`, profile photo, and geolocation are never revealed to peers or exposed in WebRTC SDP signaling.
-- **Safety Interventions**: In-call 1-tap disconnect, partner blocking, and automated harassment flagging. See [Safety Guide](./SAFETY_GUIDE.md) and [Community Guidelines](./COMMUNITY_GUIDELINES.md).
-
----
-
-## 10. Summary of Key Links
-
-- [Official Band Descriptors & Practice Guide](./IELTS_SPEAKING_GUIDE.md)
-- [Community Guidelines & Moderation Ladder](./COMMUNITY_GUIDELINES.md)
-- [Safety & Anti-Solicitation Guide](./SAFETY_GUIDE.md)
-- [Privacy Policy & 100% Refund Guarantee](./PRIVACY_POLICY.md)
-- [Terms of Service](./TERMS_OF_SERVICE.md)
-- [Frequently Asked Questions (FAQ)](./FAQ.md)
-
-
----
-
-
-# IELTS Speaking Master Guide & Band Descriptors (2026 Edition)
-
-**Document Version:** 2026.2.0  
-**Effective Date:** August 2026  
-**Curated By:** PairTalk IELTS Pedagogical Research Team  
-
----
-
-## 1. Overview of the IELTS Speaking Assessment
-
-The IELTS Speaking test is a 11–14 minute structured oral interview evaluating your ability to communicate effectively in English in real time. The examination is identical for both **IELTS Academic** and **IELTS General Training** candidates.
-
-Your performance is graded across four equally weighted assessment criteria:
-1. **Fluency and Coherence (FC)** — 25%
-2. **Lexical Resource (LR)** — 25%
-3. **Grammatical Range and Accuracy (GRA)** — 25%
-4. **Pronunciation (P)** — 25%
-
-PairTalk enforces strict whole-band scoring (5, 6, 7, 8, 9) to align directly with official examiner marking standards.
-
----
-
-## 2. Official Band Descriptors Matrix (Bands 5 to 9)
-
-```
-┌──────┬────────────────────────┬────────────────────────┬────────────────────────┬────────────────────────┐
-│ BAND │ FLUENCY & COHERENCE    │ LEXICAL RESOURCE       │ GRAMMATICAL RANGE      │ PRONUNCIATION          │
-├──────┼────────────────────────┼────────────────────────┼────────────────────────┼────────────────────────┤
-│  9   │ Fluent with rare       │ Full flexibility &     │ Full range of          │ Precise phonemics;     │
-│      │ repetition; fully      │ idiomatic mastery;     │ structures naturally;  │ subtle nuances &       │
-│      │ coherent & developed.  │ effortless precision.  │ consistently accurate. │ natural intonation.    │
-├──────┼────────────────────────┼────────────────────────┼────────────────────────┼────────────────────────┤
-│  8   │ Speaks fluently; rare  │ Wide vocabulary;       │ Wide range of complex  │ Easy to understand;    │
-│      │ hesitation for content │ occasional minor       │ sentences; majority of │ flexible rhythm,       │
-│      │ rather than language.  │ collocation slips.     │ sentences error-free.  │ stress, and pitch.     │
-├──────┼────────────────────────┼────────────────────────┼────────────────────────┼────────────────────────┤
-│  7   │ Speaks at length       │ Flexible vocabulary;   │ Frequent complex       │ Generally clear; some  │
-│      │ without noticeable     │ uses idiomatic language│ structures; generally  │ accent influence, but  │
-│      │ effort; some fillers.  │ with minor awareness.  │ good error control.    │ never hinders clarity. │
-├──────┼────────────────────────┼────────────────────────┼────────────────────────┼────────────────────────┤
-│  6   │ Willing to speak at    │ Wide enough vocabulary │ Mix of simple &        │ Generally intelligible;│
-│      │ length; self-corrects  │ but limited style;     │ complex structures;    │ occasional missteps in │
-│      │ & repeats vocabulary.  │ inappropriate words.   │ frequent minor errors. │ stress or phonetics.   │
-├──────┼────────────────────────┼────────────────────────┼────────────────────────┼────────────────────────┤
-│  5   │ Slow speech; frequent  │ Limited vocabulary;    │ Basic sentence forms;  │ Noticeable mother-     │
-│      │ pauses to search for   │ struggles to rephrase  │ struggles with complex │ tongue interference;   │
-│      │ words; basic linkers.  │ or vary expression.    │ clauses and tenses.    │ requires listener care.│
-└──────┴────────────────────────┴────────────────────────┴────────────────────────┴────────────────────────┘
-```
-
----
-
-## 3. The 4 Assessment Criteria Explained in Depth
-
-### 3.1 Fluency & Coherence (FC)
-- **Fluency**: How smoothly, continuously, and naturally you speak without excessive pauses, "um/uh" crutches, or backtracking.
-- **Coherence**: The logical flow of ideas, appropriate use of discourse markers (*"On the one hand"*, *"Conversely"*, *"To put it another way"*), and clear paragraphing in speech.
-- **Examiner Insight**: Hesitating to think of an **idea** is normal even for native speakers; hesitating to find **English words or grammar rules** lowers your FC band score.
-
-### 3.2 Lexical Resource (LR)
-- **Range & Precision**: Using topic-specific, nuanced vocabulary instead of generic words (*"beneficial"* instead of *"good"*, *"prohibitive cost"* instead of *"expensive"*).
-- **Collocations & Idiomatic Language**: Natural pairings (*"heavy rain"*, *"raise awareness"*, *"bear in mind"*, *"striking contrast"*) used in correct register without sounding forced or reciting idioms out of context.
-- **Paraphrasing**: Expressing the same concept in different terms when clarifying or elaborating.
-
-### 3.3 Grammatical Range & Accuracy (GRA)
-- **Structural Variety**: Combining simple sentences with compound, complex, and conditional clauses (*"If governments had implemented these policies earlier, current urban congestion would be significantly lower"*).
-- **Error Frequency**: Band 7+ requires the majority of your sentences to be error-free. Small slips in articles (*a/the*) or third-person *-s* are tolerated only if they do not impede comprehension.
-
-### 3.4 Pronunciation (P)
-- **Intelligibility**: Clear articulation of vowel and consonant sounds without mother-tongue distortion.
-- **Sentence Stress & Rhythm**: Stressing content words (nouns, main verbs, adjectives) and unstressed function words (prepositions, auxiliary verbs).
-- **Intonation**: Rising intonation for lists and inquiries; falling intonation for completed thoughts and assertions.
-- **Connected Speech**: Utilizing linking, assimilation, and elision (*"going to" $\rightarrow$ "gonna"*, *"next door" $\rightarrow$ "/neksdɔː/"*).
-
----
-
-## 4. Practical Strategies: Jumping from Band 6.0 to Band 7.5+
-
-```
-   ┌────────────────────────────────────────────────────────┐
-   │             THE BAND 6.0 TO 7.5+ BREAKTHROUGH          │
-   ├────────────────────────┬───────────────────────────────┤
-   │  BAND 6.0 TRAPS        │  BAND 7.5+ MASTERY            │
-   ├────────────────────────┼───────────────────────────────┤
-   │ Short, clipped answers │ Extended 3-step responses     │
-   │ Generic vocabulary     │ Precise thematic collocations │
-   │ Simple sentence chains │ Subordinate & relative clauses│
-   │ Monotone flat pitch    │ Expressive voice intonation   │
-   │ Memorized templates    │ Spontaneous analytical reflex │
-   └────────────────────────┴───────────────────────────────┘
-```
-
-### Strategy 1: The P-E-E-R Answer Extension Formula
-To avoid short, 1-sentence Band 5/6 answers in Parts 1 and 3, structure every response using **P-E-E-R**:
-1. **Point**: State your direct answer clearly.
-2. **Explain**: Explain *why* you feel this way.
-3. **Example**: Provide a brief personal, factual, or hypothetical illustration.
-4. **Reflection / Result**: Conclude with the consequence or broader impact.
-
-### Strategy 2: Replacing Empty Fillers with Natural Discourse Markers
-- ❌ **Avoid**: Long silences, *"umm"*, *"ahhh"*, repeating the question (*"What are my hobbies? Well, my hobbies are..."*).
-- ✅ **Adopt**: Fluid thinking phrases:
-  - *"That's an intriguing question because there are two distinct perspectives..."*
-  - *"I haven't given that a great deal of thought before, but I'd venture that..."*
-  - *"In my immediate circle, that certainly holds true, although on a macro scale..."*
-
----
-
-## 5. Part 2 Cue Card Mastery: The 1-Minute Note-Taking Grid
-
-During Part 2, you are given a Cue Card and exactly **60 seconds** to take notes. 
-
-### The 4-Quadrant Note-Taking Method
-Do NOT write full sentences. Write keywords in a 4-bullet grid on paper:
-
-```
-┌──────────────────────────────────────┬──────────────────────────────────────┐
-│ [1] WHO / WHAT (Anchor)              │ [2] WHEN / WHERE (Context)           │
-│ • Dr. Vance (Physics mentor)         │ • 2nd yr University (Autumn 2024)   │
-│ • Charismatic, demanding             │ • Crowded amphitheater lab           │
-├──────────────────────────────────────┼──────────────────────────────────────┤
-│ [3] WHAT HAPPENED (Action & Details) │ [4] WHY MEMORABLE (Emotional Impact) │
-│ • Superconductor levitation demo     │ • Sparked passion for renewables     │
-│ • Challenged my flawed hypothesis    │ • Formative pivot in career path     │
-└──────────────────────────────────────┴──────────────────────────────────────┘
-```
-
-### Pacing Your 2-Minute Monologue:
-- **0:00 – 0:30**: Introduction and setting the context (Quadrants 1 & 2).
-- **0:30 – 1:20**: The core narrative and specific incident (Quadrant 3).
-- **1:20 – 2:00**: Why it matters, long-term impact, and reflection (Quadrant 4).
-
----
-
-## 6. Part 3 Discussion: Handling Abstract & Speculative Questions
-
-Part 3 questions demand analytical, macro-level thinking. Never personalize Part 3 answers to just yourself; generalize to society, generations, or historical context.
-
-| Question Archetype | High-Scoring Linguistic Strategy | Example Sentence Starter |
-| :--- | :--- | :--- |
-| **Comparing Past vs. Present** | Contrastive tenses (*used to + would*, *whereas now*) | *"Whereas previous generations relied predominantly on..., nowadays there has been a paradigm shift towards..."* |
-| **Speculating on the Future** | Modal verbs of probability (*is bound to, will likely, could conceivably*) | *"In all likelihood, artificial intelligence will fundamentally reshape how..."* |
-| **Evaluating Pros & Cons** | Balanced concession structures (*Notwithstanding the benefits...*) | *"While it undoubtedly fosters efficiency, the collateral consequence is often..."* |
-| **Analyzing Causes & Effects** | Causation verbs (*stem from, give rise to, trigger*) | *"This trend primarily stems from socio-economic pressures that..."* |
-
----
-
-## 7. PairTalk In-Call Mock Interview Etiquette
-
-To maximize your learning and your partner's experience:
-
-1. **Be Punctual & Ready**: Test your microphone and headset before matching.
-2. **Commit to English Only**: Never switch to your native tongue during a session.
-3. **Respect Time Limits**: Keep your Part 1 answers to 20–30 seconds each; deliver 1.5–2 minutes for Part 2.
-4. **Active Listening**: When acting as the Examiner, listen attentively without interrupting unnecessarily until the allotted time expires.
-5. **Constructive Whole-Band Scoring**: Provide candid, honest ratings (5–9) and qualitative advice in the post-call review screen.
-
----
-
-## 8. Summary of Related Guides
-
-- [How PairTalk Matchmaking Works](./HOW_IT_WORKS.md)
-- [Community Guidelines & Practice Standards](./COMMUNITY_GUIDELINES.md)
-- [Safety & Anonymity Guide](./SAFETY_GUIDE.md)
-- [Privacy Policy & Audio Retention](./PRIVACY_POLICY.md)
-- [Terms of Service](./TERMS_OF_SERVICE.md)
-- [FAQ](./FAQ.md)
-
-
----
-
-
-# PairTalk Community Guidelines & Moderation Policy
-
-**Document Version:** 2026.2.0  
-**Effective Date:** August 2026  
-**Applicability:** All PairTalk Users Across Telegram Mini App & Web Platform  
-
----
-
-## 1. Preamble & Core Community Mission
-
-**PairTalk** exists to provide an inclusive, safe, and academically rigorous peer-to-peer environment for IELTS Speaking candidates worldwide. Language acquisition requires genuine psychological comfort and vulnerability; our community standards are designed to ensure every learner can practice without fear of harassment, hostility, or exploitation.
-
-Every registered candidate agrees to uphold these standards unconditionally upon entering the matchmaking queue.
-
----
-
-## 2. Article 1: Core Practice Principles
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 PAIRTALK CODE OF PRACTICE                              │
-├─────────────────────┬────────────────────────────────────┬─────────────────────────────┤
-│ 1. ENGLISH ONLY     │ 2. MUTUAL RESPECT                  │ 3. CONSTRUCTIVE SCORING     │
-│ Practice exclusively│ Treat peers courteously regardless │ Deliver honest, helpful     │
-│ in English.         │ of nationality, accent, or gender. │ 4-criteria feedback (5-9).  │
-└─────────────────────┴────────────────────────────────────┴─────────────────────────────┘
-```
-
-### 1.1 Strict English-Only Communication
-All voice communications during matchmaking sessions must be conducted exclusively in English. Switching to native or regional languages defeats the primary pedagogical objective of developing spontaneous English thinking reflex.
-
-### 1.2 Universal Mutual Respect
-Candidates hail from over 80 countries. Discrimination, mockery of accents, derogatory remarks about nationality, ethnicity, gender, sexual orientation, religion, or background will result in immediate disciplinary action.
-
-### 1.3 Dedicated Academic Focus
-Sessions are strictly reserved for IELTS Speaking simulation and constructive linguistic feedback. Do not use PairTalk for casual dating, social flirting, commercial advertising, or proselytizing.
-
-### 1.4 Reciprocal Feedback Integrity
-After each call, participants must submit honest, fair whole-band scores (5 to 9) and qualitative tags. Retaliatory, malicious, or fabricated rating submissions are monitored by our fraud detection heuristics and penalized.
-
----
-
-## 3. Article 2: Prohibited Conduct & Zero-Tolerance Violations
-
-The following behaviors are strictly forbidden across all voice rooms, text messaging, and support channels:
-
-1. **Harassment & Bullying**: Repeated insults, personal attacks, intimidation, or aggressive behavior toward speaking partners.
-2. **Explicit, Vulgar, or Sexually Inappropriate Language**: Any sexual remarks, unsolicited intimate inquiries, or vulgar profanity.
-3. **Queue Manipulation & Ghosting**: Repeatedly entering the matchmaking queue and instantly disconnecting (<10 seconds), dodging partners, or farming referral calls.
-4. **Commercial Solicitation & Scams**: Promoting external paid courses, unauthorized tutoring services, crypto schemes, or unauthorized third-party links.
-5. **PII Harassment**: Pressuring partners to disclose their real names, phone numbers, social media handles, or physical addresses.
-6. **Impersonation & System Fraud**: Impersonating PairTalk staff, falsifying payment proofs, or exploiting software vulnerabilities.
-
----
-
-## 4. Article 3: 3-Tier Moderation Ladder & Enforcement
-
-To maintain quality and safety, PairTalk operates an automated moderation engine combined with human administrative review:
-
-```
-┌───────────┬──────────────────────────┬────────────────────────────┬───────────────────────────────┐
-│ TIER      │ VIOLATION LEVEL          │ AUTOMATED SANCTION         │ DURATION & RECOVERY           │
-├───────────┼──────────────────────────┼────────────────────────────┼───────────────────────────────┤
-│ Tier 1    │ Minor misconduct,        │ Formal Warning +           │ 24 Hours.                     │
-│ (Timeout) │ average rating < 2.5★,   │ Matchmaking Queue Lock     │ Automatic restoration upon    │
-│           │ single harassment report │                            │ timeout expiration.           │
-├───────────┼──────────────────────────┼────────────────────────────┼───────────────────────────────┤
-│ Tier 2    │ Repeated infractions     │ Account Suspension +       │ 7 Days.                       │
-│ (Suspend) │ within 30 days, frequent │ Leaderboard Disqualification│ Requires confirmation of      │
-│           │ instant disconnects      │                            │ guidelines before reentry.   │
-├───────────┼──────────────────────────┼────────────────────────────┼───────────────────────────────┤
-│ Tier 3    │ Severe misconduct (hate  │ Permanent Platform Ban +   │ Permanent.                    │
-│ (Ban)     │ speech, fraud, scams,    │ Blacklisting of Telegram ID│ Requires formal human review  │
-│           │ persistent harassment)   │                            │ via `/appeal` command.        │
-└───────────┴──────────────────────────┴────────────────────────────┴───────────────────────────────┘
-```
-
----
-
-## 5. Article 4: In-Call Reporting & Evidence Preservation
-
-1. **In-Call Report Button**: Tapping the red **Report Partner** button in the voice room immediately prompts you to select the violation type (*Harassment*, *Non-English Speech*, *Commercial Solicitation*, *Explicit Content*).
-2. **Emergency Disconnect**: Reporting automatically terminates the call and blocks the offending user from ever being matched with you again.
-3. **Telemetry Capture**: When a report is filed, the system securely logs timestamp metadata, signaling disconnect reason, and anonymous participant aliases for administrative auditing.
-
----
-
-## 6. Article 5: Formal Appeals Procedure
-
-Candidates whose accounts have been suspended or permanently banned possess the right to administrative appeal:
-
-- **How to Submit**: Send `/appeal <detailed reason>` directly to the official Telegram Bot (`@PairTalkBot`).
-- **Review Protocol**: Appeals are queued directly in the Admin Operations Console and audited by human moderators within **24 to 48 hours**.
-- **One-Appeal Rule**: Only one active appeal can be pending per account at any given time.
-- **Irreversible Decisions**: Rejection of a Tier 3 appeal following formal human review is final and unappealable.
-
----
-
-## 7. Related Documentation
-
-- [How Matchmaking & Practice Works](./HOW_IT_WORKS.md)
-- [Official IELTS Speaking Guide](./IELTS_SPEAKING_GUIDE.md)
-- [Safety & Anti-Solicitation Guide](./SAFETY_GUIDE.md)
-- [Privacy Policy & Data Rights](./PRIVACY_POLICY.md)
-- [Terms of Service](./TERMS_OF_SERVICE.md)
-- [FAQ](./FAQ.md)
-
-
----
-
-
-# PairTalk Safety, Privacy & Anti-Solicitation Guide
-
-**Document Version:** 2026.2.0  
-**Effective Date:** August 2026  
-**Target Audience:** All Global PairTalk Learners & Educators  
-
----
-
-## 1. Safety Philosophy & Zero-PII Guarantee
-
-PairTalk is built from the ground up on a **Zero Personally Identifiable Information (Zero-PII)** architecture. We believe speaking practice with unfamiliar peers should be completely safe, comfortable, and free from invasive personal inquiries.
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              ZERO-PII SHIELD ARCHITECTURE                              │
-├──────────────────────────────┬──────────────────────────┬──────────────────────────────┤
-│ WHAT PEERS SEE:              │ WHAT REMAINS PRIVATE:    │ WHAT IS STORED TEMPORARILY:  │
-│ • Anonymous Alias            │ • Your Real Name         │ • Target Band Sub-scores     │
-│   (e.g., P2P-0284DB68)       │ • Telegram Username      │ • Matchmaking Queue State    │
-│ • Target Band (5-9)          │ • Phone Number & Avatar  │ • Optional Audio Recording   │
-│ • Cumulative Rating (★)      │ • IP Address & Location  │   (Purged after 1-90 days)   │
-└──────────────────────────────┴──────────────────────────┴──────────────────────────────┘
-```
-
----
-
-## 2. Permanent Cryptographic Candidate Aliasing
-
-Every learner is assigned a randomized, non-reversible cryptographic identifier formatted as `P2P-XXXXXXXX` (e.g. `P2P-0284DB68`). 
-
-- **Signaling Layer Protection**: Neither your Telegram handle (`@username`), your registered telephone number, nor your avatar photograph is transmitted in the WebRTC SDP handshake or Socket.IO signaling payload.
-- **Never Share Personal Details**: PairTalk strictly advises all users **never** to disclose full names, home addresses, personal social media handles (Instagram, WhatsApp, WeChat), or financial information during voice calls.
-
----
-
-## 3. Anti-Scam & Anti-Commercial Solicitation Defense
-
-PairTalk is exclusively an academic practice platform. The following commercial and fraudulent activities are strictly prohibited and trigger an immediate **Tier 3 Permanent Ban**:
-
-1. **Private Tutoring Solicitations**: Tutors attempting to recruit students or sell external private coaching packages.
-2. **Essay Correction & Exam Material Resale**: Marketing illicit IELTS question leaks, leaked exam papers, or unauthorized editing services.
-3. **Cryptocurrency & Affiliate Schemes**: Pitching investment schemes, crypto tokens, or multi-level marketing platforms.
-4. **Phishing & External Links**: Directing partners to unverified external websites, file downloads, or suspicious Telegram groups.
-
----
-
-## 4. In-Call Real-Time Safety Tools
-
-During any live speaking session, candidates have access to immediate safety controls located in the call interface:
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              LIVE IN-CALL SAFETY CONTROLS                              │
-├──────────────────────────────┬──────────────────────────┬──────────────────────────────┤
-│ 🛑 1-TAP DISCONNECT          │ 🚨 REPORT PARTNER        │ 🛡️ PERMANENT BLOCK           │
-│ Instantly drop the voice     │ Submit instantaneous     │ Add partner's cryptographic  │
-│ connection with 0 ms delay.  │ violation report to      │ alias to your private        │
-│                              │ human moderation queue.  │ blacklisted queue forever.   │
-└──────────────────────────────┴──────────────────────────┴──────────────────────────────┘
-```
-
-### 4.1 How to Report and Block a Partner:
-1. Tap the **Report / Disconnect** icon on the top-right of your active call screen.
-2. Select the specific infraction reason:
-   - *Harassment / Hate Speech*
-   - *Inappropriate / Explicit Language*
-   - *Commercial Advertising / Solicitation*
-   - *Refusal to Speak English*
-   - *Microphone Noise / Spam*
-3. Check **"Block this user permanently"** (enabled by default).
-4. The call is immediately terminated, the offending candidate is logged in the administrative audit telemetry, and PairTalk's Redis matchmaking engine ensures you are never paired together again.
-
----
-
-## 5. Best Practices for Safe Speaking Practice
-
-- **Stay on IELTS Topic**: If a partner steers the conversation into personal, uncomfortable, or non-exam subjects, politely redirect: *"Let's focus on the Cue Card questions."*
-- **Disconnect Immediately If Uncomfortable**: You are never obligated to remain in a call with an impolite or intrusive partner.
-- **Microphone Hygiene**: Use wired or Bluetooth headphones with a dedicated microphone to avoid audio feedback and background household noise.
-- **Report Retaliatory Ratings**: If an unruly partner attempts to give you an unjustified low score after you end a call, our automated rating validation engine filters out anomalous score spikes.
-
----
-
-## 6. Audio Security & Encrypted Infrastructure
-
-- **Live Media Encryption**: Real-time voice streams are encrypted in transit using Datagram Transport Layer Security (DTLS) and Secure Real-time Transport Protocol (SRTP).
-- **Recording Visibility**: Either participant can enable room recording. Room capture can include both voices; each participant's saved-copy choice is separate. Check the room recording indicator, which shows unconfirmed status when provider information is unavailable. PairTalk cannot detect recording made outside the app.
-- **Automated Hard Purge**: All optional cloud recordings are purged automatically upon expiration of your plan's retention window (Free = 24 hours, Plus = 7 days, Pro = 30 days, Boss = 90 days).
-
----
-
-## 7. Escalation & Safety Contact
-
-If you experience severe harassment, stalking, or security concerns:
-- **Telegram Safety Desk**: Contact `@PairTalkSupport`
-- **In-App Safety Command**: Type `/support` in `@PairTalkBot`
-- **Response SLA**: Safety escalations are prioritized and handled within **2 to 12 hours**.
-
----
-
-## 8. Summary of Related Guides
-
-- [How Matchmaking Works](./HOW_IT_WORKS.md)
-- [IELTS Speaking Practice Guide](./IELTS_SPEAKING_GUIDE.md)
-- [Community Guidelines & Moderation Ladder](./COMMUNITY_GUIDELINES.md)
-- [Privacy Policy & Refund Terms](./PRIVACY_POLICY.md)
-- [Terms of Service](./TERMS_OF_SERVICE.md)
-- [FAQ](./FAQ.md)
-
-
----
-
-
-# PairTalk Privacy Policy, Audio Retention & Refund Guarantee
-
-**Document Version:** 2026.2.0  
-**Effective Date:** August 2026  
-**Scope:** Global Privacy Standards, Data Processing & Consumer Protection Policy  
-
----
-
-## 1. Introduction & Privacy Commitment
-
-**PairTalk** ("we", "us", "our") operates an autonomous peer-to-peer IELTS Speaking preparation platform accessible via Telegram Mini Apps and web clients at `pairtalk.online`. 
-
-We are committed to absolute data minimization, transparent data lifecycle management, and rigorous user privacy. This Privacy Policy details our data collection boundaries, WebRTC voice encryption, authoritative audio retention matrix, and our server-enforced **100% 48-Hour Money-Back Guarantee**.
-
----
-
-## 2. Alias-Based Peer Privacy and Service Data Processing
-
-Aliases limit what a practice partner sees. The service processes account identifiers, authentication data, call metadata, ratings, billing records, and optional recordings. Infrastructure may process IP addresses for connections, rate limits, and security logs. LiveKit handles live audio and recording egress. This architecture is not zero-knowledge and does not hide audio from the media service.
-
-### 2.1 Essential Service Data Collected
-- **Telegram Numeric User ID**: Required solely for cryptographic account authentication, session authorization, and state persistence.
-- **Cryptographic Alias**: A randomly generated identifier (e.g., `P2P-0284DB68`) displayed to peers.
-- **Target IELTS Bands & Sub-scores**: Self-reported integers (5 to 9) for `FC`, `LR`, `GRA`, and `P` used to drive the matchmaking algorithm.
-- **Call Telemetry**: Session duration, completion status, and peer assessment scores used to calculate community ratings.
-
-### 2.2 What a Practice Partner Sees
-- Practice partners see aliases and practice information rather than your Telegram profile or contact details.
-- Live voice transport is encrypted to the media service. The service and its recording provider process media; this is not end-to-end encryption that prevents provider access.
-
----
-
-## 3. WebRTC Voice Encryption & Cloud Recording Retention Matrix
-
-### 3.1 In-Transit Voice Stream Encryption
-Live audio uses **Datagram Transport Layer Security (DTLS)** and **Secure Real-time Transport Protocol (SRTP)** between clients and the LiveKit media service. Transport encryption does not prevent the media service from processing audio.
-
-### 3.2 Authoritative Cloud Recording Retention Matrix
-Cloud recording is optional. Either participant can start room capture, which can include both voices. Choosing to save your own copy does not control whether a partner records the room. Retention for saved copies follows the plan tier:
-
-| Plan Tier | Monthly Calls | Max Session Length | Cloud Recordings Included | Retention Window | Storage Purge Method |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **FREE Tier** | Complimentary | 15 mins | 1 recording | **24 Hours (1 Day)** | Automated cron hard-delete |
-| **PLUS Plan** | 10 calls | 30 mins | 3 recordings | **7 Days** | Automated cron hard-delete |
-| **PRO Plan** | 25 calls | 60 mins | 7 recordings | **30 Days** | Automated cron hard-delete |
-| **BOSS Plan** | 50 calls | 90 mins | 15 recordings | **90 Days** | Automated cron hard-delete |
-
-*When a recording reaches the end of its retention window, the audio binary is permanently erased from cloud object storage and cannot be restored.*
-
----
-
-## 4. 100% 48-Hour Money-Back Guarantee & Refund Policy
-
-PairTalk offers a transparent, server-enforced **100% Money-Back Guarantee** on all paid accelerator subscriptions.
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                         100% 48-HOUR REFUND ELIGIBILITY CRITERIA                       │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  ✅ Condition 1: Refund request initiated within 48 HOURS of original purchase; AND   │
-│  ✅ Condition 2: LESS THAN 10% of the purchased monthly practice call allowance used.  │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 4.1 Ineligible Scenarios
-A refund cannot be issued under any of the following circumstances:
-1. More than **48 hours** have elapsed since subscription activation.
-2. The user has utilized **10% or more** of their monthly call credits (e.g., used 1 or more calls on a 10-call plan, or 3 or more calls on a 25-call plan).
-3. The account has been sanctioned, suspended, or permanently banned due to violations of our [Community Guidelines](./COMMUNITY_GUIDELINES.md) or [Safety Guide](./SAFETY_GUIDE.md).
-
-### 4.2 Refund Settlement Mechanics
-- **Telegram Stars (XTR)**: Eligible Telegram Star transactions are reversed automatically via the bot using `/refund`. The refund is credited immediately back to your Telegram Stars balance, and the account returns to the Free tier.
-- **National Bank Card Payments (UZS)**: Card refunds submitted via `/refund` or support are reviewed by billing administration and returned to the originating payment card within **1 to 3 business days**.
-
----
-
-## 5. Right to Erasure & Data Subject Rights
-
-In compliance with international data protection frameworks (including GDPR principles):
-- **Right to Access**: View your current band calibrations, subscription status, and call history at any time inside the app.
-- **Right to Erasure ("Right to be Forgotten")**: You may request complete, permanent deletion of your account record, peer ratings, and active recordings by contacting support via `@PairTalkSupport` or submitting `/support` in the bot. Account purge requests are executed within 24 hours.
-
----
-
-## 6. Infrastructure & Sub-processors
-
-PairTalk partners with industry-leading infrastructure providers under strict Data Processing Agreements:
-- **LiveKit Cloud / Self-Hosted SFU**: Real-time WebRTC media routing.
-- **Cloudflare**: Global CDN, DDoS mitigation, and edge SSL termination.
-- **PostgreSQL & Redis**: Encrypted database and in-memory queue management.
-
----
-
-## 7. Contact & Inquiries
-
-For privacy concerns, billing assistance, or formal data requests:
-- **Customer Support**: `@PairTalkSupport` (Telegram)
-- **Telegram Bot Commands**: `/refund`, `/support`, `/paysupport`
-- **Official Web Portal**: [pairtalk.online](https://pairtalk.online)
-
----
-
-## 8. Summary of Related Guides
-
-- [How Matchmaking Works](./HOW_IT_WORKS.md)
-- [Official IELTS Speaking Guide](./IELTS_SPEAKING_GUIDE.md)
-- [Community Guidelines & Moderation Ladder](./COMMUNITY_GUIDELINES.md)
-- [Safety & Anti-Solicitation Guide](./SAFETY_GUIDE.md)
-- [Terms of Service](./TERMS_OF_SERVICE.md)
-- [FAQ](./FAQ.md)
-
-
----
-
-
-# PairTalk Terms of Service & User Agreement
-
-**Document Version:** 2026.2.0  
-**Effective Date:** August 2026  
-**Governing Platform:** pairtalk.online & PairTalk Telegram Mini App  
-
----
-
-## 1. Acceptance of Terms
-
-By accessing or using **PairTalk** (via the web application at `pairtalk.online`, the Telegram Bot `@PairTalkBot`, or the Telegram Mini App), you ("User", "Learner", or "Candidate") enter into a legally binding agreement with PairTalk ("we", "us", or "our"). If you do not agree to these Terms, do not access or use our services.
-
----
-
-## 2. Eligibility & Account Registration
-
-1. **Age Requirement**: You must be at least 13 years of age (or the minimum age of digital consent in your jurisdiction) to use PairTalk. Users under the age of majority require parental or guardian permission.
-2. **Telegram Authentication**: Access to PairTalk features requires an active, valid Telegram account. You are responsible for safeguarding your Telegram account credentials and session security.
-3. **One Account Per Learner**: Creating multiple accounts or automated bot accounts to exploit referral programs or manipulate rankings is strictly prohibited.
-
----
-
-## 3. Description of Service & Pedagogical Scope
-
-- **Peer-to-Peer Educational Tool**: PairTalk is an autonomous, technology-enabled peer practice network that pairs English learners for IELTS Speaking simulations.
-- **Not an Official Examination Body**: PairTalk is an independent educational tool. We do not issue official IELTS certificates or test report forms (TRFs).
-- **No Band Score Guarantees**: While regular practice is proven to enhance fluency and vocabulary, PairTalk does not guarantee any specific test result on the official IELTS examination.
-
----
-
-## 4. Fair Use Policy & User Conduct
-
-Users agree to comply with our [Community Guidelines](./COMMUNITY_GUIDELINES.md) and [Safety Guide](./SAFETY_GUIDE.md). Without limitation, you agree NOT to:
-- Use the voice network for harassment, hate speech, bullying, or explicit discussions.
-- Use automated scripts, bots, or queue flooding to artificially consume bandwidth or disrupt matchmaking.
-- Solicit commercial services, market private tutoring, or pitch third-party products.
-- Attempt to decompile, reverse-engineer, or compromise the security of the PairTalk platform.
-
-Violations of the Fair Use Policy will result in immediate sanctions under our 3-Tier Moderation Ladder (Warning, 7-day suspension, or permanent ban).
-
----
-
-## 5. Subscriptions, Payments & Refund Terms
-
-1. **Plan Tiers**: PairTalk offers a complimentary Free tier alongside paid monthly accelerator tiers (PLUS, PRO, BOSS).
-2. **Payment Methods**: Subscriptions may be purchased via Telegram Stars (XTR) or supported regional debit/credit cards (UZS).
-3. **100% 48-Hour Money-Back Guarantee**: As detailed in our [Privacy & Refund Policy](./PRIVACY_POLICY.md), you may request a 100% refund within **48 hours** of purchase if you have consumed **less than 10%** of your monthly call allowance.
-4. **Subscription Expiration**: Unused practice call credits expire at the end of the 30-day billing cycle and do not roll over to subsequent months unless explicitly stated in promotional terms.
-
----
-
-## 6. Intellectual Property & IELTS Trademark Disclaimer
-
-### 6.1 PairTalk Intellectual Property
-All software, matchmaking algorithms, visual designs, logos, and audio streaming architecture are the proprietary property of PairTalk and protected by intellectual property laws.
-
-### 6.2 Official IELTS Trademark Disclaimer
-**IELTS** is a registered trademark of University of Cambridge ESOL Examinations, the British Council, and IDP Education Australia. PairTalk is an independent educational platform and is **not affiliated with, endorsed by, or sponsored by** the University of Cambridge, the British Council, or IDP Education Australia. Any references to IELTS criteria, band scores, and speaking formats are purely for descriptive educational purposes.
-
----
-
-## 7. Limitation of Liability & Warranty Disclaimer
-
-1. **"As-Is" Service**: PairTalk is provided on an "as is" and "as available" basis without warranties of any kind, whether express or implied.
-2. **Peer Interactions**: We are not responsible for the personal conduct, opinions, or statements of speaking partners during live voice calls. However, we provide robust safety tools (1-tap disconnect, reporting, and permanent blocking) to protect learners.
-3. **Liability Cap**: To the maximum extent permitted by applicable law, PairTalk’s aggregate liability for any claims arising out of or related to these Terms shall not exceed the total amount paid by the user to PairTalk in the three (3) months preceding the incident.
-
----
-
-## 8. Modifications to Terms
-
-We reserve the right to amend these Terms at any time. Material changes will be communicated via the Telegram Bot or updated on `pairtalk.online/terms`. Continued use of the service following such changes constitutes your acceptance of the updated Terms.
-
----
-
-## 9. Contact & Support
-
-For legal inquiries or terms clarification:
-- **Support Desk**: `@PairTalkSupport` (Telegram)
-- **Official Web Portal**: [https://pairtalk.online](https://pairtalk.online)
-
----
-
-## 10. Summary of Related Documentation
-
-- [How Matchmaking Works](./HOW_IT_WORKS.md)
-- [Official IELTS Speaking Guide](./IELTS_SPEAKING_GUIDE.md)
-- [Community Guidelines](./COMMUNITY_GUIDELINES.md)
-- [Safety Guide](./SAFETY_GUIDE.md)
-- [Privacy Policy & Refund Terms](./PRIVACY_POLICY.md)
-- [Frequently Asked Questions (FAQ)](./FAQ.md)
-
-
----
-
-
-# Frequently Asked Questions (FAQ) — PairTalk Knowledge Base
-
-**Document Version:** 2026.2.0  
-**Effective Date:** August 2026  
-**Curated By:** PairTalk Customer Success & Pedagogical Support  
-
----
-
-## 1. Core Platform & Matchmaking
-
-### Q1: What is PairTalk and how does live IELTS Speaking matchmaking work?
-**Answer:**  
-PairTalk is an autonomous peer-to-peer IELTS Speaking preparation platform operating natively inside Telegram and modern web browsers. Candidates select their target whole-band scores (5, 6, 7, 8, 9) across the four official IELTS assessment criteria: Fluency & Coherence (`FC`), Lexical Resource (`LR`), Grammatical Range & Accuracy (`GRA`), and Pronunciation (`P`). When you tap **Start Practicing**, PairTalk’s sub-3-second Redis matchmaking radar pairs you with an active, criteria-matched peer worldwide in an encrypted WebRTC voice room.
-
----
-
-### Q2: Who is PairTalk designed for?
-**Answer:**  
-PairTalk is designed for serious candidates preparing for the **IELTS Academic** or **IELTS General Training** examination who need daily, spontaneous speaking practice. It is particularly valuable for:
-- Self-studying learners who lack native English speaking environments.
-- Candidates struggling to break through the Band 6.0/6.5 ceiling to reach Band 7.0, 7.5, 8.0, or 8.5.
-- Learners frustrated with unreliable study partners or expensive 1-on-1 private tutors ($20–$50/hour).
-
----
-
-### Q3: Why is PairTalk better than searching for IELTS study buddies in Discord servers or Telegram group chats?
-**Answer:**  
-Public group chats, Reddit forums, and Discord servers suffer from severe inefficiencies: unresponsive partners, frequent ghosting, misaligned language proficiency, background noise, and lack of privacy. PairTalk solves these problems through:
-- **Zero Waiting Time**: Instant matchmaking in $<3$ seconds.
-- **Calibrated Skill Pairing**: Matching based on whole-band criteria rather than random chance.
-- **Structured Timers**: In-call 1-minute cue card prep and 2-minute countdown timers.
-- **100% Anonymity**: Permanent `P2P-XXXXXXXX` aliases protecting your personal identity.
-
----
-
-### Q4: How does PairTalk utilize the official IELTS Speaking Band Descriptors (FC, LR, GRA, P)?
-**Answer:**  
-PairTalk aligns directly with the official British Council / IDP IELTS Speaking Band Descriptors. Learners configure individual target scores for each criterion (5 to 9). The matchmaking algorithm calculates an overall band score and can pair candidates with complementary strengths (e.g., matching a candidate needing vocabulary improvement with a partner strong in Lexical Resource) for maximum mutual learning synergy.
-
----
-
-### Q5: Can I practice IELTS Speaking Part 1, Part 2 (Cue Card), and Part 3 (Discussion) on PairTalk?
-**Answer:**  
-Yes. Every PairTalk call is structured to mirror the complete 3-part exam format:
-- **Part 1**: Introduction and warm-up questions (4–5 minutes).
-- **Part 2**: Individual Long Turn with an on-screen cue card, automated 1-minute note timer, and 2-minute speaking countdown.
-- **Part 3**: Two-way analytical discussion exploring abstract societal themes.
-Partners can alternate roles (Examiner vs. Candidate) across consecutive topic rounds.
-
----
-
-## 2. Pricing, Plans & Refund Policy
-
-### Q6: How much does IELTS Speaking practice cost on PairTalk compared to private tutors?
-**Answer:**  
-Traditional private tutors on Cambly, Preply, or iTalki charge **$20 to $50 per hour**. PairTalk is **100% free to start** with complimentary monthly practice calls. Paid accelerator subscriptions provide substantial savings:
-- **FREE Tier**: Complimentary monthly calls (15 min/call, 1 cloud recording, 24-hr retention).
-- **PLUS Plan ($1.58 / mo / 79 Telegram Stars / 15,000 UZS)**: 10 calls/mo, 30 min/call, 3 recordings (7-day retention).
-- **PRO Plan ($5.10 / mo / 255 Telegram Stars / 55,000 UZS)**: 25 calls/mo, 60 min/call, 7 recordings (30-day retention), high-priority matching.
-- **BOSS Plan ($13.58 / mo / 679 Telegram Stars / 149,000 UZS)**: 50 calls/mo, 90 min/call, 15 recordings (90-day retention), VIP priority.
-
----
-
-### Q7: What is the official refund policy on PairTalk paid plans?
-**Answer:**  
-PairTalk provides a server-enforced **100% 48-Hour Money-Back Guarantee**. You are eligible for a full refund if:
-1. Your refund request is submitted within **48 hours** of subscription purchase; **AND**
-2. You have used **less than 10%** of your monthly call allowance.
-
-Telegram Stars refunds are processed instantly by sending `/refund` to `@PairTalkBot`. Bank card refunds (UZS) settle within 1–3 business days.
-
----
-
-## 3. Privacy, Anonymity & Safety
-
-### Q8: Is PairTalk completely anonymous and how is candidate privacy protected?
-**Answer:**  
-Learners use a practice alias rather than sharing their Telegram profile with their partner. PairTalk still processes account identifiers and call metadata. Audio travels over encrypted WebRTC connections to LiveKit; the service can process media for participant-requested recordings. This is not a zero-knowledge or service-inaccessible end-to-end encryption guarantee. Recordings have configured retention windows, and cleanup workers remove expired files.
-
----
-
-### Q9: What should I do if my speaking partner is unresponsive, abusive, or refuses to speak English?
-**Answer:**  
-You have total control during live calls:
-1. Tap the **Report & Disconnect** button at any time.
-2. Select the infraction reason (*Harassment*, *Non-English speech*, *Commercial solicitation*, *Spam*).
-3. The partner is immediately blocked so you are never matched again, the session is terminated with zero penalty to you, and our moderation engine logs the incident for review.
-
----
-
-## 4. Technology, Setup & Rewards
-
-### Q10: Do I need to download or install any external software to use PairTalk?
-**Answer:**  
-No external installation is required. PairTalk runs natively inside Telegram as a Telegram Mini App across iOS, Android, macOS, Windows, and Linux. It is also accessible directly via modern web browsers at [pairtalk.online](https://pairtalk.online).
-
----
-
-### Q11: What audio equipment and permissions are required for PairTalk?
-**Answer:**  
-- **Hardware**: Any smartphone, tablet, or computer with a working microphone. For best audio fidelity and echo prevention, wired or Bluetooth headphones with a built-in microphone are strongly recommended.
-- **Permissions**: Grant microphone permission when prompted by Telegram or your web browser. PairTalk’s auto-unlock audio engine handles mobile audio context activation automatically.
-
----
-
-### Q12: How do referral bonus calls and the Speaking Sprint work?
-**Answer:**  
-Share your personal referral link from the bot or app with fellow IELTS candidates. When a friend joins, both you and your friend receive permanent bonus practice calls added to your balance. Active learners also compete on the live Community Leaderboard during monthly Speaking Sprints to win free PLUS, PRO, and BOSS plan upgrades.
-
----
-
-## 5. Summary of Related Guides
-
-- [How Matchmaking Works](./HOW_IT_WORKS.md)
-- [Official IELTS Speaking Guide](./IELTS_SPEAKING_GUIDE.md)
-- [Community Guidelines & Moderation Ladder](./COMMUNITY_GUIDELINES.md)
-- [Safety & Anti-Solicitation Guide](./SAFETY_GUIDE.md)
-- [Privacy Policy & Refund Terms](./PRIVACY_POLICY.md)
-- [Terms of Service](./TERMS_OF_SERVICE.md)
-
-
----
+- https://pairtalk.online/index.md
+- https://pairtalk.online/how-it-works.md
+- https://pairtalk.online/ielts-speaking.md
+- https://pairtalk.online/pricing.md
+- https://pairtalk.online/stats.md
+- https://pairtalk.online/faq.md
+- https://pairtalk.online/safety.md
+- https://pairtalk.online/community-guidelines.md
+- https://pairtalk.online/privacy.md
+- https://pairtalk.online/terms.md
+
+HTML equivalents use the same paths without .md; the overview is at /. The sitemap lists canonical HTML pages. The llms files describe public information and do not grant access to private APIs or alter crawler permissions.

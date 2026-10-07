@@ -3,8 +3,12 @@ export { isPublicPricing } from "../../server/src/contracts/pricing";
 import { renderToString } from "react-dom/server";
 import { App } from "./App";
 import { pages, faqs } from "./content";
+import { practiceUrl, supportUrl } from "./components/SiteLayout";
 import type { PublicStats } from "./lib/publicStats";
 export { isPublicStats } from "./lib/publicStats";
+export const siteUrl = "https://pairtalk.online";
+// Update after a public content review, never on every build or request.
+export const contentReviewed = "2026-10-07";
 export const routes = [
   "/",
   "/how-it-works",
@@ -17,8 +21,14 @@ export const routes = [
   "/privacy",
   "/terms",
 ];
-export function render(path: string, stats: PublicStats | null, pricing: PublicPricing | null = null) {
-  return renderToString(<App initialPath={path} initialStats={stats} initialPricing={pricing} />);
+export function render(
+  path: string,
+  stats: PublicStats | null,
+  pricing: PublicPricing | null = null,
+) {
+  return renderToString(
+    <App initialPath={path} initialStats={stats} initialPricing={pricing} />,
+  );
 }
 export function metadata(path: string) {
   const custom: Record<string, { title: string; description: string }> = {
@@ -33,9 +43,9 @@ export function metadata(path: string) {
         "Explore completed speaking calls, practice hours, participating learners, and post-call ratings on PairTalk, with transparent definitions and dated snapshots.",
     },
     "/pricing": {
-      title: "Compare PairTalk Prices | Stars, UZS, Calls & Recordings",
+      title: "PairTalk Pricing | Compare Stars, UZS, Calls & Recordings",
       description:
-        "Start IELTS speaking practice for free. Compare PairTalk plan options and learn about call allowances, recording retention, and refund eligibility.",
+        "Compare current PairTalk plans in Telegram Stars and UZS. Find call allowances, session limits, recordings, retention, and the plan that fits your practice.",
     },
   };
   return (
@@ -48,7 +58,7 @@ export function metadata(path: string) {
   );
 }
 export function structuredData(path: string) {
-  const base = "https://pairtalk.online";
+  const base = siteUrl;
   const meta = metadata(path);
   const graph: object[] = [
     {
@@ -56,7 +66,18 @@ export function structuredData(path: string) {
       "@id": `${base}/#organization`,
       name: "PairTalk",
       url: base,
-      logo: `${base}/favicon.png`,
+      logo: {
+        "@type": "ImageObject",
+        url: `${base}/favicon.png`,
+        width: 180,
+        height: 180,
+      },
+      sameAs: [practiceUrl.split("?")[0]],
+      contactPoint: {
+        "@type": "ContactPoint",
+        contactType: "customer support",
+        url: supportUrl,
+      },
     },
     {
       "@type": "WebSite",
@@ -72,8 +93,16 @@ export function structuredData(path: string) {
       url: `${base}${path}`,
       name: meta.title,
       description: meta.description,
+      dateModified: contentReviewed,
       inLanguage: "en",
       isPartOf: { "@id": `${base}/#website` },
+      publisher: { "@id": `${base}/#organization` },
+      primaryImageOfPage: {
+        "@type": "ImageObject",
+        url: `${base}/social-preview.png`,
+        width: 1200,
+        height: 630,
+      },
       ...(path === "/faq"
         ? {
             mainEntity: faqs.map((f) => ({
@@ -93,6 +122,8 @@ export function structuredData(path: string) {
       applicationCategory: "EducationalApplication",
       operatingSystem: "Telegram",
       url: base,
+      publisher: { "@id": `${base}/#organization` },
+      installUrl: practiceUrl,
       description: meta.description,
     });
   else

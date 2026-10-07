@@ -55,6 +55,16 @@ Client and admin use SPA routing. Landing serves pre-rendered public pages and a
 
 The supplied October 7 logs stopped before compilation because the selected build token was deleted or rolled. In each Worker, open **Settings → Build → Build configuration → API token**, select a valid token or create a replacement, save, and retry. A revoked token can remain visible in the dropdown. Repository files cannot restore a deleted account credential. Never put this token in a VITE variable or commit it. See [Cloudflare troubleshooting](https://developers.cloudflare.com/workers/ci-cd/builds/troubleshoot/).
 
+### Public search and AI documents
+
+All ten public pages are pre-rendered with unique titles, descriptions, canonical links, social metadata, and structured data. The sitemap lists their canonical HTML URLs, including pricing and statistics. Keep its lastmod dates and the contentReviewed value in [entry-server.tsx](../landing/src/entry-server.tsx) tied to actual content reviews; never advance them merely because a build ran. Robots permissions preserve public search and AI access while excluding private paths. Client and admin carry noindex metadata and still enforce authentication independently.
+
+The reviewed [llms.txt](../landing/public/llms.txt), [llms-full.txt](../landing/public/llms-full.txt), and [discovery metadata](../landing/public/.well-known/agents.json) describe implemented features without matching benchmarks, fixed dollar conversions, or unconditional refund promises. The build exports /index.md and one Markdown document per public route from rendered main content. Each HTML page advertises its Markdown counterpart and llms.txt. Navigation, scripts, decorative elements, and interactive controls are excluded. Treat the discovery JSON as descriptive metadata, not a standardized executable agent protocol.
+
+Pricing and statistics remain dynamic. Set the optional PUBLIC_PRICING_BUILD_URL and PUBLIC_STATS_BUILD_URL to the intended production public endpoints when backend availability permits verified build snapshots. These values must contain no credentials. Rebuild after changing published offers when crawler-visible prices need refreshing. Markdown snapshots carry the same data and freshness context as the HTML; llms files refer readers to live sources instead of hardcoding amounts. Without an API, builds still publish explanatory content and state data availability honestly.
+
+Run npm run check --prefix landing after building. It verifies canonical coverage, review dates, unique metadata, FAQ/schema consistency, Markdown discovery and extraction, internal AI links, copied crawler files, and the JavaScript size budget. After publishing, submit https://pairtalk.online/sitemap.xml through your verified Search Console property and inspect representative URLs. No search ranking or AI citation is guaranteed by publishing these files. See [Google's developer guidance](https://developers.google.com/search/docs/fundamentals/get-started-developers) and the [llms.txt proposal](https://llmstxt.org/).
+
 ## Production: choose Fly.io OR Railway
 
 [server/Dockerfile](../server/Dockerfile) packages Go and Node together. **The service root and Docker build context must be the repository root (/), even though the Dockerfile lives in server/.** A server-only context cannot resolve COPY server/... or COPY gateway/.... Frontends deploy independently to Workers and are excluded from this image.
@@ -131,7 +141,7 @@ Run frontend development servers separately with npm run dev --prefix client (or
 
 ## Production rollout
 
-1. Run [.github/workflows/verify.yml](../.github/workflows/verify.yml) and review [Operations](OPERATIONS.md).
+1. Run the [manual verification checklist](VERIFICATION.md) and review [Operations](OPERATIONS.md).
 2. Back up the database and rehearse migrations against a restore. Drain active calls and stop older Node/Go workers for recording lifecycle changes.
 3. Apply migrations explicitly through the release/pre-deploy command. Normal [container startup](../server/docker-entrypoint.sh) does not migrate. Never automatically baseline a populated database or accept data loss.
 4. Deploy Node and Go from the same revision and rebuild frontends with correct API origins.

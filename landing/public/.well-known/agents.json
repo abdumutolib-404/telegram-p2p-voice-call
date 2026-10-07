@@ -1,24 +1,30 @@
 {
   "schema_version": "1.0",
-  "name": "PairTalk IELTS Speaking Network",
-  "description": "Instant Criteria-Matched Peer-to-Peer IELTS Speaking Practice Platform on Telegram & Web.",
+  "name": "PairTalk",
+  "description": "Independent IELTS speaking practice with other learners. Register and accept the Terms of Use PDF in Telegram, then use the authenticated Mini App dashboard.",
+  "reviewed_at": "2026-10-07",
   "url": "https://pairtalk.online",
   "endpoints": {
     "web": "https://pairtalk.online",
-    "telegram_bot": "https://t.me/PairTalkBot",
-    "telegram_mini_app": "https://t.me/PairTalkBot?startapp=1",
+    "telegram_bot": "https://t.me/PairTalkBot?start=register",
+    "practice_guide": "https://pairtalk.online/how-it-works.md",
+    "pricing": "https://pairtalk.online/pricing",
+    "statistics": "https://pairtalk.online/stats",
+    "terms": "https://pairtalk.online/terms.md",
+    "privacy": "https://pairtalk.online/privacy.md",
     "llms_summary": "https://pairtalk.online/llms.txt",
     "llms_full": "https://pairtalk.online/llms-full.txt",
     "sitemap": "https://pairtalk.online/sitemap.xml",
     "support": "https://t.me/PairTalkSupport"
   },
   "capabilities": [
-    "Sub-3-second peer-to-peer matchmaking",
-    "Whole-band calibration (5, 6, 7, 8, 9)",
-    "Official IELTS Speaking rubrics (FC, LR, GRA, P)",
-    "Simulated Part 1, 2, and 3 sessions",
-    "Encrypted WebRTC SFU audio",
-    "Anonymous candidate aliases",
-    "100% money-back refund guarantee within 48 hours"
-  ]
+    "Partner matching based on practice preferences and availability",
+    "Self-assessed whole-band practice preferences from 5 to 9",
+    "Part 1, 2, and 3 speaking practice prompts",
+    "Voice calls using WebRTC transport encryption",
+    "Partner aliases, post-call ratings, and reporting",
+    "Published Stars and UZS plan comparison",
+    "Aggregate statistics with definitions and dated snapshots"
+  ],
+  "access": "Public documents need no account. Dashboard and admin access require authentication; this metadata defines no agent actions."
 }

@@ -28,7 +28,7 @@ The client sends selected paid plans to the actual Telegram bot with an upgrade 
 
 The existing `/pricing` route has updated comparison metadata and accessible content. Setting `PUBLIC_PRICING_BUILD_URL` in the landing build environment adds a validated, dated catalog snapshot to its pre-rendered HTML for crawlers. The browser validates this snapshot and immediately refreshes it against the live endpoint. Without a successful build snapshot, pre-rendered HTML explains the comparison and the browser loads current offers. A saved snapshot is dated build output, not a perpetual current-price claim; rebuild when published offers change if crawler-visible prices must reflect them immediately.
 
-`robots.txt`, `sitemap.xml` and `llms` files are unchanged. No ranking guarantee or fabricated reviews/statistics are added.
+The October 7 SEO review updates `robots.txt`, `sitemap.xml`, and `llms` documents to describe the current platform. Builds preserve those reviewed source files. Pricing and statistics Markdown exports are generated from public page content and identify quoted figures as dated snapshots. No ranking guarantee or fabricated reviews/statistics are added.
 
 ## Verification
 

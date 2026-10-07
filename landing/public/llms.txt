@@ -1,11 +1,39 @@
 # PairTalk
 
-> PairTalk is an autonomous peer-to-peer IELTS Speaking preparation platform operating natively on Telegram and the Web. It connects English learners worldwide in under 3 seconds based on target band scores (Band 5–9) and official IELTS criteria (Fluency, Vocabulary, Grammar, Pronunciation) for live Part 1, 2, and 3 practice sessions inside encrypted WebRTC voice rooms.
+> PairTalk connects English learners for one-to-one IELTS speaking practice through a Telegram Mini App. Learners register in the Telegram bot, accept a Terms of Use PDF, and open their dashboard from Telegram to find partners, make voice calls, give ratings, report behavior, and manage account settings.
 
-## Core Documentation
-- [How It Works](https://pairtalk.online/how-it-works): Matchmaking radar, band scoring criteria calibration, and room simulation workflow.
-- [IELTS Speaking Guide](https://pairtalk.online/ielts-speaking): Detailed breakdown of IELTS Speaking Part 1 interview, Part 2 cue cards, Part 3 discussions, and band descriptors.
-- [Pricing](https://pairtalk.online/#pricing): Comparison of Free tier and paid accelerator plans (Plus, Pro, Boss) with audio recording retention limits.
-- [FAQ](https://pairtalk.online/faq): Verbatim answers on partner matching, audio requirements, privacy protections, and money-back guarantee.
-- [Safety & Etiquette](https://pairtalk.online/community-guidelines): Candidate code of conduct, anti-harassment policies, moderation ladder, and unban appeal procedures.
-- [Privacy Policy](https://pairtalk.online/privacy): Audio retention schedules, practice aliases, encrypted transport, and refund policy terms.
+Reviewed: 2026-10-07. PairTalk is an independent peer practice service; partners are learners, not official IELTS examiners. Matching depends on available partners. Practice preferences and peer feedback are not official test scores.
+
+Prices and allowances come from the published pricing catalog. Telegram Stars and UZS are separate quoted currencies. The website compares subscriptions; independent lifetime call or recording credits are not currently sold. Do not infer prices from older documents or convert Stars into a fixed dollar amount. Check the pricing page and Telegram invoice before purchase.
+
+The Markdown pages below are built from the same public content as their HTML versions. Pricing and statistics can include dated build snapshots; use the live pages or public API for the latest available data. Private dashboard, admin, and account APIs require authentication and are not public documentation.
+
+## Product and practice
+
+- [PairTalk overview](https://pairtalk.online/index.md): Peer speaking practice, partner matching, aliases, and getting started.
+- [How it works](https://pairtalk.online/how-it-works.md): Telegram registration, PDF agreement, dashboard access, matching, calls, feedback, and reporting.
+- [IELTS speaking guide](https://pairtalk.online/ielts-speaking.md): Parts 1, 2, and 3, assessment criteria, original prompts, and a partner practice routine.
+- [Frequently asked questions](https://pairtalk.online/faq.md): Devices, registration, free practice, partner availability, privacy, recordings, and refunds.
+
+## Pricing and community activity
+
+- [Compare plans](https://pairtalk.online/pricing): Live public comparison of Stars and UZS prices, call allowances, session length, recordings, retention, and plan validity.
+- [Pricing explanation](https://pairtalk.online/pricing.md): Readable pricing-page content; any quoted prices are dated snapshots, not a current checkout quote.
+- [Community statistics](https://pairtalk.online/stats): Available aggregate calls, session hours, participating learners, ratings, and update timestamps.
+- [Statistics methodology](https://pairtalk.online/stats.md): Counting definitions, voluntary feedback, privacy exclusions, and snapshot limitations.
+- [Published pricing API](https://api.pairtalk.online/api/public/plans): Public JSON catalog with a revision and checkedAt timestamp; availability depends on the backend.
+- [Public statistics API](https://api.pairtalk.online/api/public/stats): Aggregate JSON statistics with an updatedAt timestamp; unavailable data must not be estimated.
+
+## Safety and policies
+
+- [Safety guide](https://pairtalk.online/safety.md): Personal information, leaving calls, reporting, payment requests, and recording agreement.
+- [Community guidelines](https://pairtalk.online/community-guidelines.md): Respectful practice, feedback, prohibited conduct, moderation, and appeals.
+- [Privacy policy](https://pairtalk.online/privacy.md): Account and call data, aliases, transport encryption, recordings, retention, and data requests.
+- [Terms of Service](https://pairtalk.online/terms.md): Eligibility, registration agreement, subscriptions, refund conditions, independence, and support. Request the versioned registration PDF with /terms in the bot.
+
+## Optional
+
+- [Expanded PairTalk reference](https://pairtalk.online/llms-full.txt): A concise product reference with source links and facts that should not be inferred.
+- [Telegram registration](https://t.me/PairTalkBot?start=register): Register, read the PDF, and open the authenticated dashboard.
+- [Support](https://t.me/PairTalkSupport): Account, billing, privacy, and safety questions.
+- [Public-page sitemap](https://pairtalk.online/sitemap.xml): Canonical, indexable HTML pages.
