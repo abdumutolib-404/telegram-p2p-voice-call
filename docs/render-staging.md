@@ -1,0 +1,36 @@
+# Render free backend staging
+
+Reviewed 2026-10-06. This Blueprint builds the existing combined Docker image, runs Node privately on loopback port 3000, and exposes the Go gateway on Render's port 10000. Cloudflare remains the frontend host. Health checks use `/healthz`, which probes Node, PostgreSQL, and Redis; a green check does not validate Telegram or LiveKit.
+
+## Resources and limits
+
+`render.yaml` declares a free web service, free PostgreSQL 16 database, and free Key Value instance in Frankfurt. Both data stores have empty external IP allowlists; the app uses their private connection strings. Automatic deploys are disabled. No worker, persistent disk, pre-deploy command, or paid job is requested. See the [Blueprint reference](https://render.com/docs/blueprint-spec) and [private networking documentation](https://render.com/docs/private-network).
+
+This is disposable staging. Free web services sleep after idle periods and may restart. They lack persistent disks, one-off jobs, and shell access. Free PostgreSQL has a 1 GB limit, expires after 30 days, and is limited to one active instance per workspace. Free Key Value loses data on restart. Do not import production data, rely on local recording retention, or enable money flows here. These restrictions are documented in [Deploy for Free](https://render.com/docs/free).
+
+## Required before applying the Blueprint
+
+1. Confirm the reviewed Render files are pushed to `main`, and select that branch for both the Blueprint and service. The service branch is explicit in YAML. Do not change an existing production service to use this configuration.
+2. Confirm the resource preview shows **Free** for all three resources and Frankfurt for each. If the workspace already has a free PostgreSQL database, stop rather than selecting a paid replacement.
+3. Provide a fresh staging `BOT_TOKEN`, LiveKit host/key/secret, and staging `ADMIN_TELEGRAM_IDS`. Do not use production credentials. The application requires these even while polling and crawling are disabled. For a strictly health-only smoke deploy, an operator can privately supply fresh generated smoke signing values and `wss://livekit.invalid`; these do not connect to Telegram or LiveKit. No calls, purchases, or recordings are allowed with smoke values. Replace them with real staging credentials before integration tests. Render generates `JWT_SECRET` and `MASTER_PASSWORD` privately.
+4. Set `MINI_APP_URL` and `ADMIN_PANEL_URL` to the actual HTTPS Cloudflare staging frontends. Set `ALLOWED_ORIGINS` to their comma-separated origins, without wildcard access. Rebuild the Cloudflare Mini App with `VITE_SERVER_URL` pointing at the deployed HTTPS backend; the admin API setting is configured separately in its deployment environment.
+5. The Blueprint initially trusts only `127.0.0.1/32` and `::1/128` for the internal gateway hop. That suffices for the health smoke; it deliberately leaves external ingress forwarding untrusted. Before API/integration tests, add the actual confirmed private Render ingress CIDRs. Render's docs require private load balancer trust but do not publish a stable numeric ingress list. Obtain the current ranges from Render support or verified platform networking evidence; do not substitute outbound IP ranges, guess `10.0.0.0/8`, or trust all addresses. See [proxy guidance](https://render.com/articles/fastapi-production-best-practices) and [Render TLS/port behavior](https://render.com/docs/web-services). Per-client IP/rate limits, forwarded HTTPS, and full API/proxy correctness remain unresolved until validated. Preserve the reviewed trust setting in YAML before a later Blueprint sync.
+6. Apply only to the new empty database named `pairtalk_render_staging` with the matching database user. Set `PAIRTALK_RENDER_INITIALIZE_EMPTY_DATABASE=true` for this first bootstrap. The wrapper requires Render's private `dpg-…` hostname. Keep the shared database URI free of Prisma-only query parameters such as `schema=public`: Go reads the same URI.
+
+## Initial database migration on free compute
+
+The ordinary `server/docker-entrypoint.sh` stays unchanged and never runs migrations on boot. Render's Docker command is `node prisma/render-staging-start.cjs`; `RELEASE_COMMAND=1` allows the existing entrypoint to execute this exact command. The Dockerfile already copies `server/prisma`, which is not a publicly served asset directory, so no provider-specific build changes are needed.
+
+The wrapper requires Render and staging opt-in flags, production mode, disabled polling/crawler, and the dedicated private staging database binding. Inside a transaction it acquires a nonblocking PostgreSQL advisory lock. It runs `prisma migrate deploy` only when there is no migration history, no user relations in any application schema, and `PAIRTALK_RENDER_INITIALIZE_EMPTY_DATABASE=true`. No reset, `db push`, or data-loss acceptance is used. After the migration it verifies all migration names, SHA-256 checksums, and successful completion before starting Node and Go. A second concurrent bootstrap refuses to run.
+
+On later boots the complete matching migration history is verified, and migrations are skipped. Incomplete history, changed checksums, added migrations, unknown migrations, or an existing unmanaged database fail closed. The wrapper releases its lock and database connection before starting the normal entrypoint with `RELEASE_COMMAND=0` and no arguments. Startup failures print a generic message so private bindings cannot leak through Prisma errors.
+
+After the first green deploy, set `PAIRTALK_RENDER_INITIALIZE_EMPTY_DATABASE=false` in the Dashboard. The variable is `sync: false`, so later Blueprint syncs do not reset that operator choice. Existing complete databases still skip migration even when the flag is true. Keep auto-deploy disabled. Future schema upgrades require a reviewed maintenance/migration procedure; this wrapper deliberately does not upgrade a live database. Do not enable old and new call-serving versions around the media-authorization migration.
+
+## Verification and integration gates
+
+Check `https://<actual-service>.onrender.com/healthz` for HTTP 200 and inspect startup logs for completed bootstrap and both services ready. Check a public API route through HTTPS and test a forged forwarding header before accepting proxy configuration; a redirect loop indicates missing or incorrect ingress trust.
+
+Keep polling/crawling disabled for the first health check. Before functional calls, connect the staging frontends, real staging bot and LiveKit project, webhook URL, and a private external object store. Configure the existing S3-compatible bindings for recordings; the free service's local filesystem is ephemeral. Test authentication, two-account calls, both voices in recording playback, download denial, and retention cleanup separately. A live backend does not establish those integrations or production readiness.
+
+Local checks: `node --test scripts/tests/render-staging-start.test.cjs`, `node --check server/prisma/render-staging-start.cjs`, and `node scripts/check-docs.cjs`. Validate YAML against the current [official JSON schema](https://render.com/schema/render.yaml.json); with an authenticated CLI, also run `render blueprints validate`. Dashboard resource preview and successful provider deployment remain separate checks.

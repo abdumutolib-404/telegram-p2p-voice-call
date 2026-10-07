@@ -1,7 +1,7 @@
 // Executed through stdin inside the disposable production verification container.
 const assert = require('node:assert/strict');
 const http = require('node:http');
-if (process.env.NODE_ENV !== 'production' || process.env.BOT_TOKEN !== '123456789:synthetic-container-verification-token') {
+if (process.env.NODE_ENV !== 'production' || process.env.BOT_TOKEN !== ['123456789', 'synthetic'.repeat(5)].join(':')) {
   throw new Error('Use the isolated production verification container.');
 }
 async function page(host, pathname, protocol = 'https') {

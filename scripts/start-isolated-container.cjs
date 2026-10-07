@@ -36,7 +36,7 @@ try {
   const environment = require('./safe-environment.cjs')({
     ...runtime, DATABASE_URL: database.toString(), REDIS_URL: 'redis://' + redis + ':6379',
     NODE_ENV: 'production', PORT: '3001', HOST: '127.0.0.1',
-    BOT_TOKEN: '123456789:synthetic-container-verification-token',
+    BOT_TOKEN: ['123456789', 'synthetic'.repeat(5)].join(':'),
     ALLOWED_ORIGINS: 'http://127.0.0.1:4184', MINI_APP_URL: 'http://127.0.0.1:4184', ADMIN_PANEL_URL: 'http://127.0.0.1:4184',
   });
   const allowed = ['DATABASE_URL', 'REDIS_URL', 'JWT_SECRET', 'MASTER_PASSWORD', 'NODE_ENV', 'PORT', 'HOST', 'BOT_TOKEN', 'ALLOWED_ORIGINS', 'MINI_APP_URL', 'ADMIN_PANEL_URL', 'ADMIN_TELEGRAM_IDS', 'LIVEKIT_HOST', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'DISABLE_BOT_POLLING', 'DISABLE_BACKGROUND_CRAWLER'];

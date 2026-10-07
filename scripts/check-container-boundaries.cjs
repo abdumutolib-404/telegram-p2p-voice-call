@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
-if (process.env.NODE_ENV !== 'production' || process.env.BOT_TOKEN !== '123456789:synthetic-container-verification-token') throw new Error('Use the isolated production verification container.');
+if (process.env.NODE_ENV !== 'production' || process.env.BOT_TOKEN !== ['123456789', 'synthetic'.repeat(5)].join(':')) throw new Error('Use the isolated production verification container.');
 const prisma = new PrismaClient();
 const suffix = crypto.randomUUID();
 const users = [];

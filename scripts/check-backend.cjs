@@ -1,5 +1,5 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const inContainer=process.argv[2]==='--container-bindings'&&process.env.BOT_TOKEN==='123456789:synthetic-container-verification-token';
+const inContainer=process.argv[2]==='--container-bindings'&&process.env.BOT_TOKEN===['123456789', 'synthetic'.repeat(5)].join(':');
 const runtime=inContainer?{JWT_SECRET:process.env.JWT_SECRET}:JSON.parse(fs.readFileSync(process.argv[2],'utf8')),base=inContainer?'http://127.0.0.1:3001':process.argv[3]||'http://127.0.0.1:4182';
 if(!(inContainer&&base==='http://127.0.0.1:3001')&&!/^http:\/\/127\.0\.0\.1:(4182|4184)$/.test(base)&&!/^https:\/\/[a-z-]+\.trycloudflare\.com$/.test(base))throw new Error('Unexpected verification destination');
 const jwt=require(path.resolve(__dirname,'../server/node_modules/jsonwebtoken'));

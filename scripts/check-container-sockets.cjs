@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { PrismaClient } = require('@prisma/client');
 const { io } = require('socket.io-client');
 const database = new URL(process.env.DATABASE_URL);
-if (process.env.NODE_ENV !== 'production' || process.env.BOT_TOKEN !== '123456789:synthetic-container-verification-token' || !/^pairtalk-check-pg-[a-f0-9]{8}$/.test(database.hostname) || database.pathname !== '/pairtalk_check') throw new Error('Only the isolated production fixture is permitted.');
+if (process.env.NODE_ENV !== 'production' || process.env.BOT_TOKEN !== ['123456789', 'synthetic'.repeat(5)].join(':') || !/^pairtalk-check-pg-[a-f0-9]{8}$/.test(database.hostname) || database.pathname !== '/pairtalk_check') throw new Error('Only the isolated production fixture is permitted.');
 const prisma = new PrismaClient();
 const sockets = [];
 const calls = [];
