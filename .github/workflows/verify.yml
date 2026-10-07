@@ -47,7 +47,6 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       NODE_ENV: test
-      CI_RUNTIME_FILE: ${{ runner.temp }}/pairtalk-verification.json
       VERIFICATION_DATABASE_URL: postgresql://pairtalk_check:synthetic-ci-password@127.0.0.1:55432/pairtalk_check
       VERIFICATION_REDIS_URL: redis://127.0.0.1:56379
       DATABASE_URL: postgresql://pairtalk_check:synthetic-ci-password@127.0.0.1:55432/pairtalk_check
@@ -69,6 +68,8 @@ jobs:
       - name: Install locked application dependencies
         run: |
           for package in server client admin landing; do npm ci --prefix "$package"; done
+      - name: Set isolated verification metadata path
+        run: echo "CI_RUNTIME_FILE=$RUNNER_TEMP/pairtalk-verification.json" >> "$GITHUB_ENV"
       - name: Prepare isolated persistence and deploy migrations
         run: |
           node scripts/prepare-verification-bindings.cjs "$CI_RUNTIME_FILE"
