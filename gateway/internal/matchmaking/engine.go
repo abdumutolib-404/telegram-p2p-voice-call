@@ -194,12 +194,20 @@ func (e *Engine) JoinQueue(ctx context.Context, userID string, band float64, ski
 			}
 		}
 
-		// Run atomic claim script
-		claimArgs := []interface{}{UserQueuePrefix, userID}
+		poolsToRegister := []string{ownBucketKey, bandPoolKey}
+		if isPriorityUser {
+			poolsToRegister = append(poolsToRegister, e.GetPriorityPoolKey(userPlan))
+		}
+		// Claim a candidate or register this user in the same Redis operation.
+		// Separate claim/register calls strand simultaneous compatible joins.
+		claimKeys := append([]string{}, uniqueCandidateBuckets...)
+		claimKeys = append(claimKeys, poolsToRegister...)
+		claimKeys = append(claimKeys, UserQueuePrefix+userID)
+		claimArgs := []interface{}{UserQueuePrefix, userID, len(uniqueCandidateBuckets), ownBucketKey, QueueTTLSeconds}
 		claimRes, err := e.rdb.Eval(
 			lockCtx,
 			MatchQueueMultiClaimScript,
-			uniqueCandidateBuckets,
+			claimKeys,
 			claimArgs...,
 		).Result()
 
@@ -229,29 +237,7 @@ func (e *Engine) JoinQueue(ctx context.Context, userID string, band float64, ski
 			return nil
 		}
 
-		// No partner matched yet: register user into pools
-		poolsToRegister := []string{ownBucketKey, bandPoolKey}
-		if isPriorityUser {
-			poolsToRegister = append(poolsToRegister, e.GetPriorityPoolKey(userPlan))
-		}
-
-		pipe := e.rdb.Pipeline()
-		for _, k := range poolsToRegister {
-			pipe.SAdd(lockCtx, k, userID)
-			pipe.Expire(lockCtx, k, QueueTTLSeconds*2*time.Second)
-		}
-		pipe.Set(lockCtx, fmt.Sprintf("%s%s", UserQueuePrefix, userID), ownBucketKey, QueueTTLSeconds*time.Second)
-
-		if _, err := pipe.Exec(lockCtx); err != nil {
-			// Rollback registered pools
-			remPipe := e.rdb.Pipeline()
-			for _, k := range poolsToRegister {
-				remPipe.SRem(lockCtx, k, userID)
-			}
-			_, _ = remPipe.Exec(lockCtx)
-			return err
-		}
-
+		// The script already registered the user when no candidate was found.
 		result = &MatchResult{
 			Matched:   false,
 			BucketKey: ownBucketKey,

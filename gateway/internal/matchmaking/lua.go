@@ -3,9 +3,11 @@ package matchmaking
 const MatchQueueMultiClaimScript = `-- MATCH_QUEUE_MULTI_CLAIM
 local user_prefix = ARGV[1]
 local self_id = ARGV[2]
+local candidate_count = tonumber(ARGV[3])
+local queue_ttl = tonumber(ARGV[5])
 local max_scans = 50
 
-for i = 1, #KEYS do
+for i = 1, candidate_count do
   local bucket = KEYS[i]
   local scanned = 0
   local candidate = redis.call('SPOP', bucket)
@@ -44,7 +46,7 @@ for i = 1, #KEYS do
         redis.call('SREM', 'match_queue:global', candidate)
 
         -- 6. All candidate buckets scanned
-        for j = 1, #KEYS do
+        for j = 1, candidate_count do
           redis.call('SREM', KEYS[j], candidate)
         end
 
@@ -60,6 +62,13 @@ for i = 1, #KEYS do
     candidate = redis.call('SPOP', bucket)
   end
 end
+-- No claim: register all pools and the live pointer before another join can
+-- scan. The last key is the user pointer, not a candidate/registration pool.
+for i = candidate_count + 1, #KEYS - 1 do
+  redis.call('SADD', KEYS[i], self_id)
+  redis.call('EXPIRE', KEYS[i], queue_ttl * 2)
+end
+redis.call('SET', KEYS[#KEYS], ARGV[4], 'EX', queue_ttl)
 return false`
 
 const LockReleaseScript = `-- LOCK_RELEASE

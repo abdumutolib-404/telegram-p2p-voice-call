@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -42,6 +43,12 @@ func (h *Hub) dispatchEvent(socket *ClientSocket, event string, payload []byte) 
 }
 
 func (h *Hub) handleJoinQueue(socket *ClientSocket) {
+	started := time.Now()
+	stage, outcome := "authentication", "rejected"
+	defer func() {
+		// Fixed stage/outcome labels only: no identity, payload, token or raw errors.
+		log.Printf("[Gateway] matchmaking stage=%s outcome=%s duration_ms=%d", stage, outcome, time.Since(started).Milliseconds())
+	}()
 	if socket.UserID == "" {
 		socket.Emit("error", SocketErrorEvent{Message: "Unauthenticated socket session."})
 		return
@@ -52,6 +59,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	h.mu.Lock()
 	lastAction := h.userLastActionTime[socket.UserID]
 	if nowMs-lastAction < 800 {
+		stage, outcome = "debounce", "ignored"
 		h.mu.Unlock()
 		socket.Emit("queue_joined", QueueJoinedEvent{Status: "searching"})
 		return
@@ -66,6 +74,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	ctx, cancel := context.WithTimeout(h.Context(), 10*time.Second)
 	defer cancel()
 
+	stage, outcome = "user_lookup", "failed"
 	user, err := h.DB.GetUserByID(ctx, socket.UserID)
 	if err != nil || user == nil {
 		socket.Emit("error", SocketErrorEvent{Code: "USER_NOT_FOUND", Message: "User profile not found."})
@@ -75,6 +84,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	// Check suspension / ban status
 	isSuspended := user.IsPermanentlyBanned || (user.IsBanned && (user.BannedUntil == nil || user.BannedUntil.After(time.Now())))
 	if isSuspended {
+		stage, outcome = "eligibility", "suspended"
 		socket.Emit("error", SocketErrorEvent{
 			Code:    "MATCHMAKING_SUSPENDED",
 			Message: "Your account is suspended from matchmaking. Please contact support via the Telegram Bot.",
@@ -83,28 +93,33 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	}
 
 	// Check active call session
+	stage = "active_call_lookup"
 	activeCall, err := h.DB.GetActiveCallForUser(ctx, user.ID)
 	if err != nil {
 		socket.Emit("error", SocketErrorEvent{Message: "Unable to check your current call. Please try again."})
 		return
 	}
 	if activeCall != nil {
+		outcome = "already_active"
 		// Socket presence is local; a shared active call may be on another gateway.
 		socket.Emit("error", SocketErrorEvent{Code: "CALL_ALREADY_ACTIVE", Message: "Another session is currently in an active call from this account. Please try again later."})
 		return
 	}
 
 	// Check monthly quota
+	stage = "plan_lookup"
 	if err := h.DB.RefreshPlanConfiguration(ctx); err != nil {
 		socket.Emit("error", SocketErrorEvent{Message: "Unable to load current call limits. Please try again."})
 		return
 	}
 	ent := database.GetEffectiveEntitlement(user, h.AdminTelegramIDs)
+	stage = "usage_lookup"
 	callsUsed, err := h.DB.GetUserCallsUsedThisPeriod(ctx, user.ID, user)
 	if err != nil {
 		socket.Emit("error", SocketErrorEvent{Message: "Unable to check your call allowance. Please try again."})
 		return
 	}
+	stage = "bonus_lookup"
 	bonusCalls, err := h.DB.GetActiveBonusCallsCount(ctx, user.ID)
 	if err != nil {
 		socket.Emit("error", SocketErrorEvent{Message: "Unable to check your bonus calls. Please try again."})
@@ -112,6 +127,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	}
 
 	if !ent.IsAdmin && ent.CallLimit < 999 && callsUsed >= ent.CallLimit && bonusCalls <= 0 {
+		stage, outcome = "eligibility", "quota_exceeded"
 		socket.Emit("error", SocketErrorEvent{
 			Code:    "MATCHMAKING_QUOTA_EXCEEDED",
 			Message: fmt.Sprintf("You have reached your monthly limit of %d calls. Invite friends with '👥 Invite Friends' to earn bonus calls or upgrade your plan!", ent.CallLimit),
@@ -120,6 +136,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	}
 
 	// Server-side authoritative skill querying (strictly discards client payload)
+	stage = "queue_join"
 	matchResult, err := h.Matchmaking.JoinQueue(
 		ctx,
 		user.ID,
@@ -141,11 +158,13 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	}
 
 	if !matchResult.Matched || matchResult.PartnerID == "" || matchResult.RoomName == "" {
+		outcome = "queued"
 		socket.Emit("queue_joined", QueueJoinedEvent{Status: "searching"})
 		return
 	}
 
 	// Partner matched
+	stage = "partner_lookup"
 	partner, err := h.DB.GetUserByID(ctx, matchResult.PartnerID)
 	partnerSockets := h.GetUserSockets(matchResult.PartnerID)
 
@@ -155,16 +174,23 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 	ownBucket, _ := h.Matchmaking.GetBucketKey(user.Band, weakSkill, strongSkill)
 
 	if partner == nil || len(partnerSockets) == 0 {
+		outcome = "partner_unavailable"
+		if err != nil {
+			outcome = "lookup_failed"
+		}
 		if partner != nil {
 			_, _ = h.Matchmaking.CancelQueue(ctx, partner.ID)
 		}
-		_ = h.Matchmaking.RestoreQueue(ctx, user.ID, ownBucket, &user.Band, &user.Plan)
+		if restoreErr := h.Matchmaking.RestoreQueue(ctx, user.ID, ownBucket, &user.Band, &user.Plan); restoreErr != nil {
+			stage, outcome = "queue_restore", "failed"
+		}
 		socket.Emit("queue_joined", QueueJoinedEvent{Status: "searching"})
 		return
 	}
 
 	sessionID := uuid.NewString()
 	roomName := matchResult.RoomName
+	stage, outcome = "call_admission", "failed"
 	user, partner, err = h.DB.AdmitCallSession(ctx, sessionID, roomName, user.ID, partner.ID)
 	if err != nil {
 		socket.Emit("error", SocketErrorEvent{Code: "ALREADY_IN_PROGRESS", Message: "The match could not be admitted. Please search again."})
@@ -182,6 +208,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		tokenTTL = 7200
 	}
 
+	stage = "voice_tokens"
 	tokenUser, err1 := livekit.GenerateLiveKitToken(h.LiveKitAPIKey, h.LiveKitAPISecret, roomName, user.ID, user.Alias, tokenTTL)
 	tokenPartner, err2 := livekit.GenerateLiveKitToken(h.LiveKitAPIKey, h.LiveKitAPISecret, roomName, partner.ID, partner.Alias, tokenTTL)
 	if err1 != nil || err2 != nil {
@@ -233,6 +260,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 			MaxDurationSeconds: durationLimitSeconds,
 		})
 	}
+	stage, outcome = "match_found", "matched"
 }
 
 func (h *Hub) handleCancelQueue(socket *ClientSocket) {
