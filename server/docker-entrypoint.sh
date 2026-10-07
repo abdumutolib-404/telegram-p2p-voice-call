@@ -9,6 +9,11 @@ if [ "${RELEASE_COMMAND:-0}" = '1' ]; then
   fi
   exec "$@"
 fi
+# Railway's pre-deploy command may replace CMD without Fly's release variable.
+# Permit only the exact migration argv, never a general command or shell.
+if [ "$#" -eq 3 ] && [ "$1" = 'npm' ] && [ "$2" = 'run' ] && [ "$3" = 'db:deploy' ]; then
+  exec "$@"
+fi
 if [ "$#" -gt 0 ]; then
   echo '[Startup] Command arguments require an explicit release invocation.' >&2
   exit 64

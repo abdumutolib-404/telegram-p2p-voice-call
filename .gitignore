@@ -52,3 +52,9 @@ yarn-error.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# Local Cloudflare state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+worker-configuration.d.ts

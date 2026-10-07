@@ -30,11 +30,13 @@ Queue capacity and completed-job retention need monitoring. Review the privacy f
 
 Current subscriptions remain authoritative. Included-usage periods use existing legacy helpers; calendar-month versus full-validity semantics for custom terms still need a single approved policy before a billing redesign.
 
-The planned [unit purchase system](unit-pricing.md) requires a durable credit ledger, confirmed prices/minimums, matched optional storage, successful-delivery rules, and separate migration/checkout work. There is no implemented lifetime-credit catalog or accepted-terms ledger today.
+The planned [unit purchase system](unit-pricing.md) requires a durable credit ledger, confirmed prices/minimums, matched optional storage, successful-delivery rules, and separate migration/checkout work. Lifetime credits remain unimplemented. Bot registration now records durable PDF terms acceptance; see [Bot and dashboard](BOT_AND_DASHBOARD.md).
 
 Current refund code permits eligibility when purchase age is under 48 hours **or** usage is below 10%; older docs incorrectly said both were required. This is documentation of the current rule, not an approved new policy. Review this and all served customer copy before changing or releasing terms.
 
 ## Security fixes and rollout
+
+The 2026-10-07 deployment cleanup updates the runtime proxy dependency and removes development/test packages from the backend image while retaining the Prisma migration CLI. The production-only npm audit passes. The existing backend Vitest 1 toolchain still has five development dependency advisories (two critical, one high, two moderate); upgrading that test runner remains separate work. Do not expose its development/UI server. These tools are excluded by the production image's npm prune step. Frontend deployment dependency audits pass after patched transitive overrides.
 
 The 2026-10-06 remediation adds durable readiness/media authorization, separates room capture from personal recording intent, bounds gateway polling and public question work, fixes crawler response rejection and refund-initiation ownership, strengthens recording keys, and corrects encryption claims.
 

@@ -27,7 +27,7 @@ function checkGuard(file, token, extra = {}) {
   });
 }
 
-for (const file of ['check-backend.cjs', 'check-container-boundaries.cjs', 'check-container-frontends.cjs', 'check-container-sockets.cjs']) {
+for (const file of ['check-backend.cjs', 'check-container-boundaries.cjs', 'check-container-sockets.cjs']) {
   test(`${file} accepts the generated fixture and rejects other tokens`, () => {
     assert.doesNotThrow(() => checkGuard(file, fixtureToken));
     for (const token of [undefined, '', 'mock_bot_token', fixtureToken + 'extra', '987654321:' + 'x'.repeat(40)]) {

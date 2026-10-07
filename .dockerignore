@@ -22,3 +22,10 @@
 **/__pycache__
 artifacts
 .codex
+
+**/.wrangler
+**/.dev.vars
+**/.dev.vars.*
+**/dist-ssr
+output
+tmp

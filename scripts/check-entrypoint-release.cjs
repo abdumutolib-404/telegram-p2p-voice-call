@@ -1,8 +1,8 @@
 // Offline tests of Fly's retained ENTRYPOINT and replaced CMD. No provider access.
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
-const image = process.argv[2] || 'pairtalk-fly-staging:local';
-if (!/^pairtalk-(fly-staging|whole-audit|qa-\d+):local$/.test(image)) throw new Error('Use an owned local verification image.');
+const image = process.argv[2] || 'pairtalk-api:verification';
+if (!/^(pairtalk-api:verification|pairtalk-(fly-staging|whole-audit|qa-\d+):local)$/.test(image)) throw new Error('Use an owned local verification image.');
 function run(release, args) {
   const result = spawnSync('docker', ['run', '--rm', '--network', 'none', '--read-only',
     '-e', 'RELEASE_COMMAND=' + release, image, ...args], { encoding: 'utf8', timeout: 20000 });
@@ -26,3 +26,9 @@ const ordinary = run('0', ['/bin/sh', '-c', 'echo should-not-run']);
 assert.equal(ordinary.status, 64);
 assert(!ordinary.stdout.includes('should-not-run'));
 console.log('PASS ordinary boot does not execute migration or other command arguments');
+const render = run('0', ['npm', 'run', 'db:deploy']);
+assert.notEqual(render.status, 64, 'Railway pre-deploy must reach the explicit migration command');
+assert.notEqual(render.status, 0, 'A migration without database configuration must fail');
+assert(render.stdout.includes('prisma migrate deploy'));
+assert(!render.stderr.includes('[Startup] Persistent backend readiness failed.'));
+console.log('PASS Railway migration argv bypasses service startup and fails without a database');

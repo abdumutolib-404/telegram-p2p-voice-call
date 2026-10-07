@@ -1,2 +1,4 @@
 # Preserve PDF bytes and document hashes across Windows and Linux checkouts.
 *.pdf binary
+# Container entrypoints must remain executable by Linux after a Windows checkout.
+*.sh text eol=lf

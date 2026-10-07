@@ -1,4 +1,5 @@
-# Multi-Stage Production Dockerfile for Telegram IELTS Speaking P2P Platform
+# PairTalk Node/Go backend. Build from the repository root:
+# docker build -f server/Dockerfile -t pairtalk-api .
 FROM node:24-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache ffmpeg openssl libssl3
@@ -26,42 +27,17 @@ RUN npx prisma generate
 COPY server/ ./
 RUN npm run build
 
-# --- Stage 2: Build Mini App (Frontend) ---
-FROM base AS client-builder
-WORKDIR /app/client
-COPY client/package*.json ./
-RUN npm ci
-COPY client/ ./
-COPY platform/ /app/platform/
-COPY server/src/contracts/ /app/server/src/contracts/
-RUN npm run build
+FROM server-builder AS server-runtime-dependencies
+# Keep the migration CLI, but omit test runners and deployment authoring tools.
+RUN npm prune --omit=dev
 
-# --- Stage 3: Build Landing Page ---
-FROM base AS landing-builder
-WORKDIR /app/landing
-COPY landing/package*.json ./
-RUN npm ci
-COPY landing/ ./
-COPY platform/ /app/platform/
-COPY server/src/contracts/ /app/server/src/contracts/
-RUN npm run build
-
-# --- Stage 4: Build Admin Panel ---
-FROM base AS admin-builder
-WORKDIR /app/admin
-COPY admin/package*.json ./
-RUN npm ci
-COPY admin/ ./
-COPY platform/ /app/platform/
-COPY server/src/contracts/ /app/server/src/contracts/
-RUN npm run build
-
-# --- Stage 5: Production Runner ---
-FROM base AS runner
+# Production runner: frontends deploy independently to Cloudflare Workers.
+FROM base AS runtime-base
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV HOST=127.0.0.1
 
 # Copy compiled Go Gateway
 COPY --from=gateway-builder /gateway-bin /usr/local/bin/gateway
@@ -71,12 +47,7 @@ COPY --from=server-builder /app/server/dist ./server/dist
 COPY --from=server-builder /app/server/assets ./server/assets
 COPY --from=server-builder /app/server/package*.json ./server/
 COPY --from=server-builder /app/server/prisma ./server/prisma
-COPY --from=server-builder /app/server/node_modules ./server/node_modules
-
-# Copy static frontend, landing & admin builds
-COPY --from=client-builder /app/client/dist ./server/public/client
-COPY --from=landing-builder /app/landing/dist ./server/public/landing
-COPY --from=admin-builder /app/admin/dist ./server/public/admin
+COPY --from=server-runtime-dependencies /app/server/node_modules ./server/node_modules
 
 # Create recordings directory
 RUN mkdir -p /app/server/recordings
@@ -89,3 +60,10 @@ WORKDIR /app/server
 EXPOSE 3001
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
+
+# Disposable verification only: socket smoke probes need their development client.
+# Never deploy this target; the default final runner below omits these tools.
+FROM runtime-base AS backend-verification
+COPY --from=server-builder /app/server/node_modules /app/server/node_modules
+
+FROM runtime-base AS runner

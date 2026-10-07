@@ -16,7 +16,6 @@ Reviewed against the working tree on 2026-10-05. These files describe the reposi
 | [Operations](OPERATIONS.md) | Recovery, release requirements, and unresolved decisions |
 | [Verification](VERIFICATION.md) | Reproducible checks and dated evidence |
 | [Cross-device audio](WEBRTC_CROSS_DEVICE_AUDIO_GUIDE.md) | Audio implementation and physical-device test checklist |
-| [Fly staging](fly-staging.md) | Optional isolated staging template; no deployment implied |
 
 ## Product and learner guidance
 

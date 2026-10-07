@@ -20,7 +20,7 @@ The production Docker image starts Node internally on port 3000 and the Go gatew
 ## Start here
 
 - [Environment and local setup](docs/ENVIRONMENT_AND_DEPLOYMENT.md)
-- [Deployment checklist](DEPLOYMENT_GUIDE.md)
+- [Deployment checklist](docs/ENVIRONMENT_AND_DEPLOYMENT.md#production-rollout)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Shared pricing and comparison](docs/PLATFORM_PRICING.md)
 - [Documentation index](docs/README.md)

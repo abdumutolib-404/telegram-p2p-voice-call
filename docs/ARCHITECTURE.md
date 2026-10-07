@@ -1,6 +1,6 @@
 # PairTalk architecture
 
-Reviewed 2026-10-05. Runtime definitions are [Dockerfile](../Dockerfile), [entrypoint](../server/docker-entrypoint.sh), [Node startup](../server/src/index.ts), and [Go startup](../gateway/cmd/gateway/main.go).
+Reviewed 2026-10-05. Runtime definitions are [Dockerfile](../server/Dockerfile), [entrypoint](../server/docker-entrypoint.sh), [Node startup](../server/src/index.ts), and [Go startup](../gateway/cmd/gateway/main.go).
 
 ## Services and traffic
 
