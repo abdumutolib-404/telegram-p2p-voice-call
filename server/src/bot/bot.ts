@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { telegramTransport } from './telegramTransport';
+import { TELEGRAM_CLIENT_OPTIONS } from './polling';
 import { Bot, session } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import { MyContext, SessionData } from './types';
@@ -135,7 +136,7 @@ export function isStandardNavigationCallback(data: string | undefined): boolean 
 }
 
 export function createBot(token: string): Bot<MyContext> {
-  const bot = new Bot<MyContext>(token, { client: { timeoutSeconds: 15 } });
+  const bot = new Bot<MyContext>(token, { client: TELEGRAM_CLIENT_OPTIONS });
   const namespace = crypto.createHash('sha256').update(token).digest('hex').slice(0,24);
 
   bot.api.config.use(telegramTransport(token));
