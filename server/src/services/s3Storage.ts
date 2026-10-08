@@ -129,14 +129,23 @@ export async function getS3ObjectBuffer(
 
   const stream = res.Body as Readable;
   const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
+  const maxBytes = 50 * 1024 * 1024;
+  let size = 0;
+  const deadline = setTimeout(() => stream.destroy(new Error('Recording download deadline exceeded.')),15000);
+  try {
+    if (res.ContentLength && res.ContentLength > maxBytes) throw new Error('Recording exceeds Telegram audio limit.');
+    for await (const chunk of stream) {
+      const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += part.length;
+      if (size > maxBytes) throw new Error('Recording exceeds Telegram audio limit.');
+      chunks.push(part);
+    }
+  } finally { clearTimeout(deadline); stream.destroy(); }
   const buffer = Buffer.concat(chunks);
   return {
     buffer,
     contentType: res.ContentType || 'audio/mpeg',
-    size: res.ContentLength || buffer.length,
+    size: buffer.length,
   };
 }
 

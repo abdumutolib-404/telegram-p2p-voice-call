@@ -107,7 +107,7 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
       });
 
       // 1. Single recorder session for userA
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `single_rec_a_${Date.now()}`,
           userAId: userA.id,
@@ -120,7 +120,7 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
       });
 
       // 2. Explicit 'BOTH' session
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `both_rec_${Date.now()}`,
           userAId: userA.id,
@@ -133,7 +133,7 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
       });
 
       // 3. Legacy session where recordedByUserId is null
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `legacy_rec_${Date.now()}`,
           userAId: userA.id,
@@ -146,7 +146,7 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
       });
 
       // 4. Single recorder session for userB
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `single_rec_b_${Date.now()}`,
           userAId: userA.id,
@@ -221,3 +221,11 @@ describe('Optimization, Latency Boost & Media Caching Test Suite', () => {
     });
   });
 });
+
+async function recordedFixture(args: Parameters<typeof prisma.callSession.create>[0]) {
+  const call=await prisma.callSession.create(args);
+  const marker=call.recordedByUserId;
+  const owners=!marker || marker==='BOTH' ? [call.userAId,call.userBId] : marker.split(',');
+  for(const userId of owners) await prisma.recordingUsage.create({data:{callId:call.id,userId}});
+  return call;
+}

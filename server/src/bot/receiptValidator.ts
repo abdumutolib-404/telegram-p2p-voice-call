@@ -1,3 +1,4 @@
+import { MAX_PAYMENT_PROOF_BYTES } from "../utils/paymentProof";
 export interface ReceiptValidationSuccess {
   valid: true;
   category: 'PHOTO' | 'PDF' | 'IMAGE_DOC';
@@ -15,7 +16,7 @@ export interface ReceiptValidationFailure {
 
 export type ReceiptValidationResult = ReceiptValidationSuccess | ReceiptValidationFailure;
 
-export const MAX_RECEIPT_BYTES = 20 * 1024 * 1024; // 20MB limit
+export const MAX_RECEIPT_BYTES = MAX_PAYMENT_PROOF_BYTES; // shared 5 MB limit
 
 const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -38,7 +39,7 @@ export function validateReceipt(input: {
     return {
       valid: false,
       category: 'OVERSIZED',
-      reason: `File size (${size} bytes) exceeds 20MB limit or is empty.`,
+      reason: `File size (${size} bytes) exceeds 5MB limit or is empty.`,
       userMessage: '❌ Receipt is too large.\nPlease send a PDF or image within the allowed size.',
     };
   }

@@ -22,6 +22,9 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 
 		session, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
 		if err != nil || session == nil || session.Status != "ACTIVE" {
+			if err == nil {
+				h.finishKnownTerminal(session)
+			}
 			return
 		}
 
@@ -30,7 +33,7 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 		if startedAtMs > 0 {
 			actualDuration = int((time.Now().UnixMilli() - startedAtMs) / 1000)
 		} else {
-			actualDuration = int(time.Since(session.CreatedAt).Seconds())
+			actualDuration = int(time.Since(session.DurationAnchor()).Seconds())
 		}
 		if actualDuration < 1 {
 			actualDuration = 1
@@ -76,6 +79,9 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 
 		claimed, err := h.DB.CompleteCallSession(ctx, session.ID, actualDuration, egressID, recordingURL, expiresAt)
 		if err != nil || !claimed {
+			if err == nil {
+				h.cleanupTerminalRoom(ctx, roomName)
+			}
 			return
 		}
 
@@ -87,7 +93,7 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 		h.mu.Unlock()
 		h.DeleteRoomMutex(roomName)
 
-		h.EmitToRoom(roomName, "call_finished", CallFinishedEvent{
+		h.FinishRoom(roomName, CallFinishedEvent{
 			Duration: actualDuration,
 			Reason:   "call_duration_limit_reached",
 		})
@@ -149,6 +155,9 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 
 		session, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
 		if err != nil || session == nil || session.Status != "ACTIVE" {
+			if err == nil {
+				h.finishKnownTerminal(session)
+			}
 			return
 		}
 
@@ -171,8 +180,14 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 				h.ScheduleConnectionHandshakeTimer(roomName, 30)
 				return
 			}
+			session, err = h.DB.GetCallSessionByRoomName(ctx, roomName)
+			if err != nil || session == nil || session.MediaAuthorizedAt == nil {
+				h.ScheduleConnectionHandshakeTimer(roomName, 30)
+				return
+			}
+			h.SetRoomStartedAt(roomName, session.MediaAuthorizedAt.UnixMilli())
 			limit := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
-			remaining := limit - int(time.Since(session.CreatedAt).Seconds())
+			remaining := limit - int(time.Since(session.DurationAnchor()).Seconds())
 			if remaining < 1 {
 				remaining = 1
 			}
@@ -187,6 +202,9 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 		}
 		claimed, err := h.DB.CancelCallSession(ctx, session.ID)
 		if err != nil || !claimed {
+			if err == nil {
+				h.cleanupTerminalRoom(ctx, roomName)
+			}
 			return
 		}
 		_ = h.LiveKit.DeleteRoom(ctx, roomName)
@@ -199,7 +217,7 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 		h.mu.Unlock()
 		h.DeleteRoomMutex(roomName)
 
-		h.EmitToRoom(roomName, "call_finished", CallFinishedEvent{
+		h.FinishRoom(roomName, CallFinishedEvent{
 			Duration: 0,
 			Reason:   "partner_failed_to_join",
 		})

@@ -9,7 +9,7 @@ Updated 2026-10-07. PairTalk's landing, client, admin and Telegram bot use the s
 3. The public `/pricing` comparison, client plan chooser and admin published preview use `platform/usePricing.ts`. They refresh every 30 seconds while visible and on focus. Requests are bounded to eight seconds, deduplicated and cancelled when a view closes. A failed or invalid response removes quoted offers and displays a retry action. No fabricated or stale checkout price substitutes for a failed response.
 4. Telegram plan menus reload the same configuration before quoting prices. Existing server invoice and entitlement checks remain authoritative.
 
-The public schema and comparison functions live in `server/src/contracts/pricing.ts`. Frontends import only that pure contract module, not server configuration, database clients or secrets. Frontend build contexts must include the repository's `platform/` and `server/src/contracts/` directories. The Docker build copies both.
+The public schema and comparison functions live in `server/src/contracts/pricing.ts`. Frontends import only that pure contract module, not server configuration, database clients or secrets. Frontend build contexts must include the repository's `platform/` and `server/src/contracts/` directories. Cloudflare frontend builds run from the repository root so both paths are available. The backend Docker image builds the Go gateway and server; it does not build the frontend apps.
 
 ## Public comparison
 

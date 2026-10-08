@@ -10,6 +10,7 @@ export async function admitCall(userAId: string, userBId: string, roomName: stri
   return prisma.$transaction(async tx => {
     for (const id of [userAId, userBId].sort()) await lockRow(tx, 'User', id);
     const users = await Promise.all([userAId, userBId].map(id => tx.user.findUnique({ where: { id } })));
+    await tx.callSession.updateMany({where:{status:"PENDING",createdAt:{lte:new Date(Date.now()-60000)},OR:[{userAId:{in:[userAId,userBId]}},{userBId:{in:[userAId,userBId]}}]},data:{status:"CANCELLED",endedAt:new Date(),duration:0}});
     for (const user of users) {
       if (!user?.onboarded || !hasAcceptedCurrentTerms(user) || user.isPermanentlyBanned || (user.isBanned && !user.bannedUntil) || (user.bannedUntil && user.bannedUntil > new Date()) || (status === 'PENDING' && user.id === userBId && user.dnd)) throw new Error('Participant is unavailable.');
       const active = await tx.callSession.findFirst({ where: { status: { in: ['ACTIVE', 'PENDING'] }, OR: [{ userAId: user.id }, { userBId: user.id }] } });

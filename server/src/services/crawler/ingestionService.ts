@@ -23,6 +23,7 @@ export interface IngestionResult {
 export class QuestionIngestionService {
 
   public async runIngestion(options?: {
+    syncLogId?: string;
     customSources?: RawCandidateQuestion[];
     customUrl?: string;
     deepCrawl?: boolean;
@@ -53,15 +54,14 @@ export class QuestionIngestionService {
     // 2. Create sync log in database
     let syncLogId: string | null = null;
     try {
-      const logEntry = await prisma.crawlerSyncLog.create({
-        data: {
-          status: 'RUNNING',
-          startedAt: new Date(),
-        },
-      });
+      const data = {status:'RUNNING',startedAt:new Date()};
+      const logEntry = options?.syncLogId
+        ? await prisma.crawlerSyncLog.update({where:{id:options.syncLogId},data})
+        : await prisma.crawlerSyncLog.create({data});
       syncLogId = logEntry.id;
     } catch (err: unknown) {
       logger.warn('Could not record initial CrawlerSyncLog entry', { service: 'crawler' }, err);
+      if (options?.syncLogId) { await lease.release(); throw err; }
     }
 
     let sourcesProcessed = 0;

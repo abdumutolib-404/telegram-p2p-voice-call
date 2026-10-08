@@ -7,6 +7,7 @@ interface SessionStatusScreenProps {
   cancelled?: boolean;
   onRestart?: () => void;
   onDashboard?: () => void;
+  onCancel?: () => void;
 }
 
 export function SessionStatusScreen({
@@ -15,6 +16,7 @@ export function SessionStatusScreen({
   cancelled,
   onRestart,
   onDashboard,
+  onCancel,
 }: SessionStatusScreenProps) {
   const pending = state !== 'ended';
   return (
@@ -72,6 +74,7 @@ export function SessionStatusScreen({
           </button>
         )}
         {state === 'ended' && onDashboard && <button type="button" className="secondary-button" onClick={onDashboard}>History &amp; audio</button>}
+        {state === 'connecting' && onCancel && <button type="button" className="secondary-button" onClick={onCancel}>Cancel connection</button>}
       </section>
       <footer className="app-footer">
         <span>One conversation at a time.</span>

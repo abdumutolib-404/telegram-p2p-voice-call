@@ -7,6 +7,7 @@ import { sendPostCallReviewCard } from '../bot/handlers/postCall';
 import { onCallFinishedCheckReferralReward } from './referralService';
 import { cleanupDirectCallMessages } from './directCallMessages';
 import { logger } from '../utils/logger';
+import { recoverRecordingDeliveries } from './recordingDelivery';
 
 /** Claims commit before participant locks, preserving admission/completion's User-first lock order. */
 export async function recoverPostCallJobs(bot: Bot<MyContext>, callId?: string, stopped: () => boolean = () => false): Promise<number> {
@@ -83,7 +84,7 @@ export function startPostCallWorker(supplier: () => Bot<MyContext> | null | unde
     if (stopped || active) return;
     clearTimeout(timer);
     active = Promise.resolve().then(async () => {
-      try { const bot = supplier(); if (bot && !stopped) await recoverPostCallJobs(bot, undefined, () => stopped); }
+      try { const bot = supplier(); if (bot && !stopped) { await recoverPostCallJobs(bot, undefined, () => stopped); await recoverRecordingDeliveries(bot, () => stopped); } }
       catch (error) { logger.warn('Post-call recovery unavailable', { service: 'postCallOutbox' }, error); }
       finally { active = undefined; if (!stopped) timer = setTimeout(tick, 5000); }
     });

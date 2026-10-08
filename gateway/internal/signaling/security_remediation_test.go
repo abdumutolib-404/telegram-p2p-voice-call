@@ -78,8 +78,9 @@ func TestIntegrationRoomStateRequiresActiveParticipants(t *testing.T) {
 	if started == 0 || hub.roomStartedAt[room] != started || len(hub.serverSessionTimers) != 1 {
 		t.Fatal("legitimate readiness did not start once")
 	}
-	if started > time.Now().Add(-29*time.Second).UnixMilli() {
-		t.Fatal("late readiness reset the admission clock")
+	authorizedSession, err := db.GetCallSessionByRoomName(ctx, room)
+	if err != nil || authorizedSession.MediaAuthorizedAt == nil || started != authorizedSession.MediaAuthorizedAt.UnixMilli() {
+		t.Fatal("speaking clock did not use durable media authorization")
 	}
 	if _, err = db.Pool.Exec(ctx, `UPDATE "CallSession" SET "egressId"='old-stopped-egress' WHERE id=$1`, room); err != nil {
 		t.Fatal(err)

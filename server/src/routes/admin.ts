@@ -1174,13 +1174,21 @@ router.post('/payments/stars/:id/refund', adminAuthMiddleware, async (req: Admin
 });
 
 // GET /api/admin/audit-logs (Protected)
-router.get('/audit-logs', adminAuthMiddleware, async (_req, res) => {
+router.get('/audit-logs', adminAuthMiddleware, async (req, res) => {
   try {
-    const logs = await prisma.auditLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    res.json(logs);
+    const paginated=req.query.page!==undefined;
+    const page=Number(req.query.page??1);
+    const search=String(req.query.search??"").trim();
+    const category=String(req.query.category??"ALL"), range=String(req.query.range??"all");
+    const terms:Record<string,string[]>={REFUNDS:["PAYMENT","REFUND","STARS","UZS"],APPEALS:["APPEAL"],CONTESTS:["CONTEST","CHAMPIONSHIP","PRIZE"],LOGINS:["LOGIN","OTP","AUTH","LOGOUT"],BANS:["BAN","BLOCK","WARN","MODERATION","RESET"],PLANS:["PLAN","LIMIT","RETENTION"]};
+    if(!Number.isInteger(page)||page<1||page>10000||search.length>160||!(category==="ALL"||terms[category])||!["all","today","7d","30d"].includes(range)){res.status(400).json({error:"Invalid audit filters."});return;}
+    const where:Prisma.AuditLogWhereInput={AND:[
+      ...(category==="ALL"?[]:[{OR:terms[category].map(term=>({action:{contains:term,mode:"insensitive" as const}}))}]),
+      ...(search?[{OR:["action","targetId","adminId","reason","beforeState","afterState"].map(key=>({[key]:{contains:search,mode:"insensitive"}}))}]:[]),
+      ...(range==="all"?[]:[{createdAt:{gte:range==="today"?new Date(new Date().toISOString().slice(0,10)+"T00:00:00Z"):new Date(Date.now()-(range==="7d"?7:30)*86400000)}}])
+    ]};
+    const [logs,total]=await Promise.all([prisma.auditLog.findMany({where,orderBy:[{createdAt:"desc"},{id:"desc"}],take:100,skip:(page-1)*100}),prisma.auditLog.count({where})]);
+    res.json(paginated?{logs,total,page,totalPages:Math.max(1,Math.ceil(total/100))}:logs);
   } catch (err) {
     logger.error('Failed to fetch audit logs', {
       service: 'admin',
@@ -1492,9 +1500,10 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       if (normalizedPlan === 'FREE') {
         updateData.subscriptionStatus = 'NONE';
         updateData.subscriptionExpiresAt = null;
+        updateData.subscriptionStartsAt = null; updateData.subscriptionDurationDays = null;
       } else {
         updateData.subscriptionStatus = 'ACTIVE';
-        const days = typeof durationDays === 'number' && durationDays > 0 ? durationDays : 30;
+        const days = typeof durationDays === "number" && durationDays > 0 ? durationDays : getPlansConfig()[normalizedPlan as keyof ReturnType<typeof getPlansConfig>].subscriptionDurationDays;
         updateData.subscriptionExpiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
       }
       if (dailyLimit === undefined) {
@@ -1541,6 +1550,10 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
       updateData.subscriptionExpiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
     }
 
+    if (updateData.subscriptionExpiresAt instanceof Date) {
+      updateData.subscriptionStartsAt = new Date();
+      updateData.subscriptionDurationDays = Math.max(1,Math.round((updateData.subscriptionExpiresAt.getTime()-Date.now())/86400000));
+    }
     if (resetDailyCalls === true) {
       updateData.dailyCallsUsed = 0;
       updateData.lastCallDate = new Date().toISOString().slice(0, 7);
@@ -1590,7 +1603,7 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
     const now = new Date();
     let status = 'active';
     if (updated.isPermanentlyBanned) status = 'banned';
-    else if (updated.isBanned && updated.bannedUntil && updated.bannedUntil > now) status = 'blocked';
+    else if (updated.isBanned && (!updated.bannedUntil || updated.bannedUntil > now)) status = 'blocked';
     else if (updated.warningCount > 0 && !updated.isBanned) status = 'warned';
 
     res.json({
@@ -1731,7 +1744,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
         }
         return res.json({
           success: true,
-          user: { ...escalation.user, telegramId: escalation.user.telegramId.toString() },
+          user: { ...escalation.user, telegramId: escalation.user.telegramId.toString(), planTier: escalation.user.plan.toLowerCase(), status: escalation.user.isPermanentlyBanned ? "banned" : escalation.user.isBanned ? "blocked" : "warned" },
           penaltyLevel: escalation.penaltyLevel,
           warningCount: escalation.warningCount,
         });
@@ -1763,6 +1776,7 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
         break;
       case 'reset-calls':
         updateData = {
+          ...(user.subscriptionExpiresAt && user.subscriptionExpiresAt > new Date() ? {subscriptionStartsAt:new Date()} : {}),
           dailyCallsUsed: 0,
           lastCallDate: new Date().toISOString().slice(0, 7),
         };
@@ -1914,12 +1928,13 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
     if ((title !== undefined && (typeof title !== 'string' || !title.trim() || title.length > 160)) || (description !== undefined && (typeof description !== 'string' || description.length > 2000)) || (isActive !== undefined && typeof isActive !== 'boolean') || (durationDays !== undefined && (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650)) || (calculatedEndsAt && !Number.isFinite(calculatedEndsAt.getTime()))) { res.status(400).json({error:'Invalid contest title, description, availability or duration.'}); return; }
     const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
     const {contest} = await prisma.$transaction(async tx => {
-      if (env.NODE_ENV !== 'test') await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251010)`;
+      if (env.NODE_ENV !== 'test') await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251010)::text`;
     const existingActive = await tx.contest.findFirst({
       where: { isActive: true },
       orderBy: { createdAt: 'desc' },
     });
 
+    if (existingActive?.endsAt && existingActive.endsAt <= new Date()) throw new Error("Conclude the ended championship and award prizes before launching another.");
     let contest;
     if (existingActive) {
       contest = await tx.contest.update({
@@ -1986,6 +2001,7 @@ router.post('/contest', adminAuthMiddleware, async (req, res) => {
 
     res.json({ success: true, contest });
   } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Conclude the ended championship')) { res.status(409).json({error:err.message});return; }
     logger.error('Failed to save contest', {
       service: 'admin',
       event: 'save_contest_failed',
@@ -2122,4 +2138,3 @@ router.post('/contest/toggle', adminAuthMiddleware, async (req, res) => {
 });
 
 export default router;
-

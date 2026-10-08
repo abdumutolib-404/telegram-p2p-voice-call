@@ -25,7 +25,7 @@ func TestIntegrationTermsRequiredForAuthenticationAndAdmission(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.GetRegisteredUserByTelegramID(ctx, user.TelegramID, auth.TermsVersion, auth.TermsDocumentSHA256); err == nil {
+		if candidate, lookupErr := db.GetRegisteredUserByTelegramID(ctx, user.TelegramID, auth.TermsVersion, auth.TermsDocumentSHA256); lookupErr != nil || candidate != nil {
 			t.Fatalf("authentication accepted %s", change)
 		}
 		call := uuid.NewString()

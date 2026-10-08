@@ -137,7 +137,7 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       expect(count).toBe(0);
 
       // Create 2 call sessions with recordings
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `rec_test_room_${Date.now()}_1`,
           userAId: user.id,
@@ -147,7 +147,7 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
           duration: 300,
         },
       });
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `rec_test_room_${Date.now()}_2`,
           userAId: 'dummy_partner_id',
@@ -183,7 +183,7 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       const bossRetentionMs = 90 * 24 * 60 * 60 * 1000;
       const recordingExpiresAt = new Date(sessionCreatedAt.getTime() + bossRetentionMs);
 
-      const session = await prisma.callSession.create({
+      const session = await recordedFixture({
         data: {
           roomName: `boss_survival_room_${Date.now()}`,
           userAId: bossUser.id,
@@ -226,6 +226,8 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       expect(getRes.body.PRO).toBeDefined();
       expect(getRes.body.BOSS).toBeDefined();
 
+      const original=structuredClone(getPlansConfig());
+      try {
       // Update a plan setting (e.g. modify PLUS price to test dynamic persistence)
       const putRes = await request(app)
         .put('/api/admin/plans')
@@ -242,15 +244,8 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
       expect(getPlansConfig().PLUS.starsPrice).toBe(85);
       expect(getPlansConfig().PLUS.uzsPrice).toBe(15000);
 
-      // Revert back to canonical 99 XTR / 15,000 UZS
-      updatePlansConfig({
-        PLUS: {
-          ...getPlansConfig().PLUS,
-          starsPrice: 99,
-          uzsPrice: 15000,
-        },
-      });
-      expect(getPlansConfig().PLUS.starsPrice).toBe(99);
+      } finally { updatePlansConfig(original); }
+      expect(getPlansConfig()).toEqual(original);
     });
   });
 
@@ -265,3 +260,11 @@ describe('Authoritative Plan, Entitlement, Billing & Recording Migration Test Su
     });
   });
 });
+
+async function recordedFixture(args: Parameters<typeof prisma.callSession.create>[0]) {
+  const call=await prisma.callSession.create(args);
+  const marker=call.recordedByUserId;
+  const owners=!marker || marker==='BOTH' ? [call.userAId,call.userBId] : marker.split(',');
+  for(const userId of owners) await prisma.recordingUsage.create({data:{callId:call.id,userId}});
+  return call;
+}

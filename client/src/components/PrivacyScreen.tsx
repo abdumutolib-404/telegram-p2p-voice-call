@@ -122,14 +122,14 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
                 <span>100% Full Refund Guarantee Criteria</span>
               </div>
               <p className="text-slate-200 text-xs sm:text-[13px] leading-relaxed">
-                You are unconditionally entitled to a 100% full money-back refund on your paid plan (PLUS, PRO, or BOSS) if BOTH of the following conditions are met:
+                You may request a refund on a paid plan if either of these eligibility conditions is met. Purchase ownership, purchase status and account restrictions also apply:
               </p>
               <ul className="list-disc list-inside space-y-1 text-slate-300 text-xs pl-2">
                 <li>
                   <strong>Time Window:</strong> Your refund request is initiated within <strong>48 hours (2 days)</strong> of the original purchase timestamp.
                 </li>
                 <li>
-                  <strong>Call Quota Utilization:</strong> You have consumed <strong>less than 10%</strong> of your purchased monthly practice calls (0 calls on PLUS, ≤ 2 calls on PRO, ≤ 4 calls on BOSS).
+                  <strong>Call Quota Utilization:</strong> You have consumed <strong>less than 10%</strong> of the call allowance included in your purchase.
                 </li>
               </ul>
             </div>
@@ -140,7 +140,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
                   <span>⭐ Telegram Stars Refunds</span>
                 </div>
                 <p className="text-slate-300 text-[11px] leading-relaxed">
-                  Processed <strong>instantly and automatically</strong> via the <code className="text-mint-300">/refund</code> command in @PairTalkBot. The full Stars amount is credited back to your Telegram account immediately with zero administrative delays.
+                  Requested via the <code className="text-mint-300">/refund</code> command in @PairTalkBot. Refund completion depends on provider confirmation. Contact support if confirmation is pending.
                 </p>
               </div>
 
@@ -150,7 +150,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
                   <span>💳 Card Payments (UZS)</span>
                 </div>
                 <p className="text-slate-300 text-[11px] leading-relaxed">
-                  Refund requests submitted via <code className="text-mint-300">/refund</code> or to @PairTalkSupport are audited against the 48-hour / &lt;10% usage rule and returned to your original payment card within <strong>1–3 business days</strong>.
+                  Refund requests submitted via <code className="text-mint-300">/refund</code> or to @PairTalkSupport are reviewed against the 48-hour OR &lt;10% usage rule. Approved transfers ordinarily settle in <strong>1–3 business days</strong>; provider processing can vary.
                 </p>
               </div>
             </div>
@@ -161,7 +161,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
                 <span>Non-Refundable Circumstances</span>
               </div>
               <p className="text-slate-400 text-[11.5px] leading-relaxed">
-                Refunds cannot be issued if more than 48 hours have elapsed, if 10% or more of practice call credits have been utilized, or if the account was suspended/banned for abusive behavior or severe violations of the Community Guidelines.
+                Refund requests are ineligible when both the 48-hour window has passed and at least 10% of the allowance was used, or when the account was suspended/banned for abusive behavior or severe violations of the Community Guidelines.
               </p>
             </div>
           </div>
@@ -179,7 +179,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
             </p>
             <ul className="list-disc list-inside space-y-1 pl-2 text-xs text-slate-400">
               <li><strong>Right to Inspect:</strong> View your active target scores, call history count, and remaining quota in the Mini App Profile at any time.</li>
-              <li><strong>Right to Erasure:</strong> Request permanent deletion of your Telegram ID link, alias, historical scores, and stored audio recordings by contacting our support channel at <span className="text-mint-400 font-bold">@PairTalkSupport</span>. Account erasure is finalized within 48 hours.</li>
+              <li><strong>Right to Erasure:</strong> Request permanent deletion of your Telegram ID link, alias, historical scores, and stored audio recordings by contacting our support channel at <span className="text-mint-400 font-bold">@PairTalkSupport</span>. Support will confirm the request and applicable deletion timeline; records required for billing or legal obligations may be retained.</li>
             </ul>
           </div>
         </div>

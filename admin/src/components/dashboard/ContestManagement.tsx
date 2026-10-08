@@ -230,7 +230,7 @@ export function ContestManagement() {
               <span>Refresh</span>
             </button>
 
-            {championshipState !== 'ACTIVE' && (
+            {championshipState === 'NO_ACTIVE' && (
               <button
                 onClick={openLaunchWizard}
                 className="btn-primary"
@@ -537,11 +537,11 @@ export function ContestManagement() {
               </div>
 
               <button
-                onClick={openLaunchWizard}
+                onClick={() => setIsConcludeDialogOpen(true)}
                 className="btn-primary"
                 style={{ fontSize: '0.825rem' }}
               >
-                <Play size={14} /> Launch Next Championship
+                <Award size={14} /> Conclude and award prizes
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -221,24 +221,10 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 1)', () => {
       expect(res2.body.error).toContain('Invalid or expired 2FA login token.');
     });
 
-    it('2.5 Probes 2FA token expiration behavior when memory store expires', async () => {
-      const token = await generateAdminToken(87654321);
-
-      // Manually expire token in memory store
-      const entry = adminTokenStore.get(token);
-      if (entry) {
-        entry.expiresAt = Date.now() - 1000; // Expired 1 second ago
-      }
-
-      // FIXED: Token should be rejected when expired - verifyAndConsumeAdminToken should
-      // return null for expired tokens regardless of Redis fallback.
-      const consumed = await verifyAndConsumeAdminToken(token);
-      
-      // Redis fallback may still return the token, but the correct behavior is rejection.
-      // This test asserts the expected correct outcome:
-      // In memory store, the token is expired and deleted. Redis may still have it,
-      // but both stores should respect expiration.
-      expect(consumed === null || consumed === 87654321).toBe(true);
+    it("2.5 rejects expired 2FA tokens from every backing store",async()=>{
+      vi.useFakeTimers();
+      try { const token=await generateAdminToken(87654321);vi.setSystemTime(Date.now()+301000);expect(await verifyAndConsumeAdminToken(token)).toBeNull(); }
+      finally {vi.useRealTimers();}
     });
 
     it('2.6 Rejects unauthorized requests to protected admin REST endpoints without JWT (401 Unauthorized)', async () => {

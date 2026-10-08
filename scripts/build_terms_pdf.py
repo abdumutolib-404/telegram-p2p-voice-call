@@ -18,10 +18,17 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from pypdf import PdfReader
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "2026-10-07"
+VERSION = "2026-10-08"
 manifest_path = ROOT / "server/assets/terms-manifest.json"
 if manifest_path.exists() and json.loads(manifest_path.read_text(encoding="utf-8"))["version"] == VERSION:
     raise SystemExit("This terms version is already published. Review the changes and choose a new VERSION before exporting; existing accepted documents must not be overwritten.")
+if manifest_path.exists():
+    previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+    archive = ROOT / "server/assets/terms" / previous["version"]
+    archive.mkdir(parents=True, exist_ok=True)
+    import shutil
+    shutil.copy2(manifest_path, archive / "terms-manifest.json")
+    shutil.copy2(ROOT / "server/assets/pairtalk-terms-of-use.pdf", archive / "pairtalk-terms-of-use.pdf")
 source = (ROOT / "landing/src/content.tsx").read_text(encoding="utf-8")
 
 def sections(route):

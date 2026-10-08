@@ -103,6 +103,7 @@ type CallFinishedPubSubMessage struct {
 }
 
 type CommandPubSubMessage struct {
+	Source          string `json:"source,omitempty"`
 	Command         string `json:"command"` // "SCHEDULE_CALL_TEARDOWN"
 	RoomName        string `json:"roomName"`
 	DurationSeconds int    `json:"durationSeconds"`

@@ -1,5 +1,5 @@
 package auth
 
 // Matches the deployed PDF manifest. Update using scripts/build_terms_pdf.py.
-const TermsVersion = "2026-10-07"
-const TermsDocumentSHA256 = "ba205c9ba48d2e7aa59239a9893f54294f517840be2d39ef65f0fce18ee7ef3b"
+const TermsVersion = "2026-10-08"
+const TermsDocumentSHA256 = "d5c0aa8e201b26687c1db5330322871ac21ba00f240dc2bd647e3d6465eeda63"

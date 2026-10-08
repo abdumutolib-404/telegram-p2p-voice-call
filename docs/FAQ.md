@@ -34,7 +34,7 @@ The service uses LiveKit for audio transport. Transport protection must not be d
 
 ## What if a partner behaves badly?
 
-Leave the call and report the incident through the bot. Moderation and appeals exist; do not assume reporting provides permanent pair blocking or an unconditional free long call. See [Community guidelines](COMMUNITY_GUIDELINES.md).
+Leave the call and report the incident from Dashboard → History. Moderation and appeals exist; do not assume reporting provides permanent pair blocking or an unconditional free long call. See [Community guidelines](COMMUNITY_GUIDELINES.md).
 
 ## How do refunds work?
 

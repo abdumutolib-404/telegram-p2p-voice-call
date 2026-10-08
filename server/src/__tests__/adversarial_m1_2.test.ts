@@ -67,39 +67,15 @@ describe('Adversarial Stress Test Suite - Milestone M1 (Challenger 2)', () => {
         });
       }
 
-      // 1. Group A all join queue (should all be queued without immediate match)
-      const groupAResults = await Promise.all(
-        groupA.map((u) => matchmakingService.joinQueue(u.id, u.band, u.skills))
-      );
+      const users = [...groupA,...groupB];
+      const results = await Promise.all(users.map(u=>matchmakingService.joinQueue(u.id,u.band,u.skills)));
+      const matched = new Set<string>();
+      results.forEach((result,index)=>{if (!result.matched) return; expect(result.roomName).toBeDefined();expect(result.partnerId).toBeDefined();for(const id of [users[index].id,result.partnerId!]){expect(matched.has(id)).toBe(false);matched.add(id);}});
+      expect(matched.size).toBe(NUM_PAIRS*2);
+      for(const user of users) expect(await inMemoryRedis.get('user_queue:'+user.id)).toBeNull();
+      expect(await inMemoryRedis.smembers('match_queue:6.5:FC:LR')).toEqual([]);
+      expect(await inMemoryRedis.smembers('match_queue:6.5:LR:FC')).toEqual([]);
 
-      for (const res of groupAResults) {
-        expect(res.matched).toBe(false);
-        expect(res.bucketKey).toBe('match_queue:6.5:FC:LR');
-      }
-
-      // Verify Redis set size for Group A bucket
-      const membersBefore = await inMemoryRedis.smembers('match_queue:6.5:FC:LR');
-      expect(membersBefore.length).toBe(NUM_PAIRS);
-
-      // 2. Group B all join concurrently (all 100 should find complementary match from Group A)
-      const groupBResults = await Promise.all(
-        groupB.map((u) => matchmakingService.joinQueue(u.id, u.band, u.skills))
-      );
-
-      const matchedPartners = new Set<string>();
-      for (const res of groupBResults) {
-        expect(res.matched).toBe(true);
-        expect(res.partnerId).toBeDefined();
-        expect(res.roomName).toBeDefined();
-        matchedPartners.add(res.partnerId!);
-      }
-
-      // Verify all 100 Group A users were uniquely matched without duplicates
-      expect(matchedPartners.size).toBe(NUM_PAIRS);
-
-      // Verify Redis queue is completely drained
-      const membersAfter = await inMemoryRedis.smembers('match_queue:6.5:FC:LR');
-      expect(membersAfter.length).toBe(0);
     });
 
     it('1.4 Instant cancellation and idempotency under queueing', async () => {

@@ -47,7 +47,7 @@ export async function checkAndProcessSubscriptionExpirations(
           data: {
             plan: 'FREE', subscriptionStatus: 'EXPIRED', customPlanName: null,
             dailyLimit: getPlansConfig().FREE.dailyLimit, maxDuration: getPlansConfig().FREE.maxDuration,
-            recordingLimitOverride: null, retentionOverride: null, subscriptionExpiresAt: null,
+            recordingLimitOverride: null, retentionOverride: null, subscriptionExpiresAt: null, subscriptionStartsAt: null, subscriptionDurationDays: null,
           },
         });
         await tx.auditLog.create({ data: {

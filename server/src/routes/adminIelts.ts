@@ -6,9 +6,7 @@ import { generateQuestionFingerprint } from '../services/crawler/fingerprint';
 import { questionIngestionService } from '../services/crawler/ingestionService';
 import { questionFilterService } from '../services/crawler/questionFilterService';
 import { aiCurationService } from '../services/crawler/aiCurationService';
-import { topicNotificationService } from '../services/topicNotificationService';
 import { webCrawlerService } from '../services/crawler/webCrawlerService';
-import { getAdminBot } from './admin';
 import { logger } from '../utils/logger';
 import { escapeCsvField as escapeCsv } from '../utils/csv';
 
@@ -471,23 +469,23 @@ router.post('/crawler/run', async (req: AdminAuthenticatedRequest, res: Response
       return;
     }
 
-    logger.info('Admin triggered manual crawler ingestion run', { service: 'admin_ielts', customUrl: cleanCustomUrl, deepCrawl });
-    const result = await questionIngestionService.runIngestion({
-      force: true,
-      customUrl: cleanCustomUrl,
-      deepCrawl: Boolean(deepCrawl),
-      onNewTopics: async (newCount, topics) => {
-        const bot = getAdminBot();
-        if (bot) {
-          await topicNotificationService.broadcastNewTopics(newCount, topics, bot);
-        }
-      },
+    const job = await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(721042)::text`;
+      const queued = await tx.crawlerSyncLog.count({where:{status:{in:["QUEUED","PROCESSING","RUNNING"]}}});
+      if (queued>=3) return null;
+      return tx.crawlerSyncLog.create({data:{status:"QUEUED",requestJson:JSON.stringify({customUrl:cleanCustomUrl,deepCrawl:Boolean(deepCrawl)})}});
     });
-    res.json({ success: true, result });
+    if (!job) { res.status(409).json({error:"A crawler run is already queued or running. Check its status before adding another."});return; }
+    res.status(202).json({success:true,jobId:job.id,status:"QUEUED"});
   } catch (err: unknown) {
     logger.error('Admin trigger crawler failed', { service: 'admin_ielts' }, err);
     res.status(500).json({ error: 'Internal server error triggering crawler' });
   }
+});
+
+router.get("/crawler/jobs/:id",async (req,res) => {
+  try { const job=await prisma.crawlerSyncLog.findUnique({where:{id:req.params.id}});if(!job){res.status(404).json({error:"Crawler job not found."});return;}res.json({success:true,result:job}); }
+  catch {res.status(503).json({error:"Crawler job status unavailable."});}
 });
 
 // POST /api/admin/ielts/crawler/filter-run

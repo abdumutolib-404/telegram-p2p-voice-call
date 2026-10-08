@@ -55,8 +55,10 @@ describe('call recovery ownership', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect((await prisma.callSession.findUnique({ where: { id: call.id } }))?.status).toBe('ACTIVE');
     expect(roomServiceClient!.deleteRoom).not.toHaveBeenCalled();
-    // The recovered deadline is based on the existing session age, never a fresh full allowance.
-    await vi.advanceTimersByTimeAsync(779000);
+    // First authorization starts speaking time; setup does not consume it.
+    await vi.advanceTimersByTimeAsync(899000);
+    expect((await prisma.callSession.findUnique({ where: { id: call.id } }))?.status).toBe('ACTIVE');
+    await vi.advanceTimersByTimeAsync(1000);
     expect((await prisma.callSession.findUnique({ where: { id: call.id } }))?.status).toBe('COMPLETED');
     for (const participant of participants) expect((await prisma.user.findUnique({ where: { id: participant.id } }))?.dailyCallsUsed).toBe(1);
   });

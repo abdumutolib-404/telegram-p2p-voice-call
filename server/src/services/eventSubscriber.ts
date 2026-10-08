@@ -1,3 +1,4 @@
+import { cleanupFinishedRoom } from '../socket/signaling';
 import { Bot } from 'grammy';
 import type { MyContext } from '../bot/types';
 import { createRedisSubscriber } from '../config/redis';
@@ -71,6 +72,9 @@ export function startEventSubscriber(
     try {
       const data = JSON.parse(message);
       if (data && data.type === 'CALL_FINISHED') {
+        if (typeof data.roomName === 'string' && data.roomName.length <= 128 && typeof data.sessionId === 'string' && data.sessionId.length <= 128) {
+          void cleanupFinishedRoom(data.roomName, data.sessionId).catch(error => logger.warn('Terminal room cleanup deferred', {service:'eventSubscriber'}, error));
+        }
         // Coalesce hints; PostgreSQL polling recovers even if this message was missed.
         wakePostCallWorker();
       }

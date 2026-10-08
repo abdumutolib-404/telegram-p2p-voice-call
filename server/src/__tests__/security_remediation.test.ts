@@ -36,6 +36,12 @@ async function participants() {
 }
 
 describe('security boundary regressions', () => {
+  it('served payment support uses the implemented OR refund rule and provider-confirmed completion',async()=>{
+    const {a}=await participants();const commands:Record<string,Function>={};
+    setupPaymentHandlers({on:()=>{},callbackQuery:()=>{},command:(name:string,handler:Function)=>{commands[name]=handler;}} as any);
+    const reply=vi.fn();await commands.paysupport({from:{id:Number(a.telegramId)},reply});
+    const text=reply.mock.calls[0][0];expect(text).toContain('<b>OR</b>');expect(text).not.toContain('<b>AND</b>');expect(text).toContain('provider confirmation');expect(text).not.toContain('Instant automatic');
+  });
   it.each(['=1+1', '+SUM(1,2)', '-1+1', '@SUM(1,2)', '\t=1+1', '\r\n+1', '\uFEFF=1', '\u0000-2', '\u200B@x'])('exports %j as literal spreadsheet text', value => {
     expect(escapeCsvField(value)).toBe(`"'${value}"`);
   });
@@ -71,7 +77,7 @@ describe('security boundary regressions', () => {
     const { a, b, roomName } = await participants();
     const month = new Date().toISOString().slice(0,7);
     for (const id of [a.id,b.id]) await prisma.user.update({ where: { id }, data: { dailyCallsUsed: 1, lastCallDate: month } });
-    const session = await prisma.callSession.create({ data: { roomName, userAId: a.id, userBId: b.id, mediaAuthorizedAt: new Date() } });
+    const session = await prisma.callSession.create({ data: { roomName, userAId: a.id, userBId: b.id, mediaAuthorizedAt: new Date(Date.now()-35000) } });
     const completion = { endedAt: new Date(), duration: 35, charge: false, reason: 'microphone_permission_denied', deniedUserId: a.id };
     expect(await completeCallSession(session.id, completion)).toEqual({ count: 1 });
     expect(await completeCallSession(session.id, completion)).toEqual({ count: 0 });
@@ -142,7 +148,7 @@ describe('security boundary regressions', () => {
     await Promise.all([second.peer_ready({ roomName }),second.peer_ready({ roomName })]);
     expect(emit.mock.calls.filter(call=>call[0]==='call_started')).toHaveLength(1);
   });
-  it('late readiness cannot reset billing or the server deadline, and finishing closes the media room once', async () => {
+  it('late readiness starts the durable media clock once and finishing closes the room once, and finishing closes the media room once', async () => {
     vi.useFakeTimers(); providers.delete.mockClear();
     const {a,b,roomName}=await participants(),{connect,emit}=socketHarness();
     const first=connect(a.id),second=connect(b.id),admittedAt=new Date();
@@ -150,12 +156,12 @@ describe('security boundary regressions', () => {
     await first.peer_ready({roomName});vi.setSystemTime(admittedAt.getTime()+30000);
     await second.peer_ready({roomName});
     const started=emit.mock.calls.find(call=>call[0]==='call_started')![1];
-    expect(started.startedAt).toBe(admittedAt.getTime());expect(started.expiresAt).toBe(admittedAt.getTime()+900000);
+    expect(started.startedAt).toBe(admittedAt.getTime()+30000);expect(started.expiresAt).toBe(admittedAt.getTime()+930000);
     vi.setSystemTime(admittedAt.getTime()+31000);
     await first.finish_call({roomName,reason:'microphone_permission_denied'});
     await first.finish_call({roomName,reason:'microphone_permission_denied'});
-    expect((await prisma.callSession.findUnique({where:{id:session.id}}))?.duration).toBe(31);
-    expect((await prisma.user.findUnique({where:{id:a.id}}))?.dailyCallsUsed).toBe(1);
+    expect((await prisma.callSession.findUnique({where:{id:session.id}}))?.duration).toBe(1);
+    expect((await prisma.user.findUnique({where:{id:a.id}}))?.dailyCallsUsed).toBe(0);
     expect(providers.delete).toHaveBeenCalledOnce();expect(providers.delete).toHaveBeenCalledWith(roomName);
   });
 });
@@ -163,7 +169,7 @@ describe('security boundary regressions', () => {
 function socketHarness() {
   let connection: Function = () => {};
   const emit=vi.fn();
-  const io={ use: () => {}, on: (_name: string, fn: Function) => { connection=fn; }, to: () => ({emit}), sockets: { sockets:new Map() } };
+  const io={ use: () => {}, on: (_name: string, fn: Function) => { connection=fn; }, to: () => ({emit}), in:()=>({socketsLeave:vi.fn()}), sockets: { sockets:new Map() } };
   setupSocketSignaling(io as any);
   return { emit, connect: (userId: string) => {
     const handlers: Record<string,Function>={};

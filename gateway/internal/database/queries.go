@@ -37,6 +37,7 @@ type User struct {
 	CustomPlanName           *string
 	SubscriptionStatus       *string
 	SubscriptionExpiresAt    *time.Time
+	SubscriptionStartsAt     *time.Time
 	SubscriptionDurationDays *int
 }
 
@@ -57,6 +58,13 @@ type CallSession struct {
 	RecordingExpiresAt *time.Time
 	UserA              *User
 	UserB              *User
+}
+
+func (s *CallSession) DurationAnchor() time.Time {
+	if s.MediaAuthorizedAt != nil {
+		return *s.MediaAuthorizedAt
+	}
+	return s.CreatedAt
 }
 
 type PlanConfig struct {
@@ -209,21 +217,23 @@ const userSelectColumns = `
 	plan, "warningCount", "isBanned", "isPermanentlyBanned", "bannedUntil",
 	"dailyCallsUsed", "lastCallDate", "dailyLimit", "maxDuration",
 	"recordingLimitOverride", "retentionOverride", "customPlanName",
-	"subscriptionStatus", "subscriptionExpiresAt"
+	"subscriptionStatus", "subscriptionExpiresAt", "subscriptionStartsAt", "subscriptionDurationDays"
 `
 
 func scanUser(row pgx.Row) (*User, error) {
 	u := &User{}
 	var (
-		bannedUntil            sql.NullTime
-		lastCallDate           sql.NullString
-		dailyLimit             sql.NullInt64
-		maxDuration            sql.NullInt64
-		recordingLimitOverride sql.NullInt64
-		retentionOverride      sql.NullInt64
-		customPlanName         sql.NullString
-		subscriptionStatus     sql.NullString
-		subscriptionExpiresAt  sql.NullTime
+		bannedUntil              sql.NullTime
+		lastCallDate             sql.NullString
+		dailyLimit               sql.NullInt64
+		maxDuration              sql.NullInt64
+		recordingLimitOverride   sql.NullInt64
+		retentionOverride        sql.NullInt64
+		customPlanName           sql.NullString
+		subscriptionStatus       sql.NullString
+		subscriptionExpiresAt    sql.NullTime
+		subscriptionStartsAt     sql.NullTime
+		subscriptionDurationDays sql.NullInt64
 	)
 
 	err := row.Scan(
@@ -249,6 +259,8 @@ func scanUser(row pgx.Row) (*User, error) {
 		&customPlanName,
 		&subscriptionStatus,
 		&subscriptionExpiresAt,
+		&subscriptionStartsAt,
+		&subscriptionDurationDays,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -287,6 +299,13 @@ func scanUser(row pgx.Row) (*User, error) {
 	}
 	if subscriptionExpiresAt.Valid {
 		u.SubscriptionExpiresAt = &subscriptionExpiresAt.Time
+	}
+	if subscriptionStartsAt.Valid {
+		u.SubscriptionStartsAt = &subscriptionStartsAt.Time
+	}
+	if subscriptionDurationDays.Valid {
+		v := int(subscriptionDurationDays.Int64)
+		u.SubscriptionDurationDays = &v
 	}
 
 	return u, nil
@@ -513,6 +532,11 @@ func (db *DB) ChangeRecordingIntent(ctx context.Context, id, userID, egressID st
 		return false, err
 	}
 	defer tx.Rollback(ctx)
+	if recording {
+		if err := db.consumeRecording(ctx, tx, id, userID); err != nil {
+			return false, err
+		}
+	}
 	var active, owners sql.NullString
 	var a, b string
 	err = tx.QueryRow(ctx, `SELECT "activeRecorderIds","recordedByUserId","userAId","userBId" FROM "CallSession" WHERE id=$1 AND status='ACTIVE' AND "egressId"=$2 FOR UPDATE`, id, egressID).Scan(&active, &owners, &a, &b)
@@ -570,6 +594,11 @@ func (db *DB) ChangeRecordingIntent(ctx context.Context, id, userID, egressID st
 	if _, err = tx.Exec(ctx, `UPDATE "CallSession" SET "activeRecorderIds"=$1, "recordedByUserId"=CASE WHEN $2 THEN $3 ELSE "recordedByUserId" END WHERE id=$4`, intent, recording, saved, id); err != nil {
 		return false, err
 	}
+	if recording {
+		if _, err = tx.Exec(ctx, `UPDATE "RecordingSegment" SET "ownerIds"=string_to_array($1,',') WHERE "callId"=$2 AND "egressId"=$3`, saved, id, egressID); err != nil {
+			return false, err
+		}
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return false, err
 	}
@@ -589,11 +618,25 @@ func (db *DB) UpdateSessionEgressAtomic(ctx context.Context, id, egressID, recor
 	if len(previousEgress) > 0 {
 		previous = previousEgress[0]
 	}
-	tag, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "egressId"=$1,"recordingUrl"=$2,"recordedByUserId"=$3,"activeRecorderIds"=$3 WHERE id=$4 AND status='ACTIVE' AND "activeRecorderIds" IS NULL AND "egressId" IS NOT DISTINCT FROM $5`, egressID, recordingURL, recorders, id, previous)
+	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
+	defer tx.Rollback(ctx)
+	if err := db.consumeRecording(ctx, tx, id, recorders); err != nil {
+		return false, err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE "CallSession" SET "egressId"=$1,"recordingUrl"=$2,"recordedByUserId"=$3,"activeRecorderIds"=$3 WHERE id=$4 AND status='ACTIVE' AND "mediaAuthorizedAt" IS NOT NULL AND "activeRecorderIds" IS NULL AND "egressId" IS NOT DISTINCT FROM $5 AND ($3="userAId" OR $3="userBId")`, egressID, recordingURL, recorders, id, previous)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() != 1 {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO "RecordingSegment" (id,"callId","objectKey","egressId","ownerIds",status,"createdAt") VALUES ($1,$2,$3,$1,ARRAY[$4],'RECORDING',NOW())`, egressID, id, recordingURL, recorders); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
 }
 
 func (db *DB) GetActiveBonusCallsCount(ctx context.Context, userID string) (int, error) {
@@ -646,7 +689,7 @@ func (db *DB) GetUserCallsUsedThisPeriod(ctx context.Context, userID string, use
 func callsUsedThisPeriod(ctx context.Context, runner queryRunner, userID string, targetUser *User) (int, error) {
 	currentMonth := time.Now().UTC().Format("2006-01")
 
-	if targetUser.LastCallDate != nil && strings.HasPrefix(*targetUser.LastCallDate, currentMonth) {
+	if targetUser.SubscriptionExpiresAt == nil && targetUser.LastCallDate != nil && strings.HasPrefix(*targetUser.LastCallDate, currentMonth) {
 		return int(math.Max(0, float64(targetUser.DailyCallsUsed))), nil
 	}
 
@@ -658,6 +701,9 @@ func callsUsedThisPeriod(ctx context.Context, runner queryRunner, userID string,
 			durationDays = *targetUser.SubscriptionDurationDays
 		}
 		periodStart = targetUser.SubscriptionExpiresAt.Add(-time.Duration(durationDays) * 24 * time.Hour)
+		if targetUser.SubscriptionStartsAt != nil {
+			periodStart = *targetUser.SubscriptionStartsAt
+		}
 	}
 
 	query := `
@@ -683,29 +729,8 @@ func (db *DB) GetUserRecordingsUsedThisPeriod(ctx context.Context, userID string
 		}
 	}
 
-	now := time.Now().UTC()
-	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	if targetUser.SubscriptionExpiresAt != nil && targetUser.SubscriptionExpiresAt.After(time.Now()) {
-		durationDays := 30
-		if targetUser.SubscriptionDurationDays != nil && *targetUser.SubscriptionDurationDays > 0 {
-			durationDays = *targetUser.SubscriptionDurationDays
-		}
-		periodStart = targetUser.SubscriptionExpiresAt.Add(-time.Duration(durationDays) * 24 * time.Hour)
-	}
-
-	query := `
-		SELECT COUNT(*)
-		FROM "CallSession"
-		WHERE ("userAId" = $1 OR "userBId" = $1)
-		  AND ("recordedByUserId" = $1
-		   OR "recordedByUserId" = 'BOTH'
-		   OR "recordedByUserId" = 'ALL'
-		   OR ("recordedByUserId" IS NULL AND "userAId" = $1)
-		   OR ("recordedByUserId" IS NULL AND "userBId" = $1)
-		   OR ($1 = ANY(string_to_array("recordedByUserId", ','))))
-		  AND "recordingUrl" IS NOT NULL
-		  AND "createdAt" >= $2
-	`
+	periodStart := recordingPeriodStart(targetUser)
+	query := `SELECT COUNT(*) FROM "RecordingUsage" WHERE "userId"=$1 AND "consumedAt">=$2`
 	var count int
 	err = db.Pool.QueryRow(ctx, query, userID, periodStart).Scan(&count)
 	return count, err

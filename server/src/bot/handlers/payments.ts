@@ -598,7 +598,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         }
         const targetTier = tier;
         const targetConfig = plans[targetTier as keyof typeof plans] || plans.PLUS;
-        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        const expiresAt = new Date(Date.now() + targetConfig.subscriptionDurationDays * 24 * 60 * 60 * 1000);
 
         const updatedUser = await tx.user.update({
           where: { id: user.id },
@@ -606,6 +606,8 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
             plan: targetTier,
             subscriptionStatus: 'ACTIVE',
             subscriptionExpiresAt: expiresAt,
+            subscriptionStartsAt: new Date(),
+            subscriptionDurationDays: targetConfig.subscriptionDurationDays,
             maxDuration: targetConfig.maxDuration,
             dailyLimit: targetConfig.dailyLimit,
             dailyCallsUsed: 0,
@@ -764,9 +766,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       `🛡️ <b>Payment & Billing Support</b>\n\n` +
         `${historyText}\n` +
         `🛡️ <b>100% Refund Eligibility Policy</b>:\n` +
-        `• <b>Eligibility Criteria</b>: A full refund is eligible if requested within <b>48 hours (2 days)</b> of purchase <b>AND</b> if less than <b>10% of monthly call allowance</b> has been used (0 calls on PLUS, ≤ 2 calls on PRO, ≤ 4 calls on BOSS).\n` +
-        `• <b>Telegram Stars</b>: Instant automatic refund executed via <code>/refund</code> in the bot.\n` +
-        `• <b>Card Payments (UZS)</b>: Verified card refunds are submitted via <code>/refund</code> and processed to your card in 1–3 business days.\n` +
+        `• <b>Eligibility Criteria</b>: You may request a full refund within <b>48 hours (2 days)</b> of purchase <b>OR</b> when less than <b>10% of the purchased call allowance</b> has been used. Purchase ownership, purchase state and account restrictions also apply.\n` +
+        `• <b>Telegram Stars</b>: Request via <code>/refund</code>. Completion depends on provider confirmation; contact support if confirmation is pending.\n` +
+        `• <b>Card Payments (UZS)</b>: Verified card refunds are reviewed through <code>/refund</code>. Approved transfers ordinarily settle in 1–3 business days; provider processing can vary.\n` +
         `• <b>Entitlement Reversion</b>: Processing a refund automatically reverts account limits to the Free tier.\n\n` +
         `For billing inquiries, receipt verification, or manual support: ${escapeHtml(adminContact)}`,
       { parse_mode: 'HTML', reply_markup: inlineKb }

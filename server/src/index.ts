@@ -1,3 +1,4 @@
+import { startManualCrawlerWorker } from "./services/crawler/manualJobs";
 import { loadPlanConfiguration, startPlanConfigurationRefresh } from './services/planConfiguration';
 import cookieParser from 'cookie-parser';
 import express from 'express';
@@ -464,6 +465,7 @@ let bot: Bot<MyContext> | null = null;
 let eventSubscriberHandle: EventSubscriberHandle | null = null;
 let stopPlanRefresh: (() => void) | null = null;
 let stopRefundRecovery: (() => Promise<void>) | null = null;
+let stopManualCrawlerWorker: (() => Promise<void>) | null = null;
 let stopPostCallWorker: (() => Promise<void>) | null = null;
 let stopNotificationWorker: (() => Promise<void>) | null = null;
 
@@ -571,6 +573,7 @@ async function bootstrap(): Promise<void> {
     }
     // Start Peak-Hour Surge Alert Scheduler (10-minute liquidity monitor)
     surgeAlertService.startScheduler(() => bot);
+    stopManualCrawlerWorker = startManualCrawlerWorker();
 
     if (env.NODE_ENV !== 'test') {
       await new Promise<void>((resolve, reject) => {
@@ -590,6 +593,7 @@ async function bootstrap(): Promise<void> {
     }, error);
     stopPlanRefresh?.(); await stopRefundRecovery?.();
     await stopPostCallWorker?.();
+    await stopManualCrawlerWorker?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();
     surgeAlertService.stopScheduler();
@@ -639,6 +643,7 @@ const gracefulShutdown = async (signal: string) => {
   try {
     stopPlanRefresh?.();
     await stopPostCallWorker?.();
+    await stopManualCrawlerWorker?.();
     await stopRefundRecovery?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();

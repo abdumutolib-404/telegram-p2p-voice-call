@@ -1,12 +1,13 @@
 import { request } from './request';
 export { ApiError } from './request';
+export const adminApiOrigin = (import.meta.env.VITE_API_URL || import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
 const TOKEN_KEY = 'admin_jwt';
 export function getAdminToken() { return sessionStorage.getItem(TOKEN_KEY); }
 export function setAdminToken(token: string) { sessionStorage.setItem(TOKEN_KEY, token); }
 export function clearAdminToken() { sessionStorage.removeItem(TOKEN_KEY); }
 export async function adminResponse(endpoint: string, options: RequestInit = {}) {
   return request(endpoint, options, {
-    baseUrl: import.meta.env.VITE_API_URL || import.meta.env.VITE_SERVER_URL || '', token: getAdminToken(),
+    baseUrl: adminApiOrigin, token: getAdminToken(),
     unauthorized: () => { clearAdminToken(); window.dispatchEvent(new Event('admin:unauthorized')); },
   });
 }

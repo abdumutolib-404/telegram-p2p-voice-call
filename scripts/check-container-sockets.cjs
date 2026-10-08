@@ -6,13 +6,15 @@ const { io } = require('socket.io-client');
 const database = new URL(process.env.DATABASE_URL);
 if (process.env.NODE_ENV !== 'production' || process.env.BOT_TOKEN !== ['123456789', 'synthetic'.repeat(5)].join(':') || !/^pairtalk-check-pg-[a-f0-9]{8}$/.test(database.hostname) || database.pathname !== '/pairtalk_check') throw new Error('Only the isolated production fixture is permitted.');
 const prisma = new PrismaClient();
+const terms = require('./assets/terms-manifest.json');
+const consent = { onboarded:true, termsAcceptedVersion:terms.version, termsAcceptedAt:new Date(), termsDocumentSha256:terms.sha256 };
 const sockets = [];
 const calls = [];
 const partners = [];
 let user;
 async function main() {
   const telegramId = BigInt('0x' + crypto.randomBytes(6).toString('hex'));
-  user = await prisma.user.create({ data: { telegramId, alias: 'container-wire-' + crypto.randomUUID(), plan: 'FREE', band: 7 } });
+  user = await prisma.user.create({ data: { ...consent, telegramId, alias: 'container-wire-' + crypto.randomUUID(), plan: 'FREE', band: 7 } });
   const data = { auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: Number(telegramId), first_name: 'Synthetic socket fixture' }) };
   const checkString = Object.keys(data).sort().map(key => key + '=' + data[key]).join('\n');
   const secret = crypto.createHmac('sha256', 'WebAppData').update(process.env.BOT_TOKEN).digest();
@@ -27,6 +29,7 @@ async function main() {
     });
     assert(socket.connected);
     const partner = await prisma.user.create({ data: {
+      ...consent,
       telegramId: BigInt('0x' + crypto.randomBytes(6).toString('hex')),
       alias: 'container-partner-' + crypto.randomUUID(), plan: 'FREE',
     } });
@@ -34,6 +37,7 @@ async function main() {
     const call = await prisma.callSession.create({ data: {
       roomName: 'container-room-' + crypto.randomUUID(), userAId: user.id, userBId: partner.id,
       createdAt: new Date(Date.now() - 35000),
+      mediaAuthorizedAt: new Date(Date.now() - 35000),
     } });
     calls.push(call.id);
     const denied = transport === 'polling';
@@ -49,7 +53,7 @@ async function main() {
     const work = await prisma.postCallJob.findUnique({ where: { callId: call.id } });
     assert(work, 'Gateway completion must save durable work without requiring a subscriber');
     assert.equal(work.status, 'QUEUED');
-    if (denied) { assert.equal(work.reason, 'call_finished'); assert.equal(work.deniedUserId, null); }
+    if (denied) { assert.equal(work.reason, 'call_finished'); assert(!work.deniedUserId, 'A charged call cannot attribute a permission denial to a participant.'); }
     assert.equal((await prisma.user.findUnique({ where: { id: partner.id } })).dailyCallsUsed, 1);
     socket.disconnect();
     console.log('PASS production gateway authenticates a signed Telegram launch through ' + transport);

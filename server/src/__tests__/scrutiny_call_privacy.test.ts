@@ -24,7 +24,7 @@ async function fixture(){
 }
 function sockets(){
  let connection:Function=()=>{};const broadcast=vi.fn();
- const io={use:()=>{},on:(_name:string,fn:Function)=>{connection=fn;},to:()=>({emit:broadcast}),in:()=>({fetchSockets:async()=>[]}),sockets:{sockets:new Map()}};
+ const io={use:()=>{},on:(_name:string,fn:Function)=>{connection=fn;},to:()=>({emit:broadcast}),in:()=>({fetchSockets:async()=>[],socketsLeave:vi.fn()}),sockets:{sockets:new Map()}};
  setupSocketSignaling(io as any);
  return {io,broadcast,connect:(userId:string)=>{const events:Record<string,Function>={},emit=vi.fn();connection({id:crypto.randomUUID(),data:{userId},use:()=>{},on:(name:string,fn:Function)=>{events[name]=fn;},emit,join:()=>{},leave:()=>{}});return {events,emit};}};
 }

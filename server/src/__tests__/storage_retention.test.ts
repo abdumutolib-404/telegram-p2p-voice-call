@@ -3,6 +3,8 @@ import path from 'node:path';
 
 const fixture = vi.hoisted(() => ({
   send: vi.fn(),
+  segmentFindMany: vi.fn(),
+  segmentUpdateMany: vi.fn(),
   findMany: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
@@ -19,7 +21,7 @@ const fixture = vi.hoisted(() => ({
 
 vi.mock('../config/env', () => ({ env: fixture.env }));
 vi.mock('../config/database', () => ({
-  prisma: { callSession: { findMany: fixture.findMany, findUnique: fixture.findUnique, update: fixture.update },
+  prisma: { recordingSegment:{findMany:fixture.segmentFindMany,updateMany:fixture.segmentUpdateMany}, callSession: { findMany: fixture.findMany, findUnique: fixture.findUnique, update: fixture.update },
     $transaction: async (fn: Function) => fn({ callSession: { findUnique: fixture.findUnique, update: fixture.update } }),
   },
 }));
@@ -56,6 +58,8 @@ function expired(id: string): Recording {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  fixture.segmentFindMany.mockResolvedValue([]);
+  fixture.segmentUpdateMany.mockResolvedValue({count:1});
   fixture.env.S3_KEY = 'synthetic-key';
   recordings = [expired('first')];
   fixture.findMany.mockImplementation(async () => recordings

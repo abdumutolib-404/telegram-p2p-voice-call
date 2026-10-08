@@ -27,7 +27,7 @@ func TestIntegrationDurableMediaGatePreventsFreeCancellation(t *testing.T) {
 	if cancelled, err := db.CancelCallSession(ctx, id); err != nil || cancelled {
 		t.Fatal("authorized media was erased by free cancellation")
 	}
-	if _, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "createdAt"=NOW()-INTERVAL '60 seconds' WHERE id=$1`, id); err != nil {
+	if _, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "mediaAuthorizedAt"=NOW()-INTERVAL '60 seconds' WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
 	if completed, err := db.CompleteCallSession(ctx, id, 60, nil, nil, nil); err != nil || !completed {

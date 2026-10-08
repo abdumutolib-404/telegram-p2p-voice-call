@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
+import { authenticationAdmission } from './authenticationAdmission';
 import { admitCall } from '../services/callAdmission';
 import { completeCallSession } from '../services/callCompletion';
 import { registerReadyParticipant } from '../services/mediaAuthorization';
 import { setupRecordingStatus, publishRoomRecordingState, publishRoomRecordingSnapshot, getRoomRecordingState } from '../services/recordingStatus';
-import { changeRecordingIntent, trackRecordingKey } from '../services/recordingLifecycle';
+import { changeRecordingIntent, trackRecordingKey, commitRecordingStart } from '../services/recordingLifecycle';
 import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
@@ -114,6 +115,35 @@ const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
 let globalIo: Server | null = null;
 let globalBot: Bot<MyContext> | null = null;
 
+function finishRoom(io: Server, roomName:string, payload:unknown): void {
+  clearSessionTimer(roomName);clearConnectionHandshakeTimer(roomName);
+  activeRoomPeers.delete(roomName);roomStartedAt.delete(roomName);roomDurationLimits.delete(roomName);activeEgresses.delete(roomName);
+  io.to(roomName).emit('call_finished',payload);
+  io.in(roomName).socketsLeave(roomName);
+}
+
+export async function cleanupFinishedRoom(roomName:string, id?:string): Promise<void> {
+  if (!globalIo || !roomName || roomName.length>128) return;
+  await runSerialized(roomOperationTails,roomName,async()=>{
+    const call=await prisma.callSession.findUnique({where:{roomName}});
+    if (!call || id && call.id!==id || !['COMPLETED','CANCELLED','DECLINED'].includes(call.status))return;
+    clearSessionTimer(roomName);clearConnectionHandshakeTimer(roomName);
+    activeRoomPeers.delete(roomName);roomStartedAt.delete(roomName);roomDurationLimits.delete(roomName);activeEgresses.delete(roomName);
+    finishRoom(globalIo!,roomName,{duration:call.duration,reason:'call_finished'});
+  });
+}
+
+async function joinActiveRoom(socket:Socket,roomName:string):Promise<boolean> {
+  return runSerialized(roomOperationTails,roomName,async()=>{
+    const call=await prisma.callSession.findUnique({where:{roomName}});
+    if (!socket.connected || !call || call.status!=='ACTIVE' || ![call.userAId,call.userBId].includes(socket.data.userId)) return false;
+    await socket.join(roomName);
+    const current=await prisma.callSession.findUnique({where:{roomName}});
+    if (!current || current.status!=='ACTIVE') { await socket.leave(roomName);return false; }
+    return true;
+  });
+}
+
 const clearSessionTimer = (roomName: string) => {
   const existing = serverSessionTimers.get(roomName);
   if (existing) {
@@ -153,7 +183,7 @@ export function scheduleConnectionHandshakeTimer(
             where: { roomName },
             include: { userA: true, userB: true },
           });
-          if (!currentSession || currentSession.status !== 'ACTIVE') return;
+          if (!currentSession || currentSession.status !== 'ACTIVE') { if (currentSession && effectiveIo) finishRoom(effectiveIo,roomName,{duration:currentSession.duration,reason:'call_finished'});return; }
 
           let connected: number;
           try {
@@ -166,7 +196,10 @@ export function scheduleConnectionHandshakeTimer(
           if (connected === 2) {
             await registerReadyParticipant(currentSession.id,currentSession.userAId);
             if (!await registerReadyParticipant(currentSession.id,currentSession.userBId)) return;
-            const elapsed = Math.floor((Date.now() - currentSession.createdAt.getTime()) / 1000);
+            const authorized = await prisma.callSession.findUnique({where:{id:currentSession.id}});
+            if (!authorized?.mediaAuthorizedAt) return;
+            roomStartedAt.set(roomName,authorized.mediaAuthorizedAt.getTime());
+            const elapsed = Math.floor((Date.now() - authorized.mediaAuthorizedAt.getTime()) / 1000);
             const remaining = Math.max(1, calculateEffectiveCallDuration(currentSession.userA, currentSession.userB) * 60 - elapsed);
             scheduleAuthoritativeSessionTeardown(roomName, remaining, effectiveBot ?? undefined, effectiveIo ?? undefined);
             await enableCallSubscriptions(roomName,[currentSession.userAId,currentSession.userBId]);
@@ -190,7 +223,7 @@ export function scheduleConnectionHandshakeTimer(
           await cleanupDirectCallMessages(roomName, effectiveBot ?? undefined);
 
           if (effectiveIo) {
-            effectiveIo.to(roomName).emit('call_finished', {
+            finishRoom(effectiveIo,roomName, {
               duration: terminal?.duration ?? 0,
               reason: terminal?.status === 'COMPLETED' ? 'call_finished' : 'partner_failed_to_join',
             });
@@ -265,10 +298,10 @@ export function scheduleAuthoritativeSessionTeardown(
             where: { roomName },
             include: { userA: true, userB: true },
           });
-          if (!currentSession || currentSession.status !== 'ACTIVE') return;
+          if (!currentSession || currentSession.status !== 'ACTIVE') { if (currentSession && effectiveIo) finishRoom(effectiveIo,roomName,{duration:currentSession.duration,reason:'call_finished'});return; }
 
           const endedAt = new Date();
-          const startTime = roomStartedAt.get(roomName) ?? currentSession.createdAt.getTime();
+          const startTime = roomStartedAt.get(roomName) ?? (currentSession.mediaAuthorizedAt ?? currentSession.createdAt).getTime();
           const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - startTime) / 1000));
           const claimed = await completeCallSession(currentSession.id, { endedAt, duration: durationSeconds });
           if (claimed.count !== 1) return;
@@ -300,7 +333,7 @@ export function scheduleAuthoritativeSessionTeardown(
           await cleanupDirectCallMessages(roomName, effectiveBot ?? undefined);
 
           if (effectiveIo) {
-            effectiveIo.to(roomName).emit('call_finished', {
+            finishRoom(effectiveIo,roomName, {
               duration: durationSeconds,
               reason: 'call_duration_limit_reached',
             });
@@ -371,7 +404,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     return undefined;
   };
 
+  const reserveAuthentication = authenticationAdmission();
   io.use(async (socket: Socket, next) => {
+    const release = reserveAuthentication(socket.handshake.address);
+    if (!release) { next(new Error('Authentication busy. Please retry shortly.'));return; }
     const traceId =
       (typeof socket.handshake.auth?.traceId === 'string' && socket.handshake.auth.traceId.trim()) ||
       (typeof socket.handshake.headers['x-trace-id'] === 'string' && (socket.handshake.headers['x-trace-id'] as string).trim()) ||
@@ -454,7 +490,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         traceId,
       }, error);
       next(new Error('Authentication error.'));
-    }
+    } finally { release(); }
   });
 
   io.on('connection', (socket: Socket) => {
@@ -498,14 +534,14 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const callDurationLimitMinutes = calculateEffectiveCallDuration(selfUser, partnerUser);
             const callDurationLimitSeconds = callDurationLimitMinutes * 60;
             const startedAt = roomStartedAt.get(activeCall.roomName);
-            const startTime = startedAt ?? activeCall.createdAt.getTime();
+            const startTime = startedAt ?? (activeCall.mediaAuthorizedAt ?? activeCall.createdAt).getTime();
             const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
             const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
 
             if (elapsedSeconds < callDurationLimitSeconds) {
               const tokenTtlSeconds = Math.min(7200, Math.max(60, remainingSeconds + 300));
               const token = await generateLiveKitToken(activeCall.roomName, selfUser.id, selfUser.alias, tokenTtlSeconds);
-              socket.join(activeCall.roomName);
+              if (!await joinActiveRoom(socket,activeCall.roomName)) return;
               socket.emit('match_found', {
                 roomName: activeCall.roomName,
                 partnerId: partnerUser.id,
@@ -555,65 +591,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     });
 
     // WebRTC direct signaling events
-    socket.on('offer', (payload: any) => {
-      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
-      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
-      socket.to(payload.roomName).emit('offer', { ...payload, senderId: socket.data.userId, traceId: socket.data.traceId, requestId });
-      logger.debug('WebRTC offer forwarded', {
-        service: 'signaling',
-        event: 'webrtc:offer',
-        socketId: socket.id,
-        userId: socket.data.userId,
-        traceId: socket.data.traceId,
-        requestId,
-        roomName: payload.roomName,
-      });
-    });
-
-    socket.on('answer', (payload: any) => {
-      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
-      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
-      socket.to(payload.roomName).emit('answer', { ...payload, senderId: socket.data.userId, traceId: socket.data.traceId, requestId });
-      logger.debug('WebRTC answer forwarded', {
-        service: 'signaling',
-        event: 'webrtc:answer',
-        socketId: socket.id,
-        userId: socket.data.userId,
-        traceId: socket.data.traceId,
-        requestId,
-        roomName: payload.roomName,
-      });
-    });
-
-    socket.on('candidate', (payload: any) => {
-      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
-      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
-      socket.to(payload.roomName).emit('candidate', { ...payload, senderId: socket.data.userId, traceId: socket.data.traceId, requestId });
-      logger.debug('WebRTC candidate forwarded', {
-        service: 'signaling',
-        event: 'webrtc:candidate',
-        socketId: socket.id,
-        userId: socket.data.userId,
-        traceId: socket.data.traceId,
-        requestId,
-        roomName: payload.roomName,
-      });
-    });
-
-    socket.on('leave', (payload: any) => {
-      if (!payload || typeof payload !== 'object' || !payload.roomName) return;
-      const requestId = (typeof payload.requestId === 'string' && payload.requestId.trim()) || socket.data.currentRequestId || crypto.randomUUID();
-      socket.to(payload.roomName).emit('leave', { senderId: socket.data.userId, roomName: payload.roomName, traceId: socket.data.traceId, requestId });
-      logger.info('WebRTC leave forwarded', {
-        service: 'signaling',
-        event: 'webrtc:leave',
-        socketId: socket.id,
-        userId: socket.data.userId,
-        traceId: socket.data.traceId,
-        requestId,
-        roomName: payload.roomName,
-      });
-    });
+    // Calling uses LiveKit; obsolete peer-to-peer relay events are intentionally unsupported.
 
     socket.on('join_queue', async () => {
       const currentUserId = socket.data.userId as string | undefined;
@@ -678,7 +656,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           if (activeCall) {
             const maxDurationMinutes = calculateEffectiveCallDuration(activeCall.userA, activeCall.userB);
             const maxDurationMs = maxDurationMinutes * 60 * 1000 + 60 * 1000;
-            const elapsedMs = Date.now() - activeCall.createdAt.getTime();
+            const elapsedMs = Date.now() - (activeCall.mediaAuthorizedAt ?? activeCall.createdAt).getTime();
             if (elapsedMs > maxDurationMs) {
               await completeCallSession(activeCall.id, { endedAt: new Date(), duration: maxDurationMinutes * 60 });
               clearSessionTimer(activeCall.roomName);
@@ -759,8 +737,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
               throw new Error('Participant disconnected during match setup');
             }
 
-            userSocket.join(roomName);
-            partnerSocket.join(roomName);
+            if (!await joinActiveRoom(userSocket,roomName) || !await joinActiveRoom(partnerSocket,roomName)) throw new Error("The call ended during setup.");
 
             // Defer authoritative duration teardown until both peers send peer_ready;
             // schedule a 90s connection handshake timer to cancel cleanly if a peer fails to join.
@@ -897,7 +874,9 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       // Persist readiness across gateways before enabling provider reception.
       if (await registerReadyParticipant(readySession.id,requesterId)) {
         clearConnectionHandshakeTimer(roomName);
-        const startedAt = readySession.createdAt.getTime();
+        const authorizedSession = await prisma.callSession.findUnique({where:{id:readySession.id}});
+        if (!authorizedSession?.mediaAuthorizedAt || authorizedSession.status !== "ACTIVE") return;
+        const startedAt = authorizedSession.mediaAuthorizedAt.getTime();
         const alreadyStarted = roomStartedAt.has(roomName);
 
         let durationLimitSeconds = roomDurationLimits.get(roomName);
@@ -934,6 +913,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
     });
 
     socket.on('get_recording_status',async (payload: unknown) => {
+      if (Date.now()-(socket.data.lastSnapshotAt ?? 0)<1000) return;
+      socket.data.lastSnapshotAt=Date.now();
       if (!isPeerReadyPayload(payload) || !socket.data.userId) return;
       const observedAt = Date.now();
       try {
@@ -984,7 +965,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const user = await prisma.user.findUnique({ where: { id: requesterId } });
             const entitlement = getEffectiveEntitlement(user || {});
             const recordingsUsed = await getUserRecordingsUsedThisPeriod(requesterId, user);
-            if (!entitlement.isAdmin && recordingsUsed >= entitlement.recordingLimit) {
+            const consumed = await prisma.recordingUsage.findUnique({ where: { callId_userId: { callId: session.id, userId: requesterId } } });
+            if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.recordingLimit) {
               socket.emit('record_status', { record: false, roomName: payload.roomName });
               socket.emit('recording_error', {
                 code: 'RECORDING_LIMIT_REACHED',
@@ -1007,12 +989,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             try {
               await publishRoomRecordingState(payload.roomName,'unknown');
               const egress = await startAudioEgress(payload.roomName, key => trackRecordingKey(session.id, key));
-              const newRecorders = requesterId;
-              const updated = await prisma.callSession.updateMany({
-                where: { id: session.id, status: 'ACTIVE', activeRecorderIds: null, egressId: session.egressId },
-                data: { egressId: egress.egressId, recordingUrl: egress.relativeUrl, recordedByUserId: newRecorders, activeRecorderIds: newRecorders },
-              });
-              if (updated.count !== 1) {
+              let updated = false;
+              try { updated = await commitRecordingStart(session.id, requesterId, session.egressId, egress); }
+              catch (error) { await stopAudioEgress(egress.egressId).catch(() => undefined); throw error; }
+              if (!updated) {
                 await stopAudioEgress(egress.egressId).catch((error: unknown) => {
                   logger.error('Rollback egress stop failed', {
                     service: 'signaling',
@@ -1097,18 +1077,21 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }
 
           if (session.status !== 'ACTIVE') {
+            finishRoom(io, payload.roomName, { duration: session.duration ?? 0 });
             socket.emit('call_finished', { duration: session.duration ?? 0 });
             return;
           }
 
           const endedAt = new Date();
-          const startTime = roomStartedAt.get(payload.roomName) ?? session.createdAt.getTime();
+          const startTime = roomStartedAt.get(payload.roomName) ?? (session.mediaAuthorizedAt ?? session.createdAt).getTime();
           const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - startTime) / 1000));
           const claimed = await completeCallSession(session.id, {
             endedAt, duration: durationSeconds,
             reason: payload.reason, deniedUserId: payload.reason === 'microphone_permission_denied' ? requesterId : undefined,
           });
           if (claimed.count !== 1) {
+            const terminal = await prisma.callSession.findUnique({where:{id:session.id}});
+            if (terminal && terminal.status !== 'ACTIVE') finishRoom(io,payload.roomName,{duration:terminal.duration??0});
             socket.emit('call_finished', { duration: session.duration ?? 0 });
             return;
           }
@@ -1136,7 +1119,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           roomDurationLimits.delete(payload.roomName);
           await cleanupDirectCallMessages(payload.roomName, bot).catch(() => undefined);
 
-          io.to(payload.roomName).emit('call_finished', { duration: durationSeconds });
+          finishRoom(io,payload.roomName, { duration: durationSeconds });
 
           wakePostCallWorker();
         });
@@ -1194,9 +1177,9 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                     where: { id: session.id },
                     include: { userA: true, userB: true },
                   });
-                  if (!currentSession || currentSession.status !== 'ACTIVE') return;
+                  if (!currentSession || currentSession.status !== 'ACTIVE') { if (currentSession && io) finishRoom(io,currentSession.roomName,{duration:currentSession.duration,reason:'call_finished'});return; }
 
-                  const startTime = roomStartedAt.get(session.roomName) ?? currentSession.createdAt.getTime();
+                  const startTime = roomStartedAt.get(session.roomName) ?? (currentSession.mediaAuthorizedAt ?? currentSession.createdAt).getTime();
                   // Media can remain usable throughout signaling's reconnect grace.
                   const endedAt = new Date();
                   const isCancelled = !currentSession.mediaAuthorizedAt;
@@ -1239,7 +1222,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   await deleteLiveKitRoom(session.roomName);
                   await cleanupDirectCallMessages(session.roomName, bot).catch(() => undefined);
 
-                  io.to(session.roomName).emit('call_finished', {
+                  finishRoom(io,session.roomName, {
                     duration: durationSeconds,
                     reason: isCancelled ? 'call_cancelled' : 'partner_disconnected',
                   });
@@ -1295,7 +1278,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
         const callDurationLimitMinutes = calculateEffectiveCallDuration(session.userA, session.userB);
         const callDurationLimitSeconds = callDurationLimitMinutes * 60;
-        const elapsedSeconds = Math.floor((now - session.createdAt.getTime()) / 1000);
+        const elapsedSeconds = Math.floor((now - (session.mediaAuthorizedAt ?? session.createdAt).getTime()) / 1000);
         const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
 
         if (elapsedSeconds >= callDurationLimitSeconds) {
@@ -1316,13 +1299,13 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                   if (!current || current.status !== 'ACTIVE') return;
 
                   const endedAt = new Date();
-                  const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - current.createdAt.getTime()) / 1000));
+                  const durationSeconds = Math.max(1, Math.floor((endedAt.getTime() - (current.mediaAuthorizedAt ?? current.createdAt).getTime()) / 1000));
                   const claimed = await completeCallSession(session.id, { endedAt, duration: durationSeconds });
                   if (claimed.count !== 1) return;
 
                   clearSessionTimer(session.roomName);
                   await deleteLiveKitRoom(session.roomName);
-                  io.to(session.roomName).emit('call_finished', { duration: durationSeconds, reason: 'call_duration_limit_reached' });
+                  finishRoom(io,session.roomName, { duration: durationSeconds, reason: 'call_duration_limit_reached' });
                 });
               } catch (timeoutErr) {
                 logger.error('Reconciled call timeout execution failed', {
@@ -1393,7 +1376,7 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
       try {
         const maxDurationMinutes = calculateEffectiveCallDuration(session.userA, session.userB);
         const maxDurationMs = maxDurationMinutes * 60 * 1000;
-        const elapsedMs = now - session.createdAt.getTime();
+        const elapsedMs = now - (session.mediaAuthorizedAt ?? session.createdAt).getTime();
         const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
 
         // 1. Condition: createdAt < now - maxDuration - 5 minutes
@@ -1483,7 +1466,7 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
           wakePostCallWorker();
 
           if (effectiveIo) {
-            effectiveIo.to(session.roomName).emit('call_finished', {
+            finishRoom(effectiveIo,session.roomName, {
               duration: terminal?.duration ?? finalDuration,
               reason: isPastMaxDurationWithMargin ? 'call_duration_limit_reached' : 'all_participants_disconnected',
             });

@@ -628,5 +628,3 @@ func TestHandleWebRTCSignal_CrossRoomPrevention(t *testing.T) {
 		t.Fatalf("Timed out waiting for legitimate signal to reach receiver")
 	}
 }
-
-

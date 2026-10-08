@@ -185,7 +185,7 @@ describe('LiveKit Egress & Voice Recording Architecture Test Suite', () => {
       });
 
       // Session where User A explicitly pressed record
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `personal_rec_room_${Date.now()}`,
           userAId: userA.id,
@@ -239,7 +239,7 @@ describe('LiveKit Egress & Voice Recording Architecture Test Suite', () => {
       expect(isUserSessionRecorder(recorders, userB.id)).toBe(true);
 
       // 3. Save completed session with both recorders
-      await prisma.callSession.create({
+      await recordedFixture({
         data: {
           roomName: `concurrent_rec_room_${Date.now()}`,
           userAId: userA.id,
@@ -265,3 +265,11 @@ describe('LiveKit Egress & Voice Recording Architecture Test Suite', () => {
     });
   });
 });
+
+async function recordedFixture(args: Parameters<typeof prisma.callSession.create>[0]) {
+  const call=await prisma.callSession.create(args);
+  const marker=call.recordedByUserId;
+  const owners=!marker || marker==='BOTH' ? [call.userAId,call.userBId] : marker.split(',');
+  for(const userId of owners) await prisma.recordingUsage.create({data:{callId:call.id,userId}});
+  return call;
+}

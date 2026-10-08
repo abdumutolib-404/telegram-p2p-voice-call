@@ -31,7 +31,7 @@ export async function loadPlanConfiguration() {
 }
 export async function savePlanConfiguration(input: unknown, adminId: string) {
   const result = await prisma.$transaction(async tx => {
-    if (process.env.NODE_ENV !== 'test') await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251009)`;
+    if (process.env.NODE_ENV !== 'test') await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251009)::text`;
     const latest = await tx.auditLog.findFirst({ where:{action:'GLOBAL_PLANS_UPDATE',targetId:'plans_config'},orderBy:{createdAt:'desc'} });
     const previous = latest?.afterState ? validatePlanUpdate(JSON.parse(latest.afterState)) : getPlansConfig();
     const updated = validatePlanUpdate(input, previous);

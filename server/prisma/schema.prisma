@@ -61,6 +61,8 @@ model User {
   plan                String                 @default("FREE") // "FREE", "PLUS", "PRO", "BOSS"
   subscriptionStatus  String                 @default("NONE") // "NONE", "ACTIVE", "PENDING_UPGRADE", "EXPIRED", "CANCELLED", "REFUNDED"
   subscriptionExpiresAt DateTime?
+  subscriptionStartsAt DateTime?
+  subscriptionDurationDays Int?
   customPlanName      String?
   maxDuration         Int                    @default(15) // max call duration in minutes
   dailyLimit          Int                    @default(3)
@@ -96,6 +98,7 @@ model User {
   favorites           FavoritePartner[]      @relation("UserFavorites")
   favoritedBy         FavoritePartner[]      @relation("PartnerFavorites")
   termsAcceptances     TermsAcceptance[]
+  recordingUsage      RecordingUsage[]
 
   @@index([subscriptionExpiresAt])
   @@index([isBanned])
@@ -135,6 +138,8 @@ model CallSession {
 
   ratings            CallRating[]
   postCallJob        PostCallJob?
+  recordingUsage     RecordingUsage[]
+  recordingSegments RecordingSegment[]
 
   @@index([userAId, status, createdAt])
   @@index([userBId, status, createdAt])
@@ -142,6 +147,47 @@ model CallSession {
   @@index([status])
   @@index([recordingExpiresAt])
   @@index([status, recordingUrl, createdAt])
+}
+
+// Consumption survives retention cleanup and owner replacement on a new segment.
+model RecordingUsage {
+  callId     String
+  userId     String
+  consumedAt DateTime @default(now())
+  call       CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([callId, userId])
+  @@index([userId, consumedAt])
+}
+
+model RecordingSegment {
+  id         String @id @default(uuid())
+  callId     String
+  call       CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  objectKey  String @unique
+  egressId   String @unique
+  ownerIds   String[]
+  status     String @default("RECORDING")
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+  deliveries RecordingDelivery[]
+  @@index([callId, createdAt])
+  @@index([expiresAt])
+}
+
+model RecordingDelivery {
+  segmentId String
+  userId    String
+  segment   RecordingSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  status    String @default("QUEUED")
+  attempts  Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  leaseUntil DateTime?
+  owner     String?
+  telegramMessageId Int?
+  failure   String?
+  @@id([segmentId, userId])
+  @@index([status, nextAttemptAt])
 }
 
 model CallRating {
@@ -325,6 +371,7 @@ model IeltsQuestion {
 }
 
 model CrawlerSyncLog {
+  requestJson String?
   id                  String    @id @default(uuid())
   status              String    // "SUCCESS", "FAILED", "RUNNING"
   sourcesProcessed    Int       @default(0)

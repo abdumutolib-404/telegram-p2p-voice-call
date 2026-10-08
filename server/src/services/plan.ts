@@ -270,6 +270,15 @@ export function getEffectiveEntitlement(user: {
   };
 }
 
+export function allowancePeriodStart(user: { subscriptionStartsAt?: Date | string | null; subscriptionDurationDays?: number | null; subscriptionExpiresAt?: Date | string | null }): Date {
+  const now = new Date();
+  if (user.subscriptionExpiresAt && new Date(user.subscriptionExpiresAt) > now) {
+    if (user.subscriptionStartsAt) return new Date(user.subscriptionStartsAt);
+    return new Date(new Date(user.subscriptionExpiresAt).getTime() - (user.subscriptionDurationDays || 30) * 86400000);
+  }
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
 export async function getUserCallsUsedThisPeriod(userId: string, user?: any, transaction?: Pick<Prisma.TransactionClient, 'user' | 'callSession'>): Promise<number> {
   const database = transaction ?? prisma;
   try {
@@ -277,21 +286,13 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any, tra
     const targetUser = user || (await database.user.findUnique({ where: { id: userId } }));
     if (!targetUser) return 0;
 
-    if (targetUser.lastCallDate && targetUser.lastCallDate.startsWith(currentMonth)) {
+    if (!targetUser.subscriptionExpiresAt && targetUser.lastCallDate && targetUser.lastCallDate.startsWith(currentMonth)) {
       if (typeof targetUser.dailyCallsUsed === 'number') {
         return Math.max(0, targetUser.dailyCallsUsed);
       }
     }
 
-    const now = new Date();
-    let periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    if (targetUser.subscriptionExpiresAt) {
-      const expiresAt = new Date(targetUser.subscriptionExpiresAt);
-      if (expiresAt > new Date()) {
-        const durationDays = targetUser.subscriptionDurationDays || 30;
-        periodStart = new Date(expiresAt.getTime() - durationDays * 24 * 60 * 60 * 1000);
-      }
-    }
+    const periodStart = allowancePeriodStart(targetUser);
     const count = await database.callSession.count({
       where: {
         OR: [{ userAId: userId }, { userBId: userId }],
@@ -307,49 +308,14 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any, tra
   }
 }
 
-export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any): Promise<number> {
+export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any, transaction?: Pick<Prisma.TransactionClient, 'user' | 'recordingUsage'>): Promise<number> {
+  const database = transaction ?? prisma;
   try {
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const targetUser = user || (await prisma.user.findUnique({ where: { id: userId } }));
+    const targetUser = user || (await database.user.findUnique({ where: { id: userId } }));
     if (!targetUser) return 0;
-
-    if (
-      targetUser.lastCallDate &&
-      targetUser.lastCallDate.startsWith(currentMonth) &&
-      typeof targetUser.recordingsUsed === 'number'
-    ) {
-      return Math.max(0, targetUser.recordingsUsed);
-    }
-
-    const now = new Date();
-    let periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    if (targetUser.subscriptionExpiresAt) {
-      const expiresAt = new Date(targetUser.subscriptionExpiresAt);
-      if (expiresAt > new Date()) {
-        const durationDays = targetUser.subscriptionDurationDays || 30;
-        periodStart = new Date(expiresAt.getTime() - durationDays * 24 * 60 * 60 * 1000);
-      }
-    }
-    const count = await prisma.callSession.count({
-      where: {
-        AND: [{ OR: [{ userAId: userId }, { userBId: userId }] }, { OR: [
-          { recordedByUserId: userId },
-          { recordedByUserId: 'BOTH' },
-          { recordedByUserId: 'ALL' },
-          { recordedByUserId: null, userAId: userId },
-          { recordedByUserId: null, userBId: userId },
-          { recordedByUserId: { startsWith: `${userId},` } },
-          { recordedByUserId: { endsWith: `,${userId}` } },
-          { recordedByUserId: { contains: `,${userId},` } },
-        ] }],
-        recordingUrl: { not: null },
-        createdAt: { gte: periodStart },
-      },
-    });
-
-    return count;
+    return await database.recordingUsage.count({ where: { userId, consumedAt: { gte: allowancePeriodStart(targetUser) } } });
   } catch (error) {
-    if (env.NODE_ENV !== 'test') throw error;
+    if (env.NODE_ENV !== 'test' || transaction) throw error;
     return 0;
   }
 }
@@ -692,6 +658,8 @@ export async function approveManualPaymentRequest(params: {
         plan: tier,
         subscriptionStatus: 'ACTIVE',
         subscriptionExpiresAt: expiresAt,
+        subscriptionStartsAt: new Date(),
+        subscriptionDurationDays: config.subscriptionDurationDays,
         maxDuration: config.maxDuration,
         dailyLimit: config.dailyLimit,
         dailyCallsUsed: 0,
@@ -814,7 +782,7 @@ export async function refundManualPaymentRequest(params: {
         plan: 'FREE',
         subscriptionStatus: 'REFUNDED',
         retentionOverride:null,recordingLimitOverride:null,
-        subscriptionExpiresAt: null,
+        subscriptionExpiresAt: null, subscriptionStartsAt: null, subscriptionDurationDays: null,
         maxDuration: plansConfig.FREE.maxDuration,
         dailyLimit: plansConfig.FREE.dailyLimit,
       },
@@ -933,7 +901,7 @@ export async function revokePlanOnRefund(params: {
     const user = await db.user.findUnique({ where: { id: tx.userId } });
     const preserveSubscription = tx.entitlementApplied === false || !!newerStars || !!newerManual || !!user?.customPlanName || user?.plan !== tx.planTier;
     const updatedUser = preserveSubscription ? user! : await db.user.update({ where: { id: tx.userId }, data: {
-      plan: 'FREE', subscriptionStatus: 'REFUNDED', subscriptionExpiresAt: null, maxDuration: plansConfig.FREE.maxDuration, dailyLimit: plansConfig.FREE.dailyLimit, recordingLimitOverride:null,retentionOverride:null,
+      plan: 'FREE', subscriptionStatus: 'REFUNDED', subscriptionExpiresAt: null, subscriptionStartsAt: null, subscriptionDurationDays: null, maxDuration: plansConfig.FREE.maxDuration, dailyLimit: plansConfig.FREE.dailyLimit, recordingLimitOverride:null,retentionOverride:null,
     } });
     await db.auditLog.create({ data: {
       action: 'STARS_REFUND_REVOKE', targetId: tx.userId, adminId: params.adminId,

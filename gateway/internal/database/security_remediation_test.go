@@ -12,6 +12,12 @@ func TestIntegrationRecordingIntentPreservesOwnershipAndHistory(t *testing.T) {
 	if err := db.CreateCallSession(ctx, id, id, ids[0], ids[1]); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.RegisterReadyParticipant(ctx, id, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.RegisterReadyParticipant(ctx, id, ids[1]); err != nil {
+		t.Fatal(err)
+	}
 	if ok, err := db.UpdateSessionEgressAtomic(ctx, id, "first", "recordings/first.mp3", ids[0]); err != nil || !ok {
 		t.Fatalf("start: %v", err)
 	}
@@ -69,6 +75,9 @@ func TestIntegrationForgedPermissionFailureCannotExemptLongCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.CreateCallSession(ctx, id, id, ids[0], ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "mediaAuthorizedAt"=NOW()-INTERVAL '35 seconds' WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
 	effects := CompletionEffects{Reason: "microphone_permission_denied", DeniedUserID: ids[0]}

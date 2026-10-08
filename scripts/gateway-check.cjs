@@ -6,7 +6,7 @@ const bindings = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 if (!/^postgresql:\/\/[^@]+@127\.0\.0\.1:55432\/pairtalk_check$/.test(bindings.DATABASE_URL) || bindings.REDIS_URL !== 'redis://127.0.0.1:56379') {
   throw new Error('Gateway verification requires the dedicated loopback services.');
 }
-const env = require('./safe-environment.cjs')({ PAIRTALK_GATEWAY_TEST_DATABASE_URL: bindings.DATABASE_URL });
+const env = require('./safe-environment.cjs')({ PAIRTALK_GATEWAY_TEST_DATABASE_URL: bindings.DATABASE_URL, PAIRTALK_GATEWAY_TEST_REDIS_URL: bindings.REDIS_URL });
 const result = spawnSync('go', process.argv.slice(3).length ? process.argv.slice(3) : ['test', './...', '-count=1'], {
   cwd: path.resolve(__dirname, '../gateway'), env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
 });

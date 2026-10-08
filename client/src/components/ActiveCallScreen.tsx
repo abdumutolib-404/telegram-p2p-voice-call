@@ -344,7 +344,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
             <AudioVisualizer
               fitContainer
               analyserNode={analyserNode}
-              isMuted={isMicMuted}
+              isMuted={false}
               barColor="#5bd4b6"
             />
           </div>

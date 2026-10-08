@@ -245,3 +245,40 @@ func TestConcurrentQueueClaimsEachUserAtMostOnce(t *testing.T) {
 		t.Fatalf("matched %d of %d compatible concurrent users", len(claimed), count)
 	}
 }
+
+func TestBoundedScanDoesNotRemoveTheFiftyFirstCandidate(t *testing.T) {
+	client, _ := queueTestClient(t)
+	ctx := context.Background()
+	pool := "match_queue:scan-regression"
+	for range 51 {
+		if err := client.SAdd(ctx, pool, uuid.NewString()).Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := client.Eval(ctx, MatchQueueMultiClaimScript, []string{pool, "match_queue:9.0:FC:LR", "user_queue:joining"}, UserQueuePrefix, "joining", 1, "match_queue:9.0:FC:LR", 900).Result()
+	if err != nil && err != redis.Nil {
+		t.Fatal(err)
+	}
+	if count := client.SCard(ctx, pool).Val(); count != 1 {
+		t.Fatalf("scan removed %d candidates; budget is 50", 51-count)
+	}
+}
+
+func TestDistantPriorityCannotOverrideBandFit(t *testing.T) {
+	client, _ := queueTestClient(t)
+	engine, ctx := NewEngine(client), context.Background()
+	distant, near := uuid.NewString(), uuid.NewString()
+	for i, id := range []string{distant, near} {
+		band, plan := []float64{9, 4.5}[i], []string{"BOSS", "PLUS"}[i]
+		if err := engine.RestoreQueue(ctx, id, "match_queue:"+strconv.FormatFloat(band, 'f', 1, 64)+":FC:LR", &band, &plan); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := engine.JoinQueue(ctx, uuid.NewString(), 4, UserSkills{6, 6, 6, 6}, MatchOptions{})
+	if err != nil || !result.Matched || result.PartnerID != near {
+		t.Fatalf("priority ignored eligible band: %+v, %v", result, err)
+	}
+	if !client.SIsMember(ctx, engine.GetPriorityPoolKey("BOSS"), distant).Val() || client.Get(ctx, UserQueuePrefix+distant).Val() == "" {
+		t.Fatal("ineligible waiting user was lost")
+	}
+}

@@ -16,11 +16,11 @@ Reviewed 2026-10-05. [schema.prisma](../server/prisma/schema.prisma) is authorit
 | UnblockAppeal | Moderation appeal review |
 | IeltsTopic / IeltsQuestion / CrawlerSyncLog | Question bank and ingestion records |
 
-The schema currently has 15 models. String statuses are application contracts; not every status is a database enum.
+The schema is the source of truth for the model inventory. Recording consumption, recording segments and delivery jobs are separate persistent records. String statuses are application contracts; not every status is a database enum.
 
 ## Call and recording invariants
 
-`createdAt` is admission time; terminal duration is at least elapsed server time. A completed call of five seconds or more consumes allowance once. Client readiness and reasons cannot opt out. Genuine short failures and cancelled sessions remain free.
+`createdAt` is admission time. `mediaAuthorizedAt` begins speaking time when both participants are ready. Terminal duration is measured by the server and capped at the call limit. A completed call of five seconds or more consumes allowance once. Client reasons cannot opt out. Genuine short failures and cancelled sessions remain free.
 
 | CallSession field | Meaning |
 | --- | --- |
@@ -31,7 +31,7 @@ The schema currently has 15 models. String statuses are application contracts; n
 | `recordingKeys` | Historical generated object keys retained until deletion succeeds |
 | `recordingExpiresAt` | Session cleanup deadline; access also checks requester entitlement |
 
-Saved owner markers support participant IDs and legacy null/BOTH/ALL conventions. Legacy shared access is preserved for compatibility; do not infer private ownership from missing historical metadata. A new segment establishes its own saved owner set. Archived keys support cleanup, not a new public per-segment download catalog.
+`RecordingUsage` records the first accepted recording enrollment of each owner in a call. File cleanup never restores spent credits. Resuming within the same call does not consume another credit. Each `RecordingSegment` has independent ownership and retention; authenticated download requests can select an owned segment. Legacy null/BOTH/ALL markers remain supported, but missing historical ownership cannot be reconstructed reliably.
 
 Node [recordingLifecycle.ts](../server/src/services/recordingLifecycle.ts) and Go [queries.go](../gateway/internal/database/queries.go) change intent under persistent locks. A predicted key is persisted before external egress. Signed finalization adds actual keys, while only the latest matching egress can replace the latest URL. Completion reads current persisted state rather than restoring a stale cached key.
 

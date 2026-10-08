@@ -25,6 +25,21 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
   const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
   let purgedCount = 0;
   let freedSpaceBytes = 0;
+  const expiredSegments = await prisma.recordingSegment.findMany({where:{expiresAt:{lte:now},status:{not:'DELETED'},call:{status:{in:['COMPLETED','CANCELLED']}}},take:1000});
+  for (const segment of expiredSegments) {
+    try {
+      if (isS3Configured()) await deleteS3Object(segment.objectKey);
+      else {
+        const filePath = resolveSafeRecordingPath(segment.objectKey);
+        if (!filePath) throw new Error('Invalid recording path.');
+        try { const stat = await fs.stat(filePath);await fs.unlink(filePath);freedSpaceBytes+=stat.size; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code!=='ENOENT') throw error; }
+      }
+      await forgetDeletedRecordingKeys(segment.callId,new Set([segment.objectKey]));
+      await prisma.recordingSegment.updateMany({where:{id:segment.id},data:{status:'DELETED'}});
+      purgedCount++;
+    } catch (error) { logger.warn('Segment purge deferred',{service:'storage',segmentId:segment.id},error); }
+  }
 
   // Find all call sessions with expired recordings or abandoned sessions older than 24h
   const expiredSessions = await prisma.callSession.findMany({
@@ -42,7 +57,11 @@ export async function purgeExpiredRecordings(): Promise<{ purgedCount: number; f
 
   for (const session of expiredSessions) {
     const deleted = new Set<string>();
-    const keys = new Set([...(session.recordingKeys || []), ...(session.recordingUrl ? [session.recordingUrl] : [])]);
+    // Managed segments own their retention independently. The legacy fallback
+    // must never delete an older segment because the latest segment expires.
+    const managed = await prisma.recordingSegment.findMany({where:{callId:session.id}});
+    const protectedKeys = new Set(managed.map(segment=>segment.objectKey));
+    const keys = new Set([...(session.recordingKeys || []), ...(session.recordingUrl ? [session.recordingUrl] : [])].filter(key=>!protectedKeys.has(key)));
     for (const key of keys) {
       let fileDeleted = false;
 

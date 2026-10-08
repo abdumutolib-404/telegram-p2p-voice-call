@@ -18,15 +18,16 @@ type ActiveEgress struct {
 }
 
 type Hub struct {
-	DB               *database.DB
-	Matchmaking      *matchmaking.Engine
-	LiveKit          *livekit.Client
-	PubSub           *PubSubClient
-	BotToken         string
-	LiveKitHost      string
-	LiveKitAPIKey    string
-	LiveKitAPISecret string
-	AdminTelegramIDs []string
+	recordingObservations map[string]*recordingObservation
+	DB                    *database.DB
+	Matchmaking           *matchmaking.Engine
+	LiveKit               *livekit.Client
+	PubSub                *PubSubClient
+	BotToken              string
+	LiveKitHost           string
+	LiveKitAPIKey         string
+	LiveKitAPISecret      string
+	AdminTelegramIDs      []string
 
 	userSockets           map[string]map[string]*ClientSocket // userId -> socketId -> socket
 	roomSockets           map[string]map[string]*ClientSocket // roomName -> socketId -> socket
@@ -228,7 +229,7 @@ func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
 
 	durationLimitMinutes := database.CalculateEffectiveCallDuration(selfUser, partnerUser, h.AdminTelegramIDs)
 	durationLimitSeconds := durationLimitMinutes * 60
-	elapsedSeconds := int(time.Since(activeCall.CreatedAt).Seconds())
+	elapsedSeconds := int(time.Since(activeCall.DurationAnchor()).Seconds())
 	remainingSeconds := durationLimitSeconds - elapsedSeconds
 	if remainingSeconds < 1 {
 		remainingSeconds = 1
@@ -299,16 +300,31 @@ func (h *Hub) RemoveSocket(socket *ClientSocket) {
 }
 
 func (h *Hub) JoinRoom(socket *ClientSocket, roomName string) {
-	if socket != nil {
-		socket.mu.Lock()
-		if socket.Rooms != nil {
-			socket.Rooms[roomName] = true
-		}
-		socket.mu.Unlock()
+	if socket == nil {
+		return
 	}
-
+	roomLock := h.getRoomMutex(roomName)
+	roomLock.Lock()
+	defer roomLock.Unlock()
+	if h.DB != nil {
+		ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
+		defer cancel()
+		call, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
+		if err != nil || call == nil || call.Status != "ACTIVE" || (socket.UserID != call.UserAID && socket.UserID != call.UserBID) {
+			return
+		}
+	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	socket.mu.Lock()
+	if socket.Closed {
+		socket.mu.Unlock()
+		h.mu.Unlock()
+		return
+	}
+	if socket.Rooms == nil {
+		socket.Rooms = make(map[string]bool)
+	}
+	socket.Rooms[roomName] = true
 
 	sockets, ok := h.roomSockets[roomName]
 	if !ok {
@@ -316,6 +332,78 @@ func (h *Hub) JoinRoom(socket *ClientSocket, roomName string) {
 		h.roomSockets[roomName] = sockets
 	}
 	sockets[socket.ID] = socket
+	socket.mu.Unlock()
+	h.mu.Unlock()
+	// A remote completion can race the first ACTIVE read. Check after insertion,
+	// while the local room lock also serializes completion notifications.
+	if h.DB != nil {
+		ctx, cancel := context.WithTimeout(h.Context(), 5*time.Second)
+		defer cancel()
+		h.cleanupTerminalRoom(ctx, roomName)
+	}
+}
+
+func (h *Hub) finishKnownTerminal(call *database.CallSession) bool {
+	if call == nil || (call.Status != "COMPLETED" && call.Status != "CANCELLED" && call.Status != "DECLINED") {
+		return false
+	}
+	duration := 0
+	if call.Duration != nil {
+		duration = *call.Duration
+	}
+	h.finishRoomState(call.RoomName, CallFinishedEvent{Duration: duration, Reason: "call_finished"})
+	return true
+}
+
+// Caller owns the local room lock; persistence is the terminal authority.
+func (h *Hub) cleanupTerminalRoom(ctx context.Context, roomName string) {
+	if h.DB == nil {
+		return
+	}
+	call, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
+	if err == nil {
+		h.finishKnownTerminal(call)
+	}
+}
+
+// Terminal persistence must succeed before this idempotent teardown is called.
+func (h *Hub) FinishRoom(roomName string, payload CallFinishedEvent) {
+	h.finishRoomState(roomName, payload)
+	if h.PubSub != nil && h.DB != nil {
+		ctx, cancel := context.WithTimeout(h.Context(), 3*time.Second)
+		defer cancel()
+		call, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
+		if err == nil && call != nil && call.Status != "ACTIVE" && call.Status != "PENDING" {
+			_ = h.PubSub.PublishCallFinished(ctx, CallFinishedPubSubMessage{Type: "CALL_FINISHED", SessionID: call.ID, RoomName: roomName, Reason: payload.Reason})
+		}
+	}
+}
+
+func (h *Hub) finishRoomState(roomName string, payload CallFinishedEvent) {
+	h.mu.Lock()
+	sockets := make([]*ClientSocket, 0, len(h.roomSockets[roomName]))
+	for _, socket := range h.roomSockets[roomName] {
+		socket.mu.Lock()
+		delete(socket.Rooms, roomName)
+		socket.mu.Unlock()
+		sockets = append(sockets, socket)
+	}
+	delete(h.roomSockets, roomName)
+	delete(h.roomPeers, roomName)
+	delete(h.roomStartedAt, roomName)
+	delete(h.roomDurationLimits, roomName)
+	delete(h.activeEgresses, roomName)
+	for _, timers := range []map[string]*time.Timer{h.serverSessionTimers, h.handshakeTimers} {
+		if timer := timers[roomName]; timer != nil {
+			timer.Stop()
+			delete(timers, roomName)
+		}
+	}
+	h.mu.Unlock()
+	for _, socket := range sockets {
+		socket.Emit("call_finished", payload)
+	}
+	h.DeleteRoomMutex(roomName)
 }
 
 func (h *Hub) LeaveRoom(socket *ClientSocket, roomName string) {

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 
 export function AuditLogViewer() {
+  const [page,setPage] = useState(1),[totalPages,setTotalPages] = useState(1),[auditTotal,setAuditTotal] = useState(0);
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [errors, setErrors] = useState<SystemErrorLogEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'audit' | 'errors'>('audit');
@@ -44,22 +45,24 @@ export function AuditLogViewer() {
     setErrorMsg(null);
     const request=latest();
     const [logsData,errorsData]=await Promise.allSettled([
-      adminFetch<AuditLogItem[]>('/api/admin/audit-logs',{signal:request.signal}),
+      adminFetch<{logs:AuditLogItem[];total:number;totalPages:number}>("/api/admin/audit-logs?"+new URLSearchParams({page:String(page),search:searchQuery,category:categoryFilter,range:timeRange}),{signal:request.signal}),
       adminFetch<{recentErrors?:SystemErrorLogEntry[];errors?:SystemErrorLogEntry[]}>('/api/admin/telemetry/errors?limit=50',{signal:request.signal}),
     ]);
     if(!request.isCurrent())return;
-    if(logsData.status==='fulfilled')setLogs(logsData.value);
+    if(logsData.status==="fulfilled"){setLogs(logsData.value.logs);setTotalPages(logsData.value.totalPages);setAuditTotal(logsData.value.total);}
     if(errorsData.status==='fulfilled')setErrors(errorsData.value.recentErrors||errorsData.value.errors||[]);
     const failed=[logsData,errorsData].filter(result=>result.status==='rejected');
     if(failed.length)setErrorMsg('Some audit or error data could not be refreshed. Previous results remain displayed; use Refresh to retry.');
     setIsLoading(false);setIsRefreshing(false);
-  }, [latest]);
+  }, [latest,page,searchQuery,categoryFilter,timeRange]);
 
   useEffect(() => {
-    void fetchData();return()=>{latest();};
+    const timer=setTimeout(()=>void fetchData(),250);return()=>{clearTimeout(timer);latest();};
   }, [fetchData,latest]);
 
 
+
+  useEffect(()=>setPage(1),[searchQuery,categoryFilter,timeRange]);
 
   const getActionCategory = (action: string): AuditActionCategory => {
     const act = (action || '').toUpperCase();
@@ -761,6 +764,7 @@ export function AuditLogViewer() {
           </div>
         </fieldset></Dialog>
       )}
+      {activeTab==="audit" && <div><span>{auditTotal} matching entries · Page {page} of {totalPages}</span><button disabled={page<=1||isRefreshing} onClick={()=>setPage(p=>p-1)}>Previous</button><button disabled={page>=totalPages||isRefreshing} onClick={()=>setPage(p=>p+1)}>Next</button></div>}
     </div>
   );
 }

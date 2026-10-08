@@ -36,7 +36,7 @@ const handleRecordingRetrieval = async (req: AuthenticatedTelegramRequest, res: 
       include: { userA: true, userB: true },
     });
 
-    if (!session?.recordingUrl || (session.recordingExpiresAt !== null && session.recordingExpiresAt <= new Date())) {
+    if (!session) {
       res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE', 'Recording not found or expired.'));
       return;
     }
@@ -48,13 +48,22 @@ const handleRecordingRetrieval = async (req: AuthenticatedTelegramRequest, res: 
     }
 
     const requesterUser = session.userA.telegramId.toString() === requesterIdStr ? session.userA : session.userB;
+    if (req.query.segment !== undefined) {
+      if (typeof req.query.segment!=='string' || req.query.segment.length>128) {res.status(400).json(createCanonicalError('RECORDING_UNAVAILABLE','Invalid recording segment.'));return;}
+      const segment = await prisma.recordingSegment.findUnique({where:{id:req.query.segment}});
+      if (!segment || segment.callId!==session.id || !segment.ownerIds.includes(requesterUser.id) || !segment.expiresAt || segment.expiresAt<=new Date() || segment.status!=='READY') {
+        res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE','Recording segment unavailable.'));return;
+      }
+      session.recordingUrl=segment.objectKey;session.recordingExpiresAt=segment.expiresAt;session.recordedByUserId=segment.ownerIds.join(',');
+    }
+    if (!session.recordingUrl || (session.recordingExpiresAt && session.recordingExpiresAt<=new Date())) {res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE','Recording not found or expired.'));return;}
     // Match the bot policy, including participant access for legacy null markers.
     if (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId, requesterUser.id)) {
       res.status(403).json(createCanonicalError('CALL_UNAUTHORIZED', 'Access denied to this recording.'));
       return;
     }
     const allowedRetentionDays = getEffectiveEntitlement(requesterUser).retentionDays;
-    const sessionAgeMs = Date.now() - session.createdAt.getTime();
+    const sessionAgeMs = Date.now() - (session.endedAt ?? session.createdAt).getTime();
     if (sessionAgeMs > allowedRetentionDays * 24 * 60 * 60 * 1000) {
       res.status(403).json(createCanonicalError('RECORDING_UNAVAILABLE', 'Recording retention expired for your plan level.'));
       return;
@@ -144,7 +153,7 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
 
     const callDurationLimitMinutes = calculateEffectiveCallDuration(self, partner);
     const callDurationLimitSeconds = callDurationLimitMinutes * 60;
-    const elapsedSeconds = Math.floor((Date.now() - session.createdAt.getTime()) / 1000);
+    const elapsedSeconds = Math.floor((Date.now() - (session.mediaAuthorizedAt ?? session.createdAt).getTime()) / 1000);
     const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
 
     const tokenTtlSeconds = Math.min(7200, Math.max(60, remainingSeconds + 300));

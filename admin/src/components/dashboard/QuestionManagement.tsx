@@ -122,6 +122,9 @@ export const QuestionManagement: React.FC = () => {
   // Crawler state
   const [crawlerStatus, setCrawlerStatus] = useState<CrawlerStatus | null>(null);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
+  const [topicLoadError,setTopicLoadError] = useState<string | null>(null);
+  const [crawlerLoadError,setCrawlerLoadError] = useState<string | null>(null);
+  const [crawlJob,setCrawlJob] = useState<string | null>(null);
   const [isCrawling, setIsCrawling] = useState(false);
   const [customCrawlUrl, setCustomCrawlUrl] = useState('');
   const [deepCrawlEnabled, setDeepCrawlEnabled] = useState(false);
@@ -145,6 +148,7 @@ export const QuestionManagement: React.FC = () => {
   };
 
   const fetchTopics = useCallback(async () => {
+    setTopicLoadError(null);
     try {
       const res = await adminFetch<{ success: boolean; topics: Topic[] }>('/api/admin/ielts/topics');
       if (res.success) {
@@ -152,9 +156,7 @@ export const QuestionManagement: React.FC = () => {
         setModalTopicId(previous=>previous || res.topics[0]?.id || '');
         setBulkImportTopicId(previous=>previous || res.topics[0]?.id || '');
       }
-    } catch {
-      // ignore
-    }
+    } catch { setTopicLoadError("Topics could not be loaded. Retry before assigning questions."); }
   }, []);
 
   const fetchQuestions = useCallback(async () => {
@@ -183,6 +185,7 @@ export const QuestionManagement: React.FC = () => {
   }, [filterPart, filterTopic, filterActive, debouncedSearchQuery, page, activeTab, latest]);
 
   const fetchCrawlerStatus = useCallback(async () => {
+    setCrawlerLoadError(null);
     try {
       const res = await adminFetch<{
         success: boolean;
@@ -285,22 +288,16 @@ export const QuestionManagement: React.FC = () => {
     setIsCrawling(true);
     setCrawlMessage(null);
     try {
-      const res = await adminFetch<{ success: boolean; result: any }>('/api/admin/ielts/crawler/run', {
+      const res = await adminFetch<{ success: boolean; jobId: string }>('/api/admin/ielts/crawler/run', {
         method: 'POST',
         body: JSON.stringify({
           customUrl: customUrl || (customCrawlUrl.trim().startsWith('http') ? customCrawlUrl.trim() : undefined),
           deepCrawl: deepCrawlEnabled,
         }),
       });
-      if (res.success) {
-        const r = res.result;
-        setCrawlMessage(
-          `✅ Ingestion finished: ${r.questionsAccepted} accepted, ${r.duplicatesSkipped} duplicates skipped, ${r.topicsCreated} topics created in ${r.durationMs}ms.`
-        );
-        setCustomCrawlUrl('');
-      } else {
-        setCrawlMessage('❌ Ingestion run failed.');
-      }
+      if (res.success && res.jobId) {
+        setCrawlJob(res.jobId); setCrawlMessage("Crawler job queued. You can keep using the dashboard while it runs.");
+      } else { setCrawlMessage("Crawler did not accept the job. Check status and retry."); }
       void fetchQuestions();
       void fetchTopics();
       void fetchCrawlerStatus();
@@ -310,6 +307,15 @@ export const QuestionManagement: React.FC = () => {
       setIsCrawling(false);
     }
   };
+
+  useEffect(() => {
+    if (!crawlJob) return;
+    let stopped=false,busy=false; const controller=new AbortController();
+    const check=async()=>{if(busy)return;busy=true;try{const data=await adminFetch<{result:SyncLog}>("/api/admin/ielts/crawler/jobs/"+crawlJob,{signal:controller.signal});if(stopped)return;const r=data.result;
+      if (["SUCCESS","FAILED","LOCKED"].includes(r.status)){setCrawlJob(null);setCrawlMessage(r.status==="SUCCESS" ? "Ingestion complete: "+r.questionsAccepted+" questions accepted." : "Crawler "+r.status.toLowerCase()+". Check the run log before retrying.");void fetchQuestions();void fetchTopics();void fetchCrawlerStatus();}
+    }catch{if(!stopped)setCrawlerLoadError("Job status is temporarily unavailable. Refresh to retry; the job continues in the background.");}finally{busy=false;}};
+    const timer=setInterval(()=>void check(),5000);void check();return()=>{stopped=true;clearInterval(timer);controller.abort();};
+  },[crawlJob,fetchQuestions,fetchTopics,fetchCrawlerStatus]);
 
   const handleBulkImport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -473,6 +479,8 @@ export const QuestionManagement: React.FC = () => {
     <div className="qm-container">
       {fetchError&&<p role="alert" className="inline-error">{fetchError}<button className="btn-secondary" onClick={()=>void fetchQuestions()}>Retry</button></p>}
       {(activeTab==='questions'||activeTab==='cueCards')&&<div className="qm-pagination"><button className="btn-secondary" disabled={page<=1||loading} onClick={()=>setPage(page-1)}>Previous page</button><span>Page {page} of {totalPages} · {total} matching questions</span><button className="btn-secondary" disabled={page>=totalPages||loading} onClick={()=>setPage(page+1)}>Next page</button></div>}
+      {topicLoadError && <p role="alert">{topicLoadError}<button type="button" onClick={()=>void fetchTopics()}>Retry topics</button></p>}
+      {crawlerLoadError && <p role="alert">{crawlerLoadError}<button type="button" onClick={()=>void fetchCrawlerStatus()}>Retry status</button></p>}
       {/* 1. EXECUTIVE COMMAND HUD HEADER */}
       <div className="qm-hero">
         <div className="qm-hero-top">
@@ -498,7 +506,7 @@ export const QuestionManagement: React.FC = () => {
             <button
               type="button"
               onClick={() => handleRunCrawl()}
-              disabled={isCrawling}
+              disabled={isCrawling || !!crawlJob}
               className="btn-primary"
               style={{ fontSize: '0.8rem', height: '34px' }}
             >

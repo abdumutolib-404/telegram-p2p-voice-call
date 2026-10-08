@@ -6,7 +6,7 @@ Use your PairTalk alias and keep personal details private. Avoid sharing your ad
 
 - Leave if a partner is abusive, asks for private information, or makes you uncomfortable.
 - Discuss recording before starting it and respect a refusal.
-- Use the bot's report/appeal tools with the relevant session and a truthful description.
+- Report the relevant session from dashboard History & audio with a truthful description. Use /appeal in the bot for a permanent suspension.
 - Do not download or redistribute someone else's recording without permission.
 - Keep account and device access secure; an alias does not prevent a person from recognizing your voice.
 

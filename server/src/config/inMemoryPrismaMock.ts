@@ -20,8 +20,8 @@ type UserData = Record<string, unknown>;
 type CallSessionWhere = {
   id?: string;
   roomName?: string;
-  userAId?: string;
-  userBId?: string;
+  userAId?: string | {in:string[]};
+  userBId?: string | {in:string[]};
   recordedByUserId?: string | null | { contains?: string; startsWith?: string; endsWith?: string };
   status?: string | { in?: string[] };
   egressId?: string | null;
@@ -100,6 +100,7 @@ interface IeltsQuestionRow {
 }
 
 interface CrawlerSyncLogRow {
+  requestJson: string | null;
   id: string;
   status: string;
   sourcesProcessed: number;
@@ -264,6 +265,12 @@ export class InMemoryPrismaMock {
   private readonly postCallJobs = new Map<string, Record<string, unknown>>();
   notificationJob = jobModel(this.notificationJobs, 'id');
   postCallJob = jobModel(this.postCallJobs, 'callId');
+  private readonly recordingUsageRows = new Map<string, Record<string, unknown>>();
+  private readonly recordingSegmentRows = new Map<string, Record<string, unknown>>();
+  private readonly recordingDeliveryRows = new Map<string, Record<string, unknown>>();
+  recordingUsage = jobModel(this.recordingUsageRows, 'callId_userId');
+  recordingSegment = jobModel(this.recordingSegmentRows, 'id');
+  recordingDelivery = jobModel(this.recordingDeliveryRows, 'segmentId_userId');
   private readonly users = new Map<string, UserRow>();
   private readonly callSessions = new Map<string, CallSessionRow>();
   private readonly callRatings = new Map<string, CallRatingRow>();
@@ -638,10 +645,12 @@ export class InMemoryPrismaMock {
   };
 
   crawlerSyncLog = {
+    deleteMany: async (args?:{where?:Record<string,unknown>}) => jobModel(this.crawlerSyncLogs as unknown as Map<string,Record<string,unknown>>,'id').deleteMany(args),
     create: async (args: { data: Record<string, unknown> }): Promise<CrawlerSyncLogRow> => {
       const id = (args.data.id as string) || crypto.randomUUID();
       const row: CrawlerSyncLogRow = {
         id,
+        requestJson: (args.data.requestJson as string) ?? null,
         status: (args.data.status as string) || 'RUNNING',
         sourcesProcessed: Number(args.data.sourcesProcessed || 0),
         questionsDiscovered: Number(args.data.questionsDiscovered || 0),
@@ -668,15 +677,11 @@ export class InMemoryPrismaMock {
       if (args?.orderBy?.startedAt === 'desc') list.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
       return list[0] ? { ...list[0] } : null;
     },
-    findMany: async (args?: { orderBy?: Record<string, 'asc' | 'desc'>; take?: number }): Promise<CrawlerSyncLogRow[]> => {
-      let list = [...this.crawlerSyncLogs.values()];
-      if (args?.orderBy?.startedAt === 'desc') list.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
-      if (args?.take) list = list.slice(0, args.take);
-      return list.map((l) => ({ ...l }));
-    },
-    count: async (): Promise<number> => {
-      return this.crawlerSyncLogs.size;
-    },
+    findUnique: async (args:{where:Record<string,unknown>}) => jobModel(this.crawlerSyncLogs as unknown as Map<string,Record<string,unknown>>,'id').findUnique(args),
+    updateMany: async (args:{where?:Record<string,unknown>;data:Record<string,unknown>}) => jobModel(this.crawlerSyncLogs as unknown as Map<string,Record<string,unknown>>,'id').updateMany(args),
+    findMany: async (args?:{where?:Record<string,unknown>;orderBy?:Record<string,'asc'|'desc'>;take?:number}) => jobModel(this.crawlerSyncLogs as unknown as Map<string,Record<string,unknown>>,'id').findMany(args),
+    count: async (args?:{where?:Record<string,unknown>}) => jobModel(this.crawlerSyncLogs as unknown as Map<string,Record<string,unknown>>,'id').count(args),
+
   };
 
   callSession = {
@@ -777,7 +782,7 @@ export class InMemoryPrismaMock {
       if (!args?.where) {
         const count = this.callSessions.size;
         this.callSessions.clear();
-        this.postCallJobs.clear();
+        this.postCallJobs.clear();this.recordingUsageRows.clear();this.recordingSegmentRows.clear();this.recordingDeliveryRows.clear();
         return { count };
       }
       let count = 0;
@@ -785,6 +790,8 @@ export class InMemoryPrismaMock {
         if (this.matchesCallSession(session, args.where)) {
           this.callSessions.delete(id);
           this.postCallJobs.delete(id);
+          for (const [key,row] of this.recordingUsageRows) if(row.callId===id)this.recordingUsageRows.delete(key);
+          for (const [key,row] of this.recordingSegmentRows) if(row.callId===id)this.recordingSegmentRows.delete(key);
           count += 1;
         }
       }
@@ -1160,22 +1167,8 @@ export class InMemoryPrismaMock {
       if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       return list[0] ? { ...list[0] } : null;
     },
-    findMany: async (args?: { where?: { targetId?: string | { in?: string[] }; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; take?: number }): Promise<AuditLogRow[]> => {
-      let list = [...this.auditLogs.values()];
-      if (args?.where?.targetId) {
-        if (typeof args.where.targetId === 'object' && args.where.targetId && 'in' in args.where.targetId && Array.isArray(args.where.targetId.in)) {
-          const targetIn = args.where.targetId.in;
-          list = list.filter((l) => l.targetId && targetIn.includes(l.targetId));
-        } else {
-          list = list.filter((l) => l.targetId === args.where!.targetId);
-        }
-      }
-      if (args?.where?.action) list = list.filter((l) => l.action === args.where!.action);
-      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      if (args?.take !== undefined) list = list.slice(0, args.take);
-      return list.map((l) => ({ ...l }));
-    },
-    count: async (args?: { where?: Record<string, unknown> }): Promise<number> => (await this.auditLog.findMany(args)).length,
+    findMany: async (args?: {where?:Record<string,unknown>;orderBy?:Record<string,'asc'|'desc'>|Array<Record<string,'asc'|'desc'>>;take?:number;skip?:number}) => jobModel(this.auditLogs as unknown as Map<string,Record<string,unknown>>,'id').findMany(args),
+    count: async (args?:{where?:Record<string,unknown>}) => jobModel(this.auditLogs as unknown as Map<string,Record<string,unknown>>,'id').count(args),
     deleteMany: async (): Promise<{ count: number }> => {
       const count = this.auditLogs.size;
       this.auditLogs.clear();
@@ -1472,8 +1465,8 @@ export class InMemoryPrismaMock {
     if (!where) return true;
     if (where.id && session.id !== where.id) return false;
     if (where.roomName && session.roomName !== where.roomName) return false;
-    if (where.userAId && session.userAId !== where.userAId) return false;
-    if (where.userBId && session.userBId !== where.userBId) return false;
+    if (where.userAId && (typeof where.userAId==='string' ? session.userAId!==where.userAId : !where.userAId.in.includes(session.userAId))) return false;
+    if (where.userBId && (typeof where.userBId==='string' ? session.userBId!==where.userBId : !where.userBId.in.includes(session.userBId))) return false;
     if (typeof where.status === 'string' && session.status !== where.status) return false;
     if (typeof where.status === 'object' && where.status.in && !where.status.in.includes(session.status)) return false;
     if (where.egressId !== undefined && session.egressId !== where.egressId) return false;
@@ -1535,16 +1528,21 @@ export class InMemoryPrismaMock {
 }
 
 // Persistence mocks retain uniqueness, CAS filters and rollback semantics for job regressions.
-function jobModel(rows: Map<string, Record<string, unknown>>, primary: 'id' | 'callId') {
-  type Query = { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> | Array<Record<string, 'asc' | 'desc'>>; take?: number };
+function jobModel(rows: Map<string, Record<string, unknown>>, primary: string) {
+  const identity = (row: Record<string, unknown>) => primary.includes('_') ? primary.split('_').map(key => String(row[key])).join(':') : String(row[primary]);
+  type Query = { where?: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> | Array<Record<string, 'asc' | 'desc'>>; take?: number; skip?: number };
   const matches = (row: Record<string, unknown>, where?: Record<string, unknown>): boolean => {
     if (!where) return true;
     return Object.entries(where).every(([key, value]) => {
       if (key === 'OR' && Array.isArray(value)) return value.some(item => matches(row, item));
       if (key === 'AND' && Array.isArray(value)) return value.every(item => matches(row, item));
+      if (key.includes('_') && value && typeof value === 'object') return matches(row,value as Record<string,unknown>);
       const actual = row[key];
       if (value && typeof value === 'object' && !(value instanceof Date)) {
         const filter = value as Record<string, unknown>;
+        if ('not' in filter && actual===filter.not) return false;
+        if ('has' in filter && (!Array.isArray(actual) || !actual.includes(filter.has))) return false;
+        if (typeof filter.contains==='string' && !(typeof actual==='string' && (filter.mode==='insensitive' ? actual.toLowerCase().includes(filter.contains.toLowerCase()) : actual.includes(filter.contains)))) return false;
         if (Array.isArray(filter.in) && !filter.in.includes(actual)) return false;
         for (const comparison of ['lt', 'lte', 'gt', 'gte']) {
           if (filter[comparison] === undefined) continue;
@@ -1566,6 +1564,7 @@ function jobModel(rows: Map<string, Record<string, unknown>>, primary: 'id' | 'c
       const bv = b[key] instanceof Date ? (b[key] as Date).getTime() : b[key] as string | number;
       if (av !== bv) return (av < bv ? -1 : 1) * (direction === 'desc' ? -1 : 1);
     } return 0; });
+    if (args?.skip) result=result.slice(args.skip);
     if (args?.take !== undefined) result = result.slice(0, args.take);
     return result.map(row => ({ ...row }));
   };
@@ -1579,10 +1578,16 @@ function jobModel(rows: Map<string, Record<string, unknown>>, primary: 'id' | 'c
     return { count };
   };
   return {
+    upsert: async (args: { where: Record<string,unknown>; create: Record<string,unknown>; update: Record<string,unknown> }) => {
+      const existing = list({where:args.where})[0];
+      if (existing) { await updateMany({where:args.where,data:args.update}); return list({where:args.where})[0]; }
+      const now = new Date(); const row = {status:"QUEUED",attempts:0,owner:null,leaseUntil:null,failure:null,nextAttemptAt:now,createdAt:now,id:crypto.randomUUID(),...args.create};
+      rows.set(identity(row),row);return {...row};
+    },
     create: async (args: { data: Record<string, unknown> }) => {
       const now = new Date();
-      const row: Record<string, unknown> = { status: 'QUEUED', attempts: 0, retries: 0, urgent: false, owner: null, leaseUntil: null, failure: null, dedupeKey: null, reason: null, deniedUserId: null, retentionA: 0, retentionB: 0, nextAttemptAt: now, createdAt: now, updatedAt: now, id: crypto.randomUUID(), ...args.data };
-      const id = String(row[primary]);
+      const row: Record<string, unknown> = { status: 'QUEUED', attempts: 0, retries: 0, urgent: false, owner: null, leaseUntil: null, failure: null, dedupeKey: null, reason: null, deniedUserId: null, retentionA: 0, retentionB: 0, nextAttemptAt: now, consumedAt: now, expiresAt: null, createdAt: now, updatedAt: now, id: crypto.randomUUID(), ...args.data };
+      const id = identity(row);
       if (rows.has(id) || row.dedupeKey && [...rows.values()].some(other => other.namespace === row.namespace && other.dedupeKey === row.dedupeKey)) throw new Error('Unique job constraint');
       rows.set(id, row); return { ...row };
     },
@@ -1592,6 +1597,6 @@ function jobModel(rows: Map<string, Record<string, unknown>>, primary: 'id' | 'c
     count: async (args?: Query) => list(args).length,
     updateMany,
     update: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => { if (!(await updateMany(args)).count) throw new Error('Job not found'); return list(args)[0]; },
-    deleteMany: async (args?: Query) => { const found = list(args); for (const row of found) rows.delete(String(row[primary])); return { count: found.length }; },
+    deleteMany: async (args?: Query) => { const found = list(args); for (const row of found) rows.delete(identity(row)); return { count: found.length }; },
   };
 }

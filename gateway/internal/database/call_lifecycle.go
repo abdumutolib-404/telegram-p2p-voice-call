@@ -53,6 +53,9 @@ func (db *DB) AdmitCallSession(ctx context.Context, id, roomName, userAID, userB
 	if err != nil {
 		return nil, nil, err
 	}
+	if _, err := tx.Exec(ctx, `UPDATE "CallSession" SET status='CANCELLED',"endedAt"=NOW(),duration=0 WHERE status='PENDING' AND "createdAt"<=NOW()-INTERVAL '60 seconds' AND ("userAId" IN ($1,$2) OR "userBId" IN ($1,$2))`, userAID, userBID); err != nil {
+		return nil, nil, err
+	}
 	for _, userID := range []string{userAID, userBID} {
 		u := users[userID]
 		var registered bool
@@ -99,6 +102,7 @@ func (db *DB) AdmitCallSession(ctx context.Context, id, roomName, userAID, userB
 type CompletionEffects struct {
 	Reason       string
 	DeniedUserID string
+	EndedAt      *time.Time
 }
 
 func (db *DB) CompleteCallSession(ctx context.Context, id string, duration int, egressID, recordingURL *string, recordingExpiresAt *time.Time, effects ...CompletionEffects) (bool, error) {
@@ -132,17 +136,28 @@ func (db *DB) completeCallSession(ctx context.Context, id string, duration int, 
 		return false, err
 	}
 	var status string
-	var admittedAt time.Time
 	var owners *string
 	var hasRecording bool
-	if err := tx.QueryRow(ctx, `SELECT status,"createdAt","recordedByUserId",("recordingUrl" IS NOT NULL OR cardinality("recordingKeys")>0) FROM "CallSession" WHERE id=$1 FOR UPDATE`, id).Scan(&status, &admittedAt, &owners, &hasRecording); err != nil {
+	var mediaStart *time.Time
+	if err := tx.QueryRow(ctx, `SELECT status,"mediaAuthorizedAt","recordedByUserId",("recordingUrl" IS NOT NULL OR cardinality("recordingKeys")>0) FROM "CallSession" WHERE id=$1 FOR UPDATE`, id).Scan(&status, &mediaStart, &owners, &hasRecording); err != nil {
 		return false, err
 	}
 	if status != "ACTIVE" {
 		return false, nil
 	}
-	if elapsed := int(time.Since(admittedAt).Seconds()); elapsed > duration {
-		duration = elapsed
+	endedAt := time.Now().UTC()
+	if len(effects) > 0 && effects[0].EndedAt != nil && effects[0].EndedAt.Before(endedAt) {
+		endedAt = effects[0].EndedAt.UTC()
+	}
+	duration = 0
+	if mediaStart != nil {
+		duration = int(endedAt.Sub(*mediaStart).Seconds())
+	}
+	if duration < 0 {
+		duration = 0
+	}
+	if limit := CalculateEffectiveCallDuration(users[userAID], users[userBID], db.AdminTelegramIDs) * 60; duration > limit {
+		duration = limit
 	}
 	charge = duration >= 5
 	// Completion cannot overwrite the current egress with another replica's stale snapshot.
@@ -165,7 +180,7 @@ func (db *DB) completeCallSession(ctx context.Context, id string, duration int, 
 				}
 			}
 		}
-		expires := time.Now().Add(time.Duration(retention) * 24 * time.Hour)
+		expires := endedAt.Add(time.Duration(retention) * 24 * time.Hour)
 		recordingExpiresAt = &expires
 	}
 	usage := make(map[string]int, 2)
@@ -177,8 +192,11 @@ func (db *DB) completeCallSession(ctx context.Context, id string, duration int, 
 			}
 		}
 	}
-	tag, err := tx.Exec(ctx, `UPDATE "CallSession" SET status='COMPLETED',"activeRecorderIds"=NULL,"endedAt"=NOW(),duration=$1,"recordingExpiresAt"=$2 WHERE id=$3 AND status='ACTIVE'`, duration, recordingExpiresAt, id)
+	tag, err := tx.Exec(ctx, `UPDATE "CallSession" SET status='COMPLETED',"activeRecorderIds"=NULL,"endedAt"=$4,duration=$1,"recordingExpiresAt"=$2 WHERE id=$3 AND status='ACTIVE'`, duration, recordingExpiresAt, id, endedAt)
 	if err != nil || tag.RowsAffected() != 1 {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE "RecordingSegment" SET "expiresAt"=$2::timestamp + GREATEST(1,CASE WHEN $3=ANY("ownerIds") THEN $4 ELSE 0 END,CASE WHEN $5=ANY("ownerIds") THEN $6 ELSE 0 END)*INTERVAL '1 day' WHERE "callId"=$1`, id, endedAt, userAID, GetEffectiveEntitlement(users[userAID], db.AdminTelegramIDs).RetentionDays, userBID, GetEffectiveEntitlement(users[userBID], db.AdminTelegramIDs).RetentionDays); err != nil {
 		return false, err
 	}
 	if charge {

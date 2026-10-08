@@ -9,7 +9,7 @@ PairTalk is an independent peer speaking-practice service accessed through its T
 3. Join matchmaking. Waiting depends on available compatible participants; there is no guaranteed matching time.
 4. Allow microphone access and join the LiveKit room.
 5. Use the question drawer for Part 1, cue-card, or Part 3 practice. Agree on roles and timing with your partner.
-6. End the session when finished and use the bot's feedback/report tools when appropriate.
+6. End the session when finished and use the dashboard's rating and report tools when appropriate.
 
 Practice preferences and peer feedback are not examiner assessments. A call is not automatically a fully administered IELTS exam.
 

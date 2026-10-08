@@ -47,7 +47,7 @@ func (h *Hub) publishRoomRecordingSnapshot(ctx context.Context, session *databas
 	h.publishRoomRecordingStateAt(ctx, session.RoomName, state, observedAt)
 }
 
-func (h *Hub) roomRecordingState(ctx context.Context, session *database.CallSession) string {
+func (h *Hub) observeRecordingState(ctx context.Context, session *database.CallSession) string {
 	if session.EgressID == nil || *session.EgressID == "" {
 		return "off"
 	}
@@ -67,6 +67,13 @@ func (h *Hub) roomRecordingState(ctx context.Context, session *database.CallSess
 }
 
 func (h *Hub) handleRecordingStatus(socket *ClientSocket, payload []byte) {
+	socket.mu.Lock()
+	if time.Since(socket.lastSnapshotAt) < time.Second {
+		socket.mu.Unlock()
+		return
+	}
+	socket.lastSnapshotAt = time.Now()
+	socket.mu.Unlock()
 	var req PeerReadyPayload
 	if socket.UserID == "" || json.Unmarshal(payload, &req) != nil || req.RoomName == "" || len(req.RoomName) > 128 || h.DB == nil {
 		return

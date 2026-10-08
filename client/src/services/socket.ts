@@ -21,6 +21,8 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+  queue_joined: (data:{status:string})=>void;
+  queue_cancelled: (data:{success:boolean})=>void;
   match_found: (data: MatchFoundPayload) => void;
   call_started: (data: CallStartedPayload) => void;
   record_status: (data: RecordStatusPayload) => void;
@@ -77,8 +79,16 @@ class SocketService {
     this.socket?.emit('join_queue', data);
   }
 
-  public cancelQueue(userId: string): void {
-    this.socket?.emit('cancel_queue', { userId });
+  public cancelQueue(userId: string): Promise<boolean> {
+    const socket=this.socket;
+    if(!socket?.connected)return Promise.resolve(false);
+    return new Promise(resolve=>{
+      let done=false;
+      const finish=(ok:boolean)=>{if(done)return;done=true;clearTimeout(timer);socket.off("queue_cancelled",ack);socket.off("disconnect",lost);resolve(ok);};
+      const ack=()=>finish(true),lost=()=>finish(false);
+      const timer=setTimeout(()=>{socket.disconnect();finish(false);},8000);
+      socket.once("queue_cancelled",ack);socket.once("disconnect",lost);socket.emit("cancel_queue",{userId});
+    });
   }
 
   public toggleRecord(roomName: string, record: boolean): void {

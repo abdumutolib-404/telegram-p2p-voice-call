@@ -22,8 +22,14 @@ import {saveCallQualityRating} from '../server/src/services/callFeedback';
 import {currentTerms} from '../server/src/services/terms';
 import {createManualPaymentRequest} from '../server/src/services/plan';
 import {checkAndProcessSubscriptionExpirations} from '../server/src/services/subscriptionExpiry';
+import {commitRecordingStart,changeRecordingIntent,forgetDeletedRecordingKeys} from '../server/src/services/recordingLifecycle';
+import {setupSocketSignaling,cleanupFinishedRoom} from '../server/src/socket/signaling';
+import {startEventSubscriber} from '../server/src/services/eventSubscriber';
 let passed=0;
 async function check(name:string,fn:()=>Promise<void>) {await fn();passed++;console.log('PASS '+name);}
+async function authorizeFixture(callId:string,seconds=35) {
+ await prisma.callSession.update({where:{id:callId},data:{mediaAuthorizedAt:new Date(Date.now()-seconds*1000)}});
+}
 const suffix=crypto.randomUUID();let counter=0;
 const fixtureUserIds:string[]=[];
 async function user(data:any={}) {
@@ -42,7 +48,7 @@ async function main(){
   const wire=createRedisSubscriber();assert(wire);assert(pubClient);
   const room=crypto.randomUUID(),received:any[]=[],sent:any[]=[];
   wire.on('message',(channel,message)=>{if(channel==='pairtalk:recording-state')received.push(JSON.parse(message));});
-  await wire.subscribe('pairtalk:recording-state');
+  await wire.connect();await wire.subscribe('pairtalk:recording-state');
   setupRecordingStatus({local:{to:(target:string)=>({emit:(event:string,payload:any)=>{sent.push({target,event,payload});}})}} as any);
   try {
    const deadline=Date.now()+3000;
@@ -68,9 +74,14 @@ async function main(){
   await prisma.callSession.update({where:{id:invitation.id},data:{status:'CANCELLED'}});
   await assert.rejects(admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE'),/unavailable/);
  });
- await check('Expired paid allowance cannot bypass admission before cleanup',async()=>{const[a,b]=await Promise.all([user({plan:'BOSS',dailyLimit:999,dailyCallsUsed:3,lastCallDate:new Date().toISOString().slice(0,7),subscriptionExpiresAt:new Date(Date.now()-1000)}),user()]);await assert.rejects(admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE'),/allowance/);});
+ await check('Expired paid allowance cannot bypass admission before cleanup',async()=>{
+  const[a,b]=await Promise.all([user({plan:'BOSS',dailyLimit:999,dailyCallsUsed:3,lastCallDate:new Date().toISOString().slice(0,7),subscriptionExpiresAt:new Date(Date.now()-1000)}),user()]);
+  await prisma.callSession.createMany({data:Array.from({length:3},()=>({roomName:crypto.randomUUID(),userAId:a.id,userBId:b.id,status:'COMPLETED',duration:10}))});
+  await assert.rejects(admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE'),/allowance/);
+ });
  await check('Concurrent terminal claims charge both participants exactly once',async()=>{
   const[a,b]=await Promise.all([user(),user()]);const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');
+  await authorizeFixture(call.id);
   const results=await Promise.all(Array.from({length:12},()=>completeCallSession(call.id,{endedAt:new Date(),duration:10})));
   assert.equal(results.filter(result=>result.count===1).length,1);
   assert.equal(await prisma.postCallJob.count({where:{callId:call.id}}),1);
@@ -79,16 +90,16 @@ async function main(){
  await check('The last included call preserves a bonus; the next call consumes it',async()=>{
   const[a,b]=await Promise.all([user({plan:'FREE',dailyLimit:3,dailyCallsUsed:2,lastCallDate:new Date().toISOString().slice(0,7)}),user()]);
   const reward=await prisma.referralReward.create({data:{userId:a.id,referredUserId:b.id,status:'AVAILABLE'}});
-  const third=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');await completeCallSession(third.id,{endedAt:new Date(),duration:10});
+  const third=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');await authorizeFixture(third.id);await completeCallSession(third.id,{endedAt:new Date(),duration:10});
   assert.equal((await prisma.referralReward.findUniqueOrThrow({where:{id:reward.id}})).status,'AVAILABLE');
   assert.equal((await prisma.user.findUniqueOrThrow({where:{id:a.id}})).dailyCallsUsed,3);
-  const fourth=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');await completeCallSession(fourth.id,{endedAt:new Date(),duration:10});
+  const fourth=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');await authorizeFixture(fourth.id);await completeCallSession(fourth.id,{endedAt:new Date(),duration:10});
   assert.equal((await prisma.referralReward.findUniqueOrThrow({where:{id:reward.id}})).status,'USED');
   assert.equal((await prisma.user.findUniqueOrThrow({where:{id:a.id}})).dailyCallsUsed,3);
  });
  await check('A failed allowance write rolls back completion and the other participant charge',async()=>{
   const[a,b]=await Promise.all([user({dailyLimit:999,dailyCallsUsed:2147483647,lastCallDate:new Date().toISOString().slice(0,7)}),user()]);
-  const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');await assert.rejects(completeCallSession(call.id,{endedAt:new Date(),duration:10}));
+  const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');await authorizeFixture(call.id);await assert.rejects(completeCallSession(call.id,{endedAt:new Date(),duration:10}));
   assert.equal((await prisma.callSession.findUniqueOrThrow({where:{id:call.id}})).status,'ACTIVE');
   assert.equal(await prisma.postCallJob.count({where:{callId:call.id}}),0);
   assert.equal((await prisma.user.findUniqueOrThrow({where:{id:b.id}})).dailyCallsUsed,0);
@@ -96,7 +107,10 @@ async function main(){
  await check('Short calls and never-authorized cancellations are free; caller charge flags cannot waive usage',async()=>{
   const[a,b]=await Promise.all([user(),user()]);
   for(const completion of [{duration:4},{duration:10,status:'CANCELLED' as const},{duration:10,charge:false}]){
-   const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');assert.equal((await completeCallSession(call.id,{endedAt:new Date(),...completion})).count,1);
+   const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');
+   if (completion.duration===4) await authorizeFixture(call.id,4);
+   if (completion.charge===false) await authorizeFixture(call.id);
+   assert.equal((await completeCallSession(call.id,{endedAt:new Date(),...completion})).count,1);
   }
   for(const participant of [a,b])assert.equal((await prisma.user.findUniqueOrThrow({where:{id:participant.id}})).dailyCallsUsed,1);
  });
@@ -108,7 +122,7 @@ async function main(){
   assert.equal(await registerReadyParticipant(call.id,a.id),false);
   assert.equal(await registerReadyParticipant(call.id,b.id),true);
   assert.equal(await registerReadyParticipant(call.id,a.id),true);
-  await prisma.callSession.update({where:{id:call.id},data:{createdAt:new Date(Date.now()-60000)}});
+  await authorizeFixture(call.id,60);
   assert.equal((await completeCallSession(call.id,{status:'CANCELLED',endedAt:new Date(),duration:0})).count,1);
   const completed=await prisma.callSession.findUniqueOrThrow({where:{id:call.id}});
   assert.equal(completed.status,'COMPLETED');assert(completed.duration!>=60);assert(completed.mediaAuthorizedAt);
@@ -121,8 +135,13 @@ async function main(){
   // A participated, but neither entry in the recorder list is A's complete identity.
   await prisma.callSession.create({data:{roomName:crypto.randomUUID(),userAId:a.id,userBId:b.id,status:'COMPLETED',recordingUrl:'recordings/synthetic.mp3',recordedByUserId:`${b.id},prefix-${a.id}`}});
   assert.equal(await getUserRecordingsUsedThisPeriod(a.id,a),0);
-  for(const recordedByUserId of ['BOTH','ALL',a.id,`${b.id},${a.id}`,`${a.id},${b.id}`,`${b.id},${a.id},${c.id}`,null])await prisma.callSession.create({data:{roomName:crypto.randomUUID(),userAId:a.id,userBId:b.id,status:'COMPLETED',recordingUrl:'recordings/synthetic.mp3',recordedByUserId}});
+  for(const recordedByUserId of ['BOTH','ALL',a.id,`${b.id},${a.id}`,`${a.id},${b.id}`,`${b.id},${a.id},${c.id}`,null]) {
+   const call=await prisma.callSession.create({data:{roomName:crypto.randomUUID(),userAId:a.id,userBId:b.id,status:'COMPLETED',recordingUrl:'recordings/synthetic.mp3',recordedByUserId}});
+   await prisma.recordingUsage.create({data:{callId:call.id,userId:a.id}});
+  }
   assert.equal(await getUserRecordingsUsedThisPeriod(a.id,a),7);
+  await prisma.callSession.updateMany({where:{userAId:a.id},data:{recordingUrl:null,recordedByUserId:null,recordingKeys:[]}});
+  assert.equal(await getUserRecordingsUsedThisPeriod(a.id,a),7,'Purging media must not restore recording allowance.');
  });
  await check('Concurrent completion events award one referral bonus and one notice',async()=>{
   const inviter=await user(),friend=await user({referredByUserId:inviter.id}),partner=await user();
@@ -141,6 +160,7 @@ async function main(){
  await check('Post-call work survives a missed Pub/Sub event and competing recovery workers',async()=>{
   const inviter=await user(),friend=await user({referredByUserId:inviter.id}),partner=await user();
   const call=await admitCall(friend.id,partner.id,crypto.randomUUID(),'ACTIVE');
+  await authorizeFixture(call.id);
   await completeCallSession(call.id,{endedAt:new Date(),duration:35});
   await prisma.postCallJob.update({where:{callId:call.id},data:{nextAttemptAt:new Date(0)}});
   const provider={api:{sendMessage:async()=>({message_id:1}),deleteMessage:async()=>true}} as any;
@@ -157,7 +177,7 @@ async function main(){
  });
  await check('Queue failure rolls back referral award and retries the durable completion',async()=>{
   const inviter=await user(),friend=await user({referredByUserId:inviter.id}),partner=await user();
-  const call=await admitCall(friend.id,partner.id,crypto.randomUUID(),'ACTIVE');await completeCallSession(call.id,{endedAt:new Date(),duration:35});
+  const call=await admitCall(friend.id,partner.id,crypto.randomUUID(),'ACTIVE');await authorizeFixture(call.id);await completeCallSession(call.id,{endedAt:new Date(),duration:35});
   await prisma.postCallJob.update({where:{callId:call.id},data:{nextAttemptAt:new Date(0)}});
   const text='Synthetic capacity '+suffix;
   await prisma.notificationJob.createMany({data:Array.from({length:1000},()=>({namespace:outboxNamespace,telegramId:'synthetic',text}))});
@@ -307,6 +327,37 @@ async function main(){
  await check('Notification queued before a restart is recoverable',async()=>{const job=await prisma.notificationJob.create({data:{namespace,telegramId:'synthetic-recipient',text:'Synthetic recovery test'}});let sent=0;const queue=new NotificationQueue();await queue.recover({api:{sendMessage:async()=>{sent++;return {message_id:1};}}} as any);assert.equal(sent,1);assert.equal((await prisma.notificationJob.findUnique({where:{id:job.id}}))?.status,'SENT');});
  await check('Notification workers claim one durable job across replicas',async()=>{await prisma.notificationJob.create({data:{namespace,telegramId:'synthetic-recipient',text:'Synthetic competing workers'}});let sent=0;const provider={api:{sendMessage:async()=>{sent++;await new Promise(r=>setTimeout(r,30));return {message_id:1};}}} as any;await Promise.all([new NotificationQueue().recover(provider),new NotificationQueue().recover(provider)]);assert.equal(sent,1);});
  await check('An interrupted ambiguous send is not automatically repeated',async()=>{const job=await prisma.notificationJob.create({data:{namespace,telegramId:'synthetic-recipient',text:'Synthetic uncertain outcome',status:'SENDING',leasedAt:new Date(Date.now()-130000)}});let sent=0;await new NotificationQueue().recover({api:{sendMessage:async()=>{sent++;return {message_id:1};}}} as any);assert.equal(sent,0);assert.equal((await prisma.notificationJob.findUnique({where:{id:job.id}}))?.status,'UNCONFIRMED');});
+ await check('Actual recording transactions preserve consumption and segment owners across resume and losing races',async()=>{
+  const[a,b]=await Promise.all([user({plan:'FREE'}),user({plan:'FREE'})]);const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');await authorizeFixture(call.id);
+  const first={egressId:crypto.randomUUID(),relativeUrl:'recordings/'+crypto.randomUUID()+'.mp3'};
+  assert.equal(await commitRecordingStart(call.id,a.id,null,first),true);
+  assert.equal(await commitRecordingStart(call.id,b.id,null,{egressId:crypto.randomUUID(),relativeUrl:'recordings/loser.mp3'}),false);
+  assert.equal(await getUserRecordingsUsedThisPeriod(b.id,b),0);
+  await changeRecordingIntent(call.id,a.id,false,first.egressId);await forgetDeletedRecordingKeys(call.id,new Set([first.relativeUrl]));
+  assert.equal(await getUserRecordingsUsedThisPeriod(a.id,a),1);
+  const second={egressId:crypto.randomUUID(),relativeUrl:'recordings/'+crypto.randomUUID()+'.mp3'};
+  assert.equal(await commitRecordingStart(call.id,a.id,first.egressId,second),true);
+  await changeRecordingIntent(call.id,a.id,false,second.egressId);
+  assert.equal(await commitRecordingStart(call.id,b.id,second.egressId,{egressId:crypto.randomUUID(),relativeUrl:'recordings/'+crypto.randomUUID()+'.mp3'}),true);
+  const segments=await prisma.recordingSegment.findMany({where:{callId:call.id},orderBy:{createdAt:'asc'}});
+  assert.deepEqual(segments.map(segment=>segment.ownerIds),[[a.id],[a.id],[b.id]]);
+  assert.equal(await getUserRecordingsUsedThisPeriod(a.id,a),1);assert.equal(await getUserRecordingsUsedThisPeriod(b.id,b),1);
+ });
+ await check('Actual Redis completion hints remove Node adapter membership only after authoritative terminal state',async()=>{
+  const[a,b]=await Promise.all([user(),user()]);const call=await admitCall(a.id,b.id,crypto.randomUUID(),'ACTIVE');
+  const left:string[]=[];
+  setupSocketSignaling({use:()=>{},on:()=>{},to:()=>({emit:()=>{}}),in:(room:string)=>({socketsLeave:(target:string)=>{assert.equal(target,room);left.push(room);}}),sockets:{sockets:new Map()}} as any);
+  const worker=startEventSubscriber();assert(worker);assert(pubClient);
+  try {
+   const deadline=Date.now()+3000;
+   while(Number((await pubClient.call('PUBSUB','NUMSUB','pairtalk:events') as any[])[1])<1) {assert(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,10));}
+   await pubClient.publish('pairtalk:events',JSON.stringify({type:'CALL_FINISHED',sessionId:call.id,roomName:call.roomName}));
+   await new Promise(resolve=>setTimeout(resolve,100));assert.equal(left.length,0,'An active call cannot be closed by a forged hint.');
+   await completeCallSession(call.id,{endedAt:new Date(),duration:9000});
+   while(!left.includes(call.roomName)) {assert(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,10));}
+   assert.equal((await prisma.callSession.findUniqueOrThrow({where:{id:call.id}})).duration,0,'No authorized media means no charge.');
+  } finally {await worker.stop();}
+ });
  console.log(`Integration result: ${passed} passed, 0 failed.`);
 }
 main().catch(error=>{console.error('Integration failed:',error instanceof Error?error.message:'Unknown failure');process.exitCode=1;}).finally(async()=>{
@@ -314,8 +365,10 @@ main().catch(error=>{console.error('Integration failed:',error instanceof Error?
   // Deliberately overflowing allowance fixtures must never reach preview startup recovery.
   if(fixtureUserIds.length) {
    const result=await prisma.callSession.updateMany({where:{status:{in:['ACTIVE','PENDING']},userAId:{in:fixtureUserIds},userBId:{in:fixtureUserIds}},data:{status:'CANCELLED',endedAt:new Date()}});
+   const retired=await prisma.callSession.findMany({where:{userAId:{in:fixtureUserIds},userBId:{in:fixtureUserIds}}});
+   for(const call of retired)await cleanupFinishedRoom(call.roomName,call.id);
    console.log(`Synthetic active call cleanup: ${result.count} fixtures retired.`);
   }
  } catch(error) {console.error('Integration fixture cleanup failed:',error instanceof Error?error.message:'Unknown failure');process.exitCode=1;}
- finally {await disconnectDB();await disconnectRedis();}
+ finally {await stopRecordingStatus();await disconnectDB();await disconnectRedis();}
 });

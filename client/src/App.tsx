@@ -8,7 +8,7 @@ import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { PrivacyScreen } from './components/PrivacyScreen';
 import { GuidelinesScreen } from './components/GuidelinesScreen';
 import { Dashboard } from './components/Dashboard';
-import { redirectToLanding } from './services/dashboard';
+import { dashboardRequest, redirectToLanding } from './services/dashboard';
 import { logger } from './services/logger';
 import { ReadyScreen } from './components/ReadyScreen';
 import { SessionStatusScreen } from './components/SessionStatusScreen';
@@ -58,10 +58,14 @@ export const App: React.FC = () => {
   const [synchronizedStartedAt, setSynchronizedStartedAt] = useState<number | null>(null);
 
   // 3. Refs (unconditional)
+  const [queueJoined,setQueueJoined] = useState(false);
+  const [cancelPending,setCancelPending] = useState(false);
   const hasJoinedQueueRef = useRef(false);
   const matchAttemptRef = useRef(0);
   const authAttemptRef = useRef(0);
   const authControllerRef = useRef<AbortController | null>(null);
+
+
 
   // Sync hash routing for guidelines and privacy views
   useEffect(() => {
@@ -100,6 +104,19 @@ export const App: React.FC = () => {
     isPartnerConnected,
     error: voiceError,
   } = useLiveKit();
+
+  useEffect(() => {
+    if (appState !== 'connecting') return;
+    const deadline = window.setTimeout(() => {
+      if (appStateRef.current !== 'connecting') return;
+      matchAttemptRef.current++;
+      if (matchData) socketService.finishCall(matchData.roomName, userData.userId, 'connection_timeout');
+      disconnectLiveKit();
+      setErrorMessage('Connection took too long. Check microphone permissions and your network, then retry.');
+      setAppState('ended');
+    }, 60000);
+    return () => window.clearTimeout(deadline);
+  }, [appState, matchData, userData.userId, setAppState, disconnectLiveKit]);
 
   // 5. Match Found Callback (unconditional)
   const handleMatchFound = useCallback(
@@ -300,17 +317,17 @@ export const App: React.FC = () => {
         // Check if user has depleted calls quota
 
         // Preserve authentic IELTS half-band scores (Math.round(band * 2) / 2)
-        const toHalfBand = (score: number) => Math.max(5, Math.min(9, Math.round(score * 2) / 2));
-        const authenticBand = toHalfBand(data.user.band || 7);
+        const toHalfBand = (score: number) => Math.max(0, Math.min(9, Math.round(score * 2) / 2));
+        const authenticBand = toHalfBand(data.user.band ?? 7);
         setUserData({
           userId: data.user.id,
           telegramId: data.user.telegramId,
           alias: data.user.alias,
           band: authenticBand,
-          subFC: data.user.subFC ? toHalfBand(data.user.subFC) : authenticBand,
-          subLR: data.user.subLR ? toHalfBand(data.user.subLR) : authenticBand,
-          subGRA: data.user.subGRA ? toHalfBand(data.user.subGRA) : authenticBand,
-          subP: data.user.subP ? toHalfBand(data.user.subP) : authenticBand,
+          subFC: data.user.subFC !== null && data.user.subFC !== undefined ? toHalfBand(data.user.subFC) : authenticBand,
+          subLR: data.user.subLR !== null && data.user.subLR !== undefined ? toHalfBand(data.user.subLR) : authenticBand,
+          subGRA: data.user.subGRA !== null && data.user.subGRA !== undefined ? toHalfBand(data.user.subGRA) : authenticBand,
+          subP: data.user.subP !== null && data.user.subP !== undefined ? toHalfBand(data.user.subP) : authenticBand,
           weakSkill: data.user.weakSkill || 'P',
           strongSkill: data.user.strongSkill || 'FC',
           plan: data.user.plan || 'FREE',
@@ -416,7 +433,11 @@ export const App: React.FC = () => {
 
     const socket = socketService.connect(initData);
 
-    const onMatch = (data: MatchFoundPayload) => handleMatchFound(data, false);
+    const onMatch = (data: MatchFoundPayload) => {
+      if (cancelPending) { socketService.finishCall(data.roomName,userData.userId,"search_cancelled");return; }
+      return handleMatchFound(data, false);
+    };
+    const onQueueJoined=()=>setQueueJoined(true);
     const onCallStarted = (data: { startedAt: number; durationSeconds: number; expiresAt: number }) => {
       setSynchronizedStartedAt(data.startedAt);
     };
@@ -458,6 +479,7 @@ export const App: React.FC = () => {
     };
 
     socket.on('match_found', onMatch);
+    socket.on('queue_joined',onQueueJoined);
     socket.on('call_started', onCallStarted);
     socket.on('call_finished', handleCallEnded);
     socket.on('error', onSocketError);
@@ -481,6 +503,7 @@ export const App: React.FC = () => {
 
     return () => {
       socket.off('match_found', onMatch);
+      socket.off('queue_joined',onQueueJoined);
       socket.off('call_started', onCallStarted);
       socket.off('call_finished', handleCallEnded);
       socket.off('error', onSocketError);
@@ -488,14 +511,16 @@ export const App: React.FC = () => {
       socket.io.off('reconnect_failed', onReconnectFailed);
       socket.off('connect', handleRejoin);
     };
-  }, [initData, appState, userData, handleMatchFound, handleCallEnded, setAppState]);
+  }, [initData, appState, userData, handleMatchFound, handleCallEnded, setAppState, cancelPending]);
 
   // Action handlers
-  const handleCancelMatchmaking = () => {
+  const handleCancelMatchmaking = async () => {
+    if (cancelPending) return; setCancelPending(true);
     matchAttemptRef.current++;
     if (userData.userId) {
-      socketService.cancelQueue(userData.userId);
+      await socketService.cancelQueue(userData.userId);
     }
+    setCancelPending(false); setQueueJoined(false);
     setSynchronizedStartedAt(null);
     setAppState('ended');
   };
@@ -518,17 +543,9 @@ export const App: React.FC = () => {
     if (!pendingDirectCall) return;
     const directCall = pendingDirectCall;
     setPendingDirectCall(null);
-    try {
-      await startAudio();
-      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-        // Prime audio permissions during the user gesture event tick
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    } catch (e) {
-      console.warn('[DirectCall] startAudio / mic unlock warning:', e);
-    }
+    void startAudio().catch(() => {});
     await handleMatchFound(directCall, true);
+    if (appStateRef.current !== "in_call") return;
     try {
       await retryMicrophone();
       const currentRoom = getRoom();
@@ -540,17 +557,25 @@ export const App: React.FC = () => {
     }
   }, [pendingDirectCall, startAudio, handleMatchFound, retryMicrophone, getRoom]);
 
-  const handleRestart = () => {
+  const handleRestart = async () => {
     startAudio().catch(() => {});
+    try {
+      const summary = await dashboardRequest<{ user: Partial<UserMatchData> }>(initData, '/summary');
+      if (appStateRef.current !== 'ended') return;
+      setUserData(previous => ({ ...previous, ...summary.user }));
+      if ((summary.user.callsRemaining ?? 0) <= 0) { setErrorMessage('You have used your available calls. Open your dashboard to review your allowance.'); return; }
+    } catch { setErrorMessage('Unable to refresh your call allowance. Please retry.'); return; }
     setPendingDirectCall(null);
     setMatchData(null);
     setErrorMessage(null);
+    setQueueJoined(false);
     setAppState('radar');
   };
 
   const handleStartSearching = () => {
     startAudio().catch(() => {});
     setPendingDirectCall(null);
+    setQueueJoined(false);
     setAppState('radar');
   };
 
@@ -617,7 +642,11 @@ export const App: React.FC = () => {
               }
             : undefined
         }
-        onDismissDirect={() => setPendingDirectCall(null)}
+        onDismissDirect={() => {
+          if (pendingDirectCall) socketService.finishCall(pendingDirectCall.roomName, userData.userId, 'call_dismissed');
+          setPendingDirectCall(null);
+          setAppState('ended');
+        }}
       />} />
     );
   }
@@ -628,13 +657,15 @@ export const App: React.FC = () => {
       <RadarScreen
         userAlias={userData.alias}
         targetBand={userData.band}
+        joined={queueJoined}
+        cancelling={cancelPending}
         onCancel={handleCancelMatchmaking}
       />
     );
   }
 
   if (appState === 'connecting')
-    return <SessionStatusScreen state="connecting" />;
+    return <SessionStatusScreen state="connecting" onCancel={() => handleFinishCall('connection_cancelled')} />;
 
   // 6. Active Voice Call Screen
   if (appState === 'in_call' && matchData) {

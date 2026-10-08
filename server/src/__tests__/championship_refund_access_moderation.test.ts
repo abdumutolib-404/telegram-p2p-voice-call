@@ -79,7 +79,7 @@ describe('Championship Lifecycle, Refund Policy, Access Pipeline & Moderation Te
       const status = await getContestStatus();
       expect(status.status).toBe('ENDED');
       expect(status.isActive).toBe(false);
-      expect(status.contest).toBeNull();
+      expect(status.contest?.id).toBe(expiredContest.id);
     });
 
     it('1.4 Atomically concludes championship and awards 1st, 2nd, 3rd place prizes', async () => {

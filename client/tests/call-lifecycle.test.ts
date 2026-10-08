@@ -95,3 +95,22 @@ it('shows an actionable error when signaling cannot connect while searching', as
   expect(container.textContent).toContain('Unable to connect to matchmaking');
   expect(fixture.cancel).toHaveBeenCalledWith('synthetic-user');
 });
+
+it('refreshes the allowance before next partner and does not search when it is exhausted',async()=>{
+  await startCall();await act(async()=>container.querySelector<HTMLButtonElement>('button[aria-label="End call"]')!.click());
+  const searches=fixture.join.mock.calls.length;
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({user:{callsRemaining:0}}),{status:200})));
+  const next=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Find Next Partner'))!;
+  await act(async()=>next.click());
+  expect(container.textContent).toContain('You have used your available calls');expect(fixture.join).toHaveBeenCalledTimes(searches);
+});
+
+it('lets the user cancel a stalled voice connection and ignores its late success',async()=>{
+  let release!:()=>void;fixture.voice.connect.mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;}));
+  await search();
+  await act(async()=>{for(const listener of fixture.events.get('match_found')??[])void listener({roomName:'synthetic-room',livekitToken:'synthetic-token',partnerAlias:'Fixture partner',partnerBand:7,callDurationLimit:900});});
+  const cancel=Array.from(container.querySelectorAll('button')).find(button=>button.textContent==='Cancel connection')!;
+  expect(cancel).toBeTruthy();await act(async()=>cancel.click());
+  await act(async()=>release());expect(fixture.finish).toHaveBeenCalledWith('synthetic-room','synthetic-user','connection_cancelled');
+  expect(container.querySelector('[aria-label="End call"]')).toBeNull();
+});

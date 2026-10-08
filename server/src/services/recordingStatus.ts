@@ -14,6 +14,7 @@ let emitLocal: ((room: string, payload: unknown) => void) | undefined;
 let subscriber: ReturnType<typeof createRedisSubscriber>;
 
 export function setupRecordingStatus(io: Server): void {
+  observations.clear();
   emitLocal = (room, payload) => (io.local ?? io).to(room).emit('room_recording_status', payload);
   subscriber?.disconnect();
   subscriber = createRedisSubscriber();
@@ -33,6 +34,7 @@ export function setupRecordingStatus(io: Server): void {
 }
 
 export async function publishRoomRecordingState(roomName: string, state: RoomRecordingState, updatedAt = Date.now()): Promise<void> {
+  observations.clear();
   const payload = { roomName, state, updatedAt, source };
   emitLocal?.(roomName, payload);
   if (env.NODE_ENV === 'test') return;
@@ -48,8 +50,19 @@ export async function publishRoomRecordingSnapshot(roomName: string, egressId: s
   await publishRoomRecordingState(roomName,current.egressId === egressId ? state : 'unknown',observedAt);
 }
 
+const observations = new Map<string, Promise<RoomRecordingState>>();
 export async function getRoomRecordingState(egressId: string | null): Promise<RoomRecordingState> {
   if (!egressId) return 'off';
+  const existing = observations.get(egressId);
+  if (existing) return existing;
+  if (observations.size >= 256) return 'unknown';
+  const observed = observeEgress(egressId);
+  observations.set(egressId, observed);
+  void observed.finally(() => {const timer=setTimeout(()=>{if(observations.get(egressId)===observed)observations.delete(egressId);},1000);timer.unref();}).catch(()=>undefined);
+  return observed;
+}
+
+async function observeEgress(egressId: string): Promise<RoomRecordingState> {
   const info = await getAudioEgressInfo(egressId);
   if (!info) return 'unknown';
   return [EgressStatus.EGRESS_COMPLETE, EgressStatus.EGRESS_FAILED, EgressStatus.EGRESS_ABORTED, EgressStatus.EGRESS_LIMIT_REACHED].includes(info.status) ? 'off' : 'on';

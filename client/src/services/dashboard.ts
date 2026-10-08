@@ -14,8 +14,24 @@ export class DashboardError extends Error {
 }
 export async function dashboardRequest<T>(initData: string, path: string, options: RequestInit = {}): Promise<T> {
   const origin = (import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
-  const response = await fetch(`${origin}/api/dashboard${path}`, { ...options, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-telegram-init-data': initData, ...options.headers } });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new DashboardError(data.error || 'The request could not be completed. Please try again.', response.status, data.code);
-  return data as T;
+  const controller = new AbortController();
+  const abort = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener('abort', abort, { once: true });
+  if (options.signal?.aborted) abort();
+  let timedOut = false;
+  const deadline = window.setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
+  try {
+    const response = await fetch(`${origin}/api/dashboard${path}`, { ...options, signal: controller.signal, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-telegram-init-data': initData, ...options.headers } });
+    const data = await response.json();
+    if (!response.ok) throw new DashboardError(data.error || 'The request could not be completed. Please try again.', response.status, data.code);
+    return data as T;
+  } catch (error) {
+    if (timedOut) throw new DashboardError(options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())
+      ? 'The server took too long to respond. Check the updated result before submitting again.'
+      : 'The server took too long to respond. Please retry.', 408, 'request_timeout');
+    throw error;
+  } finally {
+    window.clearTimeout(deadline);
+    options.signal?.removeEventListener('abort', abort);
+  }
 }

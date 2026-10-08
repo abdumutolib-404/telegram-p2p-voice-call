@@ -34,6 +34,9 @@ export function ManualPaymentsQueue() {
   const { copiedId, copyError, copyToClipboard } = useClipboard();
   const latest = useLatestRequest();
 
+  const proofReader = useRef<FileReader | null>(null);
+
+
   // Receipt Preview Modal
   const [inspectReceiptUrl, setInspectReceiptUrl] = useState<{ url: string; order: string; user: string; title?: string; mime?: string } | null>(null);
 
@@ -42,6 +45,7 @@ export function ManualPaymentsQueue() {
     type: 'approve' | 'reject' | 'refund' | 'reject_refund';
     item: ManualPaymentRequestItem;
   } | null>(null);
+  useEffect(() => { proofReader.current?.abort(); proofReader.current = null; }, [selectedAction]);
   const [actionNote, setActionNote] = useState<string>('');
   const [refundBillProof, setRefundBillProof] = useState<string>('');
   const [rejectionReason, setRejectionReason] = useState<string>('');
@@ -92,6 +96,7 @@ export function ManualPaymentsQueue() {
   };
   const handleOpenActionModal = (type: 'approve' | 'reject' | 'refund' | 'reject_refund', item: ManualPaymentRequestItem) => {
     if (actionBusy.current) return;
+    proofReader.current?.abort();proofReader.current=null;
     setActionError(null);
     setSelectedAction({ type, item });
     setRefundBillProof('');
@@ -113,11 +118,12 @@ export function ManualPaymentsQueue() {
 
     if (!['image/png','image/jpeg','image/webp','application/pdf'].includes(file.type)) { setActionError('Use a PNG, JPEG, WebP or PDF file.'); return; }
     setActionError(null);
-    const reader = new FileReader();
-    reader.onerror = () => setActionError('File could not be read.');
+    proofReader.current?.abort();
+    const reader = new FileReader(); proofReader.current = reader;
+    reader.onerror = () => { if (proofReader.current === reader) setActionError('File could not be read.'); };
     reader.onload = (uploadEvent) => {
       const result = uploadEvent.target?.result;
-      if (typeof result === 'string') {
+      if (proofReader.current === reader && typeof result === 'string') {
         setRefundBillProof(result);
       }
     };

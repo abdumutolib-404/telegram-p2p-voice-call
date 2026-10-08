@@ -1,3 +1,4 @@
+import { useEffect,useState } from "react";
 import { Loader2, ShieldCheck, User, X } from 'lucide-react';
 import { Brand } from './Brand';
 
@@ -6,6 +7,8 @@ interface RadarScreenProps {
   userAlias?: string;
   targetBand?: number;
   onCancel: () => void;
+  joined?: boolean;
+  cancelling?: boolean;
 }
 
 export function RadarScreen({
@@ -13,7 +16,12 @@ export function RadarScreen({
   userAlias = 'Candidate',
   targetBand,
   onCancel,
+  joined = false,
+  cancelling = false,
 }: RadarScreenProps) {
+  const [elapsed,setElapsed] = useState(0);
+  useEffect(()=>{const start=Date.now();const timer=setInterval(()=>setElapsed(Math.floor((Date.now()-start)/1000)),1000);return()=>clearInterval(timer);},[]);
+  useEffect(()=>{if(elapsed>=900 && !cancelling)onCancel();},[elapsed,cancelling,onCancel]);
   return (
     <main className="app-shell search-screen">
       <header className="app-header">
@@ -50,9 +58,10 @@ export function RadarScreen({
         </div>
         <div className="search-status" role="status">
           <Loader2 size={17} className="animate-spin" aria-hidden="true" />
-          Searching for a match…
+          {cancelling ? "Cancelling search…" : !joined ? "Connecting to matchmaking…" : "Searching for a match… "+Math.floor(elapsed/60)+"m "+elapsed%60+"s"}
         </div>
-        <button type="button" className="secondary-button" onClick={onCancel}>
+        {elapsed>=60 && <p role="status">No compatible partner yet. You can keep waiting, save a previous partner, or try again later. Searches expire after 15 minutes.</p>}
+        <button type="button" disabled={cancelling} className="secondary-button" onClick={onCancel}>
           <X size={17} aria-hidden="true" />
           Cancel Matchmaking
         </button>

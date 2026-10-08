@@ -29,6 +29,8 @@ const maxUnauthenticatedSessionsPerIP = 64
 const maxActivePolls = 1024
 
 type ClientSocket struct {
+	lastSnapshotAt      time.Time
+	PeerIP              string
 	ID                  string
 	UserID              string
 	TelegramID          string
@@ -109,10 +111,6 @@ func (s *ClientSocket) Emit(event string, payload interface{}) {
 }
 
 func (s *ClientSocket) Join(roomName string) {
-	s.mu.Lock()
-	s.Rooms[roomName] = true
-	s.mu.Unlock()
-
 	s.Hub.JoinRoom(s, roomName)
 }
 
@@ -257,14 +255,18 @@ type EngineIOSession struct {
 }
 
 type SocketIOServer struct {
-	Hub           *Hub
-	sessions      map[string]*EngineIOSession
-	mu            sync.RWMutex
-	originAllowed func(string) bool
-	done          chan struct{}
-	closeOnce     sync.Once
-	closed        bool
-	pollSlots     chan struct{}
+	authSlots      chan struct{}
+	authIPs        map[string]int
+	handshakeSlots chan struct{}
+	handshakeIPs   map[string]int
+	Hub            *Hub
+	sessions       map[string]*EngineIOSession
+	mu             sync.RWMutex
+	originAllowed  func(string) bool
+	done           chan struct{}
+	closeOnce      sync.Once
+	closed         bool
+	pollSlots      chan struct{}
 }
 
 func NewSocketIOServer(hub *Hub, originAllowed ...func(string) bool) *SocketIOServer {
@@ -274,11 +276,15 @@ func NewSocketIOServer(hub *Hub, originAllowed ...func(string) bool) *SocketIOSe
 		allow = originAllowed[0]
 	}
 	s := &SocketIOServer{
-		Hub:           hub,
-		sessions:      make(map[string]*EngineIOSession),
-		originAllowed: allow,
-		done:          make(chan struct{}),
-		pollSlots:     make(chan struct{}, maxActivePolls),
+		Hub:            hub,
+		sessions:       make(map[string]*EngineIOSession),
+		originAllowed:  allow,
+		done:           make(chan struct{}),
+		pollSlots:      make(chan struct{}, maxActivePolls),
+		authSlots:      make(chan struct{}, 16),
+		authIPs:        make(map[string]int),
+		handshakeSlots: make(chan struct{}, 64),
+		handshakeIPs:   make(map[string]int),
 	}
 
 	// Periodic session cleaner for abandoned polling sessions
@@ -337,6 +343,7 @@ func (s *SocketIOServer) addSession(socket *ClientSocket, peerIP string) bool {
 	}
 	s.sessions[socket.ID] = &EngineIOSession{Socket: socket, CreatedAt: time.Now(), PeerIP: peerIP}
 	socket.mu.Lock()
+	socket.PeerIP = peerIP
 	socket.done = make(chan struct{})
 	socket.onDisconnect = func() {
 		s.mu.Lock()
@@ -404,6 +411,16 @@ func (s *SocketIOServer) HandleRequest(c *gin.Context) {
 }
 
 func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
+	release := func() {}
+	if sid == "" {
+		var ok bool
+		release, ok = s.reserveIngress(c.ClientIP(), false)
+		if !ok {
+			c.Status(http.StatusTooManyRequests)
+			return
+		}
+		defer release()
+	}
 	if sid != "" {
 		s.mu.RLock()
 		_, exists := s.sessions[sid]
@@ -492,7 +509,7 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 		}
 
 		if initData != "" {
-			if user, valid := s.Hub.Authenticate(c.Request.Context(), initData); valid && user != nil {
+			if user, valid := s.authenticate(c.Request.Context(), c.ClientIP(), initData); valid && user != nil {
 				socket.UserID = user.ID
 				socket.TelegramID = fmt.Sprintf("%d", user.TelegramID)
 			}
@@ -510,6 +527,7 @@ func (s *SocketIOServer) handleWebSocket(c *gin.Context, sid string) {
 				return
 			}
 		}
+		release()
 
 		// Send Engine.IO Open packet
 		openPacket := fmt.Sprintf(`0{"sid":"%s","upgrades":[],"pingInterval":25000,"pingTimeout":20000,"maxPayload":%d}`, newSID, maxSocketPayload)
@@ -815,7 +833,7 @@ func (s *SocketIOServer) handleRawMessage(socket *ClientSocket, msg string) {
 					}
 				}
 			}
-			user, valid := s.Hub.Authenticate(s.Hub.Context(), initData)
+			user, valid := s.authenticate(s.Hub.Context(), socket.PeerIP, initData)
 			if !valid || user == nil {
 				errMsg := `44{"message":"Authentication failed: Invalid initData signature."}`
 				if socket.IsWS() {

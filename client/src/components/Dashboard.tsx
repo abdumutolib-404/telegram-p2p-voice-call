@@ -6,7 +6,7 @@ import { DashboardError, dashboardRequest } from '../services/dashboard';
 import type { UserMatchData } from '../types';
 
 type View = 'practice' | 'history' | 'partners' | 'community' | 'account';
-interface Session { id: string; partnerAlias: string; partnerBand: number; status: string; duration: number; createdAt: string; rating: number | null; reported: boolean; recordingAvailable: boolean; recordingExpiresAt: string | null }
+interface Session { recordings?: {id:string;createdAt:string;expiresAt:string}[]; id: string; partnerAlias: string; partnerBand: number; status: string; duration: number; createdAt: string; rating: number | null; reported: boolean; recordingAvailable: boolean; recordingExpiresAt: string | null }
 interface Partner { id: string; alias: string; band: number; available: boolean }
 interface Invitation { id: string; status: string; incoming: boolean; partnerAlias: string; expiresAt: string }
 interface Community { referralPayload: string; referrals: { totalInvited: number; activeBonusCalls: number; rewards: { id: string; referredAlias: string; status: string; expiresAt: string }[] }; contest: { isActive: boolean; contest: { title: string; description: string | null } | null; leaderboard: { rank: number; alias: string; invitesCount: number }[] } }
@@ -32,6 +32,7 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [reload, setReload] = useState(0);
   const [scores, setScores] = useState({ subFC: userData.subFC ?? userData.band, subLR: userData.subLR ?? userData.band, subGRA: userData.subGRA ?? userData.band, subP: userData.subP ?? userData.band });
   const currentView = useRef(view);
   currentView.current = view;
@@ -82,20 +83,24 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     setLoading(true); setError(''); setNotice('');
     void load(view, controller.signal).catch(reportError).finally(() => { controllers.current.delete(controller); if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [view, load, reportError]);
+  }, [view, load, reportError, reload]);
   useEffect(() => {
     if (view !== 'partners') return;
+    let inFlight = false;
+    let activeController: AbortController | undefined;
     const poll = async () => {
-      if (document.visibilityState === 'hidden' || busy) return;
+      if (document.visibilityState === 'hidden' || busy || inFlight) return;
+      inFlight = true;
       const controller = new AbortController(); controllers.current.add(controller);
+      activeController = controller;
       try {
         const data = await dashboardRequest<{ invitations: Invitation[] }>(initData, '/invitations', { signal: controller.signal });
         if (alive.current && currentView.current === 'partners') setInvitations(data.invitations);
       } catch (err) { reportError(err); }
-      finally { controllers.current.delete(controller); }
+      finally { controllers.current.delete(controller); inFlight = false; activeController = undefined; }
     };
     const timer = window.setInterval(() => void poll(), 10000);
-    return () => window.clearInterval(timer);
+    return () => { window.clearInterval(timer); activeController?.abort(); };
   }, [view, busy, initData, reportError]);
   async function run(path: string, method = 'POST', body?: unknown, message = 'Saved.') {
     if (busy) return;
@@ -110,13 +115,13 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     } catch (err) { reportError(err); }
     finally { controllers.current.delete(controller); if (alive.current) setBusy(false); }
   }
-  async function download(sessionId: string) {
+  async function download(sessionId: string, segmentId?: string) {
     if (busy) return;
     setBusy(true); setError('');
     const controller = new AbortController(); controllers.current.add(controller);
     try {
       const origin = (import.meta.env.VITE_SERVER_URL || '').replace(/\/+$/, '');
-      const response = await fetch(`${origin}/api/calls/${encodeURIComponent(sessionId)}/recording?format=json`, { headers: { 'x-telegram-init-data': initData, Accept: 'application/json' }, cache: 'no-store', signal: controller.signal });
+      const response = await fetch(`${origin}/api/calls/${encodeURIComponent(sessionId)}/recording?format=json${segmentId ? "&segment="+encodeURIComponent(segmentId) : ""}`, { headers: { 'x-telegram-init-data': initData, Accept: 'application/json' }, cache: 'no-store', signal: controller.signal });
       if (!response.ok) {
         const failure = await response.json().catch(() => ({}));
         throw new DashboardError(failure.error || 'This recording is no longer available.', response.status, failure.code);
@@ -156,16 +161,16 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
       <span className="eyebrow">{userData.alias}</span>
       <h1>{view === 'history' ? 'Every conversation counts.' : view === 'partners' ? 'Keep the good connections.' : view === 'community' ? 'Grow together.' : 'Make this space yours.'}</h1>
       <p className="intro-copy">{view === 'history' ? 'Review your calls, rate the experience and download available recordings.' : view === 'partners' ? 'Save partners after a call, then invite them back when you are both available.' : view === 'community' ? 'Invite another learner and follow the current community contest.' : 'Update your speaking scores and preferences. Payments stay in Telegram.'}</p>
-      {error && <p role="alert" className="dashboard-alert">{error}</p>}
+      {error && <div className="dashboard-alert" role="alert"><p>{error}</p><button type="button" className="secondary-button" disabled={busy || loading} onClick={() => setReload(previous => previous + 1)}>Reload current view</button></div>}
       {notice && <p role="status" className="dashboard-notice">{notice}</p>}
       {loading && <p role="status" className="subtle-label">Loading your {view === 'history' ? 'conversations' : view}…</p>}
       {!loading && view === 'history' && <>
-        {!sessions.length && <div className="dashboard-empty"><History size={28} /><h2>Your first conversation is ahead.</h2><p>Completed calls and available recordings will appear here.</p><button className="secondary-button" onClick={() => navigate('practice')}>Start practicing</button></div>}
+        {!sessions.length && !error && <div className="dashboard-empty"><History size={28} /><h2>Your first conversation is ahead.</h2><p>Completed calls and available recordings will appear here.</p><button className="secondary-button" onClick={() => navigate('practice')}>Start practicing</button></div>}
         <div className="dashboard-cards">{sessions.map(session => <article className="dashboard-card" key={session.id}>
           <div className="dashboard-card-heading"><div><span className="subtle-label">{date(session.createdAt)} · {session.status.toLowerCase()}</span><h2 className="break-anywhere">{session.partnerAlias}</h2></div><span className="status-pill">Band {session.partnerBand.toFixed(1)}</span></div>
           <p className="dashboard-meta"><Clock size={15} /> {Math.floor(session.duration / 60)}m {session.duration % 60}s</p>
           {session.status === 'COMPLETED' && <><div className="dashboard-rating" aria-label={`Rate call with ${session.partnerAlias}`}>{[1, 2, 3, 4, 5].map(stars => <button type="button" key={stars} disabled={busy || session.rating !== null} className={session.rating !== null && stars <= session.rating ? 'rated' : ''} aria-label={`${stars} star${stars > 1 ? 's' : ''}`} onClick={() => void run(`/sessions/${session.id}/rating`, 'POST', { stars }, 'Rating saved. Thank you.')}><Star size={21} fill={session.rating !== null && stars <= session.rating ? 'currentColor' : 'none'} /></button>)}<span className="subtle-label">{session.rating === null ? 'How was the call?' : 'Your rating'}</span></div>
-          <div className="dashboard-actions"><button className="secondary-button" disabled={busy} onClick={() => void run(`/sessions/${session.id}/favorite`, 'POST', undefined, 'Partner saved. Find them in Partners.')}><Heart size={16} /> Save partner</button>{session.recordingAvailable && <button className="secondary-button" disabled={busy} onClick={() => void download(session.id)}><Download size={16} /> Download audio</button>}</div>
+          <div className="dashboard-actions"><button className="secondary-button" disabled={busy} onClick={() => void run(`/sessions/${session.id}/favorite`, 'POST', undefined, 'Partner saved. Find them in Partners.')}><Heart size={16} /> Save partner</button>{!session.recordings?.length && session.recordingAvailable && <button className="secondary-button" disabled={busy} onClick={() => void download(session.id)}><Download size={16} /> Download audio</button>}{session.recordings?.map((segment,index)=><button key={segment.id} className="secondary-button" disabled={busy} onClick={()=>void download(session.id,segment.id)}><Download size={16}/> Audio {session.recordings!.length>1 ? index+1 : ""} · until {date(segment.expiresAt)}</button>)}</div>
           {session.recordingExpiresAt && <p className="subtle-label">Available until {date(session.recordingExpiresAt)}. Download before it expires.</p>}
           {session.reported ? <p className="subtle-label">Report submitted.</p> : <details className="dashboard-report"><summary>Report a safety concern</summary><form onSubmit={event => { event.preventDefault(); const reason = new FormData(event.currentTarget).get('reason'); void run(`/sessions/${session.id}/report`, 'POST', { reason }, 'Report submitted.'); }}><label>What happened?<select name="reason" required>{reasons.map(reason => <option key={reason}>{reason}</option>)}</select></label><p>Reports are logged and may lead to moderation action. Submit only genuine concerns.</p><button className="secondary-button" disabled={busy}>Submit report</button></form></details>}</>}
         </article>)}</div>

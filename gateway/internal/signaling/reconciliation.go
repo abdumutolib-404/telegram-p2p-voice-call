@@ -21,7 +21,7 @@ func (h *Hub) ReconcileActiveSessions(ctx context.Context) (int, error) {
 
 		limitMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
 		limitSeconds := limitMinutes * 60
-		elapsedSeconds := int(time.Since(session.CreatedAt).Seconds())
+		elapsedSeconds := int(time.Since(session.DurationAnchor()).Seconds())
 		remainingSeconds := limitSeconds - elapsedSeconds
 
 		if elapsedSeconds >= limitSeconds {
@@ -69,6 +69,7 @@ func (h *Hub) ReconcileActiveSessions(ctx context.Context) (int, error) {
 				continue
 			}
 			_ = h.LiveKit.DeleteRoom(ctx, session.RoomName)
+			h.FinishRoom(session.RoomName, CallFinishedEvent{Duration: completedDuration, Reason: "call_duration_limit_reached"})
 			h.DeleteRoomMutex(session.RoomName)
 			reconciledCount++
 		} else {

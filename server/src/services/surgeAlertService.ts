@@ -172,8 +172,8 @@ export class SurgeAlertService {
 
     const messageText =
       `🔥 <b>Peak Practice Surge: ${totalCount} IELTS Learners Online!</b>\n\n` +
-      `⚡ <b>Instant Matches</b>: Average queue time is currently under 10 seconds.\n` +
-      `👥 <b>Active Levels</b>: Band 6.0 – 7.5 learners are practicing right now.\n\n` +
+      `⚡ <b>Practice activity is higher right now.</b> Matching depends on available partners and speaking levels.\n` +
+      `👥 <b>Find a partner</b>: Open your dashboard to search at your speaking level.\n\n` +
       `<i>Jump in for a quick 15-minute speaking session before the queue cools down!</i>`;
 
     for (const recipient of eligibleRecipients) {

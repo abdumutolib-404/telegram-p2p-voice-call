@@ -16,7 +16,7 @@ while (Date.now() < readinessDeadline) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
 }
 if (!ready) throw new Error('Owned production verification container did not become ready within fifteen seconds.');
-for (const script of ['check-backend.cjs', 'check-container-sockets.cjs', 'check-container-boundaries.cjs']) {
+for (const script of ['check-backend.cjs', 'check-container-sockets.cjs', 'check-container-boundaries.cjs', 'check-container-engineering.cjs']) {
   const result = spawnSync('docker', ['exec', '-i', meta.container, 'node', '-', '--container-bindings'], {
     input: fs.readFileSync(path.join(__dirname, script), 'utf8'), encoding: 'utf8', timeout: 60000,
   });

@@ -6,6 +6,11 @@ local self_id = ARGV[2]
 local candidate_count = tonumber(ARGV[3])
 local queue_ttl = tonumber(ARGV[5])
 local max_scans = 50
+local self_band = tonumber(string.match(ARGV[4], '^match_queue:([^:]+):'))
+local skipped = {}
+local function restore_skipped()
+  for _, item in ipairs(skipped) do redis.call('SADD', item[1], item[2]) end
+end
 
 for i = 1, candidate_count do
   local bucket = KEYS[i]
@@ -16,7 +21,8 @@ for i = 1, candidate_count do
     if candidate ~= self_id then
       local pointer_key = user_prefix .. candidate
       local pointer = redis.call('GET', pointer_key)
-      if pointer then
+      local band = pointer and tonumber(string.match(pointer, '^match_queue:([^:]+):'))
+      if pointer and band and self_band and math.abs(band-self_band) <= 1.0 then
         -- Atomically claim candidate and delete pointers
         redis.call('DEL', pointer_key)
         redis.call('DEL', user_prefix .. self_id)
@@ -50,7 +56,10 @@ for i = 1, candidate_count do
           redis.call('SREM', KEYS[j], candidate)
         end
 
+        restore_skipped()
         return { candidate, bucket }
+      elseif pointer then
+        table.insert(skipped, {bucket, candidate})
       else
         -- Purge ghost candidate from auxiliary pools
         redis.call('SREM', 'match_queue:priority:BOSS', candidate)
@@ -59,9 +68,10 @@ for i = 1, candidate_count do
         redis.call('SREM', 'match_queue:global', candidate)
       end
     end
-    candidate = redis.call('SPOP', bucket)
+    if scanned < max_scans then candidate = redis.call('SPOP', bucket) else candidate = nil end
   end
 end
+restore_skipped()
 -- No claim: register all pools and the live pointer before another join can
 -- scan. The last key is the user pointer, not a candidate/registration pool.
 for i = candidate_count + 1, #KEYS - 1 do

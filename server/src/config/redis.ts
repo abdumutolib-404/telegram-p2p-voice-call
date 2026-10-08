@@ -121,11 +121,13 @@ class InMemoryRedisMock {
       const pointerPrefix = args[0];
       const selfId = args[1];
 
-      for (const bucketKey of keys) {
+      const candidateCount = Number(args[2]) || keys.length;
+      const selfBand = Number(args[3]?.match(/^match_queue:([^:]+):/)?.[1]);
+      for (const bucketKey of keys.slice(0,candidateCount)) {
         const set = this.sets.get(bucketKey);
         if (!set) continue;
 
-        for (const candidate of [...set]) {
+        for (const candidate of [...set].slice(0,50)) {
           if (candidate === selfId) {
             set.delete(candidate);
             continue;
@@ -144,6 +146,8 @@ class InMemoryRedisMock {
             continue;
           }
 
+          const candidateBand = Number(pointer.match(/^match_queue:([^:]+):/)?.[1]);
+          if (Number.isFinite(selfBand) && (!Number.isFinite(candidateBand) || Math.abs(candidateBand-selfBand)>1)) continue;
           set.delete(candidate);
           if (set.size === 0) this.sets.delete(bucketKey);
           this.kv.delete(`${pointerPrefix}${candidate}`);
@@ -205,6 +209,10 @@ class InMemoryRedisMock {
           return [candidate, bucketKey];
         }
         if (set.size === 0) this.sets.delete(bucketKey);
+      }
+      if (args[2]) {
+        for (const key of keys.slice(candidateCount,-1)) { const pool=this.sets.get(key)||new Set<string>();pool.add(selfId);this.sets.set(key,pool); }
+        this.kv.set(keys[keys.length-1],{value:args[3],expiresAt:Date.now()+Number(args[4])*1000});
       }
       return null;
     }

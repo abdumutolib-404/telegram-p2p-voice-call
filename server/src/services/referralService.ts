@@ -303,14 +303,7 @@ export async function getContestStatus(): Promise<ContestStatus> {
 
   // Check if active contest has expired duration
   const isExpired = contest.endsAt ? new Date(contest.endsAt).getTime() <= Date.now() : false;
-  if (isExpired) {
-    return {
-      status: 'ENDED',
-      isActive: false,
-      contest: null,
-      leaderboard: [],
-    };
-  }
+
 
   // Aggregate qualifying rewards earned since contest startsAt
   const rewards = await prisma.referralReward.findMany({
@@ -353,8 +346,8 @@ export async function getContestStatus(): Promise<ContestStatus> {
   });
 
   return {
-    status: 'ACTIVE',
-    isActive: true,
+    status: isExpired ? 'ENDED' : 'ACTIVE',
+    isActive: !isExpired,
     contest: {
       id: contest.id,
       title: contest.title,
@@ -470,6 +463,7 @@ export async function concludeContestAndDistributePrizes(
             recordingLimitOverride: 15,
             subscriptionStatus: 'ACTIVE',
             subscriptionExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+            subscriptionStartsAt: new Date(), subscriptionDurationDays: 60,
           },
         });
       } else if (rank === 2) {
@@ -485,6 +479,7 @@ export async function concludeContestAndDistributePrizes(
             recordingLimitOverride: 15,
             subscriptionStatus: 'ACTIVE',
             subscriptionExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            subscriptionStartsAt: new Date(), subscriptionDurationDays: 30,
           },
         });
       } else if (rank === 3) {
@@ -500,6 +495,7 @@ export async function concludeContestAndDistributePrizes(
             recordingLimitOverride: 7,
             subscriptionStatus: 'ACTIVE',
             subscriptionExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+            subscriptionStartsAt: new Date(), subscriptionDurationDays: 14,
           },
         });
       }

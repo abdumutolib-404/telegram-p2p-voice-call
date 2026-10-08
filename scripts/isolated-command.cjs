@@ -4,9 +4,9 @@ if(!/^postgresql:\/\/[^@]+@127\.0\.0\.1:55432\/pairtalk_check$/.test(runtime.DAT
 const root=path.resolve(__dirname,'..'),server=path.join(root,'server'),env=require('./safe-environment.cjs')({...runtime,NODE_ENV:'development',HOST:'127.0.0.1',BOT_TOKEN:'123456789:'+require('node:crypto').randomBytes(24).toString('base64url')});delete env.names;
 const commands={schema:[path.join(server,'node_modules/prisma/build/index.js'),'migrate','diff','--from-schema-datasource','prisma/schema.prisma','--to-schema-datamodel','prisma/schema.prisma','--exit-code'],migrate:[path.join(server,'node_modules/prisma/build/index.js'),'migrate','deploy'],integration:[path.join(server,'node_modules/ts-node/dist/bin.js'),'-T','--project',path.join(server,'tsconfig.json'),path.join(root,'scripts/isolated-integration.ts')],runtime:[path.join(server,'dist/index.js')]};
 if(!commands[action])throw new Error('Use schema, migrate, integration or runtime');
-if(action==='runtime') {
+if(action==='runtime' || action==='integration') {
  const child=spawn(process.execPath,commands[action],{cwd:server,env,stdio:['ignore','pipe','pipe']});
- const log=path.join(path.dirname(process.argv[2]),'backend-redacted.log');
+ const log=path.join(path.dirname(process.argv[2]),action==='integration'?'integration-redacted.log':'backend-redacted.log');
  const write=chunk=>{let text=chunk.toString();for(const key of ['DATABASE_URL','JWT_SECRET','MASTER_PASSWORD','BOT_TOKEN','LIVEKIT_API_SECRET'])if(env[key])text=text.split(env[key]).join('[REDACTED]');fs.appendFileSync(log,text);process.stdout.write(text);};
  child.stdout.on('data',write);child.stderr.on('data',write);child.on('exit',code=>{process.exitCode=code??1;});
  for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));

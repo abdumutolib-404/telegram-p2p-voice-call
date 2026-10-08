@@ -25,6 +25,14 @@ const profile = {
 };
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
+it('preserves authenticated scores below five, including zero, in account controls',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>json(url.includes('/auth')?{...profile,user:{...profile.user,band:4.5,subFC:0,subLR:3.5,subGRA:4,subP:4.5}}:{hasActiveCall:false})));
+  await act(async()=>root.render(createElement(App)));
+  const account=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Account'))!;
+  await act(async()=>account.click());
+  expect(Array.from(container.querySelectorAll('select')).slice(0,4).map(select=>select.value)).toEqual(['0','3.5','4','4.5']);
+});
+
 it.each([
   ['banned', 'PERMANENT MODERATION LOCK', 'Account is permanently banned.'],
   ['suspended', 'ACCOUNT SUSPENDED', 'Account is suspended pending review.'],

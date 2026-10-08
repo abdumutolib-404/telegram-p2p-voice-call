@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePricing } from '../../../../platform/usePricing';
 import { formatPlanPrice, planPeriod } from '../../../../server/src/contracts/pricing';
-import { adminFetch } from '../../api/client';
+import { adminFetch, adminApiOrigin } from '../../api/client';
 import { useLatestRequest, useUnsavedChanges } from '../../hooks/useAdminTools';
 import { PageHeader } from '../ui/PageHeader';
 import type { PlansResponse, PlanTierConfig } from '../../types';
@@ -19,7 +19,7 @@ export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse | null>(null), [initial, setInitial] = useState<PlansResponse | null>(null);
   const [loading, setLoading] = useState(true), [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null), [success, setSuccess] = useState<string | null>(null);
-  const published = usePricing(`${(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')}/api/public/plans`);
+  const published = usePricing(`${adminApiOrigin}/api/public/plans`);
   const comparisonUrl = new URL('pricing', import.meta.env.VITE_PUBLIC_SITE_URL || 'https://pairtalk.online').toString();
   const busy = useRef(false), latest = useLatestRequest();
   const dirty = !!plans && JSON.stringify(plans) !== JSON.stringify(initial);

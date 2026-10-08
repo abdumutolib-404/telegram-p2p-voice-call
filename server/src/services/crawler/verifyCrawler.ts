@@ -55,6 +55,18 @@ export interface VendorFeedResponse {
 const memoryPrefixCache = new Map<string, { prefixes: string[]; expiresAt: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const REDIS_KEY_PREFIX = 'pairtalk:crawler:prefixes:';
+const refreshes = new Map<string, Promise<string[]>>();
+const retryAfter = new Map<string, number>();
+const MAX_FEED_BYTES = 1024 * 1024;
+
+function validPrefixes(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 10000) throw new Error('Invalid crawler prefix count');
+  return value.map(prefix => {
+    if (typeof prefix !== 'string') throw new Error('Invalid crawler prefix');
+    ipaddr.parseCIDR(prefix);
+    return prefix;
+  });
+}
 
 /**
  * Normalizes an IP string (including IPv4-mapped IPv6 like ::ffff:1.2.3.4)
@@ -91,11 +103,23 @@ export function isIpInCidr(parsedIp: ipaddr.IPv4 | ipaddr.IPv6, cidrStr: string)
  * Fetches vendor IP prefixes from endpoint with fallback to Redis and memory cache
  */
 export async function fetchFeedPrefixes(feed: CrawlerFeedConfig, force = false): Promise<string[]> {
+  if (!CRAWLER_FEEDS.some(known => known.name === feed.name && known.url === feed.url)) throw new Error('Unknown crawler feed');
   const now = Date.now();
   const cached = memoryPrefixCache.get(feed.name);
   if (!force && cached && cached.expiresAt > now) {
     return cached.prefixes;
   }
+  if ((retryAfter.get(feed.name) ?? 0) > now) return cached?.prefixes ?? [];
+  const existing = refreshes.get(feed.name);
+  if (existing) return existing;
+  const refresh = refreshFeedPrefixes(feed, cached, force);
+  refreshes.set(feed.name, refresh);
+  try { return await refresh; }
+  finally { if (refreshes.get(feed.name) === refresh) refreshes.delete(feed.name); }
+}
+
+async function refreshFeedPrefixes(feed: CrawlerFeedConfig, cached: { prefixes: string[]; expiresAt: number } | undefined, force: boolean): Promise<string[]> {
+  const now = Date.now();
 
   const redis = getRedis();
   const redisKey = `${REDIS_KEY_PREFIX}${feed.name}`;
@@ -104,7 +128,7 @@ export async function fetchFeedPrefixes(feed: CrawlerFeedConfig, force = false):
     try {
       const redisCached = await redis.get(redisKey);
       if (redisCached) {
-        const parsed = JSON.parse(redisCached) as string[];
+        const parsed = validPrefixes(JSON.parse(redisCached));
         if (Array.isArray(parsed) && parsed.length > 0) {
           memoryPrefixCache.set(feed.name, { prefixes: parsed, expiresAt: now + CACHE_TTL_MS });
           return parsed;
@@ -116,31 +140,54 @@ export async function fetchFeedPrefixes(feed: CrawlerFeedConfig, force = false):
   }
 
   // Fetch live from vendor endpoint
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(feed.url, {
       signal: controller.signal,
+      redirect: 'error',
       headers: { 'User-Agent': 'PairTalk-CrawlerVerifier/1.0' },
     });
-    clearTimeout(timeout);
 
     if (!res.ok) {
+      await res.body?.cancel();
       throw new Error(`HTTP ${res.status} from ${feed.url}`);
     }
 
-    const data = (await res.json()) as VendorFeedResponse;
+    if (!res.body || Number(res.headers.get('content-length') || 0) > MAX_FEED_BYTES) {
+      await res.body?.cancel();
+      throw new Error('Invalid crawler response size');
+    }
+    const reader = res.body.getReader();
+    const abortBody = () => { void reader.cancel().catch(()=>undefined); };
+    controller.signal.addEventListener('abort',abortBody,{once:true});
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        controller.signal.throwIfAborted();
+        const chunk = await reader.read();
+        controller.signal.throwIfAborted();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > MAX_FEED_BYTES) throw new Error('Crawler response too large');
+        chunks.push(chunk.value);
+      }
+    } finally { controller.signal.removeEventListener('abort',abortBody);await reader.cancel().catch(() => {}); reader.releaseLock(); }
+    const data = JSON.parse(Buffer.concat(chunks).toString('utf8')) as VendorFeedResponse;
     if (!data || !Array.isArray(data.prefixes)) {
       throw new Error(`Invalid prefix payload from ${feed.url}`);
     }
 
-    const prefixes: string[] = [];
+    const rawPrefixes: string[] = [];
     for (const item of data.prefixes) {
-      if (item.ipv4Prefix) prefixes.push(item.ipv4Prefix);
-      if (item.ipv6Prefix) prefixes.push(item.ipv6Prefix);
+      if (item.ipv4Prefix) rawPrefixes.push(item.ipv4Prefix);
+      if (item.ipv6Prefix) rawPrefixes.push(item.ipv6Prefix);
     }
-
-    memoryPrefixCache.set(feed.name, { prefixes, expiresAt: now + CACHE_TTL_MS });
+    const prefixes = validPrefixes(rawPrefixes);
+    if (!prefixes.length) throw new Error('Empty crawler prefix feed');
+    retryAfter.delete(feed.name);
+    memoryPrefixCache.set(feed.name, { prefixes, expiresAt: Date.now() + CACHE_TTL_MS });
 
     try {
       await redis.set(redisKey, JSON.stringify(prefixes), 'EX', 86400); // 24h
@@ -156,6 +203,7 @@ export async function fetchFeedPrefixes(feed: CrawlerFeedConfig, force = false):
 
     return prefixes;
   } catch (err: unknown) {
+    retryAfter.set(feed.name, Date.now() + 60000);
     logger.warn(`Failed fetching live prefix feed for ${feed.name}`, {
       service: 'crawlerVerifier',
       feed: feed.name,
@@ -167,7 +215,7 @@ export async function fetchFeedPrefixes(feed: CrawlerFeedConfig, force = false):
       return cached.prefixes;
     }
     return [];
-  }
+  } finally { clearTimeout(timeout); }
 }
 
 /**

@@ -23,7 +23,25 @@ beforeEach(() => {
 });
 afterEach(async () => {
   if (mounted) await act(async () => root.unmount());
-  container.remove(); vi.unstubAllGlobals();
+  container.remove(); vi.unstubAllGlobals();vi.useRealTimers();
+});
+
+it('shows a history error with retry without suggesting no conversations exist',async()=>{
+  window.history.replaceState(null,'','/?view=history');
+  vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('Synthetic connection failure')));
+  await render();
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Synthetic connection failure');
+  expect(container.textContent).not.toContain('Your first conversation is ahead.');
+  expect(button('Reload current view')).toBeTruthy();
+});
+
+it('uses a particular private segment when downloading earlier audio',async()=>{
+  window.history.replaceState(null,'','/?view=history');
+  const fetchMock=vi.fn().mockResolvedValueOnce(json({sessions:[{...conversation,recordings:[{id:'segment-one',createdAt:'2026-10-01',expiresAt:'2026-10-31'}]}],nextCursor:null})).mockResolvedValueOnce(json({url:'javascript:denied'}));
+  vi.stubGlobal('fetch',fetchMock);await render();
+  await act(async()=>button('Audio').click());
+  expect(fetchMock.mock.calls[1][0]).toContain('segment=segment-one');
+  expect(container.querySelector('[role="alert"]')).toBeTruthy();
 });
 
 it('keeps practice usable without making unrelated dashboard requests', async () => {

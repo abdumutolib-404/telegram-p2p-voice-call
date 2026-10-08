@@ -718,8 +718,8 @@ export const pages: Record<string, Guide> = {
               The service offers Free, Plus, Pro, and Boss plans. Current prices
               and allowances are shown before purchase. Supported methods
               include Telegram Stars and regional UZS card payments. Unused paid
-              practice credits expire at the end of the 30-day billing cycle
-              unless promotional terms state otherwise.
+              practice credits expire at the end of the validity period shown
+              for the purchased offer, unless promotional terms state otherwise.
             </p>
             <p>
               The current bot refund policy allows a request within 48 hours of

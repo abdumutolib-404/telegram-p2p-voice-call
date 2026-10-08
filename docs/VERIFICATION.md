@@ -6,6 +6,8 @@ Run `node scripts/check-docs.cjs` after documentation changes to check local lin
 
 Use installed locked dependencies. Backend helpers sanitize inherited credentials and disable external polling/crawling:
 
+The obsolete top-level `test/` harness has been retired. Its bot, database and socket implementations were standalone mocks that duplicated old product rules; those suites did not exercise the application. Use the production-module server/client tests, real PostgreSQL gateway checks, production Lua tests, and isolated container transport checks below. Passing mock tests does not certify live provider behavior.
+
 ```text
 node scripts/verify.cjs build
 node scripts/verify.cjs unit --maxWorkers=2 --minWorkers=1
@@ -37,7 +39,21 @@ npm run check --prefix landing
 
 Set NODE_ENV=production for frontend release builds when an inherited environment sets test mode. The owner removed the GitHub verification workflow on October 7; these commands remain the manual verification checklist, including migration/schema checks and isolated integration. Run each frontend's deploy:check script for a Workers dry run. Browser fixtures are available through `scripts/admin-mock-browser.cjs`; they do not authorize real admin actions.
 
-## 2026-10-05 security remediation
+## 2026-10-08 engineering remediation
+
+The 45 observations in the retained engineering review and four associated security findings have implementation changes in the working tree. The issue-by-issue remediation receipt is retained through Codex Security outside the checkout. This is local verification, not a production deployment or a claim that all devices/providers have been exercised.
+
+- Backend: 84 files / 839 tests passed; later focused policy, pricing, championship and crawler regressions passed after final corrections. Backend types and the Node/Go container build passed.
+- Client: 10 files / 60 tests passed; the final privacy-copy change also passed its focused tests and production rebuild. Admin types/build and landing SSR/prerender/content checks passed.
+- Persistence: 35 checks passed using dedicated PostgreSQL/Redis services, including actual recording-credit preservation and Redis-driven terminal room cleanup. All eight Go packages and Go vet passed with isolated database bindings; the two-gateway check passed again with terminal relay/reconnect controls. A separate Linux race-detector run passed all eight packages; database-bound tests in that run require separate bindings and were covered by the earlier persistence run.
+- Deployment: actual container HTTP/socket checks passed for signed Telegram launches over WebSocket and polling, moderation rejection, recording webhook races, server audit pagination, ended-contest protection, configurable plan assignment and durable crawler job admission. Redis interruption returned degraded readiness, recovery restored readiness, and SIGTERM drained both services.
+- Schema: all migrations applied from a fresh dedicated schema; Prisma reported no drift. The three-page revised PDF was rendered and visually checked. Local documentation links passed.
+
+The actual PostgreSQL admin checks additionally caught advisory-lock queries returning PostgreSQL's void type to Prisma; the contest, crawler admission and shared pricing queries now cast that result to text. The container checks exercise this production-only path, which mock-only tests had missed.
+
+Before rollout, drain old call-serving processes, apply `202610080001_recording_consumption` and `202610080002_background_crawl` with `prisma migrate deploy`, then deploy the matching Node/Go backend and client/admin together. The consent document version is now 2026-10-08; previous accepted artifacts remain archived. Old subscription records have a 30-day compatibility backfill because their original duration was not stored. Previously overwritten recording segments cannot be reconstructed. Real Telegram audio/refund, LiveKit reconnect/egress and R2 provider journeys remain staging smoke checks. Do not deploy the Docker `backend-verification` target; deploy the default runner.
+
+## 2026-10-05 security remediation results
 
 Verified before this documentation cleanup in a disposable checkout with synthetic credentials:
 

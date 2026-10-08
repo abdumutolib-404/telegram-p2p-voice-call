@@ -40,12 +40,15 @@ async function ownSession(id: string, userId: string) {
   if (!session) throw new ActionError(404, 'Session not found.');
   return session;
 }
-function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, userId: string, retentionDays: number) {
+async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, userId: string, retentionDays: number) {
   const partner = session.userAId === userId ? session.userB : session.userA;
   const rating = session.ratings.find(item => item.raterId === userId && !item.reported);
-  const expiry = Math.min(session.recordingExpiresAt?.getTime() ?? Infinity, session.createdAt.getTime() + retentionDays * 86400000);
+  const expiry = Math.min(session.recordingExpiresAt?.getTime() ?? Infinity, (session.endedAt ?? session.createdAt).getTime() + retentionDays * 86400000);
+  const segments = await prisma.recordingSegment.findMany({where:{callId:session.id,status:"READY",ownerIds:{has:userId},expiresAt:{gt:new Date()}},orderBy:{createdAt:"asc"}});
+  const recipientExpiry=(session.endedAt??session.createdAt).getTime()+retentionDays*86400000;
+  const recordings = recipientExpiry > Date.now() ? segments.map(segment=>({id:segment.id,createdAt:segment.createdAt,expiresAt:new Date(Math.min(segment.expiresAt!.getTime(),recipientExpiry))})) : [];
   const recordingAvailable = Boolean(session.recordingUrl && expiry > Date.now() && (!session.recordedByUserId || isUserSessionRecorder(session.recordedByUserId, userId)));
-  return { id: session.id, partnerAlias: partner.alias, partnerBand: partner.band, status: session.status, duration: session.duration, createdAt: session.createdAt, endedAt: session.endedAt, rating: rating?.stars ?? null, reported: session.ratings.some(item => item.raterId === userId && item.reported), recordingAvailable, recordingExpiresAt: recordingAvailable ? new Date(expiry) : null };
+  return { id: session.id, partnerAlias: partner.alias, partnerBand: partner.band, status: session.status, duration: session.duration, createdAt: session.createdAt, endedAt: session.endedAt, recordings, rating: rating?.stars ?? null, reported: session.ratings.some(item => item.raterId === userId && item.reported), recordingAvailable, recordingExpiresAt: recordingAvailable ? new Date(expiry) : null };
 }
 
 router.get('/summary', action(async (req, res) => {
@@ -69,11 +72,11 @@ router.get('/sessions', action(async (req, res) => {
   if (cursor) await ownSession(cursor, req.member!.id);
   const sessions = await prisma.callSession.findMany({ where: { status: { in: ['COMPLETED', 'CANCELLED', 'DECLINED'] }, OR: [{ userAId: req.member!.id }, { userBId: req.member!.id }] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), take: 21, include: { userA: true, userB: true, ratings: true } });
   const retention = getEffectiveEntitlement(req.member!).retentionDays;
-  res.json({ sessions: sessions.slice(0, 20).map(session => sessionSummary(session, req.member!.id, retention)), nextCursor: sessions.length > 20 ? sessions[19].id : null });
+  res.json({ sessions: await Promise.all(sessions.slice(0, 20).map(session => sessionSummary(session, req.member!.id, retention))), nextCursor: sessions.length > 20 ? sessions[19].id : null });
 }));
 router.get('/sessions/:id', action(async (req, res) => {
   const session = await ownSession(req.params.id, req.member!.id);
-  res.json({ session: sessionSummary(session, req.member!.id, getEffectiveEntitlement(req.member!).retentionDays) });
+  res.json({ session: await sessionSummary(session, req.member!.id, getEffectiveEntitlement(req.member!).retentionDays) });
 }));
 router.post('/sessions/:id/rating', action(async (req, res) => {
   const { stars } = z.object({ stars: z.number().int().min(1).max(5) }).strict().parse(req.body);

@@ -122,6 +122,9 @@ func TestIntegrationRecordingOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, err := db.Pool.Exec(ctx, `INSERT INTO "RecordingUsage" ("callId","userId","consumedAt") SELECT id,$1,NOW() FROM "CallSession" WHERE "userAId"=$1`, ids[0]); err != nil {
+		t.Fatal(err)
+	}
 	for i, id := range []string{ids[0], ids[2]} {
 		count, err := db.GetUserRecordingsUsedThisPeriod(ctx, id, nil)
 		want := 4
@@ -170,6 +173,9 @@ func TestIntegrationCompletionExactlyOnceAndBonusBoundary(t *testing.T) {
 	if err := db.CreateCallSession(ctx, call, call, ids[0], ids[1]); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "mediaAuthorizedAt"=NOW()-INTERVAL '30 seconds' WHERE id=$1`, call); err != nil {
+		t.Fatal(err)
+	}
 	var claims atomic.Int32
 	var wg sync.WaitGroup
 	errors := make(chan error, 12)
@@ -206,6 +212,9 @@ func TestIntegrationCompletionExactlyOnceAndBonusBoundary(t *testing.T) {
 	if err := db.CreateCallSession(ctx, call, call, ids[0], ids[2]); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "mediaAuthorizedAt"=$1 WHERE id=$2`, time.Now().UTC().Add(-30*time.Second), call); err != nil {
+		t.Fatal(err)
+	}
 	if claimed, err := db.CompleteCallSession(ctx, call, 30, nil, nil, nil); err != nil || !claimed {
 		t.Fatalf("bonus completion: %v", err)
 	}
@@ -226,6 +235,9 @@ func TestIntegrationCompletionRollsBackOnQuotaWriteFailure(t *testing.T) {
 	}
 	call := uuid.NewString()
 	if err := db.CreateCallSession(ctx, call, call, ids[0], ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE "CallSession" SET "mediaAuthorizedAt"=$1 WHERE id=$2`, time.Now().UTC().Add(-30*time.Second), call); err != nil {
 		t.Fatal(err)
 	}
 	claimed, err := db.CompleteCallSession(ctx, call, 30, nil, nil, nil)

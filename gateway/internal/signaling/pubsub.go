@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -39,7 +40,8 @@ func (p *PubSubClient) StartCommandSubscriber(ctx context.Context, hub *Hub) {
 		return
 	}
 
-	pubsub := p.rdb.Subscribe(ctx, CommandsChannel, RecordingStateChannel)
+	pubsub := p.rdb.Subscribe(ctx, CommandsChannel, RecordingStateChannel, EventsChannel)
+	go hub.refreshSharedPresence()
 	go func() {
 		defer pubsub.Close()
 		ch := pubsub.Channel()
@@ -51,6 +53,24 @@ func (p *PubSubClient) StartCommandSubscriber(ctx context.Context, hub *Hub) {
 				if !ok {
 					return
 				}
+				if msg.Channel == EventsChannel {
+					if hub.DB == nil {
+						continue
+					}
+					var event CallFinishedPubSubMessage
+					if json.Unmarshal([]byte(msg.Payload), &event) == nil && event.Type == "CALL_FINISHED" && event.RoomName != "" && len(event.RoomName) <= 128 {
+						lookup, cancel := context.WithTimeout(ctx, 5*time.Second)
+						call, err := hub.DB.GetCallSessionByRoomName(lookup, event.RoomName)
+						if err == nil && call != nil && call.ID == event.SessionID && call.Status != "ACTIVE" && call.Status != "PENDING" {
+							lock := hub.getRoomMutex(event.RoomName)
+							lock.Lock()
+							hub.finishKnownTerminal(call)
+							lock.Unlock()
+						}
+						cancel()
+					}
+					continue
+				}
 				var cmd CommandPubSubMessage
 				if msg.Channel == RecordingStateChannel {
 					var state RoomRecordingStatus
@@ -60,6 +80,19 @@ func (p *PubSubClient) StartCommandSubscriber(ctx context.Context, hub *Hub) {
 					continue
 				}
 				if err := json.Unmarshal([]byte(msg.Payload), &cmd); err != nil {
+					continue
+				}
+				if cmd.Command == "MATCH_READY" && cmd.Source != p.recordingSource && cmd.RoomName != "" && len(cmd.RoomName) <= 128 {
+					lookup, cancel := context.WithTimeout(ctx, 5*time.Second)
+					call, err := hub.DB.GetCallSessionByRoomName(lookup, cmd.RoomName)
+					cancel()
+					if err == nil && call != nil && call.Status == "ACTIVE" {
+						for _, id := range []string{call.UserAID, call.UserBID} {
+							for _, socket := range hub.GetUserSockets(id) {
+								hub.checkAutoReconnect(socket)
+							}
+						}
+					}
 					continue
 				}
 

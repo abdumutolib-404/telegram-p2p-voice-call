@@ -33,9 +33,16 @@ const USER_LOCK_TTL_MS = 5000;
 export const MATCH_QUEUE_MULTI_CLAIM_SCRIPT = `-- MATCH_QUEUE_MULTI_CLAIM
 local user_prefix = ARGV[1]
 local self_id = ARGV[2]
+local candidate_count = tonumber(ARGV[3])
+local queue_ttl = tonumber(ARGV[5])
 local max_scans = 50
+local self_band = tonumber(string.match(ARGV[4], '^match_queue:([^:]+):'))
+local skipped = {}
+local function restore_skipped()
+  for _, item in ipairs(skipped) do redis.call('SADD', item[1], item[2]) end
+end
 
-for i = 1, #KEYS do
+for i = 1, candidate_count do
   local bucket = KEYS[i]
   local scanned = 0
   local candidate = redis.call('SPOP', bucket)
@@ -44,7 +51,8 @@ for i = 1, #KEYS do
     if candidate ~= self_id then
       local pointer_key = user_prefix .. candidate
       local pointer = redis.call('GET', pointer_key)
-      if pointer then
+      local band = pointer and tonumber(string.match(pointer, '^match_queue:([^:]+):'))
+      if pointer and band and self_band and math.abs(band-self_band) <= 1.0 then
         -- Atomically claim candidate and delete pointers
         redis.call('DEL', pointer_key)
         redis.call('DEL', user_prefix .. self_id)
@@ -74,11 +82,14 @@ for i = 1, #KEYS do
         redis.call('SREM', 'match_queue:global', candidate)
 
         -- 6. All candidate buckets scanned
-        for j = 1, #KEYS do
+        for j = 1, candidate_count do
           redis.call('SREM', KEYS[j], candidate)
         end
 
+        restore_skipped()
         return { candidate, bucket }
+      elseif pointer then
+        table.insert(skipped, {bucket, candidate})
       else
         -- Purge ghost candidate from auxiliary pools
         redis.call('SREM', 'match_queue:priority:BOSS', candidate)
@@ -87,9 +98,17 @@ for i = 1, #KEYS do
         redis.call('SREM', 'match_queue:global', candidate)
       end
     end
-    candidate = redis.call('SPOP', bucket)
+    if scanned < max_scans then candidate = redis.call('SPOP', bucket) else candidate = nil end
   end
 end
+restore_skipped()
+-- No claim: register all pools and the live pointer before another join can
+-- scan. The last key is the user pointer, not a candidate/registration pool.
+for i = candidate_count + 1, #KEYS - 1 do
+  redis.call('SADD', KEYS[i], self_id)
+  redis.call('EXPIRE', KEYS[i], queue_ttl * 2)
+end
+redis.call('SET', KEYS[#KEYS], ARGV[4], 'EX', queue_ttl)
 return false`;
 
 export const MATCH_QUEUE_CLAIM_SCRIPT = MATCH_QUEUE_MULTI_CLAIM_SCRIPT;
@@ -203,12 +222,17 @@ export class MatchmakingService {
 
         // Single atomic multi-claim evaluation across all candidate buckets
         const uniqueCandidateBuckets = [...new Set(candidateBuckets)];
+        const registrationPools = [ownBucketKey, bandPoolKey, ...(isPriorityUser ? [this.getPriorityPoolKey(userPlan)] : [])];
+        const claimKeys = [...uniqueCandidateBuckets, ...registrationPools, USER_QUEUE_PREFIX + userId];
         const claimResult = (await this.redis.eval(
           MATCH_QUEUE_MULTI_CLAIM_SCRIPT,
-          uniqueCandidateBuckets.length,
-          ...uniqueCandidateBuckets,
+          claimKeys.length,
+          ...claimKeys,
           USER_QUEUE_PREFIX,
-          userId
+          userId,
+          String(uniqueCandidateBuckets.length),
+          ownBucketKey,
+          String(QUEUE_TTL_SECONDS)
         )) as [string, string] | null;
 
         let claimedPartner: string | undefined;
@@ -226,21 +250,6 @@ export class MatchmakingService {
             roomName: `room_${crypto.randomUUID()}`,
             partnerBucketKey,
           };
-        }
-
-        // No partner online yet: Register user into priority and standard pools
-        const poolsToRegister: string[] = [ownBucketKey, bandPoolKey];
-        if (isPriorityUser) {
-          poolsToRegister.push(this.getPriorityPoolKey(userPlan));
-        }
-
-        try {
-          await Promise.all(poolsToRegister.map((k) => this.redis.sadd(k, userId)));
-          await Promise.all(poolsToRegister.map((k) => this.redis.expire(k, QUEUE_TTL_SECONDS * 2)));
-          await this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, ownBucketKey, 'EX', QUEUE_TTL_SECONDS);
-        } catch (error: unknown) {
-          await Promise.allSettled(poolsToRegister.map((k) => this.redis.srem(k, userId)));
-          throw error;
         }
 
         return { matched: false, bucketKey: ownBucketKey };

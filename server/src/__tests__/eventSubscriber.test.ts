@@ -15,7 +15,7 @@ afterEach(async () => { vi.restoreAllMocks(); await prisma.notificationJob.delet
 async function fixture(duration = 120, deniedB?: boolean) {
   const a = await prisma.user.create({ data: { alias: 'Candidate <A>', telegramId: 111111n, plan: 'PLUS', dailyLimit: 10 } });
   const b = await prisma.user.create({ data: { alias: 'Candidate B', telegramId: 222222n, plan: 'PLUS', dailyLimit: 10 } });
-  const call = await prisma.callSession.create({ data: { roomName: crypto.randomUUID(), userAId: a.id, userBId: b.id, recordingUrl: 'synthetic.wav', recordedByUserId: a.id } });
+  const call = await prisma.callSession.create({ data: { roomName: crypto.randomUUID(), userAId: a.id, userBId: b.id, recordingUrl: 'synthetic.wav', recordedByUserId: a.id, mediaAuthorizedAt: new Date(Date.now()-duration*1000) } });
   await completeCallSession(call.id, { endedAt: new Date(), duration, charge: deniedB === undefined, reason: deniedB === undefined ? undefined : 'microphone_permission_denied', deniedUserId: deniedB === undefined ? undefined : deniedB ? b.id : a.id });
   await prisma.postCallJob.update({ where: { callId: call.id }, data: { nextAttemptAt: new Date(0), retentionA: 7, retentionB: 0 } });
   // A wake-up message deliberately carries incorrect recipient and recording fields.

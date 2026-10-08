@@ -1,8 +1,9 @@
+import { usePricing } from "../../../../platform/usePricing";
 import { useClipboard, useLatestRequest } from '../../hooks/useAdminTools';
 import { Dialog } from '../ui/Dialog';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { UserItem, ModerationAction } from '../../types/index.ts';
-import { adminFetch } from '../../api/client.ts';
+import { adminFetch, adminApiOrigin } from '../../api/client.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { StatusBadge } from '../ui/StatusBadge.tsx';
 import { ConfirmDialog } from '../ui/ConfirmDialog.tsx';
@@ -32,6 +33,7 @@ import {
 type ControlPanelTab = 'limits' | 'plan' | 'status';
 
 export function UserManagement() {
+  const catalog = usePricing(adminApiOrigin + "/api/public/plans");
   const [users, setUsers] = useState<UserItem[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'warned' | 'blocked' | 'banned'>('all');
@@ -236,20 +238,14 @@ export function UserManagement() {
   };
 
   const handlePlanTierChange = (newTier: 'free' | 'plus' | 'pro' | 'boss') => {
+    const offer = catalog.data?.plans.find(plan => plan.id === newTier.toUpperCase());
+    if (!offer) { setFeedback({type:"error",message:"Current plan limits are unavailable. Refresh before assigning a plan."}); return; }
     setPlanTier(newTier);
-    if (newTier === 'boss') {
-      setDailyLimitInput(50);
-      setMaxDurationInput(90);
-    } else if (newTier === 'pro') {
-      setDailyLimitInput(25);
-      setMaxDurationInput(60);
-    } else if (newTier === 'plus') {
-      setDailyLimitInput(10);
-      setMaxDurationInput(30);
-    } else {
-      setDailyLimitInput(3);
-      setMaxDurationInput(15);
-    }
+    setUseTierLimits(true);
+    setDailyLimitInput(offer.calls); setMaxDurationInput(offer.maxCallMinutes);
+    setRetentionOverrideInput(""); setRecordingLimitInput("");
+    setDurationDaysInput(offer.validityDays);
+
   };
 
   // Save Plan Assignment
@@ -263,8 +259,8 @@ export function UserManagement() {
         method: 'PATCH',
         body: JSON.stringify({
           plan: planTier.toUpperCase(),
-          dailyLimit: Number(dailyLimitInput),
-          maxDuration: Number(maxDurationInput),
+          dailyLimit: useTierLimits ? null : Number(dailyLimitInput),
+          maxDuration: useTierLimits ? null : Number(maxDurationInput),
           retentionOverride: retentionOverrideInput !== '' ? Number(retentionOverrideInput) : null,
           recordingLimit: recordingLimitInput !== '' ? Number(recordingLimitInput) : null,
           durationDays: planTier === 'free' && !customPlanNameInput.trim() ? undefined : Number(durationDaysInput),

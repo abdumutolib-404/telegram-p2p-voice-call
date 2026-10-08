@@ -82,6 +82,11 @@ livekitWebhookRouter.post('/webhook', async (req: Request, res: Response) => {
       for (const result of egressInfo.fileResults || []) {
         if (result.filename) await trackRecordingKey(session.id, result.filename);
       }
+      const segment = await prisma.recordingSegment.findUnique({where:{egressId}});
+      if (segment && segment.callId===session.id) {
+        const ready = status===EgressStatus.EGRESS_COMPLETE && egressInfo.fileResults?.some(file => file.filename===segment.objectKey && Number(file.size)>0);
+        await prisma.recordingSegment.updateMany({where:{id:segment.id,status:'RECORDING'},data:{status:ready?'READY':'FAILED'}});
+      }
     }
     if (!egressId || session.egressId !== egressId || (roomName && roomName !== session.roomName)) {
       // Signaling atomically binds a successful start. An early callback must not steal that claim,

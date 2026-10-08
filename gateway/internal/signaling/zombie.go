@@ -10,6 +10,32 @@ import (
 
 func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 	sweptCount := 0
+	// Persistence polling also closes missed completion notifications from a peer.
+	h.mu.RLock()
+	rooms := make([]string, 0, len(h.roomSockets))
+	for room := range h.roomSockets {
+		rooms = append(rooms, room)
+	}
+	h.mu.RUnlock()
+	if len(rooms) > 0 {
+		rows, err := h.DB.Pool.Query(ctx, `SELECT "roomName" FROM "CallSession" WHERE "roomName"=ANY($1) AND status IN ('COMPLETED','CANCELLED','DECLINED')`, rooms)
+		if err == nil {
+			terminal := []string{}
+			for rows.Next() {
+				var room string
+				if rows.Scan(&room) == nil {
+					terminal = append(terminal, room)
+				}
+			}
+			rows.Close()
+			for _, room := range terminal {
+				lock := h.getRoomMutex(room)
+				lock.Lock()
+				h.cleanupTerminalRoom(ctx, room)
+				lock.Unlock()
+			}
+		}
+	}
 
 	// 1. Sweep stale PENDING direct calls older than 2 minutes
 	stalePending, err := h.DB.GetStalePendingSessions(ctx, time.Now().Add(-2*time.Minute))
@@ -36,7 +62,7 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 
 		maxDurationMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
 		maxDurationSeconds := maxDurationMinutes * 60
-		elapsedSeconds := int(now.Sub(session.CreatedAt).Seconds())
+		elapsedSeconds := int(now.Sub(session.DurationAnchor()).Seconds())
 
 		// Condition 1: createdAt < now - maxDuration - 5 minutes
 		isPastMaxDurationWithMargin := elapsedSeconds > (maxDurationSeconds + 5*60)
@@ -134,7 +160,7 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 		}
 		_ = h.LiveKit.DeleteRoom(ctx, session.RoomName)
 
-		h.EmitToRoom(session.RoomName, "call_finished", CallFinishedEvent{
+		h.FinishRoom(session.RoomName, CallFinishedEvent{
 			Duration: finalDuration,
 			Reason:   reason,
 		})
