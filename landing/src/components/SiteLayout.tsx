@@ -85,6 +85,9 @@ export function SiteLayout({
             id="mobile-nav"
             className="mobile-nav container"
             aria-label="Mobile navigation"
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("a")) setOpen(false);
+            }}
           >
             {links.map(([href, label]) => (
               <a
@@ -129,6 +132,7 @@ export function SiteLayout({
               <a href="/safety">Safety guide</a>
               <a href="/community-guidelines">Community guidelines</a>
               <a href="/privacy">Privacy policy</a>
+              <a href="/privacy#refunds">Refund policy</a>
               <a href="/terms">Terms of service</a>
               <a href={supportUrl}>Contact support ↗</a>
             </div>

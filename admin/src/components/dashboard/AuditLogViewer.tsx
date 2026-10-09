@@ -210,10 +210,11 @@ export function AuditLogViewer() {
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             onClick={() => setActiveTab('audit')}
+            aria-pressed={activeTab === 'audit'}
             style={{
-              background: activeTab === 'audit' ? 'var(--primary-bg)' : 'transparent',
+              background: activeTab === 'audit' ? 'var(--primary)' : 'transparent',
               border: activeTab === 'audit' ? '1px solid var(--primary-border)' : '1px solid transparent',
-              color: activeTab === 'audit' ? '#FFFFFF' : 'var(--text-secondary)',
+              color: activeTab === 'audit' ? 'var(--text-inverse)' : 'var(--text-secondary)',
               borderRadius: '6px',
               padding: '0.45rem 0.85rem',
               fontWeight: activeTab === 'audit' ? 700 : 500,
@@ -233,6 +234,7 @@ export function AuditLogViewer() {
 
           <button
             onClick={() => setActiveTab('errors')}
+            aria-pressed={activeTab === 'errors'}
             style={{
               background: activeTab === 'errors' ? 'var(--danger-bg)' : 'transparent',
               border: activeTab === 'errors' ? '1px solid var(--danger-border)' : '1px solid transparent',
@@ -308,6 +310,7 @@ export function AuditLogViewer() {
                 <button
                   key={pill.id}
                   onClick={() => setCategoryFilter(pill.id as AuditActionCategory)}
+                  aria-pressed={categoryFilter === pill.id}
                   style={{
                     padding: '0.3rem 0.65rem',
                     borderRadius: '6px',
@@ -343,6 +346,7 @@ export function AuditLogViewer() {
                 <button
                   key={t.id}
                   onClick={() => setTimeRange(t.id as 'all' | 'today' | '7d' | '30d')}
+                  aria-pressed={timeRange === t.id}
                   style={{
                     padding: '0.2rem 0.5rem',
                     border: 'none',
@@ -351,7 +355,7 @@ export function AuditLogViewer() {
                     fontWeight: timeRange === t.id ? 700 : 500,
                     cursor: 'pointer',
                     background: timeRange === t.id ? 'var(--primary)' : 'transparent',
-                    color: timeRange === t.id ? '#FFFFFF' : 'var(--text-secondary)',
+                    color: timeRange === t.id ? 'var(--text-inverse)' : 'var(--text-secondary)',
                   }}
                 >
                   {t.label}
@@ -624,6 +628,7 @@ export function AuditLogViewer() {
               </div>
               <button
                 onClick={() => setSelectedLog(null)}
+                aria-label="Close audit details"
                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />

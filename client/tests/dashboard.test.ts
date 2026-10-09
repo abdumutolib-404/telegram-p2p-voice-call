@@ -16,6 +16,7 @@ const button = (text: string) => Array.from(container.querySelectorAll('button')
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   window.history.replaceState(null, '', '/');
   container = document.createElement('div'); document.body.append(container);
@@ -23,7 +24,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   if (mounted) await act(async () => root.unmount());
-  container.remove(); vi.unstubAllGlobals();vi.useRealTimers();
+  container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals();vi.useRealTimers();
 });
 
 it('shows a history error with retry without suggesting no conversations exist',async()=>{
@@ -35,13 +36,15 @@ it('shows a history error with retry without suggesting no conversations exist',
   expect(button('Reload current view')).toBeTruthy();
 });
 
-it('uses a particular private segment when downloading earlier audio',async()=>{
+it('requests Telegram delivery for a particular private segment',async()=>{
   window.history.replaceState(null,'','/?view=history');
-  const fetchMock=vi.fn().mockResolvedValueOnce(json({sessions:[{...conversation,recordings:[{id:'segment-one',createdAt:'2026-10-01',expiresAt:'2026-10-31'}]}],nextCursor:null})).mockResolvedValueOnce(json({url:'javascript:denied'}));
+  const fetchMock=vi.fn().mockResolvedValueOnce(json({sessions:[{...conversation,recordings:[{id:'segment-one',createdAt:'2026-10-01',expiresAt:'2026-10-31'}]}],nextCursor:null})).mockResolvedValueOnce(json({status:'QUEUED'},202));
   vi.stubGlobal('fetch',fetchMock);await render();
-  await act(async()=>button('Audio').click());
-  expect(fetchMock.mock.calls[1][0]).toContain('segment=segment-one');
-  expect(container.querySelector('[role="alert"]')).toBeTruthy();
+  await act(async()=>button('Send audio').click());
+  expect(fetchMock.mock.calls[1][0]).toContain('/recording-delivery');
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({segmentId:'segment-one'});
+  expect(container.textContent).toContain('Queued for Telegram');
+  expect(container.textContent).not.toContain('Sent to Telegram');
 });
 
 it('keeps practice usable without making unrelated dashboard requests', async () => {
@@ -100,18 +103,122 @@ it('aborts history requests when navigating away and ignores a late response', a
   const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>(done => { resolve = done; }));
   vi.stubGlobal('fetch', fetchMock); await render();
   const signal = (fetchMock.mock.calls[0][1] as RequestInit).signal!;
+  await act(async () => button('Menu').click());
   await act(async () => button('Practice').click()); expect(signal.aborted).toBe(true);
+  expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
   await act(async () => resolve(json({ sessions: [conversation], nextCursor: null })));
   expect(container.textContent).toContain('Practice fixture'); expect(container.textContent).not.toContain('P2P-PARTNER');
 });
 
-it('requests recording access with a header and rejects an unsafe download URL', async () => {
+it('requests Telegram audio with signed headers and displays delivery failure beside the conversation', async () => {
   window.history.replaceState(null, '', '/?view=history');
-  const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null })).mockResolvedValueOnce(json({ url: 'javascript:alert(1)' }));
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null })).mockResolvedValueOnce(json({ error: 'Audio could not be sent to Telegram.' },503));
   vi.stubGlobal('fetch', fetchMock); const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-  await render(); await act(async () => button('Download audio').click());
+  await render(); await act(async () => button('Send audio').click());
   const [url, options] = fetchMock.mock.calls[1] as [string, RequestInit];
-  expect(url).toContain(`/api/calls/${conversation.id}/recording?format=json`); expect(url).not.toContain('synthetic-signed-data');
+  expect(url).toContain(`/api/dashboard/sessions/${conversation.id}/recording-delivery`); expect(url).not.toContain('synthetic-signed-data');
   expect(options.headers).toMatchObject({ 'x-telegram-init-data': 'synthetic-signed-data' });
-  expect(click).not.toHaveBeenCalled(); expect(container.querySelector('[role="alert"]')?.textContent).toContain('The recording link is unavailable.');
+  expect(options.method).toBe('POST');
+  expect(click).not.toHaveBeenCalled(); expect(container.querySelector('article [role="alert"]')?.textContent).toContain('Audio could not be sent to Telegram.');
+});
+
+it('confirms saving a partner and keeps failed reports open for correction', async () => {
+  window.history.replaceState(null, '', '/?view=history');
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
+    .mockResolvedValueOnce(json({ success: true }))
+    .mockResolvedValueOnce(json({ sessions: [{ ...conversation, saved: true }], nextCursor: null }))
+    .mockResolvedValueOnce(json({ error: 'Please retry this report.' }, 503));
+  vi.stubGlobal('fetch', fetchMock); await render();
+  await act(async () => button('Save partner').click());
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const saveDialog = container.querySelector('[role="dialog"]')!;
+  await act(async () => (saveDialog.querySelector('.primary-button') as HTMLButtonElement).click());
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+  expect(button('Partner saved').disabled).toBe(true);
+  expect(container.querySelector('article [role="status"]')?.textContent).toContain('Partner saved.');
+  await act(async () => button('Report').click());
+  await act(async () => button('Submit report').click());
+  expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain('Please retry this report.');
+});
+
+it('only shows a sent confirmation after Telegram delivery has succeeded', async () => {
+  window.history.replaceState(null, '', '/?view=history');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null })).mockResolvedValueOnce(json({ status: 'SENT' })));
+  await render(); await act(async () => button('Send audio').click());
+  expect(button('Sent to Telegram').disabled).toBe(true);
+  expect(container.querySelector('article [role="status"]')?.textContent).toContain('Sent to your PairTalk conversation');
+});
+
+it('updates queued audio to sent after delivery completes without another user click', async () => {
+  vi.useFakeTimers();
+  window.history.replaceState(null, '', '/?view=history');
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
+    .mockResolvedValueOnce(json({ status: 'QUEUED' },202)).mockResolvedValueOnce(json({ status: 'SENT' }));
+  vi.stubGlobal('fetch',fetchMock); await render(); await act(async () => button('Send audio').click());
+  expect(button('Queued for Telegram')).toBeTruthy();
+  await act(async () => vi.advanceTimersByTimeAsync(5000));
+  expect(button('Sent to Telegram')).toBeTruthy();
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+
+it('cancels profile edits without changing the displayed or persisted scores', async () => {
+  window.history.replaceState(null, '', '/?view=account');
+  const fetchMock = vi.fn().mockResolvedValue(json({ user: profile }));
+  vi.stubGlobal('fetch', fetchMock); await render(); await act(async () => button('Edit scores').click());
+  const select = container.querySelector('select')!;
+  await act(async () => { select.value = '0'; select.dispatchEvent(new Event('change', { bubbles:true })); });
+  await act(async () => button('Cancel').click());
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+  expect(container.querySelector('.score-summary')?.textContent).not.toContain('0.0');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it('shows rating progress at the stars, rejects duplicate presses and waits for acknowledgement', async () => {
+  window.history.replaceState(null, '', '/?view=history');
+  let finish!: (response: Response) => void;
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
+    .mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }))
+    .mockResolvedValueOnce(json({ sessions: [{ ...conversation, rating: 4 }], nextCursor: null }));
+  vi.stubGlobal('fetch', fetchMock); await render();
+  const stars = container.querySelector<HTMLButtonElement>('[aria-label="4 stars"]')!;
+  await act(async () => { stars.click(); stars.click(); });
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('.dashboard-rating')?.getAttribute('aria-busy')).toBe('true');
+  expect(container.querySelectorAll('.rated')).toHaveLength(0);
+  await act(async () => finish(json({ success: true })));
+  expect(container.querySelectorAll('.rated')).toHaveLength(4);
+  expect(container.querySelector('.dashboard-rating')?.getAttribute('aria-busy')).toBe('false');
+  expect(container.querySelector('article [role="status"]')?.className).toBe('sr-only');
+  expect(container.querySelector('.action-feedback')).toBeNull();
+});
+
+it('keeps a failed rating unfilled and retryable, with its error beside the call', async () => {
+  window.history.replaceState(null, '', '/?view=history');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
+    .mockResolvedValueOnce(json({ error: 'Rating could not be saved.' }, 503)));
+  await render(); await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="5 stars"]')!.click());
+  expect(container.querySelectorAll('.rated')).toHaveLength(0);
+  expect(container.querySelector<HTMLButtonElement>('[aria-label="5 stars"]')!.disabled).toBe(false);
+  expect(container.querySelector('article [role="alert"]')?.textContent).toContain('Rating could not be saved.');
+});
+
+it('preserves an acknowledged rating if refreshing history fails', async () => {
+  window.history.replaceState(null, '', '/?view=history');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
+    .mockResolvedValueOnce(json({ success: true })).mockRejectedValueOnce(new Error('Refresh unavailable')));
+  await render(); await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="3 stars"]')!.click());
+  expect(container.querySelectorAll('.rated')).toHaveLength(3);
+  expect(container.querySelector<HTMLButtonElement>('[aria-label="3 stars"]')!.disabled).toBe(true);
+});
+
+it('lets the user check an unconfirmed delivery again after bounded polling', async () => {
+  vi.useFakeTimers(); window.history.replaceState(null, '', '/?view=history');
+  const fetchMock = vi.fn().mockResolvedValue(json({ status: 'QUEUED' }, 202))
+    .mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }));
+  vi.stubGlobal('fetch', fetchMock); await render(); await act(async () => button('Send audio').click());
+  await act(async () => vi.advanceTimersByTimeAsync(60000));
+  expect(button('Send audio').disabled).toBe(false);
+  expect(container.querySelector('article [role="alert"]')?.textContent).toContain('Still awaiting Telegram confirmation');
+  expect(container.textContent).not.toContain('Sent to Telegram');
+  expect(fetchMock).toHaveBeenCalledTimes(14);
 });

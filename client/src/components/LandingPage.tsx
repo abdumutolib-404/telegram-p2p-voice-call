@@ -1,4 +1,5 @@
 import { Brand } from './Brand';
+import { CopyButton, LinkWithCopy } from './CopyLink';
 import React from 'react';
 import { ArrowUpRight, Check, MessageCircle, Shield } from 'lucide-react';
 
@@ -27,11 +28,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenPrivacy, onOpenG
             {['Practice with an alias', 'Explore Parts 1, 2, and 3 prompts', 'Take turns speaking and listening'].map(item => <li key={item} className="flex gap-3 items-center"><Check size={16} className="shrink-0 text-mint-300" aria-hidden="true" />{item}</li>)}
           </ul>
           <a href={launchUrl} className="min-h-12 flex items-center justify-center gap-2 px-5 py-3 bg-mint-300 text-slate-950 font-semibold rounded-xl hover:bg-mint-200 transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-mint-300">Open PairTalk in Telegram <ArrowUpRight size={18} aria-hidden="true" /></a>
+          <div className="launch-copy"><CopyButton value={launchUrl} label="Telegram launch link" /></div>
           <p className="text-xs text-slate-400 mt-4 text-center">A Telegram account and microphone access are needed to join a call.</p>
         </div>
         <footer className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-between text-sm text-slate-400 mt-6">
-          {onOpenGuidelines ? <button type="button" onClick={onOpenGuidelines} className="min-h-11 hover:text-mint-300">Community guidelines</button> : <a href="https://pairtalk.online/community-guidelines" className="min-h-11 inline-flex items-center hover:text-mint-300">Community guidelines</a>}
-          {onOpenPrivacy ? <button type="button" onClick={onOpenPrivacy} className="min-h-11 flex items-center gap-2 hover:text-mint-300"><Shield size={14} aria-hidden="true" /> Privacy</button> : <a href="https://pairtalk.online/privacy" className="min-h-11 inline-flex items-center gap-2 hover:text-mint-300"><Shield size={14} aria-hidden="true" /> Privacy</a>}
+          {onOpenGuidelines ? <button type="button" onClick={onOpenGuidelines} className="min-h-11 hover:text-mint-300">Community guidelines</button> : <LinkWithCopy url="https://pairtalk.online/community-guidelines" label="Community guidelines" />}
+          {onOpenPrivacy ? <button type="button" onClick={onOpenPrivacy} className="min-h-11 flex items-center gap-2 hover:text-mint-300"><Shield size={14} aria-hidden="true" /> Privacy</button> : <LinkWithCopy url="https://pairtalk.online/privacy" label="Privacy" />}
         </footer>
       </div>
     </main>

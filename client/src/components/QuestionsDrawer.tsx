@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { PendingIcon } from './CopyLink';
 import { X, ChevronLeft, ChevronRight, Play, RotateCcw, Sparkles, Clock, BookOpen } from 'lucide-react';
 
 export interface IeltsTopicItem {
@@ -503,7 +504,8 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
       </div>
 
       {/* Main Content Area */}
-      <div className="question-content p-4 flex-1 overflow-y-auto min-h-0 flex flex-col justify-between">
+      <div className="question-content p-4 flex-1 overflow-y-auto min-h-0 flex flex-col justify-between" aria-busy={isLoading}>
+        {isLoading && questions.length > 0 && <p role="status" className="loading-state"><PendingIcon />Updating questions…</p>}
         {questionNotice && <p role="status" className="text-xs text-slate-400 mb-3">{questionNotice}</p>}
         {isLoading && questions.length === 0 ? (
           <div className="flex items-center justify-center my-auto py-8 text-xs text-slate-400 gap-2">
@@ -515,7 +517,7 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
             No questions available for this filter.
           </div>
         ) : (
-          <div className="space-y-3 my-auto">
+          <div key={`${activePart}:${selectedTopicId}:${currentQuestion.id}:${currentIndex}`} className="space-y-3 my-auto">
             {/* Question Counter & Topic Badge */}
             <div className="flex items-center justify-between text-[11px] text-slate-400">
               <span className="font-bold text-mint-400">

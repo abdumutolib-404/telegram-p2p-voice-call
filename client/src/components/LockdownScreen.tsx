@@ -1,6 +1,7 @@
+import { CopyButton } from './CopyLink';
 import { Brand } from './Brand';
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Lock, AlertOctagon, Send, WifiOff, RefreshCw, Clock, Flame, CreditCard, KeyRound } from 'lucide-react';
+import { ShieldAlert, Lock, AlertOctagon, Send, WifiOff, RefreshCw, Clock, CreditCard, KeyRound } from 'lucide-react';
 import type { LockdownReason } from '../types';
 
 export interface LockdownScreenProps {
@@ -71,35 +72,35 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
   // Each access state provides a specific explanation and recovery action.
   const config = {
     registration_required: {
-      badge: 'REGISTRATION', badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40', title: 'FINISH REGISTRATION',
+      badge: 'Registration', badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40', title: 'Finish registration',
       description: 'Use /start in the Telegram bot to read the terms and set up your speaking profile.', icon: Send, iconColor: 'text-mint-400',
     },
     terms_required: {
-      badge: 'TERMS OF USE', badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40', title: 'READ THE CURRENT TERMS',
+      badge: 'Terms of Use', badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40', title: 'Read the current terms',
       description: 'Use /start in the Telegram bot to read the PDF and decide whether to accept it.', icon: Send, iconColor: 'text-mint-400',
     },
     browser_direct: {
-      badge: 'SECURITY LOCKDOWN',
+      badge: 'Telegram sign-in',
       badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40',
-      title: 'EXTERNAL ACCESS RESTRICTED',
+      title: 'Open PairTalk in Telegram',
       description:
         'Open PairTalk from the Telegram bot to sign in and find a speaking practice partner.',
       icon: ShieldAlert,
       iconColor: 'text-mint-400',
     },
     banned: {
-      badge: 'ACCOUNT RESTRICTED',
+      badge: 'Account restricted',
       badgeColor: 'border-rose-500/40 text-rose-400 bg-rose-950/40',
-      title: 'PERMANENT MODERATION LOCK',
+      title: 'Your account is restricted',
       description:
         'Your account is restricted. You can request a moderation review through the Telegram bot.',
       icon: AlertOctagon,
       iconColor: 'text-rose-400',
     },
     suspended: {
-      badge: 'ACCOUNT SUSPENDED',
+      badge: 'Account suspended',
       badgeColor: 'border-amber-500/40 text-amber-400 bg-amber-950/40',
-      title: hasSuspensionDeadline ? 'TEMPORARY ACCOUNT SUSPENSION' : 'ACCOUNT SUSPENDED',
+      title: hasSuspensionDeadline ? 'Temporarily suspended' : 'Account suspended',
       description: hasSuspensionDeadline
         ? 'Your account is suspended. Try again when the suspension ends.'
         : 'Your account is suspended pending review. No end date has been set.',
@@ -107,18 +108,18 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       iconColor: 'text-amber-400',
     },
     rate_limited: {
-      badge: 'TRAFFIC THROTTLE',
+      badge: 'Please wait',
       badgeColor: 'border-amber-500/40 text-amber-400 bg-amber-950/40',
-      title: 'RATE LIMIT REACHED',
+      title: 'Too many requests',
       description:
         'You have made several requests in a short time. Wait for the timer, then try again.',
-      icon: Flame,
+      icon: Clock,
       iconColor: 'text-amber-400',
     },
     exhausted_quota: {
-      badge: 'LIMIT REACHED',
+      badge: 'Practice allowance',
       badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40',
-      title: 'PLAN LIMIT REACHED',
+      title: 'Call allowance reached',
       description:
         message ||
         'You have reached your practice call allowance. Open plans in the Telegram bot or return when your allowance renews.',
@@ -126,36 +127,36 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       iconColor: 'text-mint-400',
     },
     telegram_no_initdata: {
-      badge: 'AUTHENTICATION GATE',
+      badge: 'Telegram sign-in',
       badgeColor: 'border-mint-500/40 text-mint-400 bg-mint-950/40',
-      title: 'LAUNCH VIA BOT MENU',
+      title: 'Open PairTalk in Telegram',
       description:
         'Open PairTalk using the menu button in the Telegram bot to sign in.',
       icon: Lock,
       iconColor: 'text-mint-400',
     },
     auth_rejected: {
-      badge: 'SESSION EXPIRED',
+      badge: 'Session expired',
       badgeColor: 'border-rose-500/40 text-rose-400 bg-rose-950/40',
-      title: 'AUTHENTICATION SIGNATURE EXPIRED',
+      title: 'Please sign in again',
       description:
         'Your session could not be verified. Close and reopen PairTalk from the Telegram bot.',
       icon: KeyRound,
       iconColor: 'text-rose-400',
     },
     server_unavailable: {
-      badge: 'SYSTEM OFFLINE',
+      badge: 'Connection issue',
       badgeColor: 'border-rose-500/40 text-rose-400 bg-rose-950/40',
-      title: 'SIGNALING SERVER OFFLINE',
+      title: 'PairTalk is unavailable',
       description:
         'We could not connect to PairTalk. Check your internet connection and try again.',
       icon: WifiOff,
       iconColor: 'text-rose-400',
     },
   }[reason] || {
-    badge: 'GATEWAY ALERT',
+    badge: 'Access unavailable',
     badgeColor: 'border-slate-500/40 text-slate-400 bg-slate-950/40',
-    title: 'ACCESS RESTRICTED',
+    title: 'Unable to open PairTalk',
     description: 'Access to the voice matchmaking network is temporarily unavailable.',
     icon: ShieldAlert,
     iconColor: 'text-slate-400',
@@ -194,10 +195,10 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
         {reason === 'suspended' && hasSuspensionDeadline && (
           <div className="w-full p-4 mb-5 rounded-2xl bg-[#141b23] border border-amber-500/30 font-sans text-center">
             <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold mb-1">
-              Active Cooldown Timer
+              Suspension ends in
             </div>
             <div className="text-lg font-bold text-white tracking-wider">
-              {suspensionRemaining || 'Calculating cooldown...'}
+              {suspensionRemaining || 'Checking the remaining time…'}
             </div>
             <p className="text-[10px] text-slate-500 mt-2">
               You can try again when the suspension ends.
@@ -212,7 +213,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
               Retry Available In
             </div>
             <div className="text-2xl font-semibold text-white tracking-wide">{countdown}s</div>
-            <p className="text-[10px] text-slate-500 mt-1">Automated burst protection active</p>
+            <p className="text-[10px] text-slate-500 mt-1">You can try again when the timer reaches zero.</p>
           </div>
         )}
 
@@ -280,6 +281,8 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
           </a>
         )}
 
+        {(reason === 'browser_direct' || reason === 'telegram_no_initdata' || reason === 'registration_required' || reason === 'terms_required') && <div className="launch-copy"><CopyButton value={reason === 'registration_required' || reason === 'terms_required' ? `https://t.me/${botUsername}?start=register` : botAppUrl} label="Telegram access link" /></div>}
+
         {/* How to Access Guide Card */}
         <div className="w-full p-4 rounded-2xl bg-[#141b23] border border-slate-800 text-left flex items-start gap-3">
           <AlertOctagon className="w-4 h-4 text-mint-400 shrink-0 mt-0.5" />
@@ -289,7 +292,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
             </p>
             <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[10.5px]">
               <li>Open <strong>@{botUsername}</strong> in Telegram.</li>
-              <li>Tap the <strong>📞 Find Partner</strong> menu button.</li>
+              <li>Tap <strong>Open dashboard</strong> in the bot.</li>
             </ol>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { useModalDialog } from '../hooks/useModalDialog';
 import { Brand } from './Brand';
+import { PendingIcon } from './CopyLink';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Mic, MicOff, PhoneOff, Circle, AlertTriangle, Volume2, Wifi, BookOpen } from 'lucide-react';
 import { socketService } from '../services/socket';
@@ -52,6 +53,12 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const recordingStateUpdatedAt = useRef(0);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
   const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
+  const recordingPending = useRef(false);
+  const recordingDeadline = useRef<number | undefined>(undefined);
+  const [micRetrying, setMicRetrying] = useState(false);
+  const [micRetryError, setMicRetryError] = useState('');
+  const micRetryInFlight = useRef(false), mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [showQuestionsDrawer, setShowQuestionsDrawer] = useState(false);
   const [reconnectingGraceSec, setReconnectingGraceSec] = useState<number | null>(null);
 
@@ -160,6 +167,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     const handleRecordStatus = (data: RecordStatusPayload) => {
       if (data.roomName && data.roomName !== roomName) return;
       setIsRecording(data.record);
+      recordingPending.current = false;
+      window.clearTimeout(recordingDeadline.current);
+      setRecordingWarning(null);
       setIsTogglingRecord(false);
     };
 
@@ -175,10 +185,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     const reconnected = () => { disconnected(); requestSnapshot(); socketService.peerReady(roomName); };
 
     const handleRecordingError = (data: { code?: string; message?: string }) => {
+      recordingPending.current = false;
+      window.clearTimeout(recordingDeadline.current);
       setIsTogglingRecord(false);
-      setIsRecording(false);
       setRecordingWarning(data?.message || 'Recording is currently unavailable.');
-      setTimeout(() => setRecordingWarning(null), 4000);
     };
 
     const handlePartnerConnectionLost = (data: { gracePeriodSec?: number }) => {
@@ -201,6 +211,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     const refresh = window.setInterval(() => { requestSnapshot(); socketService.peerReady(roomName); }, 15000);
 
     return () => {
+      window.clearTimeout(recordingDeadline.current);
+      recordingPending.current = false;
       socket.off('record_status', handleRecordStatus);
       socket.off('room_recording_status', handleRoomRecordingStatus);
       socket.off('disconnect', disconnected);
@@ -214,6 +226,14 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   const microphoneDialogOpen = Boolean(micError && micDeniedCount > 0 && micDeniedCount < 3 && onRetryMic);
   const microphoneDialogRef = useModalDialog(microphoneDialogOpen, () => handleFinishCall('microphone_permission_denied'));
+  const retryMicrophone = async () => {
+    if (micRetryInFlight.current || !onRetryMic) return;
+    micRetryInFlight.current = true;
+    setMicRetrying(true); setMicRetryError('');
+    try { await onRetryMic(); }
+    catch { if (mounted.current) setMicRetryError('Microphone access could not be enabled. Please retry.'); }
+    finally { micRetryInFlight.current = false; if (mounted.current) setMicRetrying(false); }
+  };
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -225,10 +245,18 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const isNearEnd = remainingSeconds <= 60;
 
   const handleToggleRecord = () => {
+    if (recordingPending.current) return;
+    recordingPending.current = true;
+    setRecordingWarning(null);
     setIsTogglingRecord(true);
     const nextState = !isRecording;
+    recordingDeadline.current = window.setTimeout(() => {
+      recordingPending.current = false;
+      setIsTogglingRecord(false);
+      setRecordingWarning('The recording change is unconfirmed. Check your connection and retry.');
+      socketService.getRecordingStatus(roomName);
+    }, 6000);
     socketService.toggleRecord(roomName, nextState);
-    setTimeout(() => setIsTogglingRecord(false), 3000);
   };
 
   return (
@@ -297,11 +325,14 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
             <button
               type="button"
               className="primary-button"
-              onClick={() => onRetryMic()}
+              disabled={micRetrying}
+              aria-busy={micRetrying}
+              onClick={() => void retryMicrophone()}
             >
-              <Mic size={18} aria-hidden="true" />
-              Allow Microphone Access
+              {micRetrying ? <PendingIcon size={18} /> : <Mic size={18} aria-hidden="true" />}
+              {micRetrying ? 'Checking microphone…' : 'Allow Microphone Access'}
             </button>
+            {micRetryError && <p role="alert" className="action-error">{micRetryError}</p>}
             <button
               type="button"
               className="text-button"
@@ -355,14 +386,6 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 ? 'You can request your own recording using the control below.'
                 : 'We’re checking the room’s recording status.'}
           </p>
-          {recordingWarning && (
-            <p
-              role="alert"
-              className="text-amber-300 text-xs mt-3 break-anywhere"
-            >
-              {recordingWarning}
-            </p>
-          )}
         </section>
       </div>
       <QuestionsDrawer
@@ -370,6 +393,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         onClose={() => setShowQuestionsDrawer(false)}
       />
       <div className="call-controls-panel">
+        {recordingWarning && <p role="alert" className="action-error recording-error">{recordingWarning}</p>}
         <div
           className={`recording-disclosure ${roomRecordingState === 'on' ? 'is-recording' : ''}`}
         >
@@ -405,14 +429,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
             type="button"
             onClick={handleToggleRecord}
             disabled={isTogglingRecord}
+            aria-busy={isTogglingRecord}
             aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+            aria-pressed={isRecording}
             className={isRecording ? 'is-recording' : ''}
           >
-            <Circle
+            {isTogglingRecord ? <PendingIcon size={18} /> : <Circle
               size={18}
               className={isRecording ? 'fill-current' : ''}
               aria-hidden="true"
-            />
+            />}
             <span>
               {isTogglingRecord ? 'Updating…' : isRecording ? 'Stop' : 'Record'}
             </span>

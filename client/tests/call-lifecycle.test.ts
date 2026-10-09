@@ -25,6 +25,7 @@ let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks(); fixture.events.clear(); fixture.voice.error = null;
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   fixture.voice.connect.mockResolvedValue();
   // No audio device/canvas is needed to verify app transitions; jsdom cannot render canvas.
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
@@ -77,7 +78,7 @@ it('returns to dashboard history after a completed call without starting another
   const history = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('History & audio'))!;
   const searches = fixture.join.mock.calls.length;
   await act(async () => history.click());
-  expect(container.textContent).toContain('Every conversation counts.');
+  expect(container.querySelector('h1')?.textContent).toBe('Call history');
   expect(new URLSearchParams(window.location.search).get('view')).toBe('history');
   expect(fixture.join).toHaveBeenCalledTimes(searches);
 });

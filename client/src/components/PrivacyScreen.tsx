@@ -1,4 +1,5 @@
 import { publicSiteUrl } from '../services/dashboard';
+import { LinkWithCopy } from './CopyLink';
 import { Brand } from './Brand';
 import React, { useEffect, useCallback } from 'react';
 import {
@@ -51,7 +52,7 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
         <div className="p-5 rounded-2xl bg-gradient-to-r from-mint-950/30 via-slate-900/40 to-slate-900/20 border border-mint-500/20 space-y-2 font-sans text-xs sm:text-sm text-slate-300 leading-relaxed">
           <p className="font-bold text-white uppercase tracking-wide flex items-center gap-2">
             <KeyRound className="w-4 h-4 text-mint-400" />
-            <span>Data Protection, Security &amp; Transparency Commitment</span>
+            <span>Your data and privacy</span>
           </p>
           <p>
             PairTalk uses aliases to help you practice without sharing your Telegram profile with your partner. The service still processes account identifiers, call metadata, payments, and any recordings you request. Share only information you are comfortable disclosing during a call.
@@ -60,10 +61,10 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
 
         {/* Section 1: Anonymity & PII Protection */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-slate-800 space-y-4">
-          <div className="flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
             <EyeOff className="w-4 h-4" />
-            <span>1. PRACTICE ALIASES &amp; ENCRYPTED TRANSPORT</span>
-          </div>
+            <span>1. Practice aliases &amp; encrypted transport</span>
+          </h2>
           <div className="space-y-3 text-xs sm:text-sm text-slate-300 font-sans leading-relaxed">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="w-4 h-4 text-mint-400 shrink-0 mt-0.5" />
@@ -88,16 +89,16 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
 
         {/* Section 2: Optional Audio Recordings & Retention */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-slate-800 space-y-4">
-          <div className="flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
             <FileText className="w-4 h-4" />
-            <span>2. OPTIONAL AUDIO RECORDINGS &amp; AUTHORITATIVE RETENTION WINDOWS</span>
-          </div>
+            <span>2. Audio recordings &amp; retention</span>
+          </h2>
           <p className="text-xs sm:text-sm text-slate-300 font-sans leading-relaxed">
             A participant with recording allowance can request a recording of the room, including both voices. The call screen shows room recording status separately from your own saved-copy choice. Saved recordings require authorized access; the media and storage services process them. Your partner may also record outside PairTalk, which the app cannot detect.
           </p>
 
           <p className="text-xs sm:text-sm text-slate-300 font-sans leading-relaxed">
-            Recording allowances and storage periods follow your current plan and any account-specific overrides. Check the Account tab and each recording's expiry in History &amp; audio. <a className="text-mint-400" href={new URL('pricing', publicSiteUrl).toString()} target="_blank" rel="noreferrer">Compare the current recording and retention allowances ↗</a>.
+            Recording allowances and storage periods follow your current plan and any account-specific overrides. Check the Account tab and each recording's expiry in History &amp; audio. <LinkWithCopy url={new URL('pricing', publicSiteUrl).toString()} label="Compare recording and retention allowances" />.
           </p>
 
           <div className="p-3.5 rounded-xl bg-mint-950/20 border border-mint-500/20 text-xs font-sans text-mint-300 flex items-start gap-2.5">
@@ -110,10 +111,10 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
 
         {/* Section 3: 100% Refund & Cancellation Policy */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-emerald-500/30 space-y-4">
-          <div className="flex items-center gap-2.5 text-emerald-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-emerald-400 font-sans text-xs font-bold uppercase tracking-wider">
             <RefreshCw className="w-4 h-4" />
-            <span>3. OFFICIAL SERVER-ENFORCED 100% REFUND POLICY</span>
-          </div>
+            <span>3. Refund policy</span>
+          </h2>
 
           <div className="space-y-3 text-xs sm:text-sm text-slate-300 font-sans leading-relaxed">
             <div className="p-4 rounded-xl bg-emerald-950/25 border border-emerald-500/30 space-y-2">
@@ -169,10 +170,10 @@ export const PrivacyScreen: React.FC<PrivacyScreenProps> = ({ onBack }) => {
 
         {/* Section 4: Data Rights & Account Deletion */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-slate-800 space-y-4">
-          <div className="flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
             <Lock className="w-4 h-4" />
-            <span>4. USER RIGHTS &amp; ACCOUNT ERASURE (&ldquo;RIGHT TO BE FORGOTTEN&rdquo;)</span>
-          </div>
+            <span>4. Your rights &amp; account deletion</span>
+          </h2>
           <div className="space-y-2 text-xs sm:text-sm font-sans text-slate-300 leading-relaxed">
             <p>
               In compliance with international data protection principles (including GDPR Article 17), you maintain full sovereignty over your information:

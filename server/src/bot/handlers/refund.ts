@@ -12,10 +12,12 @@ import {
   rejectManualPaymentRefund,
 } from '../../services/plan';
 import { logger } from '../../utils/logger';
+import { currentTerms } from '../../services/terms';
 
 const getPolicyUrl = () => {
-  const baseUrl = env.MINI_APP_URL || 'https://pairtalk.online';
-  return `${baseUrl}/privacy`;
+  const url = new URL(env.PRIVACY_POLICY_URL || currentTerms.privacyUrl);
+  url.hash = 'refunds';
+  return url.toString();
 };
 
 export const handleRefundRequest = async (ctx: MyContext) => {

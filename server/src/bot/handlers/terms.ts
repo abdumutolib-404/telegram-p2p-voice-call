@@ -1,13 +1,21 @@
 import crypto from 'node:crypto';
 import { Bot, InlineKeyboard, InputFile, Keyboard } from 'grammy';
 import { prisma } from '../../config/database';
-import { currentTerms, termsPdfPath } from '../../services/terms';
+import { currentTerms, hasAcceptedCurrentTerms, termsPdfPath } from '../../services/terms';
 import { MyContext } from '../types';
 import { beginScoreRegistration, bindPendingReferral, getMainMenuKeyboard } from '../commands/start';
 
 export async function offerTerms(ctx: MyContext): Promise<void> {
   if (ctx.chat?.type !== 'private') {
     await ctx.reply('Please open a private conversation with the bot to register.');
+    return;
+  }
+  const existing = ctx.from?.id ? await prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from.id) }, select: { termsAcceptedVersion: true, termsAcceptedAt: true, termsDocumentSha256: true } }) : null;
+  if (hasAcceptedCurrentTerms(existing)) {
+    await ctx.replyWithDocument(new InputFile(termsPdfPath, currentTerms.filename), {
+      caption: `PairTalk Terms of Use\nVersion ${currentTerms.version}\n\nYou accepted this version during registration. This command only sends you another copy for reference.`,
+      reply_markup: new InlineKeyboard().url('Privacy policy', currentTerms.privacyUrl),
+    });
     return;
   }
   // A failed upload must never open the consent gate.
@@ -37,7 +45,7 @@ export function setupTermsHandlers(bot: Bot<MyContext>): void {
       ctx.session.termsOffer = undefined;
       ctx.session.pendingReferralPayload = undefined;
       await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() });
-      await ctx.reply('You declined the terms. Registration has stopped and no agreement was saved. You can read them again with /start. For an existing account or billing question, use /paysupport.', { reply_markup: new Keyboard().text('💬 Support').resized() });
+      await ctx.reply('You declined the terms. No agreement was saved. You can read them again with /start. For an existing account or billing question, use /paysupport.', { reply_markup: new Keyboard().text('💬 Support').resized() });
       return;
     }
     const telegramId = BigInt(ctx.from.id);

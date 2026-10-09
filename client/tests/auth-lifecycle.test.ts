@@ -28,21 +28,25 @@ const json = (value: unknown) => new Response(JSON.stringify(value), { status: 2
 it('preserves authenticated scores below five, including zero, in account controls',async()=>{
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>json(url.includes('/auth')?{...profile,user:{...profile.user,band:4.5,subFC:0,subLR:3.5,subGRA:4,subP:4.5}}:{hasActiveCall:false})));
   await act(async()=>root.render(createElement(App)));
+  const menu = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Menu')!;
+  await act(async () => menu.click());
   const account=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Account'))!;
   await act(async()=>account.click());
+  const edit = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Edit scores'))!;
+  await act(async () => edit.click());
   expect(Array.from(container.querySelectorAll('select')).slice(0,4).map(select=>select.value)).toEqual(['0','3.5','4','4.5']);
 });
 
 it.each([
-  ['banned', 'PERMANENT MODERATION LOCK', 'Account is permanently banned.'],
-  ['suspended', 'ACCOUNT SUSPENDED', 'Account is suspended pending review.'],
+  ['banned', 'Your account is restricted', 'Account is permanently banned.'],
+  ['suspended', 'Account suspended', 'Account is suspended pending review.'],
 ])('shows the backend %s reason without misclassifying it as an expired signature', async (code, heading, error) => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code, status: code, error, bannedUntil: null }), { status: 403, headers: { 'Content-Type': 'application/json' } })));
   await act(async () => root.render(createElement(App)));
   expect(container.querySelector('h1')?.textContent).toContain(heading);
   expect(container.textContent).toContain(error);
   expect(container.textContent).not.toContain('Calculating cooldown');
-  expect(container.textContent).not.toContain('AUTHENTICATION SIGNATURE EXPIRED');
+  expect(container.textContent).not.toContain('Please sign in again');
   expect(transport.connect).not.toHaveBeenCalled();
 });
 
@@ -64,6 +68,7 @@ it('provides reauthentication when a dated suspension expires', async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   Object.defineProperty(window, 'Telegram', { configurable: true, value: { WebApp: {
     initData: 'synthetic-telegram-credential', ready: vi.fn(), expand: vi.fn(),
@@ -190,5 +195,7 @@ it('keeps history and account controls accessible with no call allowance', async
   await act(async () => root.render(createElement(App)));
   expect(container.textContent).toContain('Practice fixture alias');
   expect(container.querySelector<HTMLButtonElement>('button[aria-label="Start speaking practice"]')?.disabled).toBe(true);
+  const menu = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Menu')!;
+  await act(async () => menu.click());
   expect(container.querySelector('nav[aria-label="Your dashboard"]')).toBeTruthy();
 });

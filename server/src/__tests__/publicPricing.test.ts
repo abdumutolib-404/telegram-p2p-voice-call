@@ -37,7 +37,9 @@ it('publishes an authenticated admin edit to public prices and the bot without a
   const reply = vi.fn().mockResolvedValue(true);
   await renderPlansOverview({ from: { id: 0 }, session: { step: 'idle' }, reply } as unknown as MyContext);
   const text = reply.mock.calls[0][0];
-  expect(text).toContain('123 Stars'); expect(text).toContain('24,000 UZS'); expect(text).toContain('45-day period'); expect(text).toContain('Minutes per call: 35'); expect(text).not.toContain('<b>Pro</b>');
+  expect(text).toContain('PairTalk checkout');
+  const keyboard = JSON.stringify(reply.mock.calls[0][1].reply_markup);
+  expect(keyboard).toContain('123 Stars'); expect(keyboard).toContain('24,000 UZS'); expect(keyboard).toContain('/pricing'); expect(keyboard).not.toContain('select_plan:PRO');
   expect((await prisma.auditLog.findFirst({ where: { action: 'GLOBAL_PLANS_UPDATE' } }))?.adminId).toBe(adminId);
 });
 it('keeps publishing private and rejects a public mutation attempt', async () => {

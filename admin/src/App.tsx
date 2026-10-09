@@ -64,11 +64,12 @@ function MainDashboard() {
       {(() => { const Icon = icons[item.id]; return <Icon size={17} aria-hidden="true"/>; })()}<span className="nav-label">{item.label}</span>{(item.id === 'payments' || item.id === 'appeals') && <span className="nav-badge-pill warning">{counts[item.id] ?? '—'}</span>}
     </button></div>)}</nav>;
   return <div className="admin-shell">
+    <a className="admin-skip-link" href="#main">Skip to workspace</a>
     <aside aria-label="Administration sidebar" className="admin-sidebar"><a className="admin-brand" href="#main">pairtalk<span>.</span> <small>Operations console</small></a>{navigation}
       <div className="sidebar-footer"><ShieldCheck size={16} aria-hidden="true"/><span>Administrator workspace</span></div>
     </aside>
     <div className="admin-workspace"><header className="admin-topbar"><div className="workspace-breadcrumb"><span>{items.find(i => i.id === activeTab)?.group}</span><span aria-hidden="true">/</span><strong>{items.find(i => i.id === activeTab)?.label}</strong></div><button className="btn-secondary" onClick={() => { if (window.dispatchEvent(new Event('admin:before-navigate', { cancelable: true }))) logout(); }}><LogOut size={16}/> Sign out</button>
-    </header><main id="main" className="admin-main"><ErrorBoundary key={activeTab}><Suspense fallback={<p role="status">Loading screen…</p>}>
+    </header><main id="main" className="admin-main" tabIndex={-1}><ErrorBoundary key={activeTab}><Suspense fallback={<p role="status">Loading screen…</p>}>
       {activeTab === 'overview' && <Overview onNavigateTab={navigate}/>}{activeTab === 'users' && <Users/>}{activeTab === 'questions' && <Questions/>}{activeTab === 'plans' && <Plans/>}{activeTab === 'payments' && <Payments/>}{activeTab === 'appeals' && <Appeals/>}{activeTab === 'analytics' && <Analytics/>}{activeTab === 'contest' && <Contest/>}{activeTab === 'audit' && <Audit/>}
     </Suspense></ErrorBoundary></main></div>
   </div>;

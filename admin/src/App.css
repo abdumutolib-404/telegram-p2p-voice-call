@@ -435,3 +435,5 @@ button:disabled {
   border-left: 2px solid var(--primary-border);
   padding-left: 12px;
 }
+.admin-skip-link { position: fixed; top: 12px; left: 12px; transform: translateY(-180%); z-index: 1000; padding: 12px 16px; background: var(--primary); color: var(--text-inverse); border-radius: 8px; }
+.admin-skip-link:focus { transform: translateY(0); }

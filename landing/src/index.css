@@ -3272,3 +3272,25 @@ html[data-effects="quiet"] [data-reveal="pending"] {
 .pricing-error p { width:100%; }
 @media(max-width:900px) { .pricing-selector-heading { flex-direction:column; } .pricing-needs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:600px) { .pricing-selector { padding:22px; } .pricing-needs { gap:16px; } .pricing-recommendation { padding:16px; font-size:14px; } .pricing-currencies { width:100%; } .pricing-currencies button { flex:1; padding-inline:8px; } }
+
+/* Public page polish keeps the existing palette and section structure. */
+.page-intro > p:not(.eyebrow) { max-width:700px; margin-top:24px; color:var(--muted); font-size:16px; line-height:1.75; }
+.page-intro > .text-link { margin-top:18px; }
+.article-body p, .article-body ul { font-size:15px; line-height:1.85; }
+.article-body > section:target h2 { color:var(--green); }
+.article-index nav a { min-height:44px; display:flex; align-items:center; }
+.pass-stamp { color:var(--green); opacity:1; }
+.footer-top > div > a:not(.brand) { font-size:12px; line-height:1.6; }
+.footer-bottom p { font-size:11px; line-height:1.7; }
+.mobile-nav a { min-height:48px; display:flex; align-items:center; }
+.pricing-card { display:flex; flex-direction:column; }
+.pricing-card > .button { margin-top:auto; }
+.pricing-card .check-list { flex-grow:1; }
+.page-intro > * { animation-duration:.35s; }
+[data-reveal] { transition-duration:.4s; }
+@media (max-width:600px) {
+  .page-intro > p:not(.eyebrow) { font-size:15px; margin-top:20px; }
+  .article-body p, .article-body ul { font-size:14px; }
+  .pricing-needs { gap:18px 12px; }
+  .pricing-needs label { line-height:1.5; }
+}

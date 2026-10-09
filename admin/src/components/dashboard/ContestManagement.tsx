@@ -750,15 +750,6 @@ export function ContestManagement() {
             {/* STEP 3: PRIZE POOL FOR 1ST, 2ND, 3RD PLACE */}
             {wizardStep === 3 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Quick Prize Packages:</span>
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-
-
-
-                  </div>
-                </div>
-
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gold-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     1st Place Award

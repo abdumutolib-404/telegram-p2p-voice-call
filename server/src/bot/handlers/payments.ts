@@ -1,5 +1,5 @@
 import { loadPlanConfiguration } from '../../services/planConfiguration';
-import { planIds, publicPlan, planPeriod, formatPlanPrice } from '../../contracts/pricing';
+import { planIds, publicPlan, formatPlanPrice } from '../../contracts/pricing';
 import { Bot, InlineKeyboard } from 'grammy';
 import { MyContext } from '../types';
 import { prisma } from '../../config/database';
@@ -168,6 +168,7 @@ export async function renderPlansOverview(ctx: MyContext) {
     : null;
 
   const inlineKb = new InlineKeyboard();
+  inlineKb.url('Compare prices and allowances', new URL('/pricing', env.PRIVACY_POLICY_URL).toString()).row();
 
   if (pendingRequest) {
     inlineKb
@@ -196,17 +197,12 @@ export async function renderPlansOverview(ctx: MyContext) {
 
   await editMessageOrCaption(
     ctx,
-    `⭐ <b>Subscription Plans & Pricing</b>\n\n` +
+    `⭐ <b>PairTalk checkout</b>\n\n` +
       `Current Plan: <b>${escapeHtml(profile.planDisplayName)}</b>\n` +
       (profile.isActivePaid && profile.expiration ? `Expires: <code>${escapeHtml(profile.expiration)}</code>\n\n` : '\n') +
       pendingBanner +
-      offers.map(offer => `<b>${escapeHtml(offer.name)}</b> (${formatPlanPrice(offer,'XTR')} / ${formatPlanPrice(offer,'UZS')})\n` +
-        `• Allowance: ${planPeriod(offer)}\n• Calls: ${offer.unlimitedCalls ? 'Unlimited' : offer.calls}\n• Minutes per call: ${offer.maxCallMinutes}\n` +
-        `• Recordings: ${offer.recordings}\n• Recording retention: ${offer.retentionDays} days\n\n`).join('') +
-      `🛡️ <b>Refund Policy:</b>\n` +
-      `Eligible within 48 hours of purchase OR if less than 10% of purchased call allowance has been used.\n\n` +
-      `⚠️ <b>Tax Notice:</b> Prices in UZS and Stars may slightly differ due to local and platform taxes.\n\n` +
-      (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Select a plan to choose payment method:`),
+      `Compare prices, allowances and validity on the webpage. Select an option below to review its details and choose a payment method.\n\n` +
+      (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Payments and receipts stay here in Telegram.`),
     { reply_markup: inlineKb }
   );
 }

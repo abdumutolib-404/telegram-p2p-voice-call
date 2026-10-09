@@ -19,6 +19,7 @@ import type { MyContext } from '../bot/types';
 import { scheduleConnectionHandshakeTimer, setRoomDurationLimit } from '../socket/signaling';
 import { isUserSessionRecorder } from '../utils/recordingAccess';
 import { lockRow } from '../utils/transactionLock';
+import { sendLegacyRecording } from '../services/recordingDelivery';
 
 const router = Router();
 let dashboardBot: Bot<MyContext> | null = null;
@@ -40,7 +41,7 @@ async function ownSession(id: string, userId: string) {
   if (!session) throw new ActionError(404, 'Session not found.');
   return session;
 }
-async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, userId: string, retentionDays: number) {
+async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, userId: string, retentionDays: number, savedPartnerIds?: ReadonlySet<string>) {
   const partner = session.userAId === userId ? session.userB : session.userA;
   const rating = session.ratings.find(item => item.raterId === userId && !item.reported);
   const expiry = Math.min(session.recordingExpiresAt?.getTime() ?? Infinity, (session.endedAt ?? session.createdAt).getTime() + retentionDays * 86400000);
@@ -48,7 +49,7 @@ async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, u
   const recipientExpiry=(session.endedAt??session.createdAt).getTime()+retentionDays*86400000;
   const recordings = recipientExpiry > Date.now() ? segments.map(segment=>({id:segment.id,createdAt:segment.createdAt,expiresAt:new Date(Math.min(segment.expiresAt!.getTime(),recipientExpiry))})) : [];
   const recordingAvailable = Boolean(session.recordingUrl && expiry > Date.now() && (!session.recordedByUserId || isUserSessionRecorder(session.recordedByUserId, userId)));
-  return { id: session.id, partnerAlias: partner.alias, partnerBand: partner.band, status: session.status, duration: session.duration, createdAt: session.createdAt, endedAt: session.endedAt, recordings, rating: rating?.stars ?? null, reported: session.ratings.some(item => item.raterId === userId && item.reported), recordingAvailable, recordingExpiresAt: recordingAvailable ? new Date(expiry) : null };
+  return { id: session.id, partnerAlias: partner.alias, partnerBand: partner.band, status: session.status, duration: session.duration, createdAt: session.createdAt, endedAt: session.endedAt, recordings, rating: rating?.stars ?? null, reported: session.ratings.some(item => item.raterId === userId && item.reported), saved: savedPartnerIds?.has(partner.id) ?? false, recordingAvailable, recordingExpiresAt: recordingAvailable ? new Date(expiry) : null };
 }
 
 router.get('/summary', action(async (req, res) => {
@@ -72,11 +73,53 @@ router.get('/sessions', action(async (req, res) => {
   if (cursor) await ownSession(cursor, req.member!.id);
   const sessions = await prisma.callSession.findMany({ where: { status: { in: ['COMPLETED', 'CANCELLED', 'DECLINED'] }, OR: [{ userAId: req.member!.id }, { userBId: req.member!.id }] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), take: 21, include: { userA: true, userB: true, ratings: true } });
   const retention = getEffectiveEntitlement(req.member!).retentionDays;
-  res.json({ sessions: await Promise.all(sessions.slice(0, 20).map(session => sessionSummary(session, req.member!.id, retention))), nextCursor: sessions.length > 20 ? sessions[19].id : null });
+  const savedRows = await prisma.favoritePartner.findMany({ where: { userId: req.member!.id }, select: { partnerId: true } });
+  const savedPartnerIds = new Set(savedRows.map(row => row.partnerId));
+  res.json({ sessions: await Promise.all(sessions.slice(0, 20).map(session => sessionSummary(session, req.member!.id, retention, savedPartnerIds))), nextCursor: sessions.length > 20 ? sessions[19].id : null });
 }));
 router.get('/sessions/:id', action(async (req, res) => {
   const session = await ownSession(req.params.id, req.member!.id);
-  res.json({ session: await sessionSummary(session, req.member!.id, getEffectiveEntitlement(req.member!).retentionDays) });
+  const partnerId = session.userAId === req.member!.id ? session.userBId : session.userAId;
+  const saved = await prisma.favoritePartner.findUnique({ where: { userId_partnerId: { userId: req.member!.id, partnerId } }, select: { partnerId: true } });
+  res.json({ session: await sessionSummary(session, req.member!.id, getEffectiveEntitlement(req.member!).retentionDays, new Set(saved ? [saved.partnerId] : [])) });
+}));
+router.post('/sessions/:id/recording-delivery', action(async (req, res) => {
+  const { segmentId } = z.object({ segmentId: identifier.optional() }).strict().parse(req.body);
+  const user = req.member!;
+  const session = await ownSession(req.params.id, user.id);
+  const now = new Date();
+  const retentionDays = getEffectiveEntitlement(user).retentionDays;
+  if (!['COMPLETED', 'CANCELLED'].includes(session.status) || now.getTime() >= (session.endedAt ?? session.createdAt).getTime() + retentionDays * 86400000) {
+    throw new ActionError(404, 'This recording is no longer available.');
+  }
+  const segment = segmentId
+    ? await prisma.recordingSegment.findUnique({ where: { id: segmentId } })
+    : await prisma.recordingSegment.findFirst({ where: { callId: session.id, status: 'READY', ownerIds: { has: user.id }, expiresAt: { gt: now } }, orderBy: { createdAt: 'desc' } });
+  if (segmentId && !segment) throw new ActionError(404, 'This recording is no longer available.');
+  if (segment) {
+    if (segment.callId !== session.id || segment.status !== 'READY' || !segment.ownerIds.includes(user.id) || !segment.expiresAt || segment.expiresAt <= now) {
+      throw new ActionError(404, 'This recording is no longer available.');
+    }
+    if (!dashboardBot) throw new ActionError(503, 'Telegram delivery is temporarily unavailable. Please retry.');
+    const delivery = await prisma.$transaction(async tx => {
+      // Preserve automatic delivery to every consenting recorder. Creating only
+      // one job would make the worker's "no deliveries yet" scan skip the others.
+      const jobs = await Promise.all(segment.ownerIds.map(ownerId => tx.recordingDelivery.upsert({ where: { segmentId_userId: { segmentId: segment.id, userId: ownerId } }, create: { segmentId: segment.id, userId: ownerId }, update: {} })));
+      return jobs.find(job => job.userId === user.id)!;
+    });
+    if (delivery.status === 'EXPIRED') throw new ActionError(404, 'This recording is no longer available.');
+    const status = delivery.status === 'DONE' ? 'SENT' : 'QUEUED';
+    res.status(status === 'SENT' ? 200 : 202).json({ status });
+    return;
+  }
+  // Older recordings predate segments; retain access checks before sending the file.
+  if (!session.recordingUrl || (session.recordingExpiresAt && session.recordingExpiresAt <= now) || (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId, user.id))) {
+    throw new ActionError(404, 'This recording is no longer available.');
+  }
+  if (!dashboardBot) throw new ActionError(503, 'Telegram delivery is temporarily unavailable. Please retry.');
+  try { await sendLegacyRecording(dashboardBot, user.telegramId, session.recordingUrl); }
+  catch { throw new ActionError(503, 'Audio could not be sent to Telegram. Please retry later.'); }
+  res.json({ status: 'SENT' });
 }));
 router.post('/sessions/:id/rating', action(async (req, res) => {
   const { stars } = z.object({ stars: z.number().int().min(1).max(5) }).strict().parse(req.body);

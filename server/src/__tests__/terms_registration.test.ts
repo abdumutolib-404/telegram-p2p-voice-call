@@ -19,6 +19,17 @@ function fixture() {
   return { context, consent, handlers };
 }
 describe('Versioned registration agreement', () => {
+  it('sends an accepted PDF for reference without changing registration progress or offering consent again', async () => {
+    const { context } = fixture();
+    await prisma.user.create({ data: { telegramId: BigInt(context.from!.id), alias: 'P2P-PDF-COPY', termsAcceptedVersion: currentTerms.version, termsDocumentSha256: currentTerms.sha256, termsAcceptedAt: new Date() } });
+    context.session = { step: 'lr', fc: 6.5 };
+    await offerTerms(context);
+    expect(context.session).toEqual({ step: 'lr', fc: 6.5 });
+    expect(context.reply).not.toHaveBeenCalled();
+    const options = vi.mocked(context.replyWithDocument).mock.calls[0][1]!;
+    expect(JSON.stringify(options.reply_markup)).not.toContain('terms_accept');
+    expect(JSON.stringify(options.reply_markup)).not.toContain('terms_decline');
+  });
   it('ships the exact reviewed PDF in both server and gateway releases', () => {
     expect(fs.readFileSync(termsPdfPath).subarray(0, 5).toString()).toBe('%PDF-');
     expect(crypto.createHash('sha256').update(fs.readFileSync(termsPdfPath)).digest('hex')).toBe(currentTerms.sha256);

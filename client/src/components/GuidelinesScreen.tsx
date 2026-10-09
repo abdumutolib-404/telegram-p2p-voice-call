@@ -51,7 +51,7 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
         <div className="p-5 rounded-2xl bg-gradient-to-r from-mint-950/30 via-slate-900/40 to-slate-900/20 border border-mint-500/20 space-y-2 font-sans text-xs sm:text-sm text-slate-300 leading-relaxed">
           <p className="font-bold text-white uppercase tracking-wide flex items-center gap-2">
             <Award className="w-4 h-4 text-mint-400" />
-            <span>Purpose &amp; Code of Practice</span>
+            <span>Practicing together</span>
           </p>
           <p>
             PairTalk is an autonomous peer-to-peer IELTS Speaking preparation platform connecting serious candidates worldwide. Our mission is to provide an accessible, high-repetition, criteria-matched practice space where learners can build genuine conversational fluency without fear of judgment. Every candidate must strictly uphold these community standards.
@@ -60,10 +60,10 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
 
         {/* Article 1: Core Practice Principles */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-slate-800 space-y-4">
-          <div className="flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
             <ShieldCheck className="w-4 h-4" />
-            <span>ARTICLE 1. CORE PRACTICE PRINCIPLES</span>
-          </div>
+            <span>1. Core practice principles</span>
+          </h2>
           <div className="space-y-3 text-xs sm:text-sm text-slate-300 font-sans leading-relaxed">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="w-4 h-4 text-mint-400 shrink-0 mt-0.5" />
@@ -94,10 +94,10 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
 
         {/* Article 2: Audio & Environmental Etiquette */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-slate-800 space-y-4">
-          <div className="flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
             <Volume2 className="w-4 h-4" />
-            <span>ARTICLE 2. AUDIO &amp; CALL ENVIRONMENT ETIQUETTE</span>
-          </div>
+            <span>2. Audio &amp; call etiquette</span>
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-sans text-slate-300">
             <div className="p-3.5 rounded-xl bg-black/40 border border-slate-800/80 space-y-1">
               <div className="text-mint-400 font-bold flex items-center gap-1.5">
@@ -122,10 +122,10 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
 
         {/* Article 3: Prohibited Conduct & Violations */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-rose-500/30 space-y-4">
-          <div className="flex items-center gap-2.5 text-rose-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-rose-400 font-sans text-xs font-bold uppercase tracking-wider">
             <AlertTriangle className="w-4 h-4" />
-            <span>ARTICLE 3. PROHIBITED CONDUCT (ZERO TOLERANCE)</span>
-          </div>
+            <span>3. Prohibited conduct</span>
+          </h2>
           <p className="text-xs font-sans text-slate-400">
             Violations of the following rules result in immediate disciplinary intervention, quota forfeiture, or permanent banishment:
           </p>
@@ -150,10 +150,10 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
 
         {/* Article 4: Moderation Penalty Ladder */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-amber-500/30 space-y-4">
-          <div className="flex items-center gap-2.5 text-amber-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-amber-400 font-sans text-xs font-bold uppercase tracking-wider">
             <Scale className="w-4 h-4" />
-            <span>ARTICLE 4. MODERATION LADDER &amp; PENALTY ESCALATION</span>
-          </div>
+            <span>4. Moderation &amp; penalties</span>
+          </h2>
           <p className="text-xs font-sans text-slate-400">
             PairTalk employs an automated moderation engine cross-referencing partner ratings, rapid disconnect telemetry, and reported misconduct:
           </p>
@@ -188,10 +188,10 @@ export const GuidelinesScreen: React.FC<GuidelinesScreenProps> = ({ onBack }) =>
 
         {/* Article 5: Unban Appeals Process */}
         <div className="p-6 rounded-2xl bg-[#141b23] border border-slate-800 space-y-4">
-          <div className="flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
+          <h2 className="policy-section-title flex items-center gap-2.5 text-mint-400 font-sans text-xs font-bold uppercase tracking-wider">
             <HelpCircle className="w-4 h-4" />
-            <span>ARTICLE 5. OFFICIAL UNBAN APPEAL SYSTEM</span>
-          </div>
+            <span>5. Appealing a ban</span>
+          </h2>
           <p className="text-xs text-slate-300 leading-relaxed font-sans">
             If your account was restricted or banned and you believe the action was taken in error or due to a false report, you may submit a formal appeal directly in the Telegram Bot:
           </p>

@@ -15,13 +15,28 @@ export function useModalDialog(isOpen: boolean, onClose: () => void) {
         : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const inertElements: { element: HTMLElement; previous: boolean }[] = [];
+    let ancestor: HTMLElement | null = dialogRef.current;
+    while (ancestor?.parentElement && ancestor !== document.body) {
+      for (const sibling of Array.from(ancestor.parentElement.children)) {
+        if (sibling !== ancestor && sibling instanceof HTMLElement && !sibling.hasAttribute('data-modal-backdrop')) {
+          inertElements.push({ element: sibling, previous: sibling.inert });
+          sibling.inert = true;
+        }
+      }
+      ancestor = ancestor.parentElement;
+    }
     const focusable = () =>
       Array.from(
         dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]',
+          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
         ) ?? [],
-      ).filter((element) => element.getClientRects().length > 0);
-    focusable()[0]?.focus();
+      ).filter((element) => {
+        if (!element.getClientRects().length || (element.checkVisibility && !element.checkVisibility())) return false;
+        const closedDetails = element.closest('details:not([open])');
+        return !closedDetails || Boolean(closedDetails.querySelector(':scope > summary')?.contains(element));
+      });
+    (focusable()[0] ?? dialogRef.current)?.focus();
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -56,6 +71,7 @@ export function useModalDialog(isOpen: boolean, onClose: () => void) {
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKey);
+      for (const { element, previous } of inertElements) element.inert = previous;
       if (opener?.isConnected) opener.focus();
     };
   }, [isOpen]);

@@ -15,7 +15,7 @@ export interface ReferralStats {
   rewards: Array<{
     id: string;
     referredAlias: string;
-    expiresAt: Date;
+    expiresAt: Date | null;
     status: string;
     createdAt: Date;
   }>;
@@ -269,7 +269,7 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
     return {
       id: r.id,
       referredAlias: friendMap.get(r.referredUserId) || 'Friend',
-      expiresAt: r.expiresAt || new Date(0),
+      expiresAt: r.expiresAt,
       status: r.status,
       createdAt: r.createdAt,
     };

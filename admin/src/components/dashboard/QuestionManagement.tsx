@@ -212,7 +212,7 @@ export const QuestionManagement: React.FC = () => {
         setSyncLogs(logsRes.logs);
       }
     } catch {
-      // ignore
+      setCrawlerLoadError('Crawler status and run logs could not be refreshed. Use Retry status to try again.');
     }
   }, []);
 
@@ -1617,6 +1617,7 @@ export const QuestionManagement: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowQuestionModal(false)}
+                aria-label="Close question editor"
                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />
@@ -1734,6 +1735,7 @@ export const QuestionManagement: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowTopicModal(false)}
+                aria-label="Close topic editor"
                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />

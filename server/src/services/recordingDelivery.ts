@@ -26,6 +26,15 @@ async function recordingBuffer(key:string):Promise<{buffer:Buffer;size:number}> 
   } finally { stream.destroy(); }
 }
 
+/** Called only after the dashboard has checked participant, recorder and retention access. */
+export async function sendLegacyRecording(bot: Bot<MyContext>, telegramId: bigint, objectKey: string): Promise<void> {
+  const file = await recordingBuffer(objectKey);
+  if (!file.size || file.size > 50 * 1024 * 1024) throw new Error('Recording is unavailable for Telegram delivery.');
+  await bot.api.sendAudio(telegramId.toString(), new InputFile(file.buffer, 'PairTalk-recording.mp3'), {
+    caption: 'Your PairTalk practice recording. Download it to keep your own copy.',
+  });
+}
+
 export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: () => boolean = () => false): Promise<void> {
   // Polling covers a missed webhook, including earlier segments of a restarted recording.
   const captures = await prisma.recordingSegment.findMany({where:{status:'RECORDING',call:{status:{in:['COMPLETED','CANCELLED']}}},take:10});

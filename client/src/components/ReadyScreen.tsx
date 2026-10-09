@@ -38,30 +38,29 @@ export function ReadyScreen({
     <main className="app-shell ready-screen">
       <header className="app-header">
         <Brand />
+        <div className="app-header-actions">
         <span className="status-pill">
           <span className="status-dot" />
           Speaking practice
         </span>
+        {navigation}
+        </div>
       </header>
-      {navigation}
       <div className="ready-workspace">
         <section className="ready-intro">
           <span className="eyebrow">
             {directPartner
               ? 'Your conversation is waiting'
-              : 'A little practice. A lot more confidence.'}
+              : 'IELTS speaking practice'}
           </span>
           <h1>
             {directPartner ? (
               <>
-                Pick up where
-                <br className="desktop-break" /> you left off.
+                Your session is ready.
               </>
             ) : (
               <>
-                Find your voice.
-                <br />
-                Together.
+                Ready for a conversation?
               </>
             )}
           </h1>
@@ -77,7 +76,7 @@ export function ReadyScreen({
                 conversation.
               </>
             ) : (
-              'Meet a fellow candidate near your target band and make room for a real IELTS speaking conversation.'
+              'Practice with a learner near your target band. Start a voice call when you’re ready.'
             )}
           </p>
           <div className="ready-action">
@@ -138,35 +137,14 @@ export function ReadyScreen({
               <span>Calls available</span>
               <strong>{userData.callsRemaining ?? '—'}</strong>
             </div>
-          </div>
-          <div className="practice-flow">
-            <h2>A conversation with a purpose</h2>
-            <ol>
-              <li>
-                <span>01</span>
-                <div>
-                  <strong>Find your partner</strong>
-                  <p>We match candidates by band and speaking criteria.</p>
-                </div>
-              </li>
-              <li>
-                <span>02</span>
-                <div>
-                  <strong>Take turns. Keep talking.</strong>
-                  <p>
-                    Listen, respond, and use the practice prompts when you need
-                    a starting point.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span>03</span>
-                <div>
-                  <strong>Reflect and try again</strong>
-                  <p>Review your call in History &amp; audio.</p>
-                </div>
-              </li>
-            </ol>
+            <div>
+              <span>Recordings</span>
+              <strong>{userData.recordingsRemaining ?? '—'}</strong>
+            </div>
+            <div>
+              <span>Audio retention</span>
+              <strong>{userData.recordingRetentionDays ?? '—'}d</strong>
+            </div>
           </div>
           <div className="panel-note">
             <ShieldCheck size={16} aria-hidden="true" />
@@ -177,7 +155,7 @@ export function ReadyScreen({
         </aside>
       </div>
       <footer className="app-footer">
-        <span>One conversation at a time.</span>
+        <span>© 2026 PairTalk. All rights reserved.</span>
         <nav aria-label="Help and policies">
           <button type="button" onClick={onGuidelines}>
             <BookOpen size={15} aria-hidden="true" />
