@@ -732,6 +732,7 @@ export const QuestionManagement: React.FC = () => {
                   type="button"
                   onClick={() => setViewMode('cards')}
                   aria-pressed={viewMode === 'cards'}
+                  aria-label="Card View"
                   title="Card View"
                   className={`qm-pill-item ${viewMode === 'cards'? 'active': ''}`}
                 >
@@ -741,6 +742,7 @@ export const QuestionManagement: React.FC = () => {
                   type="button"
                   onClick={() => setViewMode('table')}
                   aria-pressed={viewMode === 'table'}
+                  aria-label="Table View"
                   title="Table View"
                   className={`qm-pill-item ${viewMode === 'table'? 'active': ''}`}
                 >
