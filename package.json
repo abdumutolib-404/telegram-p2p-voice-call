@@ -1,7 +1,0 @@
-{
-  "name": "telegram-p2p-voice-call-root",
-  "private": true,
-  "scripts": {
-    "build": "cd landing && npm install && npm run build"
-  }
-}
