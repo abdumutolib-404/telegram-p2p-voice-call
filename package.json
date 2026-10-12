@@ -1,16 +1,7 @@
 {
   "name": "telegram-p2p-voice-call-root",
   "private": true,
-  "workspaces": [
-    "landing",
-    "client",
-    "admin",
-    "server"
-  ],
   "scripts": {
-    "build": "npm run --prefix landing build"
-  },
-  "devDependencies": {
-    "wrangler": "4.148.0"
+    "build": "cd landing && npm install && npm run build"
   }
 }
