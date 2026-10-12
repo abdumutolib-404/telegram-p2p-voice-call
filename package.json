@@ -1,7 +1,13 @@
 {
   "name": "telegram-p2p-voice-call-root",
   "private": true,
+  "workspaces": [
+    "landing",
+    "client",
+    "admin",
+    "server"
+  ],
   "scripts": {
-    "build": "npm --prefix landing run build"
+    "build": "npm run --prefix landing build"
   }
 }
