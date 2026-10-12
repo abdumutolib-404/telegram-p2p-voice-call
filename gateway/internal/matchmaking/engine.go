@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -58,29 +57,59 @@ type rankedSkill struct {
 	order int
 }
 
+// Pre-computed static band pool keys to eliminate runtime string formatting allocations during queue cancellations
+var allBandPoolKeys = []string{
+	"match_queue:band:4.0",
+	"match_queue:band:4.5",
+	"match_queue:band:5.0",
+	"match_queue:band:5.5",
+	"match_queue:band:6.0",
+	"match_queue:band:6.5",
+	"match_queue:band:7.0",
+	"match_queue:band:7.5",
+	"match_queue:band:8.0",
+	"match_queue:band:8.5",
+	"match_queue:band:9.0",
+}
+
+// DetermineWeakAndStrongSkills identifies weak and strong skills with zero heap allocations.
+// Uses a fixed stack array and in-place stable insertion sort to preserve tie-break ordering.
 func DetermineWeakAndStrongSkills(skills UserSkills) (SkillCode, SkillCode, error) {
-	ranked := []rankedSkill{
+	ranked := [4]rankedSkill{
 		{code: SkillFC, score: skills.SubFC, order: 0},
 		{code: SkillLR, score: skills.SubLR, order: 1},
 		{code: SkillGRA, score: skills.SubGRA, order: 2},
 		{code: SkillP, score: skills.SubP, order: 3},
 	}
 
-	for _, s := range ranked {
-		if math.IsNaN(s.score) || math.IsInf(s.score, 0) || s.score < 0 || s.score > 9 {
+	for i := 0; i < 4; i++ {
+		score := ranked[i].score
+		if math.IsNaN(score) || math.IsInf(score, 0) || score < 0 || score > 9 {
 			return "", "", errors.New("skill scores must be finite values between 0 and 9")
 		}
 	}
 
-	// Stable sort matching JS Array.prototype.sort
-	sort.SliceStable(ranked, func(i, j int) bool {
-		if ranked[i].score != ranked[j].score {
-			return ranked[i].score < ranked[j].score
+	// Stable insertion sort matching JS Array.prototype.sort / sort.SliceStable behavior
+	for i := 1; i < 4; i++ {
+		j := i
+		for j > 0 {
+			a, b := ranked[j-1], ranked[j]
+			greater := false
+			if a.score != b.score {
+				greater = a.score > b.score
+			} else {
+				greater = a.order > b.order
+			}
+			if greater {
+				ranked[j-1], ranked[j] = ranked[j], ranked[j-1]
+				j--
+			} else {
+				break
+			}
 		}
-		return ranked[i].order < ranked[j].order
-	})
+	}
 
-	return ranked[0].code, ranked[len(ranked)-1].code, nil
+	return ranked[0].code, ranked[3].code, nil
 }
 
 type Engine struct {
@@ -311,12 +340,9 @@ func (e *Engine) CancelQueue(ctx context.Context, userID string) (bool, error) {
 			return err
 		}
 
-		bands := []float64{4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0}
 		pipe := e.rdb.Pipeline()
-		for _, b := range bands {
-			if k, err := e.GetBandPoolKey(b); err == nil {
-				pipe.SRem(lockCtx, k, userID)
-			}
+		for _, k := range allBandPoolKeys {
+			pipe.SRem(lockCtx, k, userID)
 		}
 		pipe.SRem(lockCtx, e.GetGlobalPoolKey(), userID)
 		pipe.SRem(lockCtx, e.GetPriorityPoolKey("BOSS"), userID)
@@ -338,12 +364,9 @@ func (e *Engine) cancelQueueUnlocked(ctx context.Context, userID string) error {
 	pointerKey := fmt.Sprintf("%s%s", UserQueuePrefix, userID)
 	_, _ = e.rdb.Eval(ctx, CancelQueueScript, []string{pointerKey}, userID).Result()
 
-	bands := []float64{4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0}
 	pipe := e.rdb.Pipeline()
-	for _, b := range bands {
-		if k, err := e.GetBandPoolKey(b); err == nil {
-			pipe.SRem(ctx, k, userID)
-		}
+	for _, k := range allBandPoolKeys {
+		pipe.SRem(ctx, k, userID)
 	}
 	pipe.SRem(ctx, e.GetGlobalPoolKey(), userID)
 	pipe.SRem(ctx, e.GetPriorityPoolKey("BOSS"), userID)

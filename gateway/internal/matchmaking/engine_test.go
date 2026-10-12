@@ -179,3 +179,17 @@ func TestMatchmaking_InvalidBands(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkDetermineWeakAndStrongSkills(b *testing.B) {
+	skills := UserSkills{
+		SubFC:  6.5,
+		SubLR:  7.0,
+		SubGRA: 6.0,
+		SubP:   8.0,
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = DetermineWeakAndStrongSkills(skills)
+	}
+}
