@@ -151,3 +151,5 @@ Run frontend development servers separately with npm run dev --prefix client (or
 6. Monitor failures and retain the backup and previous image. Dropping new columns is not a routine rollback.
 
 For 202610050001_recording_lifecycle, older workers may erase saved owners or mistake retained egress metadata for active intent. Known URLs are backfilled; already-lost keys and owners cannot be reconstructed. Keep R2 configured because cloud local disks are ephemeral. Historical checks and limitations remain in [Verification](VERIFICATION.md) and [Operations](OPERATIONS.md).
+
+Development launch links use `VITE_BOT_USERNAME=ieltsSpeakBot` in the client and landing main-build triggers, matching the bot username verified by the development backend's public pricing endpoint. Keep these launch links aligned with that backend when changing the development bot.
