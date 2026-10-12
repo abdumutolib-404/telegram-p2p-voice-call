@@ -2,10 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ThemeToggle } from './components/ui/ThemeToggle';
 import { adminFetch } from './api/client';
 import { useVisiblePolling } from './hooks/useAdminTools';
 import type { ManualPaymentRequestItem, AppealItem } from './types';
-import { LogOut, LayoutDashboard, UsersRound, BookOpen, Trophy, SlidersHorizontal, CreditCard, ShieldCheck, ChartNoAxesCombined, History } from 'lucide-react';
+import { AudioLines, LogOut, LayoutDashboard, UsersRound, BookOpen, Trophy, SlidersHorizontal, CreditCard, ShieldCheck, ChartNoAxesCombined, History } from 'lucide-react';
 import './App.css';
 const Overview = lazy(() => import('./components/dashboard/OverviewDashboard').then(m => ({ default: m.OverviewDashboard })));
 const Users = lazy(() => import('./components/dashboard/UserManagement').then(m => ({ default: m.UserManagement })));
@@ -18,7 +19,7 @@ const Contest = lazy(() => import('./components/dashboard/ContestManagement').th
 const Audit = lazy(() => import('./components/dashboard/AuditLogViewer').then(m => ({ default: m.AuditLogViewer })));
 export type NavigationTab = 'overview' | 'users' | 'questions' | 'plans' | 'payments' | 'appeals' | 'analytics' | 'contest' | 'audit';
 const items: { id: NavigationTab; label: string; group: string }[] = [
-  { id: 'overview', label: 'Overview', group: 'Operations' }, { id: 'users', label: 'Candidates', group: 'Operations' },
+  { id: 'overview', label: 'Overview', group: 'Operations' }, { id: 'users', label: 'Learners', group: 'Operations' },
   { id: 'questions', label: 'IELTS questions', group: 'Operations' }, { id: 'contest', label: 'Contests', group: 'Operations' },
   { id: 'plans', label: 'Plans and limits', group: 'Finance' }, { id: 'payments', label: 'Payments', group: 'Finance' },
   { id: 'appeals', label: 'Appeals', group: 'Review' }, { id: 'analytics', label: 'Analytics', group: 'Review' }, { id: 'audit', label: 'Audit history', group: 'Review' },
@@ -65,10 +66,10 @@ function MainDashboard() {
     </button></div>)}</nav>;
   return <div className="admin-shell">
     <a className="admin-skip-link" href="#main">Skip to workspace</a>
-    <aside aria-label="Administration sidebar" className="admin-sidebar"><a className="admin-brand" href="#main">pairtalk<span>.</span> <small>Operations console</small></a>{navigation}
+    <aside aria-label="Administration sidebar" className="admin-sidebar"><div className="admin-brand-block"><a className="admin-brand" href="#main"><span className="admin-logo-mark"><AudioLines size={20} aria-hidden="true" /></span><span>pairtalk<span className="admin-logo-dot">.</span></span></a><p>Operations console</p></div>{navigation}
       <div className="sidebar-footer"><ShieldCheck size={16} aria-hidden="true"/><span>Administrator workspace</span></div>
     </aside>
-    <div className="admin-workspace"><header className="admin-topbar"><div className="workspace-breadcrumb"><span>{items.find(i => i.id === activeTab)?.group}</span><span aria-hidden="true">/</span><strong>{items.find(i => i.id === activeTab)?.label}</strong></div><button className="btn-secondary" onClick={() => { if (window.dispatchEvent(new Event('admin:before-navigate', { cancelable: true }))) logout(); }}><LogOut size={16}/> Sign out</button>
+    <div className="admin-workspace"><header className="admin-topbar"><div className="workspace-breadcrumb"><span>{items.find(i => i.id === activeTab)?.group}</span><span aria-hidden="true">/</span><strong>{items.find(i => i.id === activeTab)?.label}</strong></div><div className="topbar-actions"><ThemeToggle /><button className="btn-secondary" onClick={() => { if (window.dispatchEvent(new Event('admin:before-navigate', { cancelable: true }))) logout(); }}><LogOut size={16}/> Sign out</button></div>
     </header><main id="main" className="admin-main" tabIndex={-1}><ErrorBoundary key={activeTab}><Suspense fallback={<p role="status">Loading screen…</p>}>
       {activeTab === 'overview' && <Overview onNavigateTab={navigate}/>}{activeTab === 'users' && <Users/>}{activeTab === 'questions' && <Questions/>}{activeTab === 'plans' && <Plans/>}{activeTab === 'payments' && <Payments/>}{activeTab === 'appeals' && <Appeals/>}{activeTab === 'analytics' && <Analytics/>}{activeTab === 'contest' && <Contest/>}{activeTab === 'audit' && <Audit/>}
     </Suspense></ErrorBoundary></main></div>

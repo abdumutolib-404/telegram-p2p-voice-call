@@ -9,6 +9,7 @@ if (!assetsDirectory) throw new Error('Terms document is missing. Build and depl
 export const currentTerms: Readonly<TermsManifest> = Object.freeze(JSON.parse(fs.readFileSync(path.join(assetsDirectory, 'terms-manifest.json'), 'utf8')));
 if (!/^\d{4}-\d{2}-\d{2}$/.test(currentTerms.version) || !/^[a-f0-9]{64}$/.test(currentTerms.sha256) || path.basename(currentTerms.filename) !== currentTerms.filename) throw new Error('Invalid terms manifest.');
 export const termsPdfPath = path.join(assetsDirectory, currentTerms.filename);
+export const refundPolicyUrl = new URL('/refund-policy', currentTerms.privacyUrl).toString();
 if (crypto.createHash('sha256').update(fs.readFileSync(termsPdfPath)).digest('hex') !== currentTerms.sha256) throw new Error('Terms document and manifest do not match.');
 
 export function hasAcceptedCurrentTerms(user: { termsAcceptedVersion?: string | null; termsAcceptedAt?: Date | null; termsDocumentSha256?: string | null } | null | undefined): boolean {

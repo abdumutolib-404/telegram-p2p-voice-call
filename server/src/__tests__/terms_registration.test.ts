@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Bot } from 'grammy';
 import { prisma } from '../config/database';
-import { currentTerms, hasAcceptedCurrentTerms, termsPdfPath } from '../services/terms';
+import { currentTerms, hasAcceptedCurrentTerms, termsPdfPath, refundPolicyUrl } from '../services/terms';
 import { offerTerms, setupTermsHandlers } from '../bot/handlers/terms';
 import { setupCallbackHandlers } from '../bot/handlers/callbacks';
 import { setupStartCommand } from '../bot/commands/start';
@@ -19,6 +19,19 @@ function fixture() {
   return { context, consent, handlers };
 }
 describe('Versioned registration agreement', () => {
+  it.each([false, true])('/terms sends only the PDF and preserves registration progress (registered: %s)', async registered => {
+    const { context, handlers } = fixture();
+    if (registered) await prisma.user.create({ data: { telegramId: BigInt(context.from!.id), alias: 'P2P-TERMS-COPY', onboarded: true, termsAcceptedVersion: currentTerms.version, termsDocumentSha256: currentTerms.sha256, termsAcceptedAt: new Date() } });
+    context.session = { step: 'lr', fc: 6.5 };
+    await handlers.get('command:terms')!(context);
+    expect(context.reply).not.toHaveBeenCalled();
+    expect(context.replyWithDocument).toHaveBeenCalledOnce();
+    expect(vi.mocked(context.replyWithDocument).mock.calls[0]).toHaveLength(1);
+    expect(context.session).toEqual({ step: 'lr', fc: 6.5 });
+  });
+  it('links billing support to the dedicated refund page', () => {
+    expect(refundPolicyUrl).toBe('https://pairtalk.online/refund-policy');
+  });
   it('sends an accepted PDF for reference without changing registration progress or offering consent again', async () => {
     const { context } = fixture();
     await prisma.user.create({ data: { telegramId: BigInt(context.from!.id), alias: 'P2P-PDF-COPY', termsAcceptedVersion: currentTerms.version, termsDocumentSha256: currentTerms.sha256, termsAcceptedAt: new Date() } });
@@ -94,6 +107,20 @@ describe('Versioned registration agreement', () => {
     await handlers.get('confirm_subscores')!(context);
     const user = await prisma.user.findUnique({ where: { telegramId: BigInt(context.from!.id) } });
     expect(user?.onboarded).toBe(true); expect(hasAcceptedCurrentTerms(user)).toBe(true);
+  });
+  it('keeps completed registration and durable consent after a replayed decline', async () => {
+    const { context, consent, handlers } = fixture();
+    await offerTerms(context);
+    await consent(context);
+    context.session = { step: 'confirm', fc: 6, lr: 6, gra: 6, p: 6 };
+    await handlers.get('confirm_subscores')!(context);
+    const completedSession = structuredClone(context.session);
+    context.match = ['terms_decline', 'decline', currentTerms.version];
+    await consent(context);
+    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(context.from!.id) } });
+    expect(user?.onboarded).toBe(true);
+    expect(hasAcceptedCurrentTerms(user)).toBe(true);
+    expect(context.session).toEqual(completedSession);
   });
   it.each(['accept', 'decline'])('defers referral registration until consent: %s', async decision => {
     const inviter = await prisma.user.create({ data: { telegramId: BigInt(Math.floor(Math.random() * 1000000000) + 3000000000), alias: 'P2P-REFERRER' } });

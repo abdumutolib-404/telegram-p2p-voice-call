@@ -1,6 +1,7 @@
+import { DialogPresence } from '../ui/DialogPresence';
 import { useClipboard, useLatestRequest } from '../../hooks/useAdminTools';
 import { Dialog } from '../ui/Dialog';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { AuditLogItem, SystemErrorLogEntry, AuditActionCategory } from '../../types';
 import { adminFetch } from '../../api/client';
 import { PageHeader } from '../ui/PageHeader';
@@ -26,6 +27,8 @@ import {
 export function AuditLogViewer() {
   const [page,setPage] = useState(1),[totalPages,setTotalPages] = useState(1),[auditTotal,setAuditTotal] = useState(0);
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
+  const seenLogs = useRef<{ query: string; ids: Set<string> } | null>(null);
+  const [newLogIds, setNewLogIds] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<SystemErrorLogEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'audit' | 'errors'>('audit');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -49,7 +52,13 @@ export function AuditLogViewer() {
       adminFetch<{recentErrors?:SystemErrorLogEntry[];errors?:SystemErrorLogEntry[]}>('/api/admin/telemetry/errors?limit=50',{signal:request.signal}),
     ]);
     if(!request.isCurrent())return;
-    if(logsData.status==="fulfilled"){setLogs(logsData.value.logs);setTotalPages(logsData.value.totalPages);setAuditTotal(logsData.value.total);}
+    if(logsData.status==="fulfilled"){
+      const query = JSON.stringify([page, searchQuery, categoryFilter, timeRange]);
+      const previous = seenLogs.current;
+      setNewLogIds(new Set(previous?.query === query ? logsData.value.logs.filter(log => !previous.ids.has(log.id)).map(log => log.id) : []));
+      seenLogs.current = { query, ids: new Set(logsData.value.logs.map(log => log.id)) };
+      setLogs(logsData.value.logs);setTotalPages(logsData.value.totalPages);setAuditTotal(logsData.value.total);
+    }
     if(errorsData.status==='fulfilled')setErrors(errorsData.value.recentErrors||errorsData.value.errors||[]);
     const failed=[logsData,errorsData].filter(result=>result.status==='rejected');
     if(failed.length)setErrorMsg('Some audit or error data could not be refreshed. Previous results remain displayed; use Refresh to retry.');
@@ -319,7 +328,7 @@ export function AuditLogViewer() {
                     cursor: 'pointer',
                     border: categoryFilter === pill.id ? '1px solid var(--primary)' : '1px solid var(--border-card)',
                     backgroundColor: categoryFilter === pill.id ? 'var(--primary-bg)' : 'var(--bg-surface-elevated)',
-                    color: categoryFilter === pill.id ? '#FFFFFF' : 'var(--text-secondary)',
+                    color: categoryFilter === pill.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                   }}
                 >
                   {pill.label}
@@ -402,6 +411,7 @@ export function AuditLogViewer() {
                   return (
                     <tr
                       key={log.id}
+                      className={newLogIds.has(log.id) ? 'row-new' : undefined}
                       style={{ cursor: hasPayload ? 'pointer' : 'default' }}
                       onClick={() => hasPayload && setSelectedLog(log)}
                     >
@@ -478,10 +488,10 @@ export function AuditLogViewer() {
                             style={{ padding: '0.25rem 0.55rem', fontSize: '0.725rem', gap: '4px' }}
                           >
                             <Code2 size={13} />
-                            <span>Inspect Diff</span>
+                            <span>Inspect changes</span>
                           </button>
                         ) : (
-                          <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>No Diff</span>
+                          <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>No changes</span>
                         )}
                       </td>
                     </tr>
@@ -589,7 +599,7 @@ export function AuditLogViewer() {
       )}
 
       {/* JSON Diff Inspector Modal */}
-      {selectedLog && (
+      <DialogPresence>{selectedLog && (
         <Dialog title="Audit details" pending={false} onClose={() => { setSelectedLog(null); }}><fieldset disabled={false} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div
             className="glass-panel"
@@ -599,7 +609,7 @@ export function AuditLogViewer() {
               maxHeight: '90vh',
               display: 'flex',
               flexDirection: 'column',
-              backgroundColor: '#0B1020',
+              backgroundColor: 'var(--bg-input)',
               overflow: 'hidden',
             }}
             onClick={(e) => e.stopPropagation()}
@@ -768,7 +778,7 @@ export function AuditLogViewer() {
             </div>
           </div>
         </fieldset></Dialog>
-      )}
+      )}</DialogPresence>
       {activeTab==="audit" && <div><span>{auditTotal} matching entries · Page {page} of {totalPages}</span><button disabled={page<=1||isRefreshing} onClick={()=>setPage(p=>p-1)}>Previous</button><button disabled={page>=totalPages||isRefreshing} onClick={()=>setPage(p=>p+1)}>Next</button></div>}
     </div>
   );

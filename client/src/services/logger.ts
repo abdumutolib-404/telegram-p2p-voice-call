@@ -1,7 +1,7 @@
 export interface LogEntry {
   id: string;
   timestamp: string;
-  level: 'info' | 'warn' | 'error';
+  level: 'info'| 'warn'| 'error';
   category: string;
   message: string;
   details?: unknown;
@@ -72,7 +72,7 @@ class FrontendLogger {
   }
 
   private setupFetchInterceptor() {
-    if (typeof window === 'undefined' || !window.fetch) return;
+    if (typeof window === 'undefined'|| !window.fetch) return;
 
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
@@ -80,32 +80,32 @@ class FrontendLogger {
       const input = args[0];
       const init = args[1];
 
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const url = typeof input === 'string'? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method || 'GET';
 
-      this.info('HTTP', `➡️ ${method} ${url}`);
+      this.info('HTTP', `${method} ${url}`);
 
       try {
         const response = await originalFetch(...args);
         const duration = Date.now() - start;
 
         if (response.ok) {
-          this.info('HTTP', `✅ ${response.status} ${response.statusText} (${duration}ms) - ${method} ${url}`);
+          this.info('HTTP', `${response.status} ${response.statusText} (${duration}ms) - ${method} ${url}`);
         } else {
-          this.warn('HTTP', `⚠️ ${response.status} ${response.statusText} (${duration}ms) - ${method} ${url}`);
+          this.warn('HTTP', `${response.status} ${response.statusText} (${duration}ms) - ${method} ${url}`);
         }
 
         return response;
       } catch (err: unknown) {
         const duration = Date.now() - start;
         const errorMsg = err instanceof Error ? err.message : String(err);
-        this.error('HTTP', `❌ FAILED (${duration}ms) - ${method} ${url}: ${errorMsg}`, { error: err });
+        this.error('HTTP', `FAILED (${duration}ms) - ${method} ${url}: ${errorMsg}`, { error: err });
         throw err;
       }
     };
   }
 
-  public log(level: 'info' | 'warn' | 'error', category: string, message: string, details?: unknown) {
+  public log(level: 'info'| 'warn'| 'error', category: string, message: string, details?: unknown) {
     const sanitizedDetails = this.sanitize(details);
     const sanitizedMessage = this.sanitize(message) as string;
     const entry: LogEntry = {

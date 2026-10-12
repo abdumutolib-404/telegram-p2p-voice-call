@@ -348,7 +348,8 @@ describe('Milestone M5: Operations Control Plane & Admin Telemetry API', () => {
 
       const approveRes = await request(app)
         .post(`/api/admin/appeals/${appeal.id}/approve`)
-        .set('Authorization', `Bearer ${adminJwtToken}`);
+        .set('Authorization', `Bearer ${adminJwtToken}`)
+        .send({ note: '  Reviewed supporting context  ' });
 
       expect(approveRes.status).toBe(200);
 
@@ -359,6 +360,7 @@ describe('Milestone M5: Operations Control Plane & Admin Telemetry API', () => {
 
       expect(auditLog).toBeDefined();
       expect(auditLog?.afterState).toContain('APPROVED');
+      expect(auditLog?.reason).toBe('Reviewed supporting context');
     });
 
     it('records APPEAL_REJECTED on POST /api/admin/appeals/:id/reject', async () => {
@@ -386,7 +388,8 @@ describe('Milestone M5: Operations Control Plane & Admin Telemetry API', () => {
 
       const rejectRes = await request(app)
         .post(`/api/admin/appeals/${appeal.id}/reject`)
-        .set('Authorization', `Bearer ${adminJwtToken}`);
+        .set('Authorization', `Bearer ${adminJwtToken}`)
+        .send({ note: 'Reviewed repeated harassment evidence' });
 
       expect(rejectRes.status).toBe(200);
 
@@ -397,6 +400,18 @@ describe('Milestone M5: Operations Control Plane & Admin Telemetry API', () => {
 
       expect(auditLog).toBeDefined();
       expect(auditLog?.afterState).toContain('REJECTED');
+      expect(auditLog?.reason).toBe('Reviewed repeated harassment evidence');
+    });
+
+    it('rejects invalid audit notes before making an appeal decision', async () => {
+      for (const action of ['approve', 'reject']) {
+        for (const note of [123, 'x'.repeat(1001)]) {
+          const response = await request(app).post(`/api/admin/appeals/unprocessed/${action}`)
+            .set('Authorization', `Bearer ${adminJwtToken}`).send({ note });
+          expect(response.status).toBe(400);
+          expect(await prisma.auditLog.findFirst({ where: { targetId: 'unprocessed' } })).toBeNull();
+        }
+      }
     });
 
     it('records CONTEST_MUTATION on POST /api/admin/contest', async () => {

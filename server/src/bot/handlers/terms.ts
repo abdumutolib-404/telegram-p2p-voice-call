@@ -31,7 +31,9 @@ export async function offerTerms(ctx: MyContext): Promise<void> {
 }
 
 export function setupTermsHandlers(bot: Bot<MyContext>): void {
-  bot.command('terms', offerTerms);
+  bot.command('terms', async ctx => {
+    await ctx.replyWithDocument(new InputFile(termsPdfPath, currentTerms.filename));
+  });
   bot.callbackQuery(/^terms_(accept|decline):(.+)$/, async ctx => {
     const offer = ctx.session.termsOffer;
     const validOffer = ctx.chat?.type === 'private' && ctx.session.step === 'terms' && offer?.version === currentTerms.version && offer.sha256 === currentTerms.sha256 && ctx.match[2] === currentTerms.version && offer.messageId === ctx.callbackQuery.message?.message_id;

@@ -35,9 +35,9 @@ export function RadarScreen({
         <span className="eyebrow">
           Good conversations start with a good match
         </span>
-        <h1>Finding your practice partner.</h1>
+        <h1>Finding your partner.</h1>
         <p>
-          We’re looking for a candidate with complementary speaking skills
+          Looking for a learner
           {targetBand !== undefined
             ? ` near band ${targetBand.toFixed(1)}`
             : ''}
@@ -63,7 +63,7 @@ export function RadarScreen({
         {elapsed>=60 && <p role="status">No compatible partner yet. You can keep waiting, save a previous partner, or try again later. Searches expire after 15 minutes.</p>}
         <button type="button" disabled={cancelling} className="secondary-button" onClick={onCancel}>
           <X size={17} aria-hidden="true" />
-          Cancel Matchmaking
+          Cancel search
         </button>
         <div className="search-tip">
           <ShieldCheck size={18} aria-hidden="true" />
@@ -73,10 +73,7 @@ export function RadarScreen({
           </p>
         </div>
       </section>
-      <footer className="app-footer">
-        <span>Matching by band and speaking criteria</span>
-        <span>Live voice practice</span>
-      </footer>
+
     </main>
   );
 }

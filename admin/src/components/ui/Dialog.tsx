@@ -1,14 +1,16 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useDialogClosing } from '../../hooks/useDialogClosing';
 const stack: HTMLDialogElement[] = [];
 let previousOverflow = '';
 export function Dialog({ open = true, title, pending = false, onClose, children, className = '' }: {
-  open?: boolean; title: string; pending?: boolean; onClose: () => void; children: ReactNode; className?: string;
+  open?: boolean; title: string; pending?: boolean; onClose: () => void; children?: ReactNode; className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null), id = useId();
-  const pendingRef = useRef(pending); pendingRef.current = pending;
+  const closing = useDialogClosing();
+  const pendingRef = useRef(pending); pendingRef.current = pending || closing;
   const closeRef = useRef(onClose); closeRef.current = onClose;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || !ref.current) return;
     const dialog = ref.current, previous = document.activeElement as HTMLElement | null;
     if (stack.length === 0) { previousOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'; }
@@ -31,7 +33,7 @@ export function Dialog({ open = true, title, pending = false, onClose, children,
     };
   }, [open]);
   if (!open) return null;
-  return createPortal(<dialog ref={ref} className={`admin-dialog ${className}`} aria-labelledby={id} aria-busy={pending} tabIndex={-1}>
+  return createPortal(<dialog ref={ref} className={`admin-dialog ${className}`} aria-labelledby={id} aria-busy={pending} data-state={closing ? 'closing' : 'open'} inert={closing ? true : undefined} aria-hidden={closing ? true : undefined} tabIndex={-1}>
     <h2 id={id} className="dialog-title">{title}</h2>{children}
   </dialog>, document.body);
 }

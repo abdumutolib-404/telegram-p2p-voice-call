@@ -20,6 +20,7 @@ import { escapeHtml } from '../../utils/sanitize';
 import { logger } from '../../utils/logger';
 import { lockRow } from '../../utils/transactionLock';
 import { completeStarsRefund } from '../../services/starsRefund';
+import { refundPolicyUrl } from '../../services/terms';
 
 async function editMessageOrCaption(ctx: MyContext, text: string, other?: Record<string, unknown>) {
   if (!ctx.callbackQuery) return ctx.reply(text, { parse_mode: 'HTML', ...other });
@@ -141,10 +142,7 @@ export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' |
 
   const text =
     `💎 <b>Upgrade to ${tier} Plan</b>\n\n` +
-    `• Max Call Duration: <b>${planConfig.maxDuration} mins</b>\n` +
-    `• Monthly Calls: <b>${planConfig.dailyLimit >= 999 ? 'Unlimited' : `${planConfig.dailyLimit} calls/month`}</b>\n` +
-    `• Recording Storage: <b>${planConfig.retentionDays} days</b>\n\n` +
-    `⚠️ <i>Note: Prices in UZS and Stars may slightly differ due to local and platform taxes.</i>\n\n` +
+    `Review the plan allowances in your dashboard or on the <a href="${escapeHtml(new URL('/pricing', env.PRIVACY_POLICY_URL).toString())}">plans page</a>.\n\n` +
     `Choose your preferred payment method:`;
 
   await editMessageOrCaption(ctx, text, { reply_markup: inlineKb });
@@ -201,7 +199,7 @@ export async function renderPlansOverview(ctx: MyContext) {
       `Current Plan: <b>${escapeHtml(profile.planDisplayName)}</b>\n` +
       (profile.isActivePaid && profile.expiration ? `Expires: <code>${escapeHtml(profile.expiration)}</code>\n\n` : '\n') +
       pendingBanner +
-      `Compare prices, allowances and validity on the webpage. Select an option below to review its details and choose a payment method.\n\n` +
+      `Compare prices, allowances and validity on the webpage. Select an option below to choose a payment method.\n\n` +
       (pendingRequest ? `<i>Manage your pending payment request below:</i>` : `Payments and receipts stay here in Telegram.`),
     { reply_markup: inlineKb }
   );
@@ -750,11 +748,11 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     }
 
     const adminContact = env.MANUAL_PAYMENT_ADMIN_USERNAME ? `@${env.MANUAL_PAYMENT_ADMIN_USERNAME.replace(/^@/, '')}` : '@PairTalkSupport';
-    const policyUrl = env.PRIVACY_POLICY_URL || `${env.MINI_APP_URL}/privacy`;
+    const policyUrl = refundPolicyUrl;
     const inlineKb = new InlineKeyboard()
       .text('💸 Request Refund', 'request_refund')
       .row()
-      .webApp('📜 View Refund Policy', policyUrl)
+      .url('📜 View refund policy', policyUrl)
       .row()
       .text('⭐ View Plans & Pricing', 'show_plans');
 

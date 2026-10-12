@@ -726,7 +726,7 @@ export const pages: Record<string, Guide> = {
               purchase or when less than 10% of the purchased allowance has been
               used. Sanctioned accounts are excluded under the policy. Use{" "}
               <code>/refund</code> or contact support. See the{" "}
-              <a href="/privacy#refunds">refund policy</a> for payment-specific
+              <a href="/refund-policy">refund policy</a> for payment-specific
               settlement information.
             </p>
           </>
@@ -790,4 +790,18 @@ export const pages: Record<string, Guide> = {
       },
     ],
   },
+};
+
+// Keep the dedicated policy consistent with the reviewed payment policy.
+pages["/refund-policy"] = {
+  title: "Refund Policy | PairTalk",
+  description: "PairTalk refund eligibility, Telegram Stars and card payment handling, and how to request a refund through the bot.",
+  eyebrow: "Refund policy",
+  heading: "Refund policy",
+  intro: "Request a refund through the PairTalk bot. Eligibility depends on your purchase, usage and account status.",
+  sections: [
+    { id: "eligibility", title: "When a refund may be available", body: pages["/privacy"].sections.find(section => section.id === "refunds")!.body },
+    { id: "request", title: "How to request a refund", body: <><p>Use <code>/refund</code> in the PairTalk bot from the account that made the purchase. Choose the purchase and follow the bot’s instructions. The bot checks purchase ownership, payment state and eligibility before proceeding.</p><p>For help with a specific transaction, use <code>/paysupport</code> or contact <a href="https://t.me/PairTalkSupport">PairTalk support</a>. Keep receipt and account information out of public channels.</p></> },
+    { id: "related", title: "Related policies", body: <p>Read the <a href="/terms#payments">subscription terms</a> and <a href="/privacy">privacy policy</a> for payment records and service conditions.</p> },
+  ],
 };

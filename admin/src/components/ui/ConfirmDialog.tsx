@@ -1,132 +1,22 @@
-import React from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Dialog } from './Dialog';
+import { DialogPresence } from './DialogPresence';
 import { AlertTriangle, Info, ShieldAlert } from 'lucide-react';
-
 interface ConfirmDialogProps {
-  isOpen: boolean;
-  title: string;
-  message: string | React.ReactNode;
-  affectedItem?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  severity?: 'danger' | 'warning' | 'info';
-  isConfirming?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-  error?: string | null;
+  isOpen: boolean; title: string; message: string | ReactNode; affectedItem?: string;
+  confirmLabel?: string; cancelLabel?: string; severity?: 'danger' | 'warning' | 'info';
+  isConfirming?: boolean; onConfirm: (note: string) => void; onCancel: () => void;
+  error?: string | null; auditNote?: boolean;
 }
-
-export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
-  isOpen,
-  title,
-  message,
-  affectedItem,
-  confirmLabel = 'Confirm Action',
-  cancelLabel = 'Cancel',
-  severity = 'danger',
-  isConfirming = false,
-  onConfirm,
-  onCancel,
-  error,
-}) => {
-  if (!isOpen) return null;
-
-  const getIcon = () => {
-    switch (severity) {
-      case 'danger':
-        return <ShieldAlert size={20} color="var(--danger-text)" />;
-      case 'warning':
-        return <AlertTriangle size={20} color="var(--warning-text)" />;
-      default:
-        return <Info size={20} color="var(--info-text)" />;
-    }
-  };
-
-  const getConfirmButtonClass = () => {
-    switch (severity) {
-      case 'danger':
-        return 'btn-danger';
-      case 'warning':
-        return 'btn-secondary';
-      default:
-        return 'btn-primary';
-    }
-  };
-
-  return (
-    <Dialog title={title} onClose={onCancel} pending={isConfirming}
-    >
-      <div
-        className="glass-panel"
-        style={{
-          width: '100%',
-          maxWidth: '460px',
-          padding: '1.75rem',
-          boxSizing: 'border-box',
-          boxShadow: 'var(--shadow-lg)',
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-card)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-          <div
-            style={{
-              padding: '0.5rem',
-              borderRadius: '8px',
-              backgroundColor: severity === 'danger' ? 'var(--danger-bg)' : severity === 'warning' ? 'var(--warning-bg)' : 'var(--info-bg)',
-              border: `1px solid ${severity === 'danger' ? 'var(--danger-border)' : severity === 'warning' ? 'var(--warning-border)' : 'var(--info-border)'}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {getIcon()}
-          </div>
-          <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
-            {title}
-          </h3>
-        </div>
-
-        {affectedItem && (
-          <div
-            style={{
-              padding: '0.625rem 0.875rem',
-              backgroundColor: 'var(--bg-input)',
-              borderRadius: '6px',
-              border: '1px solid var(--border-input)',
-              fontSize: '0.8rem',
-              color: 'var(--text-secondary)',
-              marginBottom: '1rem',
-            }}
-          >
-            Target: <code style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{affectedItem}</code>
-          </div>
-        )}
-
-        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1.5rem' }}>
-          {message}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          {error && <p role="alert" className="inline-error">{error}</p>}
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isConfirming}
-            className="btn-secondary"
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isConfirming}
-            className={getConfirmButtonClass()}
-          >
-            {isConfirming ? 'Processing...' : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </Dialog>
-  );
-};
+export function ConfirmDialog({isOpen,title,message,affectedItem,confirmLabel='Confirm action',cancelLabel='Cancel',severity='danger',isConfirming=false,onConfirm,onCancel,error,auditNote=false}: ConfirmDialogProps) {
+  const [note,setNote]=useState(''); const noteId=useId();
+  useEffect(()=>{if(isOpen)setNote('');},[isOpen,affectedItem,title]);
+  const Icon=severity==='danger'?ShieldAlert:severity==='warning'?AlertTriangle:Info;
+  return <DialogPresence>{isOpen && <Dialog title={title} onClose={onCancel} pending={isConfirming}>
+    <p className="confirm-message"><Icon size={20} color={severity==='danger'?'var(--danger-text)':severity==='warning'?'var(--warning-text)':'var(--info-text)'} aria-hidden="true" /> {message}</p>
+    {affectedItem&&<p className="confirm-target">Target: <code>{affectedItem}</code></p>}
+    {auditNote&&<><label className="field-label" htmlFor={noteId}>Audit note <span className="field-help">(optional)</span></label><textarea id={noteId} className="input-modern" rows={3} maxLength={1000} disabled={isConfirming} value={note} onChange={event=>setNote(event.target.value)} /></>}
+    {error&&<p role="alert" className="inline-error">{error}</p>}
+    <div className="dialog-actions"><button type="button" className="btn-secondary" disabled={isConfirming} onClick={onCancel}>{cancelLabel}</button><button type="button" className={severity==='danger'?'btn-danger':severity==='warning'?'btn-secondary':'btn-primary'} disabled={isConfirming} onClick={()=>onConfirm(note.trim())}>{isConfirming?'Processing…':confirmLabel}</button></div>
+  </Dialog>}</DialogPresence>;
+}

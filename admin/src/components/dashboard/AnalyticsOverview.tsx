@@ -153,7 +153,7 @@ export function AnalyticsOverview() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.875rem' }}>
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Completion Rate</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700, letterSpacing: '0.03em' }}>Completion Rate</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality ? `${defaultStats.callQuality.completionRate}%` : 'Unavailable'}
             </div>
@@ -161,7 +161,7 @@ export function AnalyticsOverview() {
           </div>
 
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Audio Stream Stability</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700, letterSpacing: '0.03em' }}>Audio Stream Stability</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality ? `${defaultStats.callQuality.audioReliability}%` : 'Unavailable'}
             </div>
@@ -169,7 +169,7 @@ export function AnalyticsOverview() {
           </div>
 
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Recording Egress</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700, letterSpacing: '0.03em' }}>Recording Egress</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality ? `${defaultStats.callQuality.recordingReliability}%` : 'Unavailable'}
             </div>
@@ -177,7 +177,7 @@ export function AnalyticsOverview() {
           </div>
 
           <div className="glass-card" style={{ padding: '1rem', backgroundColor: 'var(--bg-surface-elevated)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>Pre-Call Abort Rate</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700, letterSpacing: '0.03em' }}>Pre-Call Abort Rate</span>
             <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
               {defaultStats.callQuality ? `${defaultStats.callQuality.cancellationRate}%` : 'Unavailable'}
             </div>

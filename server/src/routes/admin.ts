@@ -1241,6 +1241,11 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
+  const auditNote = req.body?.note;
+  if (auditNote !== undefined && (typeof auditNote !== 'string' || auditNote.length > 1000)) {
+    return res.status(400).json({ error: 'Audit note must be text of at most 1000 characters.' });
+  }
+
   try {
     const appeal = await prisma.unblockAppeal.findUnique({ where: { id } });
     if (!appeal) {
@@ -1275,7 +1280,7 @@ router.post('/appeals/:id/approve', adminAuthMiddleware, async (req, res) => {
             adminId,
             beforeState: JSON.stringify({ appealStatus: appeal.status, userBanned: true, userId: appeal.userId }),
             afterState: JSON.stringify({ appealStatus: 'APPROVED', userBanned: false, userId: appeal.userId }),
-            reason: 'Admin approved candidate unblock appeal',
+            reason: (typeof auditNote === 'string' && auditNote.trim()) || 'Admin approved learner unblock appeal',
           },
         });
       });
@@ -1313,6 +1318,11 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
   const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
+  const auditNote = req.body?.note;
+  if (auditNote !== undefined && (typeof auditNote !== 'string' || auditNote.length > 1000)) {
+    return res.status(400).json({ error: 'Audit note must be text of at most 1000 characters.' });
+  }
+
   try {
     const appeal = await prisma.unblockAppeal.findUnique({ where: { id } });
     if (!appeal) {
@@ -1337,7 +1347,7 @@ router.post('/appeals/:id/reject', adminAuthMiddleware, async (req, res) => {
             adminId,
             beforeState: JSON.stringify({ appealStatus: appeal.status, userId: appeal.userId }),
             afterState: JSON.stringify({ appealStatus: 'REJECTED', userId: appeal.userId }),
-            reason: 'Admin rejected candidate unblock appeal',
+            reason: (typeof auditNote === 'string' && auditNote.trim()) || 'Admin rejected learner unblock appeal',
           },
         });
       });

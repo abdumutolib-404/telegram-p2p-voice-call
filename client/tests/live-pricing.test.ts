@@ -9,7 +9,7 @@ const plus: PublicPlan = { id: 'PLUS', name: 'Focus', description: 'Sample pract
 const catalog: PublicPricing = { version: 1, revision: 'a'.repeat(64), checkedAt: '2026-10-07T12:00:00Z', botUsername: 'FixturePracticeBot', plans: [plus] };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 let container: HTMLDivElement, root: Root, mounted: boolean;
-beforeEach(() => { vi.clearAllMocks(); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); container = document.createElement('div'); document.body.append(container); root = createRoot(container); mounted = true; });
+beforeEach(() => { vi.clearAllMocks(); localStorage.removeItem('pairtalk-pricing-currency'); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); container = document.createElement('div'); document.body.append(container); root = createRoot(container); mounted = true; });
 afterEach(async () => { if (mounted) await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it('uses the same live catalog on the public page and client plan chooser', async () => {
@@ -53,8 +53,8 @@ it('compares the selected currency without fabricating an exchange rate', async 
   const pro = { ...plus, id: 'PRO' as const, name: 'Intensive', prices: { XTR: 100, UZS: 70000 } };
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ ...catalog, plans: [plus, pro] })));
   await act(async () => root.render(createElement(PricingPage)));
-  expect(container.querySelector('.pricing-recommendation')?.textContent).toContain('Intensive');
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('Intensive');
   await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Uzbek sum')!.click());
-  expect(container.querySelector('.pricing-recommendation')?.textContent).toContain('Focus');
-  expect(container.querySelector('.pricing-recommendation')?.textContent).toContain('UZS');
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('Focus');
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('UZS');
 });

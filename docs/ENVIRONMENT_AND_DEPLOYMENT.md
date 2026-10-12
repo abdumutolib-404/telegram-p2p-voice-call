@@ -37,7 +37,7 @@ Each frontend deploys independently as a static-asset Worker. Names match the ex
 | Client | app-pairtalk-dev | client | [wrangler.jsonc](../client/wrangler.jsonc) | VITE_SERVER_URL, VITE_PUBLIC_SITE_URL, VITE_BOT_USERNAME |
 | Landing | telegram-p2p-voice-call | landing | [wrangler.jsonc](../landing/wrangler.jsonc) | VITE_BOT_USERNAME, VITE_PUBLIC_STATS_URL, VITE_PUBLIC_PRICING_URL |
 
-For each Worker, select production branch **main**, build command **npm run build**, and deployment command **npm run deploy**. Set **NODE_VERSION=24** and supply public variables from that application's template. Non-production branches use **npm run deploy:preview**. The root directory is the frontend folder; keep the full repository checkout available for shared platform code. No JavaScript Worker entrypoint is needed; never pass index.html as a Worker script.
+For each Worker, select production branch **main**, build command **npm run build**, and deployment command **npm run deploy**. Set **NODE_VERSION=24** and supply public variables from that application's template. Non-production branches use **npm run deploy:preview**. The root directory is the frontend folder; keep the full repository checkout available for shared platform code. Admin and client use static assets. Landing uses `worker.ts` to serve its public JSON routes before the assets handler, with `PUBLIC_API_ORIGIN` configured in `landing/wrangler.jsonc`. Never pass index.html as a Worker script.
 
 Wrangler is pinned in each lockfile. From an application folder:
 

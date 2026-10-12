@@ -63,7 +63,6 @@ export function StatsPage() {
         <a className="breadcrumb" href="/">
           PairTalk /
         </a>
-        <p className="eyebrow">OUR COMMUNITY, IN CONTEXT</p>
         <h1>
           Every conversation
           <br />
@@ -113,7 +112,6 @@ export function StatsPage() {
         )}
         <div className="stats-page-grid">
           <section className="stats-panel">
-            <p className="eyebrow">A ROUTINE, ONE MONTH AT A TIME</p>
             <h2>Conversations over time.</h2>
             <p>
               Completed calls during the last six calendar months, including the
@@ -169,7 +167,6 @@ export function StatsPage() {
             )}
           </section>
           <section className="stats-panel">
-            <p className="eyebrow">FEEDBACK FROM COMPLETED CALLS</p>
             <h2>How learners rated calls.</h2>
             <p>
               Optional post-call ratings on a 1–5 scale. These are session
@@ -212,7 +209,6 @@ export function StatsPage() {
           </section>
         </div>
         <section className="stats-method" id="methodology">
-          <p className="eyebrow">WHAT THE NUMBERS ACTUALLY MEAN</p>
           <h2>
             Clear definitions.
             <br />

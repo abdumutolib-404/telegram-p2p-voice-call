@@ -25,13 +25,15 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   className = '',
   style = {},
 }) => {
-  const variantClass = `badge-${variant}`;
+  const planLabels: Record<string, string> = { FREE: 'Free', PLUS: 'Plus', PRO: 'Pro', BOSS: 'Boss' };
+  const semanticVariant = label === 'PRO' || label === 'BOSS' ? 'gold' : label === 'PLUS' || label === 'FREE' ? 'neutral' : label === 'Refunded' ? 'success' : variant;
+  const variantClass = `badge-${semanticVariant}`;
   const sizeStyle = size === 'sm' ? { fontSize: '0.725rem', padding: '0.2rem 0.55rem' } : {};
 
   return (
     <span className={`badge ${variantClass} ${className}`} style={{ ...sizeStyle, ...style }}>
       {dot && <span className="dot" style={{ backgroundColor: 'currentColor' }} />}
-      <span>{label}</span>
+      <span>{planLabels[label] ?? label}</span>
     </span>
   );
 };

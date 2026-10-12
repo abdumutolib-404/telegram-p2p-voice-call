@@ -15,17 +15,17 @@ async function screen(){await act(async()=>root.render(createElement(ActiveCallS
 async function emit(name:string,payload?:unknown){await act(async()=>fixture.events.get(name)?.(payload));}
 
 it('shows room capture without activating the other user saved-copy toggle',async()=>{
- await screen();expect(container.textContent).toContain('RECORDING STATUS UNCONFIRMED');expect(fixture.snapshot).toHaveBeenCalledWith('current-room');
- await emit('room_recording_status',{roomName:'current-room',state:'on',updatedAt:2});expect(container.textContent).toContain('ROOM RECORDING ON');expect(container.querySelector('[aria-label="Start recording"]')).toBeTruthy();
- await emit('record_status',{roomName:'current-room',record:false});expect(container.textContent).toContain('ROOM RECORDING ON');
- await emit('recording_error',{message:'Own allowance exhausted'});expect(container.textContent).toContain('ROOM RECORDING ON');
+ await screen();expect(container.textContent).toContain('Recording status unconfirmed');expect(fixture.snapshot).toHaveBeenCalledWith('current-room');
+ await emit('room_recording_status',{roomName:'current-room',state:'on',updatedAt:2});expect(container.textContent).toContain('Room recording on');expect(container.querySelector('[aria-label="Start recording"]')).toBeTruthy();
+ await emit('record_status',{roomName:'current-room',record:false});expect(container.textContent).toContain('Room recording on');
+ await emit('recording_error',{message:'Own allowance exhausted'});expect(container.textContent).toContain('Room recording on');
  await emit('record_status',{roomName:'current-room',record:true});expect(container.querySelector('[aria-label="Stop recording"]')).toBeTruthy();
 });
 it('ignores older and other-room updates and treats disconnects as uncertain',async()=>{
  await screen();await emit('room_recording_status',{roomName:'current-room',state:'on',updatedAt:3});
- await emit('room_recording_status',{roomName:'old-room',state:'off',updatedAt:4});await emit('room_recording_status',{roomName:'current-room',state:'off',updatedAt:1});expect(container.textContent).toContain('ROOM RECORDING ON');
- await emit('room_recording_status',{roomName:'current-room',state:'off',updatedAt:3});expect(container.textContent).toContain('ROOM RECORDING ON');
- await emit('disconnect');expect(container.textContent).toContain('RECORDING STATUS UNCONFIRMED');
+ await emit('room_recording_status',{roomName:'old-room',state:'off',updatedAt:4});await emit('room_recording_status',{roomName:'current-room',state:'off',updatedAt:1});expect(container.textContent).toContain('Room recording on');
+ await emit('room_recording_status',{roomName:'current-room',state:'off',updatedAt:3});expect(container.textContent).toContain('Room recording on');
+ await emit('disconnect');expect(container.textContent).toContain('Recording status unconfirmed');
  await emit('connect');expect(fixture.snapshot).toHaveBeenCalledTimes(2);expect(fixture.ready).toHaveBeenCalledWith('current-room');
  await act(async()=>vi.advanceTimersByTime(15000));expect(fixture.snapshot).toHaveBeenCalledTimes(3);
 });

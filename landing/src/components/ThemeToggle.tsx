@@ -8,7 +8,7 @@ function applyTheme(theme: Theme) {
   document.documentElement.style.colorScheme = theme;
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", theme === "dark" ? "#111b1d" : "#f7f5ef");
+    ?.setAttribute("content", theme === "dark" ? "#111b1d" : "#f4f7f5");
 }
 export function ThemeToggle() {
   // Keep server and first hydration markup identical; the head script applies colors before paint.

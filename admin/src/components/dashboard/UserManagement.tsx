@@ -1,3 +1,4 @@
+import { DialogPresence } from '../ui/DialogPresence';
 import { usePricing } from "../../../../platform/usePricing";
 import { useClipboard, useLatestRequest } from '../../hooks/useAdminTools';
 import { Dialog } from '../ui/Dialog';
@@ -46,7 +47,7 @@ export function UserManagement() {
   const [actionError,setActionError] = useState<string | null>(null);
   const [useTierLimits,setUseTierLimits] = useState(false);
 
-  // Dedicated Active Candidate Drawer / Panel State
+  // Dedicated Active Learner Drawer / Panel State
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
   const [activePanelTab, setActivePanelTab] = useState<ControlPanelTab>('limits');
 
@@ -99,7 +100,7 @@ export function UserManagement() {
       setUsers(data || []);
     } catch (err: unknown) {
       if (!request.isCurrent()) return;
-      setError(err instanceof Error ? err.message : 'Failed to fetch candidate roster.');
+      setError(err instanceof Error ? err.message : 'Failed to fetch learner roster.');
     } finally {
       if (request.isCurrent()) setIsLoading(false);
     }
@@ -114,9 +115,9 @@ export function UserManagement() {
 
 
 
-  // Open Dedicated Candidate Drawer to specific tab
-  const openCandidatePanel = (user: UserItem, tab: ControlPanelTab = 'limits') => {
-    if (user.dailyLimit === undefined || user.maxDuration === undefined) { setError('Candidate limits are unavailable. Refresh before editing.'); return; }
+  // Open Dedicated Learner Drawer to specific tab
+  const openLearnerPanel = (user: UserItem, tab: ControlPanelTab = 'limits') => {
+    if (user.dailyLimit === undefined || user.maxDuration === undefined) { setError('Learner limits are unavailable. Refresh before editing.'); return; }
     setSelectedUser(user);
     setActivePanelTab(tab);
     setFeedback(null); setActionError(null); setUseTierLimits(false);
@@ -137,14 +138,14 @@ export function UserManagement() {
     setResetCallsOnPlanChange(false);
   };
 
-  const closeCandidatePanel = () => {
+  const closeLearnerPanel = () => {
     if (actionBusy.current) return;
     setSelectedUser(null);
   };
 
   const normalizeUser = (result: UserItem | { user: UserItem }): UserItem => 'user' in result ? result.user : result;
 
-  // Save Limits Form
+  // Save limits Form
   const handleSaveLimits = async () => {
     if (!selectedUser || actionBusy.current) return;
     actionBusy.current = true;
@@ -248,7 +249,7 @@ export function UserManagement() {
 
   };
 
-  // Save Plan Assignment
+  // Save Plan assignment
   const handleSavePlan = async () => {
     if (!selectedUser || actionBusy.current) return;
     actionBusy.current = true;
@@ -286,19 +287,19 @@ export function UserManagement() {
     let severity: 'danger' | 'warning' | 'info' = 'danger';
 
     if (action === 'ban') {
-      title = 'Permanently Ban Candidate';
+      title = 'Permanently ban learner';
       message = `This will permanently revoke platform access for ${user.alias} (TG: ${user.telegramId}). They can only regain access via an unban appeal.`;
       severity = 'danger';
     } else if (action === 'block') {
-      title = `Suspend Candidate (${suspensionDuration.toUpperCase()})`;
+      title = `Suspend learner (${suspensionDuration.toUpperCase()})`;
       message = `This will temporarily suspend ${user.alias} for ${suspensionDuration}. Access will automatically restore afterwards.`;
       severity = 'warning';
     } else if (action === 'warn') {
-      title = 'Issue Formal Violation Warning';
+      title = 'Issue violation warning';
       message = `A formal violation warning will be recorded for ${user.alias}. A Telegram notification will be attempted.`;
       severity = 'warning';
     } else if (action === 'unblock' || action === 'unban') {
-      title = 'Restore Candidate Access';
+      title = 'Restore learner access';
       message = `This will clear restrictions and restore ${user.alias} to Active standing.`;
       severity = 'info';
     }
@@ -313,7 +314,7 @@ export function UserManagement() {
     });
   };
 
-  const handleExecuteConfirmedAction = async () => {
+  const handleExecuteConfirmedAction = async (note: string) => {
     const { user, action } = confirmDialog;
     if (!user || !action || actionBusy.current) return;
     actionBusy.current = true; setActionError(null);
@@ -325,7 +326,7 @@ export function UserManagement() {
         method: 'POST',
         body: JSON.stringify({
           action,
-          reason: `Administrative action (${suspensionDuration}) via Operations Console`,
+          reason: note || `Administrative action (${suspensionDuration}) via Operations console`,
         }),
       }));
 
@@ -394,7 +395,7 @@ export function UserManagement() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {copyError && <p role="alert" className="inline-error">{copyError}</p>}
       <PageHeader
-        title="Candidates"
+        title="Learners"
         description="Find learners and manage their call limits, plans and account status."
         actions={
           <button
@@ -436,7 +437,7 @@ export function UserManagement() {
                 border: 'none',
                 borderRadius: '6px',
                 backgroundColor: statusFilter === tab ? 'var(--primary-bg)' : 'transparent',
-                color: statusFilter === tab ? '#FFFFFF' : 'var(--text-secondary)',
+                color: statusFilter === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontWeight: statusFilter === tab ? 700 : 500,
                 fontSize: '0.8rem',
                 cursor: 'pointer',
@@ -489,14 +490,14 @@ export function UserManagement() {
         </div>
       )}
 
-      {/* Candidate roster with separate scores and account controls. */}
+      {/* Learner roster with separate scores and account controls. */}
       {isLoading && users.length === 0 ? (
-        <LoadingSkeleton message="Searching candidate roster..." rows={6} />
+        <LoadingSkeleton message="Searching learner roster..." rows={6} />
       ) : users.length === 0 ? (
         <EmptyState
           icon={<User size={32} color="var(--text-muted)" />}
-          title="No candidates found"
-          description={searchQuery ? `No candidates matching "${searchQuery}".` : 'No candidates under the selected filter.'}
+          title="No learners found"
+          description={searchQuery ? `No learners matching "${searchQuery}".` : 'No learners under the selected filter.'}
           action={
             searchQuery ? (
               <button onClick={() => setSearchQuery('')} className="btn-secondary" style={{ fontSize: '0.8rem' }}>
@@ -525,7 +526,7 @@ export function UserManagement() {
                   <tr
                     key={user.id}
                     style={{ cursor: 'pointer' }}
-                    onClick={() => openCandidatePanel(user, 'limits')}
+                    onClick={() => openLearnerPanel(user, 'limits')}
                   >
                     {/* Column 1: Alias */}
                     <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -604,20 +605,20 @@ export function UserManagement() {
                       </div>
                     </td>
                     <td>
-                        {/* Dedicated controls column keeps candidate rows compact. */}
+                        {/* Dedicated controls column keeps learner rows compact. */}
                         <div style={{ display: 'inline-flex', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                           <button
                             title="Speaking Limits Panel"
-                            onClick={() => openCandidatePanel(user, 'limits')}
+                            onClick={() => openLearnerPanel(user, 'limits')}
                             className="btn-secondary"
                             style={{
                               height: '28px',
                               padding: '0 0.65rem',
                               fontSize: '0.75rem',
                               fontWeight: 700,
-                              backgroundColor: 'rgba(6, 182, 212, 0.15)',
-                              borderColor: 'rgba(6, 182, 212, 0.4)',
-                              color: '#38BDF8',
+                              backgroundColor: 'var(--bg-surface)',
+                              borderColor: 'var(--border-card)',
+                              color: 'var(--text-primary)',
                               cursor: 'pointer',
                             }}
                           >
@@ -625,16 +626,16 @@ export function UserManagement() {
                           </button>
                           <button
                             title="Subscription Plan Panel"
-                            onClick={() => openCandidatePanel(user, 'plan')}
+                            onClick={() => openLearnerPanel(user, 'plan')}
                             className="btn-secondary"
                             style={{
                               height: '28px',
                               padding: '0 0.65rem',
                               fontSize: '0.75rem',
                               fontWeight: 700,
-                              backgroundColor: 'rgba(168, 85, 247, 0.15)',
-                              borderColor: 'rgba(168, 85, 247, 0.4)',
-                              color: '#C084FC',
+                              backgroundColor: 'var(--bg-surface)',
+                              borderColor: 'var(--border-card)',
+                              color: 'var(--text-primary)',
                               cursor: 'pointer',
                             }}
                           >
@@ -642,7 +643,7 @@ export function UserManagement() {
                           </button>
                           <button
                             title="Moderation Status Panel"
-                            onClick={() => openCandidatePanel(user, 'status')}
+                            onClick={() => openLearnerPanel(user, 'status')}
                             className="btn-secondary"
                             style={{ height: '26px', padding: '0 0.5rem', fontSize: '0.725rem', fontWeight: 600, color: user.status === 'active' ? 'var(--text-secondary)' : 'var(--danger-text)' }}
                           >
@@ -659,8 +660,8 @@ export function UserManagement() {
       )}
 
       {/* DEDICATED 3-PANEL CANDIDATE MODAL / DRAWER */}
-      {selectedUser && (
-        <Dialog title="Candidate controls" pending={isSavingLimits || isResettingCalls || isSubmittingPlan || isConfirmingAction} onClose={() => { closeCandidatePanel(); }}><fieldset disabled={isSavingLimits || isResettingCalls || isSubmittingPlan || isConfirmingAction} style={{border:0,padding:0,margin:0,minWidth:0}}>
+      <DialogPresence>{selectedUser && (
+        <Dialog title="Learner controls" pending={isSavingLimits || isResettingCalls || isSubmittingPlan || isConfirmingAction} onClose={() => { closeLearnerPanel(); }}><fieldset disabled={isSavingLimits || isResettingCalls || isSubmittingPlan || isConfirmingAction} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div
             className="glass-panel"
             style={{
@@ -690,7 +691,7 @@ export function UserManagement() {
               </div>
 
               <button
-                onClick={closeCandidatePanel}
+                onClick={closeLearnerPanel}
                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
                 aria-label="Close panel"
               >
@@ -719,7 +720,7 @@ export function UserManagement() {
                   border: 'none',
                   borderRadius: '6px',
                   backgroundColor: activePanelTab === 'limits' ? 'var(--primary-bg)' : 'transparent',
-                  color: activePanelTab === 'limits' ? '#FFFFFF' : 'var(--text-secondary)',
+                  color: activePanelTab === 'limits' ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontWeight: activePanelTab === 'limits' ? 700 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
@@ -741,7 +742,7 @@ export function UserManagement() {
                   border: 'none',
                   borderRadius: '6px',
                   backgroundColor: activePanelTab === 'plan' ? 'var(--primary-bg)' : 'transparent',
-                  color: activePanelTab === 'plan' ? '#FFFFFF' : 'var(--text-secondary)',
+                  color: activePanelTab === 'plan' ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontWeight: activePanelTab === 'plan' ? 700 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
@@ -763,7 +764,7 @@ export function UserManagement() {
                   border: 'none',
                   borderRadius: '6px',
                   backgroundColor: activePanelTab === 'status' ? 'var(--primary-bg)' : 'transparent',
-                  color: activePanelTab === 'status' ? '#FFFFFF' : 'var(--text-secondary)',
+                  color: activePanelTab === 'status' ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontWeight: activePanelTab === 'status' ? 700 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
@@ -815,7 +816,7 @@ export function UserManagement() {
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.03em' }}>
+                    <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700, letterSpacing: '0.03em' }}>
                       Current Cycle Speaking Usage
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '0.25rem' }}>
@@ -842,7 +843,7 @@ export function UserManagement() {
 
                 {/* Monthly Call Allowance Input */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
                     Call Allowance (Monthly Calls Limit)
                   </label>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -868,7 +869,7 @@ export function UserManagement() {
 
                 {/* Max Call Duration */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
                     Max Call Duration (Minutes)
                   </label>
                   <input aria-label="Max Call Duration (Minutes)"
@@ -885,7 +886,7 @@ export function UserManagement() {
                 {/* Recording Limits Override & Audio Retention */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                    <label style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'none' }}>
                       Recording Limit Override
                     </label>
                     <input aria-label="Recording Limit Override"
@@ -901,7 +902,7 @@ export function UserManagement() {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                    <label style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'none' }}>
                       Audio Retention (Days)
                     </label>
                     <input aria-label="Audio Retention (Days)"
@@ -918,7 +919,7 @@ export function UserManagement() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
-                  <button type="button" onClick={closeCandidatePanel} className="btn-secondary">
+                  <button type="button" onClick={closeLearnerPanel} className="btn-secondary">
                     Close
                   </button>
                   <button
@@ -927,7 +928,7 @@ export function UserManagement() {
                     disabled={isSavingLimits}
                     className="btn-primary"
                   >
-                    <Save size={14} /> {isSavingLimits ? 'Saving...' : 'Save Limits'}
+                    <Save size={14} /> {isSavingLimits ? 'Saving...' : 'Save limits'}
                   </button>
                 </div>
               </div>
@@ -938,7 +939,7 @@ export function UserManagement() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {/* Target Tier Selection */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
                     Target Subscription Tier
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
@@ -952,10 +953,10 @@ export function UserManagement() {
                           borderRadius: '6px',
                           border: planTier === tier ? '2px solid var(--primary)' : '1px solid var(--border-card)',
                           backgroundColor: planTier === tier ? 'var(--primary-bg)' : 'var(--bg-surface-elevated)',
-                          color: planTier === tier ? '#FFFFFF' : 'var(--text-secondary)',
+                          color: planTier === tier ? 'var(--text-primary)' : 'var(--text-secondary)',
                           fontWeight: 700,
                           cursor: 'pointer',
-                          textTransform: 'uppercase',
+                          textTransform: 'none',
                           fontSize: '0.75rem',
                           transition: 'all 0.12s ease',
                         }}
@@ -969,7 +970,7 @@ export function UserManagement() {
                 {/* Validity Duration & Live Expiry Preview */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
                       Validity Duration (Days)
                     </label>
                     <span style={{ fontSize: '0.75rem', color: 'var(--primary-light)', fontWeight: 600 }}>
@@ -1004,7 +1005,7 @@ export function UserManagement() {
                           height: '24px',
                           backgroundColor: Number(durationDaysInput) === preset.days ? 'var(--primary-bg)' : undefined,
                           borderColor: Number(durationDaysInput) === preset.days ? 'var(--primary)' : undefined,
-                          color: Number(durationDaysInput) === preset.days ? '#fff' : undefined,
+                          color: Number(durationDaysInput) === preset.days ? 'var(--text-primary)' : undefined,
                         }}
                       >
                         {preset.label}
@@ -1015,7 +1016,7 @@ export function UserManagement() {
 
                 {/* Custom Plan Label */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
                     Custom Plan Label (Optional)
                   </label>
                   <input aria-label="Custom Plan Label (Optional)"
@@ -1030,7 +1031,7 @@ export function UserManagement() {
 
                 {/* Contest Winner Presets (Zero Emojis) */}
                 <div style={{ padding: '0.875rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
-                  <span style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>
+                  <span style={{ display: 'block', fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'none', fontWeight: 700, marginBottom: '0.5rem' }}>
                     Contest Winner Presets:
                   </span>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
@@ -1069,7 +1070,7 @@ export function UserManagement() {
                   </div>
                 </div>
 
-                {/* Reset Daily Calls Checkbox */}
+                {/* Reset call usage Checkbox */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
                     type="checkbox"
@@ -1084,7 +1085,7 @@ export function UserManagement() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
-                  <button type="button" onClick={closeCandidatePanel} className="btn-secondary">
+                  <button type="button" onClick={closeLearnerPanel} className="btn-secondary">
                     Close
                   </button>
                   <button
@@ -1115,7 +1116,7 @@ export function UserManagement() {
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                    <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700 }}>
                       Current Platform Standing
                     </span>
                     <div style={{ marginTop: '0.35rem' }}>
@@ -1124,7 +1125,7 @@ export function UserManagement() {
                   </div>
 
                   <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                    <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700 }}>
                       Violation Warnings
                     </span>
                     <div className="num-tabular" style={{ fontSize: '1.25rem', fontWeight: 800, color: (selectedUser.warningCount || 0) > 0 ? 'var(--warning-text)' : 'var(--text-primary)', marginTop: '0.1rem' }}>
@@ -1135,7 +1136,7 @@ export function UserManagement() {
 
                 {/* Suspension Duration Selector */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
                     Suspension Period Selector
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
@@ -1205,13 +1206,13 @@ export function UserManagement() {
                       className="btn-danger"
                       style={{ width: '100%', height: '38px', fontWeight: 700 }}
                     >
-                      <Ban size={15} /> Permanently Ban Candidate
+                      <Ban size={15} /> Permanently ban learner
                     </button>
                   )}
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
-                  <button type="button" onClick={closeCandidatePanel} className="btn-secondary">
+                  <button type="button" onClick={closeLearnerPanel} className="btn-secondary">
                     Close
                   </button>
                 </div>
@@ -1219,16 +1220,16 @@ export function UserManagement() {
             )}
           </div>
         </fieldset></Dialog>
-      )}
+      )}</DialogPresence>
 
       {/* Destructive Confirm Dialog */}
-      <ConfirmDialog
+      <ConfirmDialog auditNote
         error={actionError}
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
         message={confirmDialog.message}
         affectedItem={confirmDialog.user ? `${confirmDialog.user.alias} (TG: ${confirmDialog.user.telegramId})` : undefined}
-        confirmLabel={`Yes, Execute ${confirmDialog.action?.toUpperCase()}`}
+        confirmLabel={`Confirm ${confirmDialog.action ?? "action"}`}
         severity={confirmDialog.severity}
         isConfirming={isConfirmingAction}
         onConfirm={handleExecuteConfirmedAction}

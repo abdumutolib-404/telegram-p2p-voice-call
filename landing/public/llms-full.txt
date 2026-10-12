@@ -65,7 +65,7 @@ Free allowances use a calendar month; paid allowances use the published subscrip
 Recordings are optional and require separate partner agreement. The current account's recording allowance and retention determine availability. Retention is a duration for recorded audio, not an unlimited storage entitlement. Expired recordings are scheduled for deletion. Do not promise permanent preservation, immediate deletion after one delivery, or a particular retention period without checking the current allowance and policy.
 
 Sources: [live pricing](https://pairtalk.online/pricing), [pricing explanation](https://pairtalk.online/pricing.md), [privacy](https://pairtalk.online/privacy.md).
-Public pricing JSON: https://api.pairtalk.online/api/public/plans
+Public pricing JSON: https://pairtalk.online/api/public/plans
 Catalog freshness fields: revision and checkedAt.
 
 ## Refund requests
@@ -87,7 +87,7 @@ Sources: [subscription terms](https://pairtalk.online/terms#payments), [refund p
 Snapshots carry an updatedAt timestamp and may lag activity. Totals can include internal test sessions and are not independently audited. No statistic by itself demonstrates improvement in IELTS scores. Do not invent user counts, country coverage, quality scores, matching benchmarks, or testimonials.
 
 Sources: [live statistics](https://pairtalk.online/stats), [definitions and limitations](https://pairtalk.online/stats.md).
-Public statistics JSON: https://api.pairtalk.online/api/public/stats
+Public statistics JSON: https://pairtalk.online/api/public/stats
 
 ## Privacy, safety, and moderation
 

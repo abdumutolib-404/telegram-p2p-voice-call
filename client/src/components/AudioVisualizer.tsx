@@ -7,6 +7,7 @@ export interface AudioVisualizerProps {
   height?: number;
   className?: string;
   barColor?: string;
+  secondaryBarColor?: string;
   fitContainer?: boolean;
 }
 
@@ -16,7 +17,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   barCount = 24,
   height = 80,
   className = '',
-  barColor = '#5bd4b6',
+  barColor = '#8DE6C3',
+  secondaryBarColor = '#FFDDCE',
   fitContainer = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -31,6 +33,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    const animateLevels = Boolean(analyserNode && !isMuted && !prefersReducedMotion);
+    let refreshStatic: (() => void) | undefined;
 
     const updateDimensions = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -40,6 +44,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       dimensionsRef.current = { width: w, height: h };
+      if (!animateLevels) refreshStatic?.();
     };
 
     updateDimensions();
@@ -66,7 +71,6 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       dataArray = dataArrayRef.current;
     }
 
-    let phase = 0;
     const TARGET_FPS = 30;
     const FRAME_INTERVAL = 1000 / TARGET_FPS; // ~33.33ms
     let lastFrameTime = 0;
@@ -78,13 +82,13 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         return;
       }
 
-      animFrameIdRef.current = requestAnimationFrame(renderFrame);
+      animFrameIdRef.current = animateLevels ? requestAnimationFrame(renderFrame) : null;
 
       const now = typeof timestamp === 'number' ? timestamp : performance.now();
       const delta = now - lastFrameTime;
 
       // Throttle canvas rendering using timestamp delta to cap at 30 FPS instead of unthrottled 60-120 FPS
-      if (delta < FRAME_INTERVAL) {
+      if (animateLevels && delta < FRAME_INTERVAL) {
         return;
       }
 
@@ -107,8 +111,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
           const totalBins = dataArray.length;
           const step = Math.max(1, Math.floor(totalBins / barCount));
-          const gap = 3;
-          const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
+          const gap = 2;
+          const barWidth = Math.min(3, Math.max(1, (displayWidth - gap * (barCount - 1)) / barCount));
+          const offset = (displayWidth - barWidth * barCount - gap * (barCount - 1)) / 2;
 
           for (let i = 0; i < barCount; i++) {
             const binIndex = Math.min(i * step, totalBins - 1);
@@ -117,10 +122,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             const minHeight = 4;
             const barHeight = Math.max(minHeight, percent * (displayHeight - 12));
 
-            const x = i * (barWidth + gap);
+            const x = offset + i * (barWidth + gap);
             const y = (displayHeight - barHeight) / 2;
 
-            ctx.fillStyle = barColor;
+            ctx.fillStyle = i < barCount / 2 ? barColor : secondaryBarColor;
             ctx.beginPath();
             if (typeof ctx.roundRect === 'function') {
               ctx.roundRect(x, y, barWidth, barHeight, barWidth / 2);
@@ -130,22 +135,18 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             ctx.fill();
           }
         } else {
-          // Fallback or muted idle wave
-          if (!prefersReducedMotion) {
-            phase += 0.08;
-          }
-          const gap = 3;
-          const barWidth = Math.max(2, (displayWidth - gap * (barCount - 1)) / barCount);
+          // Silence and unavailable audio stay still rather than simulating speech.
+          const gap = 2;
+          const barWidth = Math.min(3, Math.max(1, (displayWidth - gap * (barCount - 1)) / barCount));
+          const offset = (displayWidth - barWidth * barCount - gap * (barCount - 1)) / 2;
 
           for (let i = 0; i < barCount; i++) {
-            const sineVal = prefersReducedMotion ? 0.3 : Math.sin(phase + i * 0.3);
-            const normalized = (sineVal + 1) / 2;
-            const barHeight = 4 + normalized * 14;
+            const barHeight = Math.max(4, displayHeight * .3);
 
-            const x = i * (barWidth + gap);
+            const x = offset + i * (barWidth + gap);
             const y = (displayHeight - barHeight) / 2;
 
-            ctx.fillStyle = isMuted ? '#64748b' : barColor;
+            ctx.fillStyle = isMuted ? '#AAB7BC' : i < barCount / 2 ? barColor : secondaryBarColor;
             ctx.globalAlpha = isMuted ? 0.25 : 0.45;
 
             ctx.beginPath();
@@ -160,6 +161,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         }
       }
     };
+    refreshStatic = () => renderFrame(performance.now());
 
     // Pause requestAnimationFrame entirely when hidden, resume when visible
     const handleVisibilityChange = () => {
@@ -195,10 +197,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         window.removeEventListener('resize', updateDimensions);
       }
     };
-  }, [analyserNode, isMuted, barCount, height, barColor]);
+  }, [analyserNode, isMuted, barCount, height, barColor, secondaryBarColor]);
 
   return (
-    <div className={`w-full flex items-center justify-center ${className}`} style={{ height: fitContainer ? '100%' : `${height}px` }}>
+    <div className={`w-full flex items-center justify-center ${className}`} aria-hidden="true" style={{ height: fitContainer ? '100%' : `${height}px` }}>
       <canvas
         ref={canvasRef}
         className="w-full max-w-md h-full"

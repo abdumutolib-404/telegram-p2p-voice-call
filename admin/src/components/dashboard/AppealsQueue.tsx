@@ -57,7 +57,7 @@ export function AppealsQueue() {
   }, [fetchAppeals]);
 
   const triggerDecisionConfirm = (appeal: AppealItem, action: 'approve' | 'reject') => {
-    const title = action === 'approve' ? 'Approve Unban Appeal' : 'Reject Moderation Appeal';
+    const title = action === 'approve' ? 'Approve unban appeal' : 'Reject moderation appeal';
     const message =
       action === 'approve'
         ? `Are you sure you want to approve the appeal for ${appeal.alias} (TG: ${appeal.telegramId})? Their account standing will immediately be restored to Active.`
@@ -72,7 +72,7 @@ export function AppealsQueue() {
     });
   };
 
-  const handleExecuteConfirmedDecision = async () => {
+  const handleExecuteConfirmedDecision = async (note: string) => {
     const { appeal, action } = confirmDialog;
     if (!appeal || !action || busy.current) return;
     busy.current = true; setActionError(null);
@@ -80,9 +80,9 @@ export function AppealsQueue() {
     setIsProcessingDecision(true);
     try {
       if (action === 'approve') {
-        await adminFetch(`/api/admin/appeals/${appeal.id}/approve`, { method: 'POST' });
+        await adminFetch(`/api/admin/appeals/${appeal.id}/approve`, { method: 'POST', body: JSON.stringify({ note: note || undefined }) });
       } else {
-        await adminFetch(`/api/admin/appeals/${appeal.id}/reject`, { method: 'POST' });
+        await adminFetch(`/api/admin/appeals/${appeal.id}/reject`, { method: 'POST', body: JSON.stringify({ note: note || undefined }) });
       }
 
       setAppeals((prev) => prev.filter((a) => a.id !== appeal.id));
@@ -99,7 +99,7 @@ export function AppealsQueue() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Appeals"
-        description="Review candidate statements and moderation history before making a decision."
+        description="Review learner statements and moderation history before making a decision."
         actions={
           <button
             onClick={fetchAppeals}
@@ -173,7 +173,7 @@ export function AppealsQueue() {
 
               {/* Ban Reason */}
               <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--danger-bg)', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
-                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--danger-text)', fontWeight: 600, marginBottom: '0.2rem' }}>
+                <div style={{ fontSize: '0.7rem', textTransform: 'none', letterSpacing: '0.04em', color: 'var(--danger-text)', fontWeight: 600, marginBottom: '0.2rem' }}>
                   Recorded Infraction
                 </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
@@ -198,7 +198,7 @@ export function AppealsQueue() {
               {/* Appeal Statement */}
               <div style={{ padding: '0.875rem 1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary-light)', marginBottom: '0.35rem' }}>
-                  <MessageSquare size={13} /> Candidate Appeal Statement
+                  <MessageSquare size={13} /> Learner appeal statement
                 </div>
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.45, fontStyle: 'italic' }}>
                   "{appeal.appealText}"
@@ -212,7 +212,7 @@ export function AppealsQueue() {
                   className="btn-danger"
                   style={{ height: '32px', fontSize: '0.8rem' }}
                 >
-                  <X size={13} /> Reject Appeal
+                  <X size={13} /> Reject appeal
                 </button>
 
                 <button
@@ -229,13 +229,13 @@ export function AppealsQueue() {
       )}
 
       {/* Decision Confirm Dialog */}
-      <ConfirmDialog
+      <ConfirmDialog auditNote
         error={actionError}
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
         message={confirmDialog.message}
         affectedItem={confirmDialog.appeal ? `${confirmDialog.appeal.alias} (TG: ${confirmDialog.appeal.telegramId})` : undefined}
-        confirmLabel={confirmDialog.action === 'approve' ? 'Approve Unban' : 'Reject Appeal'}
+        confirmLabel={confirmDialog.action === 'approve' ? 'Approve unban' : 'Reject appeal'}
         severity={confirmDialog.action === 'approve' ? 'info' : 'danger'}
         isConfirming={isProcessingDecision}
         onConfirm={handleExecuteConfirmedDecision}

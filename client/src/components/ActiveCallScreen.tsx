@@ -266,10 +266,6 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       <header className="app-header">
         <Brand />
         <div className="call-header-actions">
-          <span className="status-pill">
-            <span className="status-dot" />
-            Voice practice
-          </span>
           <button
             type="button"
             className="secondary-button"
@@ -367,16 +363,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         </section>
         <section className="call-partner" aria-label="Your practice partner">
           <div className="call-avatar" aria-hidden="true">
-            {(partnerAlias || 'Partner').charAt(0).toUpperCase()}
+            {(partnerAlias || 'Partner').replace(/^P2P-/, '').charAt(0).toUpperCase()}
           </div>
           <h1>{partnerAlias}</h1>
-          <p>Band {(partnerBand || 7).toFixed(1)} · Practice partner</p>
+          <p>Band {Number.isFinite(partnerBand) ? partnerBand.toFixed(1) : '—'} · Practice partner</p>
           <div className="call-waveform">
             <AudioVisualizer
               fitContainer
               analyserNode={analyserNode}
               isMuted={false}
-              barColor="#5bd4b6"
+              barColor="#8DE6C3"
             />
           </div>
           <p className="recording-explanation">
@@ -388,6 +384,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           </p>
         </section>
       </div>
+      <p className="call-lock-note">Navigation is locked until the call ends.</p>
       <QuestionsDrawer
         isOpen={showQuestionsDrawer}
         onClose={() => setShowQuestionsDrawer(false)}
@@ -404,10 +401,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           />
           <span role="status" aria-live="polite">
             {roomRecordingState === 'on'
-              ? 'ROOM RECORDING ON'
+              ? 'Room recording on'
               : roomRecordingState === 'off'
-                ? 'NO ROOM RECORDING REPORTED'
-                : 'RECORDING STATUS UNCONFIRMED'}
+                ? 'No room recording reported'
+                : 'Recording status unconfirmed'}
           </span>
         </div>
         <div className="call-controls" aria-label="Call controls">

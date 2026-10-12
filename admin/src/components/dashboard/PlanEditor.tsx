@@ -4,16 +4,17 @@ import { formatPlanPrice, planPeriod } from '../../../../server/src/contracts/pr
 import { adminFetch, adminApiOrigin } from '../../api/client';
 import { useLatestRequest, useUnsavedChanges } from '../../hooks/useAdminTools';
 import { PageHeader } from '../ui/PageHeader';
+import { StatusBadge } from '../ui/StatusBadge';
 import type { PlansResponse, PlanTierConfig } from '../../types';
 const tiers = ['FREE', 'PLUS', 'PRO', 'BOSS'] as const;
 const fields: { key: keyof PlanTierConfig; label: string; min: number; max: number }[] = [
   { key: 'maxDuration', label: 'Minutes per call', min: 1, max: 1440 },
-  { key: 'dailyLimit', label: 'Calls per billing period (999+ means unlimited)', min: 0, max: 2147483647 },
+  { key: 'dailyLimit', label: 'Calls per billing period', min: 0, max: 2147483647 },
   { key: 'recordingLimit', label: 'Recordings per billing period', min: 0, max: 2147483647 },
   { key: 'retentionDays', label: 'Recording retention (days)', min: 1, max: 3650 },
   { key: 'starsPrice', label: 'Price in Stars', min: 0, max: 2147483647 },
   { key: 'uzsPrice', label: 'Price in UZS', min: 0, max: 2147483647 },
-  { key: 'subscriptionDurationDays', label: 'Subscription validity (days; 0 for Free)', min: 0, max: 3650 },
+  { key: 'subscriptionDurationDays', label: 'Subscription validity (days)', min: 0, max: 3650 },
 ];
 export function PlanEditor() {
   const [plans, setPlans] = useState<PlansResponse | null>(null), [initial, setInitial] = useState<PlansResponse | null>(null);
@@ -62,16 +63,16 @@ export function PlanEditor() {
     {dirty && <button type="button" className="btn-secondary" disabled={saving} onClick={() => { setPlans(structuredClone(initial)); setError(null); }}>Discard edits</button>}
     <button type="submit" className="btn-primary" disabled={!plans || !dirty || saving}>{saving ? 'Saving…' : 'Save plans'}</button></div>}/>
     {loading && <p role="status">Loading server plans…</p>}{error && <p role="alert" className="inline-error">{error}{!plans && <button type="button" className="btn-secondary" onClick={() => void load()}>Retry</button>}</p>}
-    {success && <p role="status">{success}</p>}{dirty && <p role="status">You have unsaved changes.</p>}
+    {success && <p role="status" className="plan-save-status"><StatusBadge variant="success" label="Up to date" className="is-new" /><span className="sr-only">{success}</span></p>}{dirty && <p role="status" className="draft-banner">Draft changes are not published.</p>}
     <section className="glass-panel" style={{padding:20,margin:'20px 0'}} aria-label="Published platform prices"><h2>Published to PairTalk</h2><p>Saved offers appear on the landing page and client. Draft edits below remain unpublished until you save.</p>
       {published.loading&&<p role="status">Checking published prices…</p>}{published.error&&<p role="alert">{published.error}<button type="button" className="btn-secondary" onClick={published.retry}>Retry</button></p>}
       {published.data&&<div className="table-container" role="region" tabIndex={0} aria-label="Published plan comparison"><table className="data-table"><thead><tr><th scope="col">Plan</th><th scope="col">Stars</th><th scope="col">UZS</th><th scope="col">Allowance period</th><th scope="col">Calls</th><th scope="col">Minutes per call</th><th scope="col">Recordings</th><th scope="col">Retention</th></tr></thead><tbody>{published.data.plans.map(plan=><tr key={plan.id}><th scope="row">{plan.name}</th><td>{formatPlanPrice(plan,'XTR')}</td><td>{formatPlanPrice(plan,'UZS')}</td><td>{planPeriod(plan)}</td><td>{plan.unlimitedCalls?'Unlimited':plan.calls}</td><td>{plan.maxCallMinutes}</td><td>{plan.recordings}</td><td>{plan.retentionDays} {plan.retentionDays===1?'day':'days'}</td></tr>)}</tbody></table></div>}
     </section>
-    {plans && <fieldset disabled={saving} style={{ border:0, padding:0, margin:'24px 0', display:'grid', gridTemplateColumns:'repeat(4, minmax(0, 1fr))', gap:12 }}>
-      {tiers.map(tier => <section className="glass-panel" key={tier} style={{ padding:20 }}><h2>{tier}</h2>
+    {plans && <fieldset className="plan-edit-grid" disabled={saving} style={{ border:0, padding:0, margin:'24px 0', display:'grid', gridTemplateColumns:'repeat(4, minmax(0, 1fr))', gap:12 }}>
+      {tiers.map(tier => <section className="glass-panel" key={tier} style={{ padding:20 }}><h2>{plans[tier].name || tier}</h2>
         <label className="field-label" htmlFor={tier + '-name'}>Name</label><input id={tier + '-name'} className="input-modern" maxLength={80} value={plans[tier].name ?? ''} onChange={e => change(tier,'name',e.target.value)}/>
         <label className="field-label" htmlFor={tier + '-description'}>Description</label><textarea id={tier + '-description'} className="input-modern" maxLength={1000} value={plans[tier].description ?? ''} onChange={e => change(tier,'description',e.target.value)}/>
-        {fields.map(field => <div key={field.key}><label className="field-label" htmlFor={tier + '-' + field.key}>{field.label}</label><input id={tier + '-' + field.key} className="input-modern" type="number" step={1} min={field.min} max={field.max} required value={Number.isNaN(plans[tier][field.key]) ? '' : plans[tier][field.key] as number ?? ''} onChange={e => change(tier,field.key,e.target.value === '' ? NaN : Number(e.target.value))}/></div>)}
+        {fields.map(field => <div key={field.key}><label className="field-label" htmlFor={tier + '-' + field.key}>{field.label}</label>{field.key==='dailyLimit'&&<p className="field-help">999 or more means unlimited.</p>}{field.key==='subscriptionDurationDays'&&<p className="field-help">Free uses 0; paid plans need at least 1 day.</p>}<input id={tier + '-' + field.key} className="input-modern" type="number" step={1} min={field.min} max={field.max} required value={Number.isNaN(plans[tier][field.key]) ? '' : plans[tier][field.key] as number ?? ''} onChange={e => change(tier,field.key,e.target.value === '' ? NaN : Number(e.target.value))}/></div>)}
         <label className="field-label"><input type="checkbox" checked={plans[tier].active ?? false} onChange={e => change(tier,'active',e.target.checked)}/> {tier === 'FREE' ? 'Show in comparison' : 'Available for purchase'}</label>
       </section>)}
     </fieldset>}

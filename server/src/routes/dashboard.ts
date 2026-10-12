@@ -130,11 +130,11 @@ router.post('/sessions/:id/rating', action(async (req, res) => {
   res.json({ success: true });
 }));
 router.post('/sessions/:id/report', action(async (req, res) => {
-  const { reason } = z.object({ reason: z.enum(['Harassment', 'Hate speech', 'Explicit content', 'Spam or solicitation', 'Other unsafe behavior']) }).strict().parse(req.body);
+  const { reason, details } = z.object({ reason: z.enum(['Harassment', 'Hate speech', 'Explicit content', 'Spam or solicitation', 'Other unsafe behavior']), details: z.string().trim().max(1000).optional() }).strict().parse(req.body);
   const session = await ownSession(req.params.id, req.member!.id);
   if (session.status !== 'COMPLETED') throw new ActionError(409, 'Finish or leave the conversation before reporting.');
   if (session.ratings.some(item => item.raterId === req.member!.id && item.reported)) throw new ActionError(409, 'You already reported this conversation.');
-  try { await moderationService.processReport(session.userAId === req.member!.id ? session.userBId : session.userAId, req.member!.id, session.id, reason); }
+  try { await moderationService.processReport(session.userAId === req.member!.id ? session.userBId : session.userAId, req.member!.id, session.id, details ? `${reason}\n\n${details}` : reason); }
   catch (error) { if (error instanceof Error && error.message === 'You have already reported this user for this call') throw new ActionError(409, error.message); throw error; }
   res.json({ success: true });
 }));

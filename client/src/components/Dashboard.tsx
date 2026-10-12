@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Clock, Heart, History, Mic, Settings, Users, Trophy, Menu, X, Download, Star, Check, AlertTriangle, Sparkles, Edit3, ArrowLeft } from 'lucide-react';
-import { CopyButton, LinkWithCopy, PendingIcon } from './CopyLink';
+import { Clock, Heart, History, Mic, Settings, Users, Trophy, Star, Check, AlertTriangle, Sparkles, Edit3, ArrowLeft, Minus, Plus, Trash2 } from 'lucide-react';
+import { CopyButton, PendingIcon } from './CopyLink';
 import { PlansModal } from './PlansModal';
 import { DashboardDialog } from './DashboardDialog';
-import { useModalDialog } from '../hooks/useModalDialog';
+import { MotionPresence } from './MotionPresence';
+import { HistoryMark } from './HistoryMark';
+import { RecordingAction } from './RecordingAction';
+import { DashboardMenu } from './DashboardMenu';
 import { Brand } from './Brand';
 import { DashboardError, dashboardRequest, publicSiteUrl } from '../services/dashboard';
 import type { UserMatchData } from '../types';
@@ -12,14 +15,14 @@ type View = 'practice' | 'history' | 'partners' | 'community' | 'leaderboard' | 
 interface Session { recordings?: {id:string;createdAt:string;expiresAt:string}[]; id: string; partnerAlias: string; partnerBand: number; status: string; duration: number; createdAt: string; rating: number | null; reported: boolean; saved?: boolean; recordingAvailable: boolean; recordingExpiresAt: string | null }
 interface Partner { id: string; alias: string; band: number; available: boolean }
 interface Invitation { id: string; status: string; incoming: boolean; partnerAlias: string; expiresAt: string }
-interface Community { referralPayload: string; referrals: { totalInvited: number; activeBonusCalls: number; rewards: { id: string; referredAlias: string; status: string; expiresAt: string | null }[] }; contest: { isActive: boolean; contest: { title: string; description: string | null } | null; leaderboard: { rank: number; alias: string; invitesCount: number }[] } }
+interface Community { referralPayload: string; referrals: { totalInvited: number; qualifyingCompleted?: number; activeBonusCalls: number; rewards: { id: string; referredAlias: string; status: string; expiresAt: string | null }[] }; contest: { isActive: boolean; contest: { title: string; description: string | null } | null; leaderboard: { rank: number; alias: string; invitesCount: number }[] } }
 interface Props { initData: string; userData: UserMatchData; onProfileUpdated: (data: UserMatchData) => void; onAccessLost: () => void; onOpenActiveCall: () => void; renderPractice: (navigation: ReactNode) => ReactNode }
 const views: { id: View; label: string; icon: typeof Mic }[] = [
   { id: 'practice', label: 'Practice', icon: Mic }, { id: 'history', label: 'History & audio', icon: History }, { id: 'partners', label: 'Partners', icon: Heart }, { id: 'community', label: 'Invites', icon: Users }, { id: 'leaderboard', label: 'Hall of Fame', icon: Trophy }, { id: 'account', label: 'Account', icon: Settings }, { id: 'upgrade', label: 'Upgrade', icon: Sparkles },
 ];
 const reasons = ['Harassment', 'Hate speech', 'Explicit content', 'Spam or solicitation', 'Other unsafe behavior'];
 const date = (value: string | null | undefined) => { const parsed = value ? new Date(value) : null; return !parsed || Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
-const rewardExpiry = (value: string | null) => !value || new Date(value).getTime() === 0 ? 'Permanent' : `Available until ${date(value)}`;
+const overall = (scores: {subFC: number; subLR: number; subGRA: number; subP: number}) => Math.round((scores.subFC + scores.subLR + scores.subGRA + scores.subP) / 4 * 2) / 2;
 const isAccessError = (error: unknown) => error instanceof DashboardError && error.status === 403 && ['auth_rejected', 'browser_direct', 'terms_required', 'registration_required', 'banned', 'suspended'].includes(error.code || '');
 
 export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, onOpenActiveCall, renderPractice }: Props) {
@@ -27,15 +30,14 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     const value = new URLSearchParams(window.location.search).get('view');
     return views.some(item => item.id === value) ? value as View : 'practice';
   });
-  const [plansOpen, setPlansOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [feedback, setFeedback] = useState<Record<string, { message: string; error: boolean }>>({});
   const [savingSession, setSavingSession] = useState<Session | null>(null);
   const [delivered, setDelivered] = useState<Record<string, 'QUEUED' | 'SENT'>>({});
   const [confirmRemove, setConfirmRemove] = useState<Partner | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [reportingSession, setReportingSession] = useState<Session | null>(null);
-  const [reportReason, setReportReason] = useState(reasons[0]);
+  const [reportReason, setReportReason] = useState('');
+  const [reportDetails, setReportDetails] = useState('');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -44,15 +46,18 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionStates, setActionStates] = useState<Record<string, 'idle' | 'pending' | 'success' | 'error'>>({});
+  const [ratingChoices, setRatingChoices] = useState<Record<string, number>>({});
+  const [removingPartner, setRemovingPartner] = useState<string | null>(null);
+  const animationTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
   const [scores, setScores] = useState({ subFC: userData.subFC ?? userData.band, subLR: userData.subLR ?? userData.band, subGRA: userData.subGRA ?? userData.band, subP: userData.subP ?? userData.band });
   const currentView = useRef(view);
   currentView.current = view;
-  const navigationRef = useModalDialog(menuOpen, () => setMenuOpen(false));
   const actionInFlight = useRef(false);
   const controllers = useRef(new Set<AbortController>());
   const alive = useRef(true);
+  useEffect(() => { const timers = animationTimers.current; return () => { timers.forEach(timer => clearTimeout(timer)); timers.clear(); }; }, []);
   const botName = (import.meta.env.VITE_BOT_USERNAME || 'PairTalkBot').replace(/^@/, '');
   const botLink = (payload: string) => `https://t.me/${botName}?start=${encodeURIComponent(payload)}`;
   const reportError = useCallback((err: unknown) => {
@@ -176,14 +181,42 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
       const data = await dashboardRequest<{ activeCallId?: string }>(initData, path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller.signal });
       if (!alive.current) return false;
       setActionStates(previous => ({ ...previous, [actionKey]: 'success' }));
+      if (path === '/invitations') {
+        const timer = setTimeout(() => {
+          animationTimers.current.delete(timer);
+          setActionStates(previous => previous[actionKey] === 'success' ? { ...previous, [actionKey]: 'idle' } : previous);
+        }, 2000);
+        animationTimers.current.add(timer);
+      }
       setFeedback(previous => ({ ...previous, [feedbackKey]: { message, error: false } }));
       // Apply the acknowledged change even if the following refresh fails.
       if (currentView.current === target) {
         const match = path.match(/^\/sessions\/([^/]+)\/(rating|favorite|report)$/);
+        if (match?.[2] === 'favorite') setSavingSession(null);
+        if (match?.[2] === 'report') setReportingSession(null);
         if (match) setSessions(previous => previous.map(session => session.id !== match[1] ? session : {
           ...session, ...(match[2] === 'rating' ? { rating: (body as { stars: number }).stars } : match[2] === 'favorite' ? { saved: true } : { reported: true }),
         }));
         if (path === '/account') onProfileUpdated({ ...userData, ...(body as Partial<UserMatchData>) });
+        if (method === 'DELETE' && path.startsWith('/favorites/')) {
+          const partnerId = path.slice('/favorites/'.length);
+          const wait = async (milliseconds: number) => {
+            if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || controller.signal.aborted) return;
+            await new Promise<void>(resolve => {
+            const done = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', done); resolve(); };
+            const timer = setTimeout(done, milliseconds);
+            controller.signal.addEventListener('abort', done, {once: true});
+            });
+          };
+          setConfirmRemove(null);
+          await wait(260);
+          if (!alive.current || controller.signal.aborted) return false;
+          setRemovingPartner(partnerId);
+          await wait(320);
+          if (!alive.current || controller.signal.aborted) return false;
+          setPartners(previous => previous.filter(partner => partner.id !== partnerId));
+          setRemovingPartner(null);
+        }
       }
       if (data.activeCallId) { openActiveCall(); return true; }
       if (currentView.current === target) {
@@ -242,7 +275,6 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
   }
   function navigate(target: View) {
     setView(target);
-    setMenuOpen(false);
     setFeedback({});
     const url = new URL(window.location.href);
     url.searchParams.set('view', target);
@@ -250,70 +282,94 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     window.history.replaceState(null, '', url);
     window.scrollTo(0, 0);
   }
+  async function rateCall(sessionId: string, stars: number) {
+    if (actionInFlight.current) return;
+    setRatingChoices(previous => ({...previous, [sessionId]: stars}));
+    const confirmed = await run(`/sessions/${sessionId}/rating`, 'POST', { stars }, 'Rating saved. Thank you.', `session:${sessionId}`);
+    if (!alive.current) return;
+    const clear = () => setRatingChoices(previous => { const next = {...previous}; delete next[sessionId]; return next; });
+    if (!confirmed || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { clear(); return; }
+    const timer = setTimeout(() => { animationTimers.current.delete(timer); clear(); }, 880);
+    animationTimers.current.add(timer);
+  }
   function openActiveCall() {
     navigate('practice');
     onOpenActiveCall();
   }
-  const navigation = <>
-    <button type="button" className="dashboard-menu-button" aria-expanded={menuOpen} aria-controls="dashboard-navigation" onClick={() => setMenuOpen(value => !value)}><Menu size={19} aria-hidden="true" /><span>Menu</span></button>
-    {menuOpen && <button type="button" className="dashboard-nav-scrim" data-modal-backdrop="" tabIndex={-1} aria-hidden="true" onClick={() => setMenuOpen(false)} />}
-    {menuOpen && <div ref={navigationRef} id="dashboard-navigation" className="dashboard-nav is-open" role="dialog" aria-modal="true" aria-label="Dashboard menu" tabIndex={-1}><div className="dashboard-nav-heading"><strong>PairTalk</strong><button type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X size={18} /></button></div><nav aria-label="Your dashboard">{views.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={17} aria-hidden="true" /><span>{label}</span></button>)}</nav></div>}
-  </>;
+  const navigation = <DashboardMenu items={views} current={view} onNavigate={navigate} />;
+  function audioButton(session: Session, segmentId?: string, index?: number) {
+    const key = `audio:${session.id}:${segmentId || 'latest'}`;
+    return <RecordingAction key={key} status={delivered[key]} state={actionStates[key] || 'idle'} busy={busy} index={index} onSend={() => void sendRecording(session.id, segmentId)} />;
+  }
   if (view === 'practice') return renderPractice(navigation);
   return <main className="app-shell dashboard-screen">
-    <header className="app-header"><Brand /><div className="app-header-actions"><span className="header-alias">{userData.alias}</span>{navigation}</div></header>
+    <header className="app-header"><Brand /><div className="app-header-actions">{navigation}</div></header>
     <section key={view} className={`dashboard-content dashboard-view-${view}`} aria-busy={loading}>
-      <button type="button" className="text-button dashboard-back" onClick={() => navigate('practice')}><ArrowLeft size={16} aria-hidden="true" /> Back to practice</button>
-      <h1>{view === 'history' ? 'Call history' : view === 'partners' ? 'Saved partners' : view === 'community' ? 'Invites & rewards' : view === 'leaderboard' ? 'Hall of Fame' : view === 'upgrade' ? 'Upgrade' : 'Account'}</h1>
-      <p className="intro-copy">{view === 'history' ? 'Review your calls, rate the experience and send available recordings to Telegram.' : view === 'partners' ? 'Save partners after a call, then invite them back when you are both available.' : view === 'community' ? 'Invite another learner and track your referral rewards.' : view === 'leaderboard' ? 'See the current referral contest and its qualifying invites.' : view === 'upgrade' ? 'Compare current prices and allowances. Complete your payment in Telegram.' : 'Update your speaking scores and preferences. Payments stay in Telegram.'}</p>
+      <button type="button" className="text-button dashboard-back" onClick={() => navigate('practice')}><ArrowLeft size={16} aria-hidden="true" /> Dashboard</button>
+      <h1>{view === 'history' ? 'Call history' : view === 'partners' ? 'Saved partners' : view === 'community' ? 'Invites' : view === 'leaderboard' ? 'Hall of Fame' : view === 'upgrade' ? 'Upgrade' : 'Account'}</h1>
       {error && <div className="dashboard-alert" role="alert"><p>{error}</p><button type="button" className="secondary-button" disabled={busy || loading} onClick={() => setReload(previous => previous + 1)}>Reload current view</button></div>}
       <span role="status" className="sr-only">{feedback.page?.message}</span>
       {loading && <p role="status" className="loading-state"><PendingIcon />Loading your {view === 'history' ? 'conversations' : view}…</p>}
       {!loading && view === 'history' && <>
-        {!sessions.length && !error && <div className="dashboard-empty"><History size={28} /><h2>Your first conversation is ahead.</h2><p>Completed calls and available recordings will appear here.</p><button className="secondary-button" onClick={() => navigate('practice')}>Start practicing</button></div>}
-        <div className="dashboard-cards">{sessions.map(session => <article className="dashboard-card" key={session.id}>
-          <div className="dashboard-card-heading"><div><span className="subtle-label">{date(session.createdAt)} · {session.status.toLowerCase()}</span><h2 className="break-anywhere">{session.partnerAlias}</h2></div><span className="status-pill">Band {session.partnerBand.toFixed(1)}</span></div>
-          <p className="dashboard-meta"><Clock size={15} /> {Math.floor(session.duration / 60)}m {session.duration % 60}s</p>
-          {session.status === 'COMPLETED' && <><div className={`dashboard-rating ${actionStates[`/sessions/${session.id}/rating`] === 'success' ? 'is-confirmed' : ''}`} {...actionProps(`/sessions/${session.id}/rating`)} aria-label={`Rate call with ${session.partnerAlias}`}><span className="subtle-label">{actionStates[`/sessions/${session.id}/rating`] === 'pending' && <PendingIcon />}{actionStates[`/sessions/${session.id}/rating`] === 'pending' ? 'Saving your rating…' : session.rating === null ? 'How was the call?' : 'Call quality'}</span>{[1, 2, 3, 4, 5].map(stars => <button type="button" key={stars} disabled={busy || session.rating !== null} className={session.rating !== null && stars <= session.rating ? 'rated' : ''} aria-label={`${stars} star${stars > 1 ? 's' : ''}`} onClick={() => void run(`/sessions/${session.id}/rating`, 'POST', { stars }, 'Rating saved. Thank you.', `session:${session.id}`)}><Star style={{ animationDelay: `${(stars - 1) * 35}ms` }} size={21} fill={session.rating !== null && stars <= session.rating ? 'currentColor' : 'none'} /></button>)}</div>
-          <div className="dashboard-actions"><button className={`secondary-button ${session.saved ? 'is-saved' : ''}`} {...actionProps(`/sessions/${session.id}/favorite`)} disabled={busy || Boolean(session.saved)} onClick={() => setSavingSession(session)}>{actionStates[`/sessions/${session.id}/favorite`] === 'pending' ? <PendingIcon /> : <Heart size={16} fill={session.saved ? 'currentColor' : 'none'} />} {session.saved ? 'Partner saved' : 'Save partner'}</button>{!session.recordings?.length && session.recordingAvailable && <button className="secondary-button" {...actionProps(`audio:${session.id}:latest`)} disabled={busy || Boolean(delivered[`audio:${session.id}:latest`])} onClick={() => void sendRecording(session.id)}>{actionIcon(`audio:${session.id}:latest`, <Download size={16} />)} {actionStates[`audio:${session.id}:latest`] === 'pending' && !delivered[`audio:${session.id}:latest`] ? 'Sending…' : delivered[`audio:${session.id}:latest`] === 'SENT' ? 'Sent to Telegram' : delivered[`audio:${session.id}:latest`] ? 'Queued for Telegram' : 'Send audio to Telegram'}</button>}{session.recordings?.map((segment,index)=><button key={segment.id} className="secondary-button" {...actionProps(`audio:${session.id}:${segment.id}`)} disabled={busy || Boolean(delivered[`audio:${session.id}:${segment.id}`])} onClick={()=>void sendRecording(session.id,segment.id)}>{actionIcon(`audio:${session.id}:${segment.id}`, <Download size={16}/>)} {actionStates[`audio:${session.id}:${segment.id}`] === 'pending' && !delivered[`audio:${session.id}:${segment.id}`] ? 'Sending…' : delivered[`audio:${session.id}:${segment.id}`] === 'SENT' ? 'Sent' : delivered[`audio:${session.id}:${segment.id}`] ? 'Queued' : 'Send audio'}{session.recordings!.length>1 ? ` ${index+1}` : ''} to Telegram</button>)}<button className={`secondary-button ${session.reported ? 'is-reported' : 'danger-button'}`} {...actionProps(`/sessions/${session.id}/report`)} disabled={busy || session.reported} onClick={() => { setReportReason(reasons[0]); setReportingSession(session); }}>{actionStates[`/sessions/${session.id}/report`] === 'pending' ? <PendingIcon /> : <AlertTriangle size={16} />} {session.reported ? 'Reported' : 'Report'}</button></div>
-          {session.recordingExpiresAt && <p className="subtle-label">Available until {date(session.recordingExpiresAt)}. Download before it expires.</p>}
-          {actionFeedback(`session:${session.id}`)}</>}
+        {!sessions.length && !error && <div className="dashboard-empty"><History size={28} aria-hidden="true" /><h2>Your first conversation is ahead.</h2><p>Completed calls and available recordings will appear here.</p><button className="secondary-button" onClick={() => navigate('practice')}>Start practicing</button></div>}
+        <div className="dashboard-cards">{sessions.map(session => <article className="dashboard-card hcard" key={session.id}>
+          <p className="hcard__meta">{date(session.createdAt)} – {Math.floor(session.duration / 60)}m {session.duration % 60}s{session.status !== 'COMPLETED' && <> · {session.status.toLowerCase()}</>}</p>
+          <div className="hcard__who"><h2 className="hcard__alias break-anywhere">{session.partnerAlias}</h2>{session.rating !== null && ratingChoices[session.id] === undefined && <span className={`hcard__rating ${actionStates[`/sessions/${session.id}/rating`] === 'success' ? 'is-new' : ''}`} aria-label={`Rated ${session.rating} out of 5`}>– {session.rating}/5 <Star size={16} fill="currentColor" aria-hidden="true" /></span>}
+            <div className="hcard__marks">{session.saved && <HistoryMark kind="saved" acknowledged={actionStates[`/sessions/${session.id}/favorite`] === 'success'} />}{session.reported && <HistoryMark kind="reported" acknowledged={actionStates[`/sessions/${session.id}/report`] === 'success'} />}</div>
+          </div>
+          {session.status === 'COMPLETED' && <>
+            {(session.rating === null || ratingChoices[session.id] !== undefined) && <div className={`hcard__rate dashboard-rating ${session.rating !== null ? 'is-done' : ''}`} {...actionProps(`/sessions/${session.id}/rating`)} aria-label={`Rate call with ${session.partnerAlias}`}>
+              <div className="stars">{[1, 2, 3, 4, 5].map(stars => <button type="button" key={stars} disabled={busy || session.rating !== null} aria-pressed={session.rating !== null && stars <= session.rating} className={session.rating !== null && stars <= session.rating ? 'rated' : ''} aria-label={`${stars} star${stars > 1 ? 's' : ''}`} onClick={() => void rateCall(session.id, stars)}><Star size={24} fill={session.rating !== null && stars <= session.rating ? 'currentColor' : 'none'} style={{animationDelay:`${(stars - 1) * 70}ms`}} aria-hidden="true" /></button>)}</div>
+              <p>{actionStates[`/sessions/${session.id}/rating`] === 'pending' ? <><PendingIcon />Saving your rating…</> : 'How was your call?'}</p>
+            </div>}
+            <div className="dashboard-actions hcard__actions">
+              <MotionPresence duration={200} exitDelay={260}>{!session.saved && <button className="secondary-button" aria-label="Save partner" {...actionProps(`/sessions/${session.id}/favorite`)} disabled={busy} onClick={() => setSavingSession(session)}><Heart size={16} aria-hidden="true" />Save</button>}</MotionPresence>
+              <MotionPresence duration={200} exitDelay={260}>{!session.reported && <button className="secondary-button danger-button" {...actionProps(`/sessions/${session.id}/report`)} disabled={busy} onClick={() => { setReportReason(''); setReportDetails(''); setReportingSession(session); }}><AlertTriangle size={16} aria-hidden="true" />Report</button>}</MotionPresence>
+              {!session.recordings?.length && session.recordingAvailable && audioButton(session)}
+              {session.recordings?.map((segment, index) => audioButton(session, segment.id, session.recordings!.length > 1 ? index : undefined))}
+            </div>
+          </>}
+          {actionFeedback(`session:${session.id}`)}
         </article>)}</div>
         {nextCursor && <><button className="secondary-button" disabled={busy} {...actionProps('earlier')} onClick={() => void loadEarlier()}>{actionStates.earlier === 'pending' && <PendingIcon />}{actionStates.earlier === 'pending' ? 'Loading earlier conversations…' : 'Load earlier conversations'}</button>{actionFeedback('earlier')}</>}
       </>}
       {!loading && view === 'partners' && <>
         {invitations.map(invitation => <article className="dashboard-card invitation-card" key={invitation.id}><span className="eyebrow">{invitation.status === 'ACTIVE' ? 'Ready to join' : invitation.incoming ? 'Incoming invitation' : 'Waiting for your partner'}</span><h2>{invitation.partnerAlias}</h2><p>{invitation.status === 'ACTIVE' ? 'Your voice session is ready. Join when you are ready to turn on your microphone.' : 'Invitations expire after 60 seconds. No call starts until the invitation is accepted.'}</p><div className="dashboard-actions">{invitation.status === 'ACTIVE' ? <button className="primary-button" onClick={openActiveCall}>Open voice session</button> : invitation.incoming ? <><button className="primary-button" disabled={busy} {...actionProps(`/invitations/${invitation.id}/accept`)} onClick={() => void run(`/invitations/${invitation.id}/accept`, 'POST', undefined, 'Invitation accepted.', `invitation:${invitation.id}`)}>{actionIcon(`/invitations/${invitation.id}/accept`, null)} {actionStates[`/invitations/${invitation.id}/accept`] === 'pending' ? 'Accepting…' : 'Accept invitation'}</button><button className="secondary-button" disabled={busy} {...actionProps(`/invitations/${invitation.id}/decline`)} onClick={() => void run(`/invitations/${invitation.id}/decline`, 'POST', undefined, 'Invitation declined.', `invitation:${invitation.id}`)}>{actionIcon(`/invitations/${invitation.id}/decline`, null)} {actionStates[`/invitations/${invitation.id}/decline`] === 'pending' ? 'Declining…' : 'Decline'}</button></> : <button className="secondary-button" disabled={busy} {...actionProps(`/invitations/${invitation.id}/cancel`)} onClick={() => void run(`/invitations/${invitation.id}/cancel`, 'POST', undefined, 'Invitation canceled.', `invitation:${invitation.id}`)}>{actionIcon(`/invitations/${invitation.id}/cancel`, null)} {actionStates[`/invitations/${invitation.id}/cancel`] === 'pending' ? 'Cancelling…' : 'Cancel invitation'}</button>}</div>{actionFeedback(`invitation:${invitation.id}`)}</article>)}
-        {!partners.length && <div className="dashboard-empty"><Heart size={28} /><h2>Great practice partners are worth keeping.</h2><p>Save someone from your call history to invite them again.</p></div>}
-        <div className="dashboard-cards">{partners.map(partner => <article className="dashboard-card" key={partner.id}><h2 className="break-anywhere">{partner.alias}</h2><p>Band {partner.band.toFixed(1)} · {partner.available ? 'Accepting invitations' : 'Unavailable right now'}</p><div className="dashboard-actions"><button className="primary-button" disabled={busy || !partner.available || (userData.callsRemaining ?? 0) <= 0 || invitations.length > 0} {...actionProps(`partner:${partner.id}`)} onClick={() => void run('/invitations', 'POST', { partnerId: partner.id }, 'Invitation sent.', `partner:${partner.id}`)}>{actionIcon(`partner:${partner.id}`, <Mic size={16} />)} {actionStates[`partner:${partner.id}`] === 'pending' ? 'Sending invitation…' : actionStates[`partner:${partner.id}`] === 'success' ? 'Invitation sent' : 'Invite to call'}</button><button className="text-button" disabled={busy} onClick={() => setConfirmRemove(partner)}>Remove</button></div>{actionFeedback(`partner:${partner.id}`)}</article>)}</div>
+        {!partners.length && !error && <div className="dashboard-empty"><Heart size={28} aria-hidden="true" /><h2>No saved partners yet</h2><p>Save someone from your call history to invite them again.</p></div>}
+        <div className="dashboard-cards">{partners.map(partner => <article className={`dashboard-card partner-row ${removingPartner === partner.id ? 'is-removing' : ''}`} key={partner.id}><h2 className="break-anywhere">{partner.alias}</h2><p className={`partner-availability ${partner.available ? 'is-available' : ''}`}>{partner.available ? 'Accepting invitations' : 'Unavailable right now'}</p><div className="dashboard-actions"><button className="primary-button" disabled={busy || !partner.available || (userData.callsRemaining ?? 0) <= 0 || invitations.length > 0} {...actionProps(`partner:${partner.id}`)} onClick={() => void run('/invitations', 'POST', { partnerId: partner.id }, 'Invitation sent.', `partner:${partner.id}`)}>{actionIcon(`partner:${partner.id}`, <Mic size={16} aria-hidden="true" />)} {actionStates[`partner:${partner.id}`] === 'pending' ? 'Sending invitation…' : actionStates[`partner:${partner.id}`] === 'success' ? 'Invitation sent' : 'Invite to call'}</button><button className="secondary-button danger-button" disabled={busy} onClick={() => setConfirmRemove(partner)}><Trash2 size={16} aria-hidden="true" />Remove</button></div>{actionFeedback(`partner:${partner.id}`)}</article>)}</div>
       </>}
-      {!loading && view === 'community' && community && <div className="dashboard-cards">
-        <article className="dashboard-card"><span className="eyebrow">Invite another learner</span><h2>Practice is better with company.</h2><div className="practice-metrics"><div><span>Learners invited</span><strong>{community.referrals.totalInvited}</strong></div><div><span>Bonus calls available</span><strong>{community.referrals.activeBonusCalls}</strong></div></div><div className="invite-link"><label htmlFor="personal-invite-link">Your personal invite link</label><div className="invite-link-controls"><input id="personal-invite-link" readOnly value={botLink(community.referralPayload)} onFocus={event => event.target.select()} /><CopyButton value={botLink(community.referralPayload)} label="personal invite link" /></div></div><p>Rewards are credited after a qualifying practice call of at least 30 seconds. Unused bonus calls do not expire.</p><ul className="dashboard-rewards">{community.referrals.rewards.map(reward => <li key={reward.id}><strong>{reward.referredAlias}</strong> · {reward.status.toLowerCase()}{reward.status === 'AVAILABLE' ? ` · ${rewardExpiry(reward.expiresAt)}` : ''}</li>)}</ul></article>
-      </div>}
-      {!loading && view === 'leaderboard' && community && <div className="dashboard-cards"><article className="dashboard-card"><span className="eyebrow">Hall of fame</span><h2>{community.contest.contest?.title || 'Room for the next chapter.'}</h2><p>{community.contest.contest?.description || 'There is no active contest right now. Keep practicing and check back here.'}</p><ol className="dashboard-rewards">{community.contest.leaderboard.map(row => <li key={row.rank}><strong>#{row.rank} {row.alias}</strong> · {row.invitesCount} qualifying invites</li>)}</ol></article></div>}
-      {!loading && view === 'upgrade' && <div className="dashboard-cards"><article className="dashboard-card upgrade-card"><span className="eyebrow">Flexible options</span><h2>Choose your practice capacity.</h2><p>Compare each plan’s call allowance, maximum call length, recordings and retention. Check the validity shown before purchasing.</p><div className="allowance-grid"><div><strong>{userData.callsRemaining ?? 0}</strong><span>calls available</span></div><div><strong>{userData.recordingsRemaining ?? 0}</strong><span>recordings available</span></div><div><strong>{userData.recordingRetentionDays ?? '—'}</strong><span>retention days</span></div></div><button type="button" className="primary-button" onClick={() => setPlansOpen(true)}><Sparkles size={17} /> Compare current plans</button><p className="subtle-label">Payments and receipts stay in the PairTalk bot.</p></article></div>}
+      {!loading && view === 'community' && community && <>
+        <div className="tiles"><div className="tile-stat"><span>Total invites</span><strong>{community.referrals.totalInvited}</strong></div><div className="tile-stat"><span>Bonus granted</span><strong className="accent">{community.referrals.qualifyingCompleted ?? '—'}</strong></div><div className="tile-stat"><span>Bonus pending</span><strong>{community.referrals.qualifyingCompleted === undefined ? '—' : Math.max(0, community.referrals.totalInvited - community.referrals.qualifyingCompleted)}</strong></div></div>
+        <div className="invite-link"><label htmlFor="personal-invite-link">Your invite link</label><div className="invite-link-controls"><input id="personal-invite-link" readOnly value={botLink(community.referralPayload)} onFocus={event => event.target.select()} /><CopyButton value={botLink(community.referralPayload)} label="personal invite link" /></div></div>
+        <p className="rule"><Clock size={16} aria-hidden="true" /><span>A bonus call is added after your invitee completes a call of at least 30 seconds. Bonus calls never expire.</span></p>
+        <ul className="invitees">{community.referrals.rewards.map(reward => <li className="invitee" key={reward.id}><strong>{reward.referredAlias}</strong><span className={`chip ${reward.status === 'PENDING' ? 'chip--pending' : 'chip--ok'}`}>{reward.status === 'PENDING' ? 'Pending' : reward.status === 'AVAILABLE' ? 'Available' : reward.status.toLowerCase()}</span></li>)}</ul>
+      </>}
+      {!loading && view === 'leaderboard' && community && <>
+        {!community.contest.leaderboard.length && <div className="dashboard-empty"><Trophy size={28} aria-hidden="true" /><h2>The next challenge is ahead.</h2><p>Qualifying invites will appear here when a contest begins.</p></div>}
+        <ol className="lb">{community.contest.leaderboard.map(row => <li key={row.rank} className={row.alias === userData.alias ? 'is-you' : ''}><span className="leaderboard-rank">{row.rank}</span><b>{row.alias === userData.alias ? `You · ${row.alias}` : row.alias}</b><small>{row.invitesCount} invites</small></li>)}</ol>
+      </>}
+      {!loading && view === 'upgrade' && <PlansModal isOpen currentPlan={userData.plan} inline onClose={() => navigate('practice')} />}
       {!loading && view === 'account' && <div className="dashboard-cards">
-        <article className="dashboard-card"><h2>Speaking scores</h2><p>Your current self-assessment. Update it as you practice.</p><div key={`${userData.subFC}-${userData.subLR}-${userData.subGRA}-${userData.subP}`} className={`score-summary ${actionStates['profile'] === 'success' ? 'is-updated' : ''}`}>{([['FC', userData.subFC ?? userData.band], ['LR', userData.subLR ?? userData.band], ['GRA', userData.subGRA ?? userData.band], ['P', userData.subP ?? userData.band]] as const).map(([label, value]) => <span key={label}><strong>{Number(value).toFixed(1)}</strong><small>{label}</small></span>)}</div><button type="button" className="secondary-button" onClick={() => { setScores({ subFC: userData.subFC ?? userData.band, subLR: userData.subLR ?? userData.band, subGRA: userData.subGRA ?? userData.band, subP: userData.subP ?? userData.band }); setEditingProfile(true); }}><Edit3 size={16} /> Edit scores</button>{actionFeedback('profile')}</article>
-        <article className="dashboard-card"><span className="eyebrow">Preferences & allowance</span><h2>{userData.plan} practice</h2><div className="allowance-grid"><div><strong>{userData.callsRemaining ?? 0}</strong><span>calls</span></div><div><strong>{userData.recordingsRemaining ?? 0}</strong><span>recordings</span></div><div><strong>{userData.recordingRetentionDays ?? '—'}</strong><span>retention days</span></div></div><p>Up to {userData.maxCallDuration ?? '—'} minutes per call.</p><button type="button" className="dnd-control" {...actionProps('preferences')} role="switch" aria-checked={Boolean(userData.dnd)} disabled={busy} onClick={() => void run('/account', 'PATCH', { dnd: !userData.dnd }, userData.dnd ? 'Call invitations enabled.' : 'Do Not Disturb enabled.', 'preferences')}>{actionStates['preferences'] === 'pending' ? <PendingIcon size={20} /> : <span className={`dnd-ring ${userData.dnd ? 'is-on' : 'is-off'}`} aria-hidden="true" />}<span>Do Not Disturb · {userData.dnd ? 'ON' : 'OFF'}<small>{actionStates['preferences'] === 'pending' ? 'Updating preference…' : userData.dnd ? 'Invitations are paused.' : 'Saved partners can invite you.'}</small></span></button>{actionFeedback('preferences')}<p className="subtle-label">For a refund, use /refund in the bot. For account deletion or a data request, contact support.</p><div className="account-links"><LinkWithCopy url="https://t.me/PairTalkSupport" label="Contact support" /><LinkWithCopy url={new URL('terms', publicSiteUrl).toString()} label="Terms of Use" /><LinkWithCopy url={new URL('privacy#refunds', publicSiteUrl).toString()} label="Privacy policy" /></div></article>
+        <article className="dashboard-card" aria-label="Your limits"><div className="acc-head"><h2>Your limits</h2><span className="chip chip--info">{userData.plan || 'Free'}</span></div><div className="limits"><div className="big"><span>Calls available</span><strong>{userData.callsRemaining ?? '—'}</strong></div><div><span>Per call</span><strong>{userData.maxCallDuration ?? '—'} min</strong></div><div><span>Recordings</span><strong>{userData.recordingsRemaining ?? '—'}</strong></div><div><span>Audio kept</span><strong>{userData.recordingRetentionDays ?? '—'} days</strong></div></div>{(userData.plan || 'FREE').toUpperCase() === 'FREE' && <button className="primary-button account-upgrade" type="button" onClick={() => navigate('upgrade')}><Sparkles size={17} aria-hidden="true" />Upgrade</button>}</article>
+        <article className="dashboard-card" aria-label="Speaking scores"><div className="acc-head"><h2>Speaking scores</h2><button type="button" className="secondary-button" aria-label="Edit scores" onClick={() => { setScores({ subFC: userData.subFC ?? userData.band, subLR: userData.subLR ?? userData.band, subGRA: userData.subGRA ?? userData.band, subP: userData.subP ?? userData.band }); setEditingProfile(true); }}><Edit3 size={16} aria-hidden="true" />Edit</button></div><div key={`${userData.subFC}-${userData.subLR}-${userData.subGRA}-${userData.subP}`} className={`scores score-summary ${actionStates.profile === 'success' ? 'is-updated' : ''}`}>{[['FC', userData.subFC ?? userData.band], ['LR', userData.subLR ?? userData.band], ['GRA', userData.subGRA ?? userData.band], ['P', userData.subP ?? userData.band], ['O', overall({subFC: userData.subFC ?? userData.band, subLR: userData.subLR ?? userData.band, subGRA: userData.subGRA ?? userData.band, subP: userData.subP ?? userData.band})]].map(([label, value]) => <div className={`score ${label === 'O' ? 'score--o' : ''}`} key={label}><span>{label}</span><strong>{Number(value).toFixed(1)}</strong></div>)}</div>{actionFeedback('profile')}</article>
+        <article className="dashboard-card dnd" aria-label="Do not disturb"><button type="button" className="dnd__ring" {...actionProps('preferences')} role="switch" aria-label="Do not disturb" aria-checked={Boolean(userData.dnd)} disabled={busy} onClick={() => void run('/account', 'PATCH', { dnd: !userData.dnd }, userData.dnd ? 'Call invitations enabled.' : 'Do Not Disturb enabled.', 'preferences')}><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" /><text x="32" y="37" textAnchor="middle">DND</text></svg></button><p><strong>Do not disturb is {userData.dnd ? 'on' : 'off'}</strong><span>{actionStates.preferences === 'pending' ? 'Updating preference…' : userData.dnd ? 'Invitations are paused.' : 'Saved partners can invite you.'}</span></p>{actionFeedback('preferences')}</article>
+        <div className="account-help"><a className="secondary-button" href="https://t.me/PairTalkSupport" target="_blank" rel="noopener noreferrer">Contact support</a><nav className="legal" aria-label="Policies"><a href={new URL('terms', publicSiteUrl).toString()} target="_blank" rel="noopener noreferrer">Terms</a><a href={new URL('privacy', publicSiteUrl).toString()} target="_blank" rel="noopener noreferrer">Privacy</a><a href={new URL('refund-policy', publicSiteUrl).toString()} target="_blank" rel="noopener noreferrer">Refund policy</a><a href={new URL('community-guidelines', publicSiteUrl).toString()} target="_blank" rel="noopener noreferrer">Guidelines</a></nav></div>
       </div>}
-      {editingProfile && <DashboardDialog title="Edit your speaking scores" pending={busy} onClose={() => setEditingProfile(false)}>
+      <MotionPresence>{editingProfile && <DashboardDialog title="Edit your speaking scores" pending={busy} onClose={() => setEditingProfile(false)}>
         <form onSubmit={async event => { event.preventDefault(); if (await run('/account', 'PATCH', scores, 'Speaking profile updated.', 'profile')) setEditingProfile(false); }}>
-          <div className="dashboard-score-grid">{([['subFC', 'Fluency & coherence'], ['subLR', 'Lexical resource'], ['subGRA', 'Grammar & accuracy'], ['subP', 'Pronunciation']] as const).map(([key, label]) => <label key={key}>{label}<select disabled={busy} value={scores[key]} onChange={event => setScores(previous => ({ ...previous, [key]: Number(event.target.value) }))}>{Array.from({ length: 19 }, (_, index) => index / 2).map(value => <option value={value} key={value}>{value.toFixed(1)}</option>)}</select></label>)}</div>
+          <div className="score-steppers">{([['subFC', 'Fluency and coherence'], ['subLR', 'Lexical resource'], ['subGRA', 'Grammar and accuracy'], ['subP', 'Pronunciation']] as const).map(([key, label]) => <div className="stepper" key={key}><b>{label}</b><button type="button" disabled={busy || scores[key] <= 0} aria-label={`Decrease ${label.toLowerCase()}`} onClick={() => setScores(previous => ({...previous, [key]: Math.max(0, previous[key] - 0.5)}))}><Minus size={18} aria-hidden="true" /></button><output aria-label={label}>{scores[key].toFixed(1)}</output><button type="button" disabled={busy || scores[key] >= 9} aria-label={`Increase ${label.toLowerCase()}`} onClick={() => setScores(previous => ({...previous, [key]: Math.min(9, previous[key] + 0.5)}))}><Plus size={18} aria-hidden="true" /></button></div>)}<div className="stepper stepper--overall"><b>Overall</b><output>{overall(scores).toFixed(1)}</output></div></div>
           {actionFeedback('profile', true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setEditingProfile(false)}>Cancel</button><button className="primary-button" disabled={busy}>{busy && <PendingIcon />}{busy ? 'Saving…' : 'Save speaking scores'}</button></div>
         </form>
-      </DashboardDialog>}
-      {confirmRemove && <DashboardDialog title={`Remove ${confirmRemove.alias}?`} pending={busy} onClose={() => setConfirmRemove(null)}>
-        <p>They will disappear from Partners. You can save them again after a future call.</p>
-        {actionFeedback(`partner:${confirmRemove.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setConfirmRemove(null)}>Keep partner</button><button type="button" className="primary-button danger-button" disabled={busy} onClick={async () => { if (await run(`/favorites/${confirmRemove.id}`, 'DELETE', undefined, 'Partner removed.', `partner:${confirmRemove.id}`)) { setConfirmRemove(null); setFeedback(previous => ({ ...previous, page: { message: 'Partner removed.', error: false } })); } }}>{busy && <PendingIcon />}{busy ? 'Removing…' : 'Remove partner'}</button></div>
-      </DashboardDialog>}
-      {savingSession && <DashboardDialog title={`Save ${savingSession.partnerAlias}?`} pending={busy} onClose={() => setSavingSession(null)}>
-        <p>Add this learner to Partners so you can invite them to practice again.</p>
-        {actionFeedback(`session:${savingSession.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setSavingSession(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy} onClick={async () => { if (await run(`/sessions/${savingSession.id}/favorite`, 'POST', undefined, 'Partner saved.', `session:${savingSession.id}`)) setSavingSession(null); }}>{busy && <PendingIcon />}{busy ? 'Saving…' : 'Save partner'}</button></div>
-      </DashboardDialog>}
-      {reportingSession && <DashboardDialog title="Report a safety concern" pending={busy} onClose={() => setReportingSession(null)}>
-        <p>Reports are reviewed by the PairTalk team. Submit only a genuine concern.</p><label>Reason<select disabled={busy} value={reportReason} onChange={event => setReportReason(event.target.value)}>{reasons.map(reason => <option key={reason}>{reason}</option>)}</select></label>
-        {actionFeedback(`session:${reportingSession.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setReportingSession(null)}>Cancel</button><button type="button" className="primary-button danger-button" disabled={busy} onClick={async () => { if (await run(`/sessions/${reportingSession.id}/report`, 'POST', { reason: reportReason }, 'Report submitted.', `session:${reportingSession.id}`)) setReportingSession(null); }}>{busy && <PendingIcon />}{busy ? 'Submitting…' : 'Submit report'}</button></div>
-      </DashboardDialog>}
+      </DashboardDialog>}</MotionPresence>
+      <MotionPresence>{confirmRemove && <DashboardDialog title={`Delete ${confirmRemove.alias}?`} pending={busy} onClose={() => setConfirmRemove(null)}><p>Are you sure you want to delete {confirmRemove.alias}? This action cannot be undone!</p>{actionFeedback(`partner:${confirmRemove.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setConfirmRemove(null)}>No</button><button type="button" className="secondary-button danger-button" disabled={busy} onClick={async () => { if (await run(`/favorites/${confirmRemove.id}`, 'DELETE', undefined, 'Partner removed.', `partner:${confirmRemove.id}`)) { setConfirmRemove(null); setFeedback(previous => ({ ...previous, page: { message: 'Partner removed.', error: false } })); } }}>{busy && <PendingIcon />}{busy ? 'Removing…' : 'Yes, delete'}</button></div></DashboardDialog>}</MotionPresence>
+      <MotionPresence>{savingSession && <DashboardDialog title="Save this partner?" pending={busy} onClose={() => setSavingSession(null)}><p>You can invite <strong>{savingSession.partnerAlias}</strong> to future calls.</p>{actionFeedback(`session:${savingSession.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setSavingSession(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy} onClick={async () => { if (await run(`/sessions/${savingSession.id}/favorite`, 'POST', undefined, 'Partner saved.', `session:${savingSession.id}`)) setSavingSession(null); }}>{busy && <PendingIcon />}{busy ? 'Saving…' : 'Save partner'}</button></div></DashboardDialog>}</MotionPresence>
+      <MotionPresence>{reportingSession && <DashboardDialog title="Report this partner" pending={busy} onClose={() => setReportingSession(null)}>
+        <p>What happened with <strong>{reportingSession.partnerAlias}</strong>? Choose a reason.</p>
+        <div className="choices" role="radiogroup" aria-label="Reason">{reasons.map(reason => <label className="choice" key={reason}><input type="radio" name="report-reason" value={reason} disabled={busy} checked={reportReason === reason} onChange={() => setReportReason(reason)} />{reason}</label>)}</div>
+        <label className="field" htmlFor="report-details">Details (optional)<textarea className="textarea" id="report-details" maxLength={1000} disabled={busy} value={reportDetails} onChange={event => setReportDetails(event.target.value)} /></label>
+        {actionFeedback(`session:${reportingSession.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setReportingSession(null)}>Cancel</button><button type="button" className="secondary-button danger-button" disabled={busy || !reportReason} onClick={async () => { if (await run(`/sessions/${reportingSession.id}/report`, 'POST', { reason: reportReason, ...(reportDetails.trim() ? {details: reportDetails.trim()} : {}) }, 'Report submitted.', `session:${reportingSession.id}`)) setReportingSession(null); }}>{busy && <PendingIcon />}{busy ? 'Submitting…' : 'Submit report'}</button></div>
+      </DashboardDialog>}</MotionPresence>
     </section>
-    <PlansModal isOpen={plansOpen} currentPlan={userData.plan} onClose={() => setPlansOpen(false)} />
+    <footer className="app-footer">© PairTalk {new Date().getFullYear()}. All rights reserved.</footer>
   </main>;
 }

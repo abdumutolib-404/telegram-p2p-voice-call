@@ -28,7 +28,7 @@ export const StatCard: React.FC<StatCardProps> = ({
       onKeyDown={onClick ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : undefined}
       style={{
         cursor: onClick ? 'pointer' : 'default',
-        minHeight: '104px',
+        minHeight: '96px',
         ...style,
       }}
     >
@@ -45,7 +45,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <div className="num-tabular" style={{ fontSize: value === 'Unavailable' ? '1rem' : '1.65rem', fontWeight: 650, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+          <div className="num-tabular" style={{ fontSize: value === 'Unavailable' ? '1rem' : '1.75rem', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
             {value}
           </div>
           {badge && <div>{badge}</div>}

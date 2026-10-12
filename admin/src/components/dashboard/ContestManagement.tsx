@@ -1,3 +1,4 @@
+import { DialogPresence } from '../ui/DialogPresence';
 import { Dialog } from '../ui/Dialog';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { adminFetch } from '../../api/client.ts';
@@ -156,7 +157,7 @@ export function ContestManagement() {
     setIsWizardOpen(false);
   };
 
-  // Launch Championship via 4-Step Wizard
+  // Launch contest via 4-Step Wizard
   const handleLaunchChampionship = async () => {
     if(actionBusy.current)return;
     if(!wizardForm.title.trim()||!wizardForm.description.trim()||!Number.isInteger(wizardForm.durationDays)||wizardForm.durationDays<1||wizardForm.durationDays>365){setActionError('Enter a title, description and whole duration between 1 and 365 days.');return;}
@@ -237,7 +238,7 @@ export function ContestManagement() {
                 style={{ fontSize: '0.825rem' }}
               >
                 <Play size={14} />
-                <span>Launch Championship</span>
+                <span>Launch contest</span>
               </button>
             )}
           </div>
@@ -283,7 +284,7 @@ export function ContestManagement() {
             <Trophy size={32} />
           </div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-            No Active Championship
+            No active contest
           </h2>
           <p style={{ maxWidth: '520px', margin: '0 auto 1.5rem auto', color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.5 }}>
             Organize competitive practice sprints for learners. Top referrers with verified partner calls will earn complimentary VIP, BOSS, and PRO subscription tiers.
@@ -316,12 +317,12 @@ export function ContestManagement() {
             >
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.725rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span style={{ fontSize: '0.725rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: '0.04em' }}>
                     Championship Status
                   </span>
                   <StatusBadge variant="success" label="Active" size="sm" />
                 </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#FFFFFF', marginTop: '0.4rem' }}>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.4rem' }}>
                   {data?.contest?.title || 'Referral Championship'}
                 </div>
               </div>
@@ -331,7 +332,7 @@ export function ContestManagement() {
                   <Clock size={13} />
                   <span>Time Remaining:</span>
                 </div>
-                <div className="num-tabular" style={{ fontSize: '1.15rem', fontWeight: 700, color: '#FFFFFF', marginTop: '0.2rem' }}>
+                <div className="num-tabular" style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.2rem' }}>
                   {countdownText || 'Counting down...'}
                 </div>
               </div>
@@ -370,7 +371,7 @@ export function ContestManagement() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'none', letterSpacing: '0.04em' }}>
                     Title
                   </span>
                   <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.2rem' }}>
@@ -379,7 +380,7 @@ export function ContestManagement() {
                 </div>
 
                 <div>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'none', letterSpacing: '0.04em' }}>
                     Participant Rules
                   </span>
                   <div style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.4 }}>
@@ -388,7 +389,7 @@ export function ContestManagement() {
                 </div>
 
                 <div>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'none', letterSpacing: '0.04em' }}>
                     Prize Pool Allocation
                   </span>
                   <div
@@ -410,7 +411,7 @@ export function ContestManagement() {
                 </div>
 
                 <div>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'none', letterSpacing: '0.04em' }}>
                     Target End Date
                   </span>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600, marginTop: '0.2rem' }}>
@@ -478,7 +479,7 @@ export function ContestManagement() {
                               fontWeight: 800,
                               fontSize: '0.75rem',
                               backgroundColor: is1st ? 'var(--gold-bg)' : is2nd ? 'rgba(255,255,255,0.1)' : is3rd ? 'rgba(245,158,11,0.15)' : 'transparent',
-                              color: is1st ? 'var(--gold-text)' : is2nd ? '#F8FAFC' : is3rd ? '#FDE68A' : 'var(--text-secondary)',
+                              color: is1st ? 'var(--gold-text)' : is2nd ? 'var(--text-primary)' : is3rd ? '#FDE68A' : 'var(--text-secondary)',
                               borderColor: is1st ? 'var(--gold-border)' : is2nd ? 'var(--border-strong)' : is3rd ? 'rgba(245,158,11,0.3)' : 'transparent',
                             }}
                           >
@@ -554,7 +555,7 @@ export function ContestManagement() {
                 <span className="badge badge-gold" style={{ fontWeight: 800 }}>1st Place</span>
                 <Award size={18} color="var(--gold-text)" />
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FFFFFF' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 {top3Winners[0]?.alias || 'No Qualifier'}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
@@ -562,17 +563,17 @@ export function ContestManagement() {
               </div>
               <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(245,158,11,0.2)', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Total Invites:</span>
-                <strong className="num-tabular" style={{ color: '#FFFFFF' }}>{top3Winners[0]?.invitesCount || 0}</strong>
+                <strong className="num-tabular" style={{ color: 'var(--text-primary)' }}>{top3Winners[0]?.invitesCount || 0}</strong>
               </div>
             </div>
 
             {/* 2nd Place */}
             <div className="glass-card" style={{ padding: '1.25rem', borderColor: 'var(--border-strong)', backgroundColor: 'var(--bg-surface-elevated)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <span className="badge badge-neutral" style={{ fontWeight: 800, color: '#FFFFFF' }}>2nd Place</span>
+                <span className="badge badge-neutral" style={{ fontWeight: 800, color: 'var(--text-primary)' }}>2nd Place</span>
                 <Award size={18} color="var(--text-primary)" />
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FFFFFF' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 {top3Winners[1]?.alias || 'No Qualifier'}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
@@ -580,7 +581,7 @@ export function ContestManagement() {
               </div>
               <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Total Invites:</span>
-                <strong className="num-tabular" style={{ color: '#FFFFFF' }}>{top3Winners[1]?.invitesCount || 0}</strong>
+                <strong className="num-tabular" style={{ color: 'var(--text-primary)' }}>{top3Winners[1]?.invitesCount || 0}</strong>
               </div>
             </div>
 
@@ -590,7 +591,7 @@ export function ContestManagement() {
                 <span className="badge badge-neutral" style={{ fontWeight: 800, color: 'var(--warning-text)' }}>3rd Place</span>
                 <Award size={18} color="var(--warning-text)" />
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FFFFFF' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 {top3Winners[2]?.alias || 'No Qualifier'}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
@@ -598,7 +599,7 @@ export function ContestManagement() {
               </div>
               <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Total Invites:</span>
-                <strong className="num-tabular" style={{ color: '#FFFFFF' }}>{top3Winners[2]?.invitesCount || 0}</strong>
+                <strong className="num-tabular" style={{ color: 'var(--text-primary)' }}>{top3Winners[2]?.invitesCount || 0}</strong>
               </div>
             </div>
           </div>
@@ -606,7 +607,7 @@ export function ContestManagement() {
       )}
 
       {/* 4-STEP LAUNCH WIZARD MODAL */}
-      {isWizardOpen && (
+      <DialogPresence>{isWizardOpen && (
         <Dialog title="Launch contest" pending={isLaunching} onClose={() => { closeLaunchWizard(); }}><fieldset disabled={isLaunching} style={{border:0,padding:0,margin:0,minWidth:0}}>{actionError&&<p role="alert" className="inline-error">{actionError}</p>}
           <div
             className="glass-panel"
@@ -632,7 +633,7 @@ export function ContestManagement() {
                   </h3>
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                  Step {wizardStep} of 4: {wizardStep === 1 ? 'Championship Title' : wizardStep === 2 ? 'Participant Instructions' : wizardStep === 3 ? 'Award policy' : 'Duration & Confirmation'}
+                  Step {wizardStep} of 4: {wizardStep === 1 ? 'Contest title' : wizardStep === 2 ? 'Participant Instructions' : wizardStep === 3 ? 'Award policy' : 'Duration & Confirmation'}
                 </div>
               </div>
               <button
@@ -664,10 +665,10 @@ export function ContestManagement() {
             {wizardStep === 1 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    Championship Title
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
+                    Contest title
                   </label>
-                  <input aria-label="Championship Title"
+                  <input aria-label="Contest title"
                     type="text"
                     value={wizardForm.title}
                     onChange={(e) => setWizardForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -679,7 +680,7 @@ export function ContestManagement() {
                 </div>
 
                 <div style={{ padding: '0.875rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Presets:</span>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'none', fontWeight: 700 }}>Presets:</span>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
                     {[
                       'IELTS Speaking Referral Championship',
@@ -718,10 +719,10 @@ export function ContestManagement() {
             {wizardStep === 2 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    Rules & Participant Instructions
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
+                    Rules and participant instructions
                   </label>
-                  <textarea aria-label="Rules & Participant Instructions"
+                  <textarea aria-label="Rules and participant instructions"
                     rows={4}
                     value={wizardForm.description}
                     onChange={(e) => setWizardForm((prev) => ({ ...prev, description: e.target.value }))}
@@ -741,7 +742,7 @@ export function ContestManagement() {
                     disabled={!wizardForm.description.trim()}
                     className="btn-primary"
                   >
-                    Next: Prize Pool <ChevronRight size={14} />
+                    Next: Prizes <ChevronRight size={14} />
                   </button>
                 </div>
               </div>
@@ -751,22 +752,22 @@ export function ContestManagement() {
             {wizardStep === 3 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gold-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    1st Place Award
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gold-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
+                    First place award
                   </label>
                   <p>1st: 60-day BOSS · 50 calls · 90 minutes · 15 recordings · 90-day retention</p>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-primary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    2nd Place Award
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-primary)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
+                    Second place award
                   </label>
                   <p>2nd: 30-day BOSS · 50 calls · 90 minutes · 15 recordings · 90-day retention</p>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--warning-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    3rd Place Award
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--warning-text)', marginBottom: '0.35rem', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
+                    Third place award
                   </label>
                   <p>3rd: 14-day PRO · 25 calls · 60 minutes · 7 recordings · 30-day retention</p>
                 </div>
@@ -780,7 +781,7 @@ export function ContestManagement() {
                     disabled={!wizardForm.prize1st.trim() || !wizardForm.prize2nd.trim() || !wizardForm.prize3rd.trim()}
                     className="btn-primary"
                   >
-                    Next: Duration & Review <ChevronRight size={14} />
+                    Next: Duration and review <ChevronRight size={14} />
                   </button>
                 </div>
               </div>
@@ -791,8 +792,8 @@ export function ContestManagement() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      Championship Duration (Days)
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'none', letterSpacing: '0.03em' }}>
+                      Contest duration (days)
                     </label>
                     <span style={{ fontSize: '0.75rem', color: 'var(--primary-light)', fontWeight: 600 }}>
                       Ends: {new Date(Date.now() + wizardForm.durationDays * 24 * 60 * 60 * 1000).toLocaleDateString()}
@@ -810,7 +811,7 @@ export function ContestManagement() {
                           fontSize: '0.75rem',
                           backgroundColor: wizardForm.durationDays === days ? 'var(--primary-bg)' : undefined,
                           borderColor: wizardForm.durationDays === days ? 'var(--primary)' : undefined,
-                          color: wizardForm.durationDays === days ? '#FFFFFF' : undefined,
+                          color: wizardForm.durationDays === days ? 'var(--text-primary)' : undefined,
                           fontWeight: 700,
                         }}
                       >
@@ -822,8 +823,8 @@ export function ContestManagement() {
 
                 {/* Summary Box */}
                 <div style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
-                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>
-                    Launch Summary
+                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'none', fontWeight: 700, marginBottom: '0.5rem' }}>
+                    Launch summary
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.8rem' }}>
                     <div><strong>Title:</strong> {wizardForm.title}</div>
@@ -844,14 +845,14 @@ export function ContestManagement() {
                     className="btn-success"
                     style={{ height: '36px' }}
                   >
-                    <Check size={14} /> {isLaunching ? 'Launching...' : 'Confirm & Launch Championship'}
+                    <Check size={14} /> {isLaunching ? 'Launching...' : 'Confirm and launch contest'}
                   </button>
                 </div>
               </div>
             )}
           </div>
         </fieldset></Dialog>
-      )}
+      )}</DialogPresence>
 
       {/* Conclude Confirmation Dialog */}
       <ConfirmDialog
@@ -859,7 +860,7 @@ export function ContestManagement() {
         isOpen={isConcludeDialogOpen}
         title="Conclude Championship & Distribute Prizes"
         message="This action will permanently end the current championship, freeze the leaderboard, and atomically grant the configured subscription tiers to the top 3 referrers."
-        affectedItem={data?.contest?.title || 'Active Championship'}
+        affectedItem={data?.contest?.title || 'Active contest'}
         confirmLabel="Yes, Conclude & Award Prizes"
         severity="danger"
         isConfirming={isConcluding}

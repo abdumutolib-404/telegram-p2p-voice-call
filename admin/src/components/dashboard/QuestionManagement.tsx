@@ -1,3 +1,5 @@
+import { DialogPresence } from '../ui/DialogPresence';
+import { Select } from '../ui/Select';
 import { useLatestRequest } from '../../hooks/useAdminTools';
 import { Dialog } from '../ui/Dialog';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -35,7 +37,7 @@ interface Topic {
 interface Question {
   id: string;
   topicId: string;
-  part: 'PART_1' | 'PART_2' | 'PART_3';
+  part: 'PART_1'| 'PART_2'| 'PART_3';
   questionText: string;
   cueCardBullets: string | null;
   questionType: string;
@@ -61,7 +63,7 @@ interface SyncLog {
 }
 
 export interface GeminiConnectionState {
-  status: 'CONNECTED' | 'FAILED' | 'NOT_CONFIGURED';
+  status: 'CONNECTED'| 'FAILED'| 'NOT_CONFIGURED';
   model: string;
   lastChecked: string;
   lastError: string | null;
@@ -76,8 +78,8 @@ interface CrawlerStatus {
 }
 
 export const QuestionManagement: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'questions' | 'cueCards' | 'topics' | 'crawler' | 'bulkImport'>('questions');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [activeTab, setActiveTab] = useState<'questions'| 'cueCards'| 'topics'| 'crawler'| 'bulkImport'>('questions');
+  const [viewMode, setViewMode] = useState<'cards'| 'table'>('table');
 
   const latest = useLatestRequest();
   const savingQuestion = useRef(false), savingTopic = useRef(false);
@@ -107,7 +109,7 @@ export const QuestionManagement: React.FC = () => {
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [modalTopicId, setModalTopicId] = useState('');
-  const [modalPart, setModalPart] = useState<'PART_1' | 'PART_2' | 'PART_3'>('PART_1');
+  const [modalPart, setModalPart] = useState<'PART_1'| 'PART_2'| 'PART_3'>('PART_1');
   const [modalQuestionText, setModalQuestionText] = useState('');
   const [modalCueBullets, setModalCueBullets] = useState('');
   const [modalError, setModalError] = useState<string | null>(null);
@@ -238,17 +240,17 @@ export const QuestionManagement: React.FC = () => {
               }
         );
         if (res.gemini.status === 'CONNECTED') {
-          setGeminiCheckMessage(`🟢 Connected to ${res.gemini.model} (${res.gemini.latencyMs ?? 0}ms)`);
+          setGeminiCheckMessage(`Connected to ${res.gemini.model} (${res.gemini.latencyMs ?? 0}ms)`);
         } else if (res.gemini.status === 'FAILED') {
-          setGeminiCheckMessage(`🔴 Gemini AI: Failed - ${res.gemini.lastError || 'Unknown error'}`);
+          setGeminiCheckMessage(`Gemini AI: Failed - ${res.gemini.lastError || 'Unknown error'}`);
         } else {
-          setGeminiCheckMessage('⚪ Gemini AI: Not Configured - Heuristic fallback active');
+          setGeminiCheckMessage('Gemini AI: Not configured - Heuristic fallback active');
         }
       } else {
-        setGeminiCheckMessage('❌ Failed to check Gemini connection');
+        setGeminiCheckMessage('Failed to check Gemini connection');
       }
     } catch (err: any) {
-      setGeminiCheckMessage(`❌ Error: ${err?.message || 'Check failed'}`);
+      setGeminiCheckMessage(`Error: ${err?.message || 'Check failed'}`);
     } finally {
       setIsCheckingGemini(false);
     }
@@ -269,16 +271,16 @@ export const QuestionManagement: React.FC = () => {
       if (res.success) {
         const r = res.result;
         setFilterMessage(
-          `✅ Daily Filter completed: ${r.totalReviewed} questions reviewed, ${r.reclassifiedCount} re-classified to correct topics, ${r.duplicatesPrunedCount} semantic duplicates pruned in ${r.durationMs}ms.`
+          `Daily Filter completed: ${r.totalReviewed} questions reviewed, ${r.reclassifiedCount} re-classified to correct topics, ${r.duplicatesPrunedCount} semantic duplicates pruned in ${r.durationMs}ms.`
         );
       } else {
-        setFilterMessage('❌ Filter cycle failed.');
+        setFilterMessage('Filter cycle failed.');
       }
       void fetchQuestions();
       void fetchTopics();
       void fetchCrawlerStatus();
     } catch (err: any) {
-      setFilterMessage(`❌ Error: ${err?.message || 'Filter failed'}`);
+      setFilterMessage(`Error: ${err?.message || 'Filter failed'}`);
     } finally {
       setIsFiltering(false);
     }
@@ -302,7 +304,7 @@ export const QuestionManagement: React.FC = () => {
       void fetchTopics();
       void fetchCrawlerStatus();
     } catch (err: any) {
-      setCrawlMessage(`❌ Error: ${err?.message || 'Crawl failed'}`);
+      setCrawlMessage(`Error: ${err?.message || 'Crawl failed'}`);
     } finally {
       setIsCrawling(false);
     }
@@ -312,7 +314,7 @@ export const QuestionManagement: React.FC = () => {
     if (!crawlJob) return;
     let stopped=false,busy=false; const controller=new AbortController();
     const check=async()=>{if(busy)return;busy=true;try{const data=await adminFetch<{result:SyncLog}>("/api/admin/ielts/crawler/jobs/"+crawlJob,{signal:controller.signal});if(stopped)return;const r=data.result;
-      if (["SUCCESS","FAILED","LOCKED"].includes(r.status)){setCrawlJob(null);setCrawlMessage(r.status==="SUCCESS" ? "Ingestion complete: "+r.questionsAccepted+" questions accepted." : "Crawler "+r.status.toLowerCase()+". Check the run log before retrying.");void fetchQuestions();void fetchTopics();void fetchCrawlerStatus();}
+      if (["SUCCESS","FAILED","LOCKED"].includes(r.status)){setCrawlJob(null);setCrawlMessage(r.status==="SUCCESS"? "Ingestion complete: "+r.questionsAccepted+"questions accepted.": "Crawler "+r.status.toLowerCase()+". Check the run log before retrying.");void fetchQuestions();void fetchTopics();void fetchCrawlerStatus();}
     }catch{if(!stopped)setCrawlerLoadError("Job status is temporarily unavailable. Refresh to retry; the job continues in the background.");}finally{busy=false;}};
     const timer=setInterval(()=>void check(),5000);void check();return()=>{stopped=true;clearInterval(timer);controller.abort();};
   },[crawlJob,fetchQuestions,fetchTopics,fetchCrawlerStatus]);
@@ -355,14 +357,14 @@ export const QuestionManagement: React.FC = () => {
 
       if (res.success) {
         setBulkImportMessage(
-          `🎉 Successfully imported ${res.importedCount} questions! (${res.skippedCount} duplicates skipped out of ${res.totalProcessed} items).`
+          `Successfully imported ${res.importedCount} questions! (${res.skippedCount} duplicates skipped out of ${res.totalProcessed} items).`
         );
         setBulkImportJson('');
         void fetchQuestions();
         void fetchCrawlerStatus();
       }
     } catch (err: any) {
-      setBulkImportMessage(`❌ Import error: ${err?.message || 'Invalid format'}`);
+      setBulkImportMessage(`Import error: ${err?.message || 'Invalid format'}`);
     } finally {
       setIsBulkImporting(false);
     }
@@ -374,7 +376,7 @@ export const QuestionManagement: React.FC = () => {
     setModalError(null);
 
     let bulletsJson: string | null = null;
-    if (modalPart === 'PART_2' && modalCueBullets.trim()) {
+    if (modalPart === 'PART_2'&& modalCueBullets.trim()) {
       const lines = modalCueBullets
         .split('\n')
         .map((l) => l.trim())
@@ -391,7 +393,7 @@ export const QuestionManagement: React.FC = () => {
             part: modalPart,
             questionText: modalQuestionText.trim(),
             cueCardBullets: bulletsJson,
-            questionType: modalPart === 'PART_2' ? 'CUE_CARD' : modalPart === 'PART_3' ? 'DISCUSSION' : 'GENERAL',
+            questionType: modalPart === 'PART_2'? 'CUE_CARD': modalPart === 'PART_3'? 'DISCUSSION': 'GENERAL',
           }),
         });
       } else {
@@ -402,7 +404,7 @@ export const QuestionManagement: React.FC = () => {
             part: modalPart,
             questionText: modalQuestionText.trim(),
             cueCardBullets: bulletsJson,
-            questionType: modalPart === 'PART_2' ? 'CUE_CARD' : modalPart === 'PART_3' ? 'DISCUSSION' : 'GENERAL',
+            questionType: modalPart === 'PART_2'? 'CUE_CARD': modalPart === 'PART_3'? 'DISCUSSION': 'GENERAL',
             source: 'ADMIN_MANUAL',
           }),
         });
@@ -444,7 +446,7 @@ export const QuestionManagement: React.FC = () => {
   const handleDeleteQuestion = async (id: string) => {
     if (!window.confirm('Delete this question permanently from the simulator bank?')) return;
     try {
-      await adminFetch(`/api/admin/ielts/questions/${id}`, { method: 'DELETE' });
+      await adminFetch(`/api/admin/ielts/questions/${id}`, { method: 'DELETE'});
       void fetchQuestions();
       void fetchCrawlerStatus();
     } catch(error) { setFetchError(error instanceof Error ? error.message : 'Question could not be updated.'); }
@@ -477,10 +479,10 @@ export const QuestionManagement: React.FC = () => {
 
   return (
     <div className="qm-container">
-      {fetchError&&<p role="alert" className="inline-error">{fetchError}<button className="btn-secondary" onClick={()=>void fetchQuestions()}>Retry</button></p>}
-      {(activeTab==='questions'||activeTab==='cueCards')&&<div className="qm-pagination"><button className="btn-secondary" disabled={page<=1||loading} onClick={()=>setPage(page-1)}>Previous page</button><span>Page {page} of {totalPages} · {total} matching questions</span><button className="btn-secondary" disabled={page>=totalPages||loading} onClick={()=>setPage(page+1)}>Next page</button></div>}
-      {topicLoadError && <p role="alert">{topicLoadError}<button type="button" onClick={()=>void fetchTopics()}>Retry topics</button></p>}
-      {crawlerLoadError && <p role="alert">{crawlerLoadError}<button type="button" onClick={()=>void fetchCrawlerStatus()}>Retry status</button></p>}
+      {fetchError&&<p role="alert"className="inline-error">{fetchError}<button className="btn-secondary"onClick={()=>void fetchQuestions()}>Retry</button></p>}
+      {(activeTab==='questions'||activeTab==='cueCards')&&<div className="qm-pagination"><button className="btn-secondary"disabled={page<=1||loading} onClick={()=>setPage(page-1)}>Previous page</button><span>Page {page} of {totalPages} · {total} matching questions</span><button className="btn-secondary"disabled={page>=totalPages||loading} onClick={()=>setPage(page+1)}>Next page</button></div>}
+      {topicLoadError && <p role="alert">{topicLoadError}<button type="button"onClick={()=>void fetchTopics()}>Retry topics</button></p>}
+      {crawlerLoadError && <p role="alert">{crawlerLoadError}<button type="button"onClick={()=>void fetchCrawlerStatus()}>Retry status</button></p>}
       {/* 1. EXECUTIVE COMMAND HUD HEADER */}
       <div className="qm-hero">
         <div className="qm-hero-top">
@@ -491,9 +493,9 @@ export const QuestionManagement: React.FC = () => {
             <div>
               <h1 className="qm-hero-title">
                 <span>IELTS questions</span>
-                <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
-                  <span className="dot" style={{ backgroundColor: 'var(--text-muted)' }} />
-                  {crawlerStatus?.latestLog?.status === 'RUNNING' ? 'Latest run: running' : crawlerStatus?.latestLog ? 'Latest run: ' + crawlerStatus.latestLog.status.toLowerCase() : 'Crawler status unavailable'}
+                <span className="badge badge-neutral"style={{ fontSize: '0.7rem'}}>
+                  <span className="dot"style={{ backgroundColor: 'var(--text-muted)'}} />
+                  {crawlerStatus?.latestLog?.status === 'RUNNING'? 'Latest run: running': crawlerStatus?.latestLog ? 'Latest run: '+ crawlerStatus.latestLog.status.toLowerCase() : 'Crawler status unavailable'}
                 </span>
               </h1>
               <div className="qm-hero-subtitle">
@@ -502,16 +504,16 @@ export const QuestionManagement: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem'}}>
             <button
               type="button"
               onClick={() => handleRunCrawl()}
               disabled={isCrawling || !!crawlJob}
               className="btn-primary"
-              style={{ fontSize: '0.8rem', height: '34px' }}
+              style={{ fontSize: '0.8rem', height: '34px'}}
             >
-              <RefreshCw size={14} style={{ animation: isCrawling ? 'spin 1s linear infinite' : 'none' }} />
-              <span>{isCrawling ? 'Syncing...' : 'Sync Crawler'}</span>
+              <RefreshCw size={14} style={{ animation: isCrawling ? 'spin 1s linear infinite': 'none'}} />
+              <span>{isCrawling ? 'Syncing...': 'Sync crawler'}</span>
             </button>
           </div>
         </div>
@@ -520,8 +522,8 @@ export const QuestionManagement: React.FC = () => {
         <div className="qm-hero-stats">
           <div className="qm-stat-box">
             <div className="qm-stat-label">
-              <Database size={13} style={{ color: 'var(--info)' }} />
-              <span>Total Bank</span>
+              <Database size={13} style={{ color: 'var(--info)'}} />
+              <span>Total questions</span>
             </div>
             <div className="qm-stat-val">{crawlerStatus?.totalQuestions ?? questions.length}</div>
             <div className="qm-stat-sub">P1: {part1Count} • P2: {part2Count} • P3: {part3Count}</div>
@@ -529,36 +531,36 @@ export const QuestionManagement: React.FC = () => {
 
           <div className="qm-stat-box">
             <div className="qm-stat-label">
-              <Layers size={13} style={{ color: '#A855F7' }} />
-              <span>Taxonomies</span>
+              <Layers size={13} style={{ color: 'var(--info-text)'}} />
+              <span>Topics</span>
             </div>
             <div className="qm-stat-val">{topics.length}</div>
-            <div className="qm-stat-sub">Active Topic Domains</div>
+            <div className="qm-stat-sub">Active topics</div>
           </div>
 
           <div className="qm-stat-box">
             <div className="qm-stat-label">
-              <Cpu size={13} style={{ color: 'var(--success)' }} />
-              <span>Crawler Status</span>
+              <Cpu size={13} style={{ color: 'var(--success-text)'}} />
+              <span>Crawler status</span>
             </div>
-            <div className="qm-stat-val" style={{ color: 'var(--success)' }}>
+            <div className="qm-stat-val"style={{ color: 'var(--success-text)'}}>
               {crawlerStatus?.latestLog?.status || 'Unavailable'}
             </div>
             <div className="qm-stat-sub">
               {crawlerStatus?.gemini?.status === 'CONNECTED'
-                ? `Gemini: Connected 🟢 (${crawlerStatus.gemini.model})`
+                ? `Gemini: Connected  (${crawlerStatus.gemini.model})`
                 : crawlerStatus?.gemini?.status === 'FAILED'
-                ? 'Gemini: Failed 🔴'
-                : 'Gemini: Not Configured ⚪'}
+                ? 'Gemini: Failed '
+                : 'Gemini: Not configured '}
             </div>
           </div>
 
           <div className="qm-stat-box">
             <div className="qm-stat-label">
-              <Clock size={13} style={{ color: 'var(--warning)' }} />
-              <span>Exam Format</span>
+              <Clock size={13} style={{ color: 'var(--warning-text)'}} />
+              <span>Exam format</span>
             </div>
-            <div className="qm-stat-val" style={{ color: 'var(--warning)' }}>Parts 1–3</div>
+            <div className="qm-stat-val"style={{ color: 'var(--warning-text)'}}>Parts 1–3</div>
             <div className="qm-stat-sub">Practice question bank</div>
           </div>
         </div>
@@ -570,7 +572,7 @@ export const QuestionManagement: React.FC = () => {
           type="button"
           onClick={() => setActiveTab('questions')}
           aria-pressed={activeTab === 'questions'}
-          className={`qm-tab-pill ${activeTab === 'questions' ? 'active' : ''}`}
+          className={`qm-tab-pill ${activeTab === 'questions'? 'active': ''}`}
         >
           <BookOpen size={16} />
           <span>Questions ({questions.length})</span>
@@ -580,7 +582,7 @@ export const QuestionManagement: React.FC = () => {
           type="button"
           onClick={() => setActiveTab('cueCards')}
           aria-pressed={activeTab === 'cueCards'}
-          className={`qm-tab-pill ${activeTab === 'cueCards' ? 'active' : ''}`}
+          className={`qm-tab-pill ${activeTab === 'cueCards'? 'active': ''}`}
         >
           <Sparkles size={16} />
           <span>Cue cards ({cueCardQuestions.length})</span>
@@ -590,7 +592,7 @@ export const QuestionManagement: React.FC = () => {
           type="button"
           onClick={() => setActiveTab('topics')}
           aria-pressed={activeTab === 'topics'}
-          className={`qm-tab-pill ${activeTab === 'topics' ? 'active' : ''}`}
+          className={`qm-tab-pill ${activeTab === 'topics'? 'active': ''}`}
         >
           <Layers size={16} />
           <span>Topics ({topics.length})</span>
@@ -600,7 +602,7 @@ export const QuestionManagement: React.FC = () => {
           type="button"
           onClick={() => setActiveTab('crawler')}
           aria-pressed={activeTab === 'crawler'}
-          className={`qm-tab-pill ${activeTab === 'crawler' ? 'active' : ''}`}
+          className={`qm-tab-pill ${activeTab === 'crawler'? 'active': ''}`}
         >
           <Cpu size={16} />
           <span>Crawler</span>
@@ -610,7 +612,7 @@ export const QuestionManagement: React.FC = () => {
           type="button"
           onClick={() => setActiveTab('bulkImport')}
           aria-pressed={activeTab === 'bulkImport'}
-          className={`qm-tab-pill ${activeTab === 'bulkImport' ? 'active' : ''}`}
+          className={`qm-tab-pill ${activeTab === 'bulkImport'? 'active': ''}`}
         >
           <Upload size={16} />
           <span>Bulk import</span>
@@ -618,14 +620,14 @@ export const QuestionManagement: React.FC = () => {
       </div>
 
       {/* 3. QUESTIONS LIBRARY VIEW */}
-      {activeTab === 'questions' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {activeTab === 'questions'&& (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem'}}>
           {/* Controls Bar */}
           <div className="qm-controls">
             <div className="qm-controls-left">
               {/* Search */}
               <div className="qm-search-box">
-                <Search size={15} className="qm-search-icon" />
+                <Search size={15} className="qm-search-icon"/>
                 <input aria-label="Search questions by keyword..."
                   type="text"
                   value={searchQuery}
@@ -662,7 +664,7 @@ export const QuestionManagement: React.FC = () => {
                   type="button"
                   onClick={() => setFilterPart('all')}
                   aria-pressed={filterPart === 'all'}
-                  className={`qm-pill-item ${filterPart === 'all' ? 'active' : ''}`}
+                  className={`qm-pill-item ${filterPart === 'all'? 'active': ''}`}
                 >
                   All ({questions.length})
                 </button>
@@ -670,8 +672,8 @@ export const QuestionManagement: React.FC = () => {
                   type="button"
                   onClick={() => setFilterPart('PART_1')}
                   aria-pressed={filterPart === 'PART_1'}
-                  className={`qm-pill-item ${filterPart === 'PART_1' ? 'active' : ''}`}
-                  style={{ color: filterPart === 'PART_1' ? '#38BDF8' : undefined }}
+                  className={`qm-pill-item ${filterPart === 'PART_1'? 'active': ''}`}
+                  style={{ color: filterPart === 'PART_1'? 'var(--info-text)': undefined }}
                 >
                   Part 1 ({part1Count})
                 </button>
@@ -679,8 +681,8 @@ export const QuestionManagement: React.FC = () => {
                   type="button"
                   onClick={() => setFilterPart('PART_2')}
                   aria-pressed={filterPart === 'PART_2'}
-                  className={`qm-pill-item ${filterPart === 'PART_2' ? 'active' : ''}`}
-                  style={{ color: filterPart === 'PART_2' ? '#F59E0B' : undefined }}
+                  className={`qm-pill-item ${filterPart === 'PART_2'? 'active': ''}`}
+                  style={{ color: filterPart === 'PART_2'? 'var(--info-text)': undefined }}
                 >
                   Part 2 ({part2Count})
                 </button>
@@ -688,39 +690,39 @@ export const QuestionManagement: React.FC = () => {
                   type="button"
                   onClick={() => setFilterPart('PART_3')}
                   aria-pressed={filterPart === 'PART_3'}
-                  className={`qm-pill-item ${filterPart === 'PART_3' ? 'active' : ''}`}
-                  style={{ color: filterPart === 'PART_3' ? '#A855F7' : undefined }}
+                  className={`qm-pill-item ${filterPart === 'PART_3'? 'active': ''}`}
+                  style={{ color: filterPart === 'PART_3'? 'var(--info-text)': undefined }}
                 >
                   Part 3 ({part3Count})
                 </button>
               </div>
 
               {/* Topic Select */}
-              <select
+              <Select
                 aria-label="Filter questions by topic"
                 value={filterTopic}
-                onChange={(e) => setFilterTopic(e.target.value)}
+                onValueChange={(value) => setFilterTopic(value)}
                 className="qm-select-styled"
               >
-                <option value="all">All Topics ({topics.length})</option>
+                <option value="all">All topics ({topics.length})</option>
                 {topics.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t._count?.questions ?? 0})
                   </option>
                 ))}
-              </select>
+              </Select>
 
               {/* Status Select */}
-              <select
+              <Select
                 aria-label="Filter questions by status"
                 value={filterActive}
-                onChange={(e) => setFilterActive(e.target.value)}
+                onValueChange={(value) => setFilterActive(value)}
                 className="qm-select-styled"
               >
-                <option value="all">All Statuses</option>
-                <option value="true">Active Only</option>
-                <option value="false">Inactive Only</option>
-              </select>
+                <option value="all">All statuses</option>
+                <option value="true">Active only</option>
+                <option value="false">Inactive only</option>
+              </Select>
             </div>
 
             {/* View Mode & Add Button */}
@@ -731,7 +733,7 @@ export const QuestionManagement: React.FC = () => {
                   onClick={() => setViewMode('cards')}
                   aria-pressed={viewMode === 'cards'}
                   title="Card View"
-                  className={`qm-pill-item ${viewMode === 'cards' ? 'active' : ''}`}
+                  className={`qm-pill-item ${viewMode === 'cards'? 'active': ''}`}
                 >
                   <Grid size={15} />
                 </button>
@@ -740,7 +742,7 @@ export const QuestionManagement: React.FC = () => {
                   onClick={() => setViewMode('table')}
                   aria-pressed={viewMode === 'table'}
                   title="Table View"
-                  className={`qm-pill-item ${viewMode === 'table' ? 'active' : ''}`}
+                  className={`qm-pill-item ${viewMode === 'table'? 'active': ''}`}
                 >
                   <List size={15} />
                 </button>
@@ -755,25 +757,25 @@ export const QuestionManagement: React.FC = () => {
                   setShowQuestionModal(true);
                 }}
                 className="btn-primary"
-                style={{ fontSize: '0.825rem', height: '34px' }}
+                style={{ fontSize: '0.825rem', height: '34px'}}
               >
                 <Plus size={15} />
-                <span>New Question</span>
+                <span>New question</span>
               </button>
             </div>
           </div>
 
           {/* Cards or Table */}
           {loading ? (
-            <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
+            <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)'}}>
+              <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 1rem'}} />
               <div>Loading questions...</div>
             </div>
           ) : questions.length === 0 ? (
-            <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div className="glass-panel"style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)'}}>
               No questions found matching your filter criteria.
             </div>
-          ) : viewMode === 'cards' ? (
+          ) : viewMode === 'cards'? (
             <div className="qm-cards-grid">
               {questions.map((q) => {
                 let parsedBullets: string[] = [];
@@ -790,7 +792,7 @@ export const QuestionManagement: React.FC = () => {
                   <div
                     key={q.id}
                     className={`qm-qcard ${
-                      q.part === 'PART_1' ? 'part-1' : q.part === 'PART_2' ? 'part-2' : 'part-3'
+                      q.part === 'PART_1'? 'part-1': q.part === 'PART_2'? 'part-2': 'part-3'
                     }`}
                   >
                     <div>
@@ -805,24 +807,24 @@ export const QuestionManagement: React.FC = () => {
                               : 'qm-badge-p3'
                           }
                         >
-                          {q.part === 'PART_1' && 'P1 • Intro'}
-                          {q.part === 'PART_2' && 'P2 • Cue Card'}
-                          {q.part === 'PART_3' && 'P3 • Discussion'}
+                          {q.part === 'PART_1'&& 'P1 • Intro'}
+                          {q.part === 'PART_2'&& 'P2 • Cue Card'}
+                          {q.part === 'PART_3'&& 'P3 • Discussion'}
                         </span>
 
-                        <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
+                        <span className="badge badge-neutral"style={{ fontSize: '0.7rem'}}>
                           {q.topic?.name || 'General'}
                         </span>
                       </div>
 
-                      {/* Question Prompt */}
-                      <p className="qm-qcard-prompt" style={{ marginTop: '0.75rem' }}>
+                      {/* Practice prompt */}
+                      <p className="qm-qcard-prompt"style={{ marginTop: '0.75rem'}}>
                         {q.questionText}
                       </p>
 
                       {/* Part 2 Cue Bullets Drawer */}
-                      {q.part === 'PART_2' && parsedBullets.length > 0 && (
-                        <div style={{ marginTop: '0.65rem' }}>
+                      {q.part === 'PART_2'&& parsedBullets.length > 0 && (
+                        <div style={{ marginTop: '0.65rem'}}>
                           <button
                             type="button"
                             onClick={() => toggleCardExpansion(q.id)}
@@ -840,7 +842,7 @@ export const QuestionManagement: React.FC = () => {
                             }}
                           >
                             <Sparkles size={12} />
-                            <span>{isExpanded ? 'Hide Task Card Prompts' : `View ${parsedBullets.length} Candidate Prompts`}</span>
+                            <span>{isExpanded ? 'Hide Task Card Prompts': `View ${parsedBullets.length} Candidate Prompts`}</span>
                           </button>
 
                           {isExpanded && (
@@ -848,12 +850,12 @@ export const QuestionManagement: React.FC = () => {
                               <div className="qm-cue-title">You should say:</div>
                               {parsedBullets.map((b, idx) => (
                                 <div key={idx} className="qm-cue-bullet">
-                                  <span style={{ color: 'var(--warning)', fontWeight: 'bold' }}>•</span>
+                                  <span style={{ color: 'var(--warning-text)', fontWeight: 'bold'}}>•</span>
                                   <span>{b}</span>
                                 </div>
                               ))}
-                              <div style={{ marginTop: '0.5rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '0.7rem', color: 'rgba(253, 230, 138, 0.8)' }}>
-                                ⏱ 1 min prep • 2 min speak
+                              <div style={{ marginTop: '0.5rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '0.7rem', color: 'rgba(253, 230, 138, 0.8)'}}>
+                                 1 min prep • 2 min speak
                               </div>
                             </div>
                           )}
@@ -863,20 +865,20 @@ export const QuestionManagement: React.FC = () => {
 
                     {/* Footer */}
                     <div className="qm-qcard-footer">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
                         <button
                           type="button"
                           onClick={() => handleToggleQuestionActive(q)}
-                          className={`badge ${q.isActive ? 'badge-success' : 'badge-neutral'}`}
-                          style={{ cursor: 'pointer', border: 'none' }}
+                          className={`badge ${q.isActive ? 'badge-success': 'badge-neutral'}`}
+                          style={{ cursor: 'pointer', border: 'none'}}
                         >
-                          <span className="dot" style={{ backgroundColor: q.isActive ? 'var(--success)' : 'var(--text-muted)' }} />
-                          <span>{q.isActive ? 'ACTIVE' : 'OFF'}</span>
+                          <span className="dot"style={{ backgroundColor: q.isActive ? 'var(--success)': 'var(--text-muted)'}} />
+                          <span>{q.isActive ? 'Active': 'Off'}</span>
                         </button>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{q.source}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)'}}>{q.source}</span>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      <div style={{ display: 'flex', gap: '0.25rem'}}>
                         <button
                           type="button"
                           onClick={() => {
@@ -921,10 +923,10 @@ export const QuestionManagement: React.FC = () => {
                   <tr>
                     <th>Part</th>
                     <th>Topic</th>
-                    <th>Question Prompt</th>
+                    <th>Practice prompt</th>
                     <th>Source</th>
-                    <th style={{ textAlign: 'center' }}>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ textAlign: 'center'}}>Status</th>
+                    <th style={{ textAlign: 'right'}}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -940,39 +942,39 @@ export const QuestionManagement: React.FC = () => {
                               : 'qm-badge-p3'
                           }
                         >
-                          {q.part === 'PART_1' && 'P1'}
-                          {q.part === 'PART_2' && 'P2'}
-                          {q.part === 'PART_3' && 'P3'}
+                          {q.part === 'PART_1'&& 'P1'}
+                          {q.part === 'PART_2'&& 'P2'}
+                          {q.part === 'PART_3'&& 'P3'}
                         </span>
                       </td>
                       <td>
                         <span className="badge badge-neutral">{q.topic?.name || 'General'}</span>
                       </td>
-                      <td style={{ maxWidth: '480px' }}>
-                        <div style={{ fontWeight: 600, color: '#FFFFFF', marginBottom: '0.2rem' }}>
+                      <td style={{ maxWidth: '480px'}}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem'}}>
                           {q.questionText}
                         </div>
                         {q.cueCardBullets && (
-                          <div style={{ fontSize: '0.725rem', color: 'var(--warning-text)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <div style={{ fontSize: '0.725rem', color: 'var(--warning-text)', display: 'flex', alignItems: 'center', gap: '4px'}}>
                             <Sparkles size={11} />
                             <span>Includes cue card bullet prompts</span>
                           </div>
                         )}
                       </td>
-                      <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{q.source}</td>
-                      <td style={{ textAlign: 'center' }}>
+                      <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)'}}>{q.source}</td>
+                      <td style={{ textAlign: 'center'}}>
                         <button
                           type="button"
                           onClick={() => handleToggleQuestionActive(q)}
-                          className={`badge ${q.isActive ? 'badge-success' : 'badge-neutral'}`}
-                          style={{ cursor: 'pointer', border: 'none' }}
+                          className={`badge ${q.isActive ? 'badge-success': 'badge-neutral'}`}
+                          style={{ cursor: 'pointer', border: 'none'}}
                         >
-                          <span className="dot" style={{ backgroundColor: q.isActive ? 'var(--success)' : 'var(--text-muted)' }} />
-                          <span>{q.isActive ? 'ACTIVE' : 'OFF'}</span>
+                          <span className="dot"style={{ backgroundColor: q.isActive ? 'var(--success)': 'var(--text-muted)'}} />
+                          <span>{q.isActive ? 'Active': 'Inactive'}</span>
                         </button>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '4px' }}>
+                      <td style={{ textAlign: 'right'}}>
+                        <div style={{ display: 'inline-flex', gap: '4px'}}>
                           <button
                             type="button"
                             onClick={() => {
@@ -989,17 +991,19 @@ export const QuestionManagement: React.FC = () => {
                               setShowQuestionModal(true);
                             }}
                             className="btn-secondary"
-                            style={{ width: '28px', height: '28px', padding: 0 }}
+                            aria-label="Edit question"
+                            style={{ minWidth: 44, minHeight: 44, padding: '0 12px'}}
                           >
-                            <Edit2 size={12} />
+                            <Edit2 size={14} /> Edit
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteQuestion(q.id)}
                             className="btn-danger"
-                            style={{ width: '28px', height: '28px', padding: 0 }}
+                            aria-label="Delete question"
+                            style={{ minWidth: 44, minHeight: 44, padding: '0 12px'}}
                           >
-                            <Trash2 size={12} />
+                            <Trash2 size={14} /> Delete
                           </button>
                         </div>
                       </td>
@@ -1013,15 +1017,15 @@ export const QuestionManagement: React.FC = () => {
       )}
 
       {/* 4. CUE CARD TASK CARDS VIEW */}
-      {activeTab === 'cueCards' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div className="glass-panel" style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: '4px solid var(--warning)' }}>
+      {activeTab === 'cueCards'&& (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem'}}>
+          <div className="glass-panel"style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: '4px solid var(--warning)'}}>
             <div>
-              <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--warning-text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--warning-text)', display: 'flex', alignItems: 'center', gap: '8px'}}>
                 <Sparkles size={18} />
-                <span>Authentic IELTS Candidate Task Cards ({cueCardQuestions.length})</span>
+                <span>IELTS cue cards ({cueCardQuestions.length})</span>
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem'}}>
                 Simulates real examination cue cards with instructions, structured prompts, and 1-minute preparation timers.
               </div>
             </div>
@@ -1037,11 +1041,11 @@ export const QuestionManagement: React.FC = () => {
               className="btn-primary"
             >
               <Plus size={15} />
-              <span>Add Cue Card</span>
+              <span>Add cue card</span>
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem'}}>
             {cueCardQuestions.map((q) => {
               let bullets: string[] = [];
               if (q.cueCardBullets) {
@@ -1056,37 +1060,37 @@ export const QuestionManagement: React.FC = () => {
                 <div key={q.id} className="qm-taskcard">
                   <div>
                     <div className="qm-taskcard-header">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span className="dot" style={{ backgroundColor: '#F59E0B' }} />
-                        <span>Candidate Task Card</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px'}}>
+                        <span className="dot"style={{ backgroundColor: '#F59E0B'}} />
+                        <span>Cue card</span>
                       </div>
                       <span>{q.topic?.name || 'Speaking Part 2'}</span>
                     </div>
 
-                    <div className="qm-taskcard-prompt" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                    <div className="qm-taskcard-prompt"style={{ marginTop: '1rem', marginBottom: '1rem'}}>
                       {q.questionText}
                     </div>
 
                     <div className="qm-taskcard-box">
-                      <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.5rem', color: '#F59E0B' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'none', marginBottom: '0.5rem', color: 'var(--warning-text)'}}>
                         You should say:
                       </div>
                       {bullets.map((b, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '0.4rem', lineHeight: 1.4 }}>
-                          <span style={{ color: '#F59E0B', fontWeight: 'bold' }}>◆</span>
+                          <span style={{ color: 'var(--warning-text)', fontWeight: 'bold'}}>◆</span>
                           <span>{b}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#FDE68A' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid rgba(245, 158, 11, 0.2)'}}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--warning-text)'}}>
                       <Clock size={14} />
                       <span>Prep 1m • Speak 2m</span>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '4px'}}>
                       <button
                         type="button"
                         onClick={() => {
@@ -1122,15 +1126,15 @@ export const QuestionManagement: React.FC = () => {
       )}
 
       {/* 5. TOPIC TAXONOMIES VIEW */}
-      {activeTab === 'topics' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div className="glass-panel" style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: '4px solid #A855F7' }}>
+      {activeTab === 'topics'&& (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem'}}>
+          <div className="glass-panel"style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: '2px solid var(--border-card)'}}>
             <div>
-              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#D8B4FE', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px'}}>
                 <Layers size={18} />
-                <span>IELTS Topic Taxonomies ({topics.length})</span>
+                <span>IELTS Topic Topics ({topics.length})</span>
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem'}}>
                 Domain categories for automated question classification and in-call student topic filtering.
               </div>
             </div>
@@ -1138,29 +1142,29 @@ export const QuestionManagement: React.FC = () => {
               type="button"
               onClick={() => setShowTopicModal(true)}
               className="btn-primary"
-              style={{ background: 'linear-gradient(135deg, #A855F7 0%, #6366F1 100%)' }}
+              style={{ background: 'var(--primary)'}}
             >
               <Plus size={15} />
-              <span>Create Topic</span>
+              <span>Create topic</span>
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem'}}>
             {topics.map((t) => (
-              <div key={t.id} className="glass-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
+              <div key={t.id} className="glass-card"style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem'}}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF' }}>{t.name}</div>
-                    <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>Freq {t.relevance}/10</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem'}}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)'}}>{t.name}</div>
+                    <span className="badge badge-info"style={{ fontSize: '0.7rem'}}>Freq {t.relevance}/10</span>
                   </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                     {t.description || 'Topic domain for IELTS practice.'}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>/{t.slug}</span>
-                  <span className="badge badge-neutral" style={{ fontWeight: 700 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem'}}>
+                  <span style={{ color: 'var(--text-muted)'}}>/{t.slug}</span>
+                  <span className="badge badge-neutral"style={{ fontWeight: 700 }}>
                     {t._count?.questions ?? 0} questions
                   </span>
                 </div>
@@ -1171,8 +1175,8 @@ export const QuestionManagement: React.FC = () => {
       )}
 
       {/* 6. CRAWLER COMMAND CENTER VIEW */}
-      {activeTab === 'crawler' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {activeTab === 'crawler'&& (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
           {/* Gemini AI Status Pointer Card */}
           <div
             className="glass-panel"
@@ -1187,8 +1191,8 @@ export const QuestionManagement: React.FC = () => {
               }`,
             }}
           >
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem'}}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px'}}>
                 <div
                   style={{
                     width: '44px',
@@ -1215,39 +1219,39 @@ export const QuestionManagement: React.FC = () => {
                 </div>
 
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1rem', fontWeight: 800, color: '#FFFFFF' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '4px'}}>
+                    <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)'}}>
                       Google Gemini AI Status
                     </span>
 
-                    {crawlerStatus?.gemini?.status === 'CONNECTED' ? (
-                      <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem' }}>
-                        <span className="dot" style={{ backgroundColor: 'var(--success)' }} />
-                        <span style={{ fontWeight: 700 }}>Gemini AI: Connected 🟢</span>
+                    {crawlerStatus?.gemini?.status === 'CONNECTED'? (
+                      <span className="badge badge-success"style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem'}}>
+                        <span className="dot"style={{ backgroundColor: 'var(--success)'}} />
+                        <span style={{ fontWeight: 700 }}>Gemini AI: Connected </span>
                       </span>
-                    ) : crawlerStatus?.gemini?.status === 'FAILED' ? (
-                      <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem' }}>
-                        <span className="dot" style={{ backgroundColor: 'var(--danger)' }} />
-                        <span style={{ fontWeight: 700 }}>Gemini AI: Failed 🔴</span>
+                    ) : crawlerStatus?.gemini?.status === 'FAILED'? (
+                      <span className="badge badge-danger"style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem'}}>
+                        <span className="dot"style={{ backgroundColor: 'var(--danger)'}} />
+                        <span style={{ fontWeight: 700 }}>Gemini AI: Failed </span>
                       </span>
                     ) : (
-                      <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem', background: 'rgba(148, 163, 184, 0.2)', color: '#E2E8F0', border: '1px solid rgba(148, 163, 184, 0.3)' }}>
-                        <span className="dot" style={{ backgroundColor: '#94A3B8' }} />
-                        <span style={{ fontWeight: 700 }}>Gemini AI: Not Configured ⚪</span>
+                      <span className="badge"style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', fontSize: '0.75rem', background: 'rgba(148, 163, 184, 0.2)', color: 'var(--text-primary)', border: '1px solid rgba(148, 163, 184, 0.3)'}}>
+                        <span className="dot"style={{ backgroundColor: '#94A3B8'}} />
+                        <span style={{ fontWeight: 700 }}>Gemini AI: Not configured </span>
                       </span>
                     )}
                   </div>
 
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    {crawlerStatus?.gemini?.status === 'CONNECTED' && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)'}}>
+                    {crawlerStatus?.gemini?.status === 'CONNECTED'&& (
                       <span>
-                        Model: <strong style={{ color: '#F1F5F9' }}>{crawlerStatus.gemini.model}</strong> • Latency:{' '}
-                        <strong style={{ color: 'var(--success-text)' }}>{crawlerStatus.gemini.latencyMs ?? 0}ms</strong> • Last Checked:{' '}
+                        Model: <strong style={{ color: 'var(--text-primary)'}}>{crawlerStatus.gemini.model}</strong> • Latency:{''}
+                        <strong style={{ color: 'var(--success-text)'}}>{crawlerStatus.gemini.latencyMs ?? 0}ms</strong> • Last Checked:{''}
                         {new Date(crawlerStatus.gemini.lastChecked).toLocaleTimeString()}
                       </span>
                     )}
-                    {crawlerStatus?.gemini?.status === 'FAILED' && (
-                      <span style={{ color: '#F87171' }}>
+                    {crawlerStatus?.gemini?.status === 'FAILED'&& (
+                      <span style={{ color: 'var(--danger-text)'}}>
                         Model: {crawlerStatus.gemini.model} • Error: {crawlerStatus.gemini.lastError || 'Connection failed'}
                       </span>
                     )}
@@ -1260,15 +1264,15 @@ export const QuestionManagement: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px'}}>
                 <button
                   type="button"
                   disabled={isCheckingGemini}
                   onClick={handleCheckGemini}
-                  className={crawlerStatus?.gemini?.status === 'FAILED' ? 'btn-danger' : 'btn-secondary'}
-                  style={{ height: '36px', padding: '0 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  className={crawlerStatus?.gemini?.status === 'FAILED'? 'btn-danger': 'btn-secondary'}
+                  style={{ height: '36px', padding: '0 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px'}}
                 >
-                  <RefreshCw size={13} style={{ animation: isCheckingGemini ? 'spin 1s linear infinite' : 'none' }} />
+                  <RefreshCw size={13} style={{ animation: isCheckingGemini ? 'spin 1s linear infinite': 'none'}} />
                   <span>
                     {isCheckingGemini
                       ? 'Testing Gemini...'
@@ -1304,8 +1308,8 @@ export const QuestionManagement: React.FC = () => {
                     crawlerStatus?.gemini?.status === 'CONNECTED'
                       ? 'var(--success-text)'
                       : crawlerStatus?.gemini?.status === 'FAILED'
-                      ? '#FCA5A5'
-                      : '#E2E8F0',
+                      ? 'var(--danger-text)'
+                      : 'var(--text-primary)',
                 }}
               >
                 {geminiCheckMessage}
@@ -1314,55 +1318,55 @@ export const QuestionManagement: React.FC = () => {
           </div>
 
           {/* Architecture Pipeline Flow Banner */}
-          <div className="glass-panel" style={{ padding: '1.5rem' }}>
-            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
-              <Cpu size={18} style={{ color: 'var(--info)' }} />
-              <span>Autonomous Crawler Architecture Pipeline</span>
+          <div className="glass-panel"style={{ padding: '1.5rem'}}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem'}}>
+              <Cpu size={18} style={{ color: 'var(--info)'}} />
+              <span>Crawler pipeline</span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.85rem' }}>
-              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
-                <div style={{ color: 'var(--info)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>1. Web Fetcher</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Multi-source HTTP scraper with safe timeout &amp; bot headers</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.85rem'}}>
+              <div className="glass-card"style={{ padding: '1rem', textAlign: 'center'}}>
+                <div style={{ color: 'var(--info)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem'}}>1. Web Fetcher</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)'}}>Multi-source HTTP scraper with safe timeout &amp; bot headers</div>
               </div>
-              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
-                <div style={{ color: 'var(--warning)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>2. Pattern Extractor</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>DOM &amp; regex parser for P1, P2 cue cards &amp; P3 discussion</div>
+              <div className="glass-card"style={{ padding: '1rem', textAlign: 'center'}}>
+                <div style={{ color: 'var(--warning-text)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem'}}>2. Pattern Extractor</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)'}}>DOM &amp; regex parser for P1, P2 cue cards &amp; P3 discussion</div>
               </div>
-              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
-                <div style={{ color: '#A855F7', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>3. SHA-256 Deduplication</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Deterministic fingerprint prevents identical duplicates</div>
+              <div className="glass-card"style={{ padding: '1rem', textAlign: 'center'}}>
+                <div style={{ color: 'var(--info-text)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem'}}>3. SHA-256 Deduplication</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)'}}>Deterministic fingerprint prevents identical duplicates</div>
               </div>
-              <div className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
-                <div style={{ color: 'var(--success)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem' }}>4. Live Ingestion</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Populates in-call student simulator drawer in real-time</div>
+              <div className="glass-card"style={{ padding: '1rem', textAlign: 'center'}}>
+                <div style={{ color: 'var(--success-text)', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.35rem'}}>4. Live Ingestion</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)'}}>Populates in-call student simulator drawer in real-time</div>
               </div>
             </div>
           </div>
 
           {/* Actions: Weekly Searcher + Daily Filter + Custom URL */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem'}}>
             {/* 1. Weekly Searcher Engine */}
-            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
+            <div className="glass-panel"style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem'}}>
               <div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Sparkles size={16} style={{ color: 'var(--info)' }} />
-                    <span>Weekly Searcher Crawler</span>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem'}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px'}}>
+                    <Sparkles size={16} style={{ color: 'var(--info)'}} />
+                    <span>Weekly question crawler</span>
                   </div>
-                  <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Every Sun 03:00 UTC</span>
+                  <span className="badge badge-info"style={{ fontSize: '0.65rem'}}>Every Sun 03:00 UTC</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                   Autonomous deep web crawler that searches IELTS exam repositories, extracts questions, and initial seeds into the system.
                 </p>
 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer', marginTop: '0.85rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer', marginTop: '0.85rem'}}>
                   <input
                     type="checkbox"
                     checked={deepCrawlEnabled}
                     onChange={(e) => setDeepCrawlEnabled(e.target.checked)}
                   />
-                  <span>Include Deep Live Web Crawl (External Sites)</span>
+                  <span>Include external websites</span>
                 </label>
               </div>
 
@@ -1371,29 +1375,29 @@ export const QuestionManagement: React.FC = () => {
                 disabled={isCrawling}
                 onClick={() => handleRunCrawl()}
                 className="btn-primary"
-                style={{ width: '100%', height: '40px' }}
+                style={{ width: '100%', height: '40px'}}
               >
-                <RefreshCw size={15} style={{ animation: isCrawling ? 'spin 1s linear infinite' : 'none' }} />
-                <span>{isCrawling ? 'Searcher Crawling...' : 'Trigger Weekly Searcher Now'}</span>
+                <RefreshCw size={15} style={{ animation: isCrawling ? 'spin 1s linear infinite': 'none'}} />
+                <span>{isCrawling ? 'Searcher Crawling...': 'Trigger Weekly Searcher Now'}</span>
               </button>
             </div>
 
             {/* 2. Daily Filter & Janitor */}
-            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem', borderLeft: '4px solid var(--primary)' }}>
+            <div className="glass-panel"style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem', borderLeft: '4px solid var(--primary)'}}>
               <div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Layers size={16} style={{ color: '#9B82FD' }} />
-                    <span>Daily Filter &amp; Janitor</span>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem'}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px'}}>
+                    <Layers size={16} style={{ color: '#9B82FD'}} />
+                    <span>Daily question filter</span>
                   </div>
-                  <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>Every 24 Hours</span>
+                  <span className="badge badge-success"style={{ fontSize: '0.65rem'}}>Every 24 Hours</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                   Scans all active questions in PostgreSQL: re-classifies misfiled topics (e.g. news to Media), prunes semantic duplicates, and cleans formatting.
                 </p>
 
                 {filterMessage && (
-                  <div style={{ marginTop: '0.75rem', padding: '0.65rem', borderRadius: '8px', background: 'rgba(124, 92, 252, 0.12)', border: '1px solid rgba(124, 92, 252, 0.3)', color: '#D8B4FE', fontSize: '0.75rem' }}>
+                  <div style={{ marginTop: '0.75rem', padding: '0.65rem', borderRadius: '8px', background: 'rgba(124, 92, 252, 0.12)', border: '1px solid rgba(124, 92, 252, 0.3)', color: 'var(--text-secondary)', fontSize: '0.75rem'}}>
                     {filterMessage}
                   </div>
                 )}
@@ -1404,23 +1408,23 @@ export const QuestionManagement: React.FC = () => {
                 disabled={isFiltering}
                 onClick={() => handleRunFilter()}
                 className="btn-secondary"
-                style={{ width: '100%', height: '40px', background: 'linear-gradient(135deg, rgba(124, 92, 252, 0.25) 0%, rgba(79, 140, 255, 0.25) 100%)', borderColor: 'rgba(124, 92, 252, 0.4)' }}
+                style={{ width: '100%', height: '40px', background: 'linear-gradient(135deg, rgba(124, 92, 252, 0.25) 0%, rgba(79, 140, 255, 0.25) 100%)', borderColor: 'rgba(124, 92, 252, 0.4)'}}
               >
-                <RefreshCw size={15} style={{ animation: isFiltering ? 'spin 1s linear infinite' : 'none' }} />
-                <span>{isFiltering ? 'Filtering & Pruning...' : 'Run Daily Filter & Janitor Now'}</span>
+                <RefreshCw size={15} style={{ animation: isFiltering ? 'spin 1s linear infinite': 'none'}} />
+                <span>{isFiltering ? 'Filtering & Pruning...': 'Run Daily Filter & Janitor Now'}</span>
               </button>
             </div>
 
-            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Globe size={16} style={{ color: 'var(--success)' }} />
-                <span>Crawl Custom IELTS Webpage</span>
+            <div className="glass-panel"style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                <Globe size={16} style={{ color: 'var(--success-text)'}} />
+                <span>Crawl an IELTS webpage</span>
               </div>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                 Paste any IELTS speaking URL. The scraper will extract and ingest questions on demand.
               </p>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px'}}>
                 <input aria-label="https://ieltsmaterial.com/..."
                   type="url"
                   value={customCrawlUrl}
@@ -1434,14 +1438,14 @@ export const QuestionManagement: React.FC = () => {
                   disabled={isCrawling || !customCrawlUrl.trim().startsWith('http')}
                   onClick={() => handleRunCrawl(customCrawlUrl)}
                   className="btn-success"
-                  style={{ height: '36px' }}
+                  style={{ height: '36px'}}
                 >
                   Crawl URL
                 </button>
               </div>
 
               {crawlMessage && (
-                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', color: 'var(--info-text)', fontSize: '0.8rem' }}>
+                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', color: 'var(--info-text)', fontSize: '0.8rem'}}>
                   {crawlMessage}
                 </div>
               )}
@@ -1449,47 +1453,47 @@ export const QuestionManagement: React.FC = () => {
           </div>
 
           {/* Sync History Logs Table */}
-          <div className="glass-panel" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Clock size={16} style={{ color: 'var(--info)' }} />
-                <span>Crawler Execution &amp; Sync Audit History</span>
+          <div className="glass-panel"style={{ overflow: 'hidden'}}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                <Clock size={16} style={{ color: 'var(--info)'}} />
+                <span>Crawler execution history</span>
               </div>
               <button
                 type="button"
                 onClick={() => fetchCrawlerStatus()}
                 className="btn-secondary"
-                style={{ height: '28px', padding: '0 8px', fontSize: '0.75rem' }}
+                style={{ height: '28px', padding: '0 8px', fontSize: '0.75rem'}}
               >
                 <RefreshCw size={12} />
                 <span>Refresh</span>
               </button>
             </div>
 
-            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+            <div className="table-container"role="region"tabIndex={0} aria-label="Crawler execution history"style={{ border: 'none', borderRadius: 0 }}>
               <table className="table-modern">
                 <thead>
                   <tr>
-                    <th>Started At</th>
+                    <th>Started at</th>
                     <th>Status</th>
-                    <th style={{ textAlign: 'center' }}>Discovered</th>
-                    <th style={{ textAlign: 'center' }}>Accepted</th>
-                    <th style={{ textAlign: 'center' }}>Duplicates</th>
-                    <th style={{ textAlign: 'center' }}>Topics</th>
-                    <th style={{ textAlign: 'right' }}>Duration</th>
+                    <th style={{ textAlign: 'center'}}>Discovered</th>
+                    <th style={{ textAlign: 'center'}}>Accepted</th>
+                    <th style={{ textAlign: 'center'}}>Duplicates</th>
+                    <th style={{ textAlign: 'center'}}>Topics</th>
+                    <th style={{ textAlign: 'right'}}>Duration</th>
                   </tr>
                 </thead>
                 <tbody>
                   {syncLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)'}}>
                         No crawl history records found yet.
                       </td>
                     </tr>
                   ) : (
                     syncLogs.map((log) => (
                       <tr key={log.id}>
-                        <td style={{ color: 'var(--text-secondary)' }}>{new Date(log.startedAt).toLocaleString()}</td>
+                        <td style={{ color: 'var(--text-secondary)'}}>{new Date(log.startedAt).toLocaleString()}</td>
                         <td>
                           <span
                             className={`badge ${
@@ -1500,15 +1504,15 @@ export const QuestionManagement: React.FC = () => {
                                 : 'badge-danger'
                             }`}
                           >
-                            <span className="dot" style={{ backgroundColor: log.status === 'SUCCESS' ? 'var(--success)' : log.status === 'RUNNING' ? 'var(--info)' : 'var(--danger)' }} />
+                            <span className="dot"style={{ backgroundColor: log.status === 'SUCCESS'? 'var(--success)': log.status === 'RUNNING'? 'var(--info)': 'var(--danger)'}} />
                             <span>{log.status}</span>
                           </span>
                         </td>
                         <td style={{ textAlign: 'center', fontWeight: 600 }}>{log.questionsDiscovered}</td>
                         <td style={{ textAlign: 'center', color: 'var(--success-text)', fontWeight: 700 }}>{log.questionsAccepted}</td>
-                        <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{log.duplicatesSkipped}</td>
-                        <td style={{ textAlign: 'center', color: '#D8B4FE', fontWeight: 600 }}>{log.topicsCreated}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{log.durationMs}ms</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-muted)'}}>{log.duplicatesSkipped}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 600 }}>{log.topicsCreated}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--text-muted)'}}>{log.durationMs}ms</td>
                       </tr>
                     ))
                   )}
@@ -1520,15 +1524,15 @@ export const QuestionManagement: React.FC = () => {
       )}
 
       {/* 7. BULK INGESTION VIEW */}
-      {activeTab === 'bulkImport' && (
-        <div className="glass-panel" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-card)', paddingBottom: '1rem' }}>
+      {activeTab === 'bulkImport'&& (
+        <div className="glass-panel"style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem'}}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-card)', paddingBottom: '1rem'}}>
             <div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Upload size={20} style={{ color: 'var(--info)' }} />
-                <span>Bulk IELTS Question Ingestion Tool</span>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                <Upload size={20} style={{ color: 'var(--info)'}} />
+                <span>Import IELTS questions</span>
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem'}}>
                 Paste a JSON array or plain multi-line questions to bulk seed into the practice simulator.
               </div>
             </div>
@@ -1554,41 +1558,41 @@ export const QuestionManagement: React.FC = () => {
                 ];
                 setBulkImportJson(JSON.stringify(sample, null, 2));
               }}
-              style={{ background: 'none', border: 'none', color: 'var(--info-text)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+              style={{ background: 'none', border: 'none', color: 'var(--info-text)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline'}}
             >
               Load Sample Template
             </button>
           </div>
 
-          <form onSubmit={handleBulkImport} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <form onSubmit={handleBulkImport} style={{ display: 'flex', flexDirection: 'column', gap: '1rem'}}>
             <div className="qm-form-group">
-              <label className="qm-form-label">Target Topic Domain</label>
-              <select aria-label="Target Topic Domain"
+              <label className="qm-form-label">Target topic</label>
+              <Select aria-label="Target topic"
                 value={bulkImportTopicId}
-                onChange={(e) => setBulkImportTopicId(e.target.value)}
+                onValueChange={(value) => setBulkImportTopicId(value)}
                 className="qm-select-styled"
-                style={{ width: '100%' }}
+                style={{ width: '100%'}}
               >
                 {topics.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div className="qm-form-group">
-              <label className="qm-form-label">JSON Array or Line-by-Line Questions</label>
-              <textarea aria-label="JSON Array or Line-by-Line Questions"
+              <label className="qm-form-label">JSON array or one question per line</label>
+              <textarea aria-label="JSON array or one question per line"
                 rows={10}
                 value={bulkImportJson}
                 onChange={(e) => setBulkImportJson(e.target.value)}
-                placeholder='[ { "part": "PART_1", "questionText": "Do you like walking in the rain?" } ]'
+                placeholder='[ { "part": "PART_1", "questionText": "Do you like walking in the rain?"} ]'
                 className="qm-textarea"
-                style={{ fontFamily: 'var(--mono)', fontSize: '0.8rem' }}
+                style={{ fontFamily: 'var(--mono)', fontSize: '0.8rem'}}
               />
             </div>
 
             {bulkImportMessage && (
-              <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.3)', color: 'var(--success-text)', fontSize: '0.85rem' }}>
+              <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.3)', color: 'var(--success-text)', fontSize: '0.85rem'}}>
                 {bulkImportMessage}
               </div>
             )}
@@ -1597,77 +1601,77 @@ export const QuestionManagement: React.FC = () => {
               type="submit"
               disabled={isBulkImporting || !bulkImportJson.trim()}
               className="btn-primary"
-              style={{ height: '42px', fontSize: '0.9rem' }}
+              style={{ height: '42px', fontSize: '0.9rem'}}
             >
-              {isBulkImporting ? 'Processing Bulk Ingestion...' : 'Import Questions Now'}
+              {isBulkImporting ? 'Importing…': 'Import questions'}
             </button>
           </form>
         </div>
       )}
 
       {/* 8. QUESTION CREATE/EDIT MODAL */}
-      {showQuestionModal && (
-        <Dialog title="Question" pending={isSavingQuestion} onClose={() => { setShowQuestionModal(false); }}><fieldset disabled={isSavingQuestion} style={{border:0,padding:0,margin:0,minWidth:0}}>
+      <DialogPresence>{showQuestionModal && (
+        <Dialog title="Question"pending={isSavingQuestion} onClose={() => { setShowQuestionModal(false); }}><fieldset disabled={isSavingQuestion} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div className="qm-modal">
             <div className="qm-modal-header">
               <div className="qm-modal-title">
-                <BookOpen size={18} style={{ color: 'var(--info)' }} />
-                <span>{editingQuestion ? 'Edit IELTS Question' : 'Add New IELTS Question'}</span>
+                <BookOpen size={18} style={{ color: 'var(--info)'}} />
+                <span>{editingQuestion ? 'Edit IELTS question': 'Add IELTS question'}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setShowQuestionModal(false)}
                 aria-label="Close question editor"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer'}}
               >
                 <X size={18} />
               </button>
             </div>
 
             {modalError && (
-              <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger-text)', fontSize: '0.8rem' }}>
+              <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger-text)', fontSize: '0.8rem'}}>
                 {modalError}
               </div>
             )}
 
-            <form onSubmit={handleSaveQuestion} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form onSubmit={handleSaveQuestion} style={{ display: 'flex', flexDirection: 'column', gap: '1rem'}}>
               <div className="qm-form-group">
                 <label className="qm-form-label">Topic</label>
-                <select aria-label="Topic"
+                <Select aria-label="Topic"
                   value={modalTopicId}
-                  onChange={(e) => setModalTopicId(e.target.value)}
+                  onValueChange={(value) => setModalTopicId(value)}
                   className="qm-select-styled"
                 >
                   {topics.map((t) => (
                     <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div className="qm-form-group">
-                <label className="qm-form-label">Exam Part</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                <label className="qm-form-label">Exam part</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px'}}>
                   <button
                     type="button"
                     onClick={() => setModalPart('PART_1')}
-                    className={`qm-pill-item ${modalPart === 'PART_1' ? 'active' : ''}`}
-                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_1' ? '#38BDF8' : undefined }}
+                    className={`qm-pill-item ${modalPart === 'PART_1'? 'active': ''}`}
+                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_1'? 'var(--info-text)': undefined }}
                   >
                     Part 1
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalPart('PART_2')}
-                    className={`qm-pill-item ${modalPart === 'PART_2' ? 'active' : ''}`}
-                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_2' ? '#F59E0B' : undefined }}
+                    className={`qm-pill-item ${modalPart === 'PART_2'? 'active': ''}`}
+                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_2'? 'var(--info-text)': undefined }}
                   >
-                    Part 2 (Cue Card)
+                    Part 2 (cue card)
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalPart('PART_3')}
-                    className={`qm-pill-item ${modalPart === 'PART_3' ? 'active' : ''}`}
-                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_3' ? '#A855F7' : undefined }}
+                    className={`qm-pill-item ${modalPart === 'PART_3'? 'active': ''}`}
+                    style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid var(--border-input)', color: modalPart === 'PART_3'? 'var(--info-text)': undefined }}
                   >
                     Part 3
                   </button>
@@ -1676,9 +1680,10 @@ export const QuestionManagement: React.FC = () => {
 
               <div className="qm-form-group">
                 <label className="qm-form-label">
-                  {modalPart === 'PART_2' ? 'Cue Card Main Prompt' : 'Question Prompt Text'}
+                  {modalPart === 'PART_2'? 'Cue card prompt': 'Practice prompt'}
                 </label>
                 <textarea
+                  aria-label={modalPart === 'PART_2'? 'Cue card prompt': 'Practice prompt'}
                   required
                   rows={3}
                   value={modalQuestionText}
@@ -1692,21 +1697,21 @@ export const QuestionManagement: React.FC = () => {
                 />
               </div>
 
-              {modalPart === 'PART_2' && (
+              {modalPart === 'PART_2'&& (
                 <div className="qm-form-group">
-                  <label className="qm-form-label">Cue Card Bullets (One prompt per line)</label>
-                  <textarea aria-label="Cue Card Bullets (One prompt per line)"
+                  <label className="qm-form-label">Cue card bullets (one prompt per line)</label>
+                  <textarea aria-label="Cue card bullets (one prompt per line)"
                     rows={4}
                     value={modalCueBullets}
                     onChange={(e) => setModalCueBullets(e.target.value)}
                     placeholder={`What this project was\nWhen you first decided to pursue it\nWhat challenges you faced\nAnd explain why it was meaningful`}
                     className="qm-textarea"
-                    style={{ color: '#FDE68A' }}
+                    style={{ color: 'var(--warning-text)'}}
                   />
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '0.75rem', borderTop: '1px solid var(--border-card)' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '0.75rem', borderTop: '1px solid var(--border-card)'}}>
                 <button
                   type="button"
                   onClick={() => setShowQuestionModal(false)}
@@ -1714,38 +1719,38 @@ export const QuestionManagement: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary">
-                  {editingQuestion ? 'Save Changes' : 'Create Question'}
+                <button type="submit"className="btn-primary">
+                  {editingQuestion ? 'Save changes': 'Create question'}
                 </button>
               </div>
             </form>
           </div>
         </fieldset></Dialog>
-      )}
+      )}</DialogPresence>
 
       {/* 9. TOPIC CREATE MODAL */}
-      {showTopicModal && (
-        <Dialog title="Topic" pending={isSavingTopic} onClose={() => { setShowTopicModal(false); }}><fieldset disabled={isSavingTopic} style={{border:0,padding:0,margin:0,minWidth:0}}>{topicError&&<p role="alert" className="inline-error">{topicError}</p>}
-          <div className="qm-modal" style={{ maxWidth: '440px' }}>
+      <DialogPresence>{showTopicModal && (
+        <Dialog title="Topic"pending={isSavingTopic} onClose={() => { setShowTopicModal(false); }}><fieldset disabled={isSavingTopic} style={{border:0,padding:0,margin:0,minWidth:0}}>{topicError&&<p role="alert"className="inline-error">{topicError}</p>}
+          <div className="qm-modal"style={{ maxWidth: '440px'}}>
             <div className="qm-modal-header">
               <div className="qm-modal-title">
-                <Layers size={18} style={{ color: '#A855F7' }} />
-                <span>Create IELTS Topic Domain</span>
+                <Layers size={18} style={{ color: 'var(--info-text)'}} />
+                <span>Create IELTS topic</span>
               </div>
               <button
                 type="button"
                 onClick={() => setShowTopicModal(false)}
                 aria-label="Close topic editor"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer'}}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveTopic} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form onSubmit={handleSaveTopic} style={{ display: 'flex', flexDirection: 'column', gap: '1rem'}}>
               <div className="qm-form-group">
-                <label className="qm-form-label">Topic Name</label>
-                <input aria-label="Topic Name"
+                <label className="qm-form-label">Topic name</label>
+                <input aria-label="Topic name"
                   type="text"
                   required
                   value={topicName}
@@ -1766,8 +1771,8 @@ export const QuestionManagement: React.FC = () => {
               </div>
 
               <div className="qm-form-group">
-                <label className="qm-form-label">URL Slug</label>
-                <input aria-label="URL Slug"
+                <label className="qm-form-label">URL slug</label>
+                <input aria-label="URL slug"
                   type="text"
                   required
                   value={topicSlug}
@@ -1778,8 +1783,8 @@ export const QuestionManagement: React.FC = () => {
               </div>
 
               <div className="qm-form-group">
-                <label className="qm-form-label">Relevance Frequency (1-10)</label>
-                <input aria-label="Relevance Frequency (1-10)"
+                <label className="qm-form-label">Relevance frequency (1–10)</label>
+                <input aria-label="Relevance frequency (1–10)"
                   type="number"
                   min={1}
                   max={10}
@@ -1800,7 +1805,7 @@ export const QuestionManagement: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '0.75rem', borderTop: '1px solid var(--border-card)' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '0.75rem', borderTop: '1px solid var(--border-card)'}}>
                 <button
                   type="button"
                   onClick={() => setShowTopicModal(false)}
@@ -1811,15 +1816,15 @@ export const QuestionManagement: React.FC = () => {
                 <button
                   type="submit"
                   className="btn-primary"
-                  style={{ background: 'linear-gradient(135deg, #A855F7 0%, #6366F1 100%)' }}
+                  style={{ background: 'var(--primary)'}}
                 >
-                  Create Topic
+                  Create topic
                 </button>
               </div>
             </form>
           </div>
         </fieldset></Dialog>
-      )}
+      )}</DialogPresence>
     </div>
   );
 };

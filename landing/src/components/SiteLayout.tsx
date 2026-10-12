@@ -1,152 +1,49 @@
-import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { ArrowUpRight, Menu, X, AudioLines } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Menu, X, AudioLines } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
-import { usePageMotion } from "../lib/usePageMotion";
-const bot = (import.meta.env.VITE_BOT_USERNAME || "PairTalkBot").replace(
-  /^@/,
-  "",
-);
+import { useAccordionMotion } from "../hooks/useAccordionMotion";
+const bot = (import.meta.env.VITE_BOT_USERNAME || "PairTalkBot").replace(/^@/, "");
 export const practiceUrl = `https://t.me/${bot}?start=register`;
 export const supportUrl = "https://t.me/PairTalkSupport";
 export function Brand() {
-  return (
-    <a className="brand" href="/" aria-label="PairTalk home">
-      <span className="brand-mark">
-        <AudioLines size={23} strokeWidth={2.5} />
-      </span>
-      pairtalk<span className="brand-period">.</span>
-    </a>
-  );
+  return <a className="logo" href="/" aria-label="PairTalk home"><span className="logo__mark"><AudioLines size={20} aria-hidden="true" /></span><span>pairtalk<span className="logo__dot">.</span></span></a>;
 }
-export function SiteLayout({
-  children,
-  path,
-}: {
-  children: ReactNode;
-  path: string;
-}) {
-  usePageMotion(path);
+const links = [["/how-it-works", "How it works"], ["/ielts-speaking", "Speaking guide"], ["/stats", "Community"], ["/pricing", "Plans"]];
+export function SiteLayout({children, path}: {children: ReactNode; path: string}) {
+  useAccordionMotion(path);
   const [open, setOpen] = useState(false);
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 860px)");
+    const update = () => { setMobile(query.matches); if (!query.matches) setOpen(false); };
+    update(); query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!open) return;
-    const close = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setOpen(false);
-        menuButton.current?.focus();
-      }
+    menu.current?.querySelector<HTMLAnchorElement>("a")?.focus();
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setOpen(false); menuButton.current?.focus(); }
+
     };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
+    const outside = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node) && !menuButton.current?.contains(event.target as Node)) setOpen(false); };
+    window.addEventListener("keydown", close); document.addEventListener("pointerdown", outside);
+    return () => { window.removeEventListener("keydown", close); document.removeEventListener("pointerdown", outside); };
   }, [open]);
-  const links = [
-    ["/how-it-works", "How it works"],
-    ["/ielts-speaking", "Speaking guide"],
-    ["/stats", "Our community"],
-    ["/pricing", "Compare prices"],
-  ];
-  return (
-    <>
-      <a className="skip-link" href="#main">
-        Skip to content
-      </a>
-      <header className="site-header">
-        <div className="container nav-wrap">
-          <Brand />
-          <nav className="desktop-nav" aria-label="Main navigation">
-            {links.map(([href, label]) => (
-              <a
-                key={href}
-                href={href}
-                aria-current={path === href ? "page" : undefined}
-              >
-                {label}
-              </a>
-            ))}
-          </nav>
-          <ThemeToggle />
-          <a className="button button-small nav-cta" href={practiceUrl}>
-            Start speaking <ArrowUpRight size={16} />
-          </a>
-          <button
-            className="menu-toggle"
-            ref={menuButton}
-            aria-label={open ? "Close navigation" : "Open navigation"}
-            aria-expanded={open}
-            aria-controls={open ? "mobile-nav" : undefined}
-            onClick={() => setOpen(!open)}
-          >
-            {open ? <X /> : <Menu />}
-          </button>
-        </div>
-        {open && (
-          <nav
-            id="mobile-nav"
-            className="mobile-nav container"
-            aria-label="Mobile navigation"
-            onClick={(event) => {
-              if ((event.target as HTMLElement).closest("a")) setOpen(false);
-            }}
-          >
-            {links.map(([href, label]) => (
-              <a
-                key={href}
-                href={href}
-                aria-current={path === href ? "page" : undefined}
-              >
-                {label}
-              </a>
-            ))}
-            <a href={practiceUrl}>Start speaking on Telegram ↗</a>
-          </nav>
-        )}
-      </header>
-      <main id="main">{children}</main>
-      <footer className="site-footer">
-        <div className="container">
-          <div className="footer-top">
-            <div>
-              <Brand />
-              <p>
-                A little practice.
-                <br />A lot more confidence.
-              </p>
-            </div>
-            <div>
-              <h2>Explore</h2>
-              <a href="/how-it-works">How it works</a>
-              <a href="/pricing">Plans & pricing</a>
-              <a href="/stats">Community statistics</a>
-              <a href="/faq">Questions & answers</a>
-            </div>
-            <div>
-              <h2>Learn</h2>
-              <a href="/ielts-speaking">IELTS speaking guide</a>
-              <a href="/ielts-speaking#part-1">Part 1: everyday topics</a>
-              <a href="/ielts-speaking#part-2">Part 2: your long turn</a>
-              <a href="/ielts-speaking#part-3">Part 3: deeper discussion</a>
-            </div>
-            <div>
-              <h2>Practice safely</h2>
-              <a href="/safety">Safety guide</a>
-              <a href="/community-guidelines">Community guidelines</a>
-              <a href="/privacy">Privacy policy</a>
-              <a href="/privacy#refunds">Refund policy</a>
-              <a href="/terms">Terms of service</a>
-              <a href={supportUrl}>Contact support ↗</a>
-            </div>
-          </div>
-          <div className="footer-bottom">
-            <span>© {new Date().getUTCFullYear()} PairTalk</span>
-            <p>
-              Independent peer practice. No affiliation with IELTS, the British
-              Council, IDP, or Cambridge. No guaranteed test scores.
-            </p>
-            <a href="/sitemap.xml">Sitemap</a>
-          </div>
-        </div>
-      </footer>
-    </>
-  );
+  return <>
+    <a className="skip-link" href="#main">Skip to content</a>
+    <header className="site-header" data-open={open}><div className="wrap site-header__bar"><Brand />
+      <nav className="site-nav" ref={menu} id="site-nav" aria-label="Main navigation" inert={mobile && !open ? true : undefined} aria-hidden={mobile && !open ? true : undefined} onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== menuButton.current) setOpen(false); }}>{links.map(([href,label]) => <a key={href} href={href} aria-current={path===href?"page":undefined} onClick={()=>setOpen(false)}>{label}</a>)}<a className="btn btn--primary mobile-start" href={practiceUrl}>Start speaking</a></nav>
+      <div className="site-header__actions"><ThemeToggle /><a className="btn btn--primary" href={practiceUrl}>Start speaking</a><button className="icon-btn nav-toggle" ref={menuButton} type="button" aria-label={open?"Close navigation":"Open navigation"} aria-expanded={open} aria-controls="site-nav" onClick={()=>setOpen(!open)}>{open?<X size={20} />:<Menu size={20} />}</button></div>
+    </div></header>
+    <main id="main">{children}</main>
+    <footer className="site-footer"><div className="wrap"><div className="site-footer__grid">
+      <div><Brand /><p className="footer-description">Peer speaking practice for IELTS learners, inside Telegram.</p></div>
+      <div><h2>Product</h2><ul>{[["/how-it-works","How it works"],["/pricing","Plans"],["/faq","FAQ"],["/stats","Community"]].map(([href,label])=><li key={href}><a href={href}>{label}</a></li>)}</ul></div>
+      <div><h2>Learn</h2><ul><li><a href="/ielts-speaking">Speaking guide</a></li><li><a href="/ielts-speaking#part-1">Part 1 questions</a></li><li><a href="/ielts-speaking#part-2">Part 2 cue cards</a></li><li><a href="/ielts-speaking#part-3">Part 3 discussion</a></li></ul></div>
+      <div><h2>Trust</h2><ul>{[["/safety","Safety"],["/community-guidelines","Community guidelines"],["/privacy","Privacy"],["/terms","Terms"],["/refund-policy","Refund policy"]].map(([href,label])=><li key={href}><a href={href}>{label}</a></li>)}<li><a href={supportUrl}>Contact support ↗</a></li></ul></div>
+    </div><p className="site-footer__legal">PairTalk is an independent peer practice service. It is not affiliated with, endorsed by, or connected to IELTS, the British Council, IDP, or Cambridge. A conversation with another learner is practice, not a certified mock test or official score assessment. No guaranteed test scores.</p><div className="footer-meta"><span>© {new Date().getUTCFullYear()} PairTalk. All rights reserved.</span><a href="/sitemap.xml">Sitemap</a></div></div></footer>
+  </>;
 }

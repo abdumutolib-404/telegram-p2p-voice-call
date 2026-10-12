@@ -10,7 +10,7 @@ const out = path.resolve(
   "../dist",
 );
 const files = (await readdir(out)).filter((f) => f.endsWith(".html"));
-assert.equal(files.length, 11, "Expected ten public pages and a 404");
+assert.equal(files.length, 12, "Expected eleven public pages and a 404");
 const documents = new Map();
 for (const file of files)
   documents.set(
@@ -240,7 +240,8 @@ for (const name of ["llms.txt", "llms-full.txt"]) {
     /https:\/\/pairtalk\.online([^\s)<>,]*)/g,
   )) {
     const destination = new URL(`https://pairtalk.online${match[1]}`).pathname;
-    if (destination === "/" || documents.has(destination)) continue;
+    // These dynamic URLs are served by the Worker and validated in public API tests.
+    if (destination === "/" || documents.has(destination) || ["/api/public/plans", "/api/public/stats"].includes(destination)) continue;
     assert(
       (await stat(path.join(out, destination))).isFile(),
       `Broken AI document link: ${match[0]}`,

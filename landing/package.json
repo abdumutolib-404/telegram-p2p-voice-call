@@ -11,6 +11,7 @@
     "deploy": "wrangler deploy",
     "deploy:preview": "wrangler versions upload",
     "deploy:check": "wrangler deploy --dry-run",
+    "typecheck:worker": "wrangler types && tsc -p tsconfig.worker.json",
     "dev:worker": "wrangler dev"
   },
   "dependencies": {

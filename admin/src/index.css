@@ -1,78 +1,21 @@
+@import '../../platform/fonts.css';
+@import './styles/tokens.css';
 :root {
-  --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
-  /* Operations workspace palette */
-  --bg-primary: #0b0f14;
-  --bg-secondary: #10161d;
-  --bg-surface: #141b23;
-  --bg-surface-elevated: #1a232e;
-  --bg-surface-hover: #202c38;
-  --bg-surface-active: #263443;
-  --bg-input: #10161d;
-
-  /* Borders & Dividers — visible white-tinted */
-  --border-card: rgba(255, 255, 255, 0.13);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-input: rgba(255, 255, 255, 0.16);
-  --border-focus: #5bd4b6;
-  --border-strong: rgba(255, 255, 255, 0.22);
-
-  /* Shadows & Depth */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 16px 32px -4px rgba(0, 0, 0, 0.7), 0 6px 12px -2px rgba(0, 0, 0, 0.4);
-
-  /* Typography Colors */
-  --text-primary: #F8FAFC;
-  --text-secondary: #A8B3C7;
-  --text-muted: #98A5BC;
-  --text-inverse: #0b0f14;
-
-  /* PairTalk Accents */
-  --primary: #5bd4b6;
-  --primary-hover: #83e4cb;
-  --primary-light: #83e4cb;
-  --primary-bg: rgba(91, 212, 182, 0.12);
-  --primary-border: rgba(91, 212, 182, 0.28);
-  --primary-glow: 0 0 16px rgba(91, 212, 182, 0.25);
-
-  --accent-blue: #4F8CFF;
-  --accent-blue-bg: rgba(79, 140, 255, 0.12);
-  --accent-blue-border: rgba(79, 140, 255, 0.28);
-
-  /* Functional Status Colors */
-  --success: #22C55E;
-  --success-bg: rgba(34, 197, 94, 0.12);
-  --success-border: rgba(34, 197, 94, 0.28);
-  --success-text: #4ADE80;
-
-  --warning: #F59E0B;
-  --warning-bg: rgba(245, 158, 11, 0.12);
-  --warning-border: rgba(245, 158, 11, 0.28);
-  --warning-text: #FBBF24;
-
-  --danger: #EF4444;
-  --danger-bg: rgba(239, 68, 68, 0.12);
-  --danger-border: rgba(239, 68, 68, 0.28);
-  --danger-text: #F87171;
-
-  --info: #38BDF8;
-  --info-bg: rgba(56, 189, 248, 0.12);
-  --info-border: rgba(56, 189, 248, 0.28);
-  --info-text: #7DD3FC;
-
-  --gold: #F59E0B;
-  --gold-bg: rgba(245, 158, 11, 0.12);
-  --gold-border: rgba(245, 158, 11, 0.32);
-  --gold-text: #FDE68A;
-
-  font-family: var(--sans);
-  color-scheme: dark;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --sans: var(--font);
+  --bg-primary: var(--bg); --bg-secondary: var(--band); --bg-surface: var(--card);
+  --bg-surface-elevated: var(--band); --bg-surface-hover: color-mix(in srgb,var(--text) 5%,var(--card)); --bg-surface-active: color-mix(in srgb,var(--text) 8%,var(--card)); --bg-input: var(--sunken);
+  --border-card: var(--border); --border-subtle: var(--border); --border-input: var(--border); --border-focus: var(--mint-400); --border-strong: #526463;
+  --shadow-sm: none; --shadow-md: none; --shadow-lg: var(--shadow-float);
+  --text-primary: var(--text); --text-secondary: var(--text-2); --text-muted: var(--text-2); --text-inverse: var(--ink-text);
+  --primary: var(--mint-400); --primary-hover: var(--mint-500); --primary-light: var(--accent-text); --primary-bg: var(--accent-wash); --primary-border: #3A6857; --primary-glow: none;
+  --accent-blue: var(--info-400); --accent-blue-bg: #1A2E3F; --accent-blue-border: #345879;
+  --success: var(--mint-400); --success-bg: var(--accent-wash); --success-border: #3A6857; --success-text: var(--accent-text);
+  --warning: var(--warning-400); --warning-bg: #332F1D; --warning-border: #6F621C; --warning-text: var(--warn-text);
+  --danger: var(--danger-600); --danger-bg: #352127; --danger-border: #703342; --danger-text: var(--danger-300);
+  --info: var(--info-400); --info-bg: #1A2E3F; --info-border: #345879; --info-text: #7DB2E6;
+  --gold: var(--peach-200); --gold-bg: #352820; --gold-border: #705244; --gold-text: var(--peach-200);
+  font-family: var(--sans); font-variant-numeric: tabular-nums; color-scheme: dark;
+  background-color: var(--bg-primary); color: var(--text-primary); -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -89,7 +32,7 @@ html, body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   overflow-x: auto;
-  min-width: 1180px;
+  min-width: 0;
 }
 
 #root {
@@ -255,8 +198,8 @@ html, body {
   color: var(--text-secondary);
   font-weight: 600;
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: 0;
   padding: 10px 14px;
   position: sticky;
   top: 0;

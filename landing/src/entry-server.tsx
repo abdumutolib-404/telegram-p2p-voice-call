@@ -20,6 +20,7 @@ export const routes = [
   "/community-guidelines",
   "/privacy",
   "/terms",
+  "/refund-policy",
 ];
 export function render(
   path: string,

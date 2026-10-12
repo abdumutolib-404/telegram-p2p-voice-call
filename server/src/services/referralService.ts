@@ -240,7 +240,7 @@ export async function consumeOldestBonusCall(userId: string, transaction?: Pick<
  * Retrieves referral dashboard stats for a specific user.
  */
 export async function getReferralStats(userId: string): Promise<ReferralStats> {
-  const [totalInvited, activeBonusCalls, rewardRows] = await Promise.all([
+  const [totalInvited, activeBonusCalls, rewardRows, qualifyingCompleted] = await Promise.all([
     prisma.user.count({ where: { referredByUserId: userId } }),
     prisma.referralReward.count({
       where: {
@@ -253,6 +253,7 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
       orderBy: { createdAt: 'desc' },
       take: 5,
     }),
+    prisma.referralReward.count({ where: { userId } }),
   ]);
 
   const userIdsToFetch = rewardRows.map((r) => r.referredUserId);
@@ -277,7 +278,7 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
 
   return {
     totalInvited,
-    qualifyingCompleted: rewardRows.length,
+    qualifyingCompleted,
     activeBonusCalls,
     rewards,
   };

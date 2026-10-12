@@ -1,0 +1,106 @@
+/* PairTalk design tokens — see DESIGN.md §3
+   Dark is the default. Light via <html data-theme="light">. */
+
+:root {
+  /* Raw palette */
+  --ink-950: #0B1214;
+  --ink-900: #111B1D;
+  --ink-850: #152225;
+  --ink-800: #1A2729;
+  --ink-700: #2E3B3B;
+  --forest-800: #19312A;
+  --mint-400: #8DE6C3;
+  --mint-500: #5BD4B6;
+  --peach-200: #FFDDCE;
+  --danger-600: #BE3453;
+  --danger-300: #FDA4AF;
+  --warning-400: #FFD230;
+  --info-400: #4381BD;
+
+  --paper-50: #F4F7F5;
+  --paper-100: #E9EFEC;
+  --paper-0: #FFFFFF;
+  --forest-700: #225B47;
+  --mint-wash: #E6F0E7;
+  --ink-text: #101A24;
+
+  /* Type */
+  --font: "Manrope", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --fs-display: clamp(2.5rem, 1.5rem + 4.2vw, 5rem);
+  --fs-h1: clamp(2.25rem, 1.4rem + 3.2vw, 4rem);
+  --fs-h2: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  --fs-h3: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+  --fs-body-l: 1.125rem;
+  --fs-body: 1rem;
+  --fs-small: 0.8125rem;
+  --fs-timer: clamp(3rem, 2.4rem + 2.4vw, 3.5rem);
+
+  /* Space (8pt) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --s-9: 96px;
+
+  /* Shape + motion */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --shadow-float: 0 24px 48px -16px rgba(0, 0, 0, 0.45);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+
+  /* Semantic — dark */
+  color-scheme: dark;
+  --bg: var(--ink-900);
+  --band: var(--ink-850);
+  --card: var(--ink-800);
+  --sunken: var(--ink-950);
+  --border: var(--ink-700);
+  --text: #EDF3EF;
+  --text-2: #A9B8B5;
+  --accent: var(--mint-400);
+  --accent-press: var(--mint-500);
+  --accent-text: var(--mint-400);
+  --accent-wash: var(--forest-800);
+  --on-accent: var(--ink-text);
+  --other: var(--peach-200);
+  --on-other: #5A2E22;
+  --danger: var(--danger-600);
+  --on-danger: #FFFFFF;
+  --danger-text: var(--danger-300);
+  --warn: var(--warning-400);
+  --warn-text: var(--warning-400);
+  --info: var(--info-400);
+  --info-text: #7DB2E6;
+  --focus: var(--mint-400);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: var(--paper-50);
+  --band: var(--paper-100);
+  --card: var(--paper-0);
+  --sunken: #E2EAE6;
+  --border: #D3DDD8;
+  --text: var(--ink-text);
+  --text-2: #46565B;
+  --accent: var(--mint-400);
+  --accent-press: var(--mint-500);
+  --accent-text: var(--forest-700);
+  --accent-wash: var(--mint-wash);
+  --on-accent: var(--ink-text);
+  --other: var(--peach-200);
+  --on-other: #5A2E22;
+  --danger: #B02A49;
+  --danger-text: #9F1D3C;
+  --warn-text: #7A5200;
+  --info-text: #1F5C99;
+  --focus: var(--forest-700);
+  --shadow-float: 0 24px 48px -20px rgba(16, 26, 36, 0.25);
+}

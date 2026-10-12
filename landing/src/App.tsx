@@ -5,6 +5,8 @@ import { LandingPage } from "./components/LandingPage";
 import { StatsPage } from "./components/StatsPage";
 import { PricingPage } from "./components/PricingPage";
 import { GuidePage } from "./components/GuidePage";
+import { SafetyPage } from "./components/SafetyPage";
+import { HowItWorksPage } from "./components/HowItWorksPage";
 import { pages } from "./content";
 import { StatsProvider } from "./lib/publicStats";
 import type { PublicStats } from "./lib/publicStats";
@@ -30,7 +32,7 @@ export function App({
     const aliases: Record<string, string> = {
       guidelines: "community-guidelines",
       ielts: "ielts-speaking",
-      refund: "pricing",
+      refund: "refund-policy",
     };
     const hash = window.location.hash.slice(1);
     const destination = aliases[hash] ?? hash;
@@ -54,17 +56,21 @@ export function App({
           <StatsPage />
         ) : path === "/pricing" ? (
           <PricingPage initialPricing={initialPricing} />
+        ) : path === "/how-it-works" ? (
+          <HowItWorksPage />
+        ) : path === "/safety" ? (
+          <SafetyPage />
         ) : pages[path] ? (
-          <GuidePage page={pages[path]} />
+          <GuidePage page={pages[path]} path={path} />
         ) : (
-          <section className="container page-intro">
-            <p className="eyebrow">404 · PAGE NOT FOUND</p>
+          <section className="wrap notfound"><div className="state">
+            <span className="tile" aria-hidden="true">404</span>
             <h1>A little off course.</h1>
             <p>This page doesn’t exist. Let’s get you back to speaking.</p>
-            <a className="button" href="/">
+            <a className="btn btn--primary" href="/">
               Back to PairTalk
             </a>
-          </section>
+          </div></section>
         )}
       </SiteLayout>
     </StatsProvider>

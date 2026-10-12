@@ -51,7 +51,7 @@ async function emit(name: string, payload: unknown) {
 }
 async function search() {
   await act(async () => root.render(createElement(App)));
-  const button = container.querySelector<HTMLButtonElement>('button[aria-label="Start speaking practice"]');
+  const button = container.querySelector<HTMLButtonElement>('button[aria-label="Find a partner"]');
   expect(button, container.textContent ?? '').toBeTruthy();
   await act(async () => button!.click());
 }
@@ -101,7 +101,7 @@ it('refreshes the allowance before next partner and does not search when it is e
   await startCall();await act(async()=>container.querySelector<HTMLButtonElement>('button[aria-label="End call"]')!.click());
   const searches=fixture.join.mock.calls.length;
   vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({user:{callsRemaining:0}}),{status:200})));
-  const next=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Find Next Partner'))!;
+  const next=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Find next partner'))!;
   await act(async()=>next.click());
   expect(container.textContent).toContain('You have used your available calls');expect(fixture.join).toHaveBeenCalledTimes(searches);
 });

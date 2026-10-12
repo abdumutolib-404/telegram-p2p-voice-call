@@ -30,7 +30,7 @@ describe('Private Mini App document and launch contract', () => {
 
   it('loads the official Telegram SDK and application entry once', () => {
     expect(html.match(/src="https:\/\/telegram.org\/js\/telegram-web-app.js"/g)).toHaveLength(1);
-    expect(html.match(/<div id="root"><\/div>/g)).toHaveLength(1);
+    expect(html.match(/<div id="root"(?:\s[^>]*)?><\/div>/g)).toHaveLength(1);
     expect(html.match(/<script type="module" src="\/src\/main.tsx"><\/script>/g)).toHaveLength(1);
   });
 

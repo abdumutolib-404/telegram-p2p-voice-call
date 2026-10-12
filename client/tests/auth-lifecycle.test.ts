@@ -28,13 +28,13 @@ const json = (value: unknown) => new Response(JSON.stringify(value), { status: 2
 it('preserves authenticated scores below five, including zero, in account controls',async()=>{
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>json(url.includes('/auth')?{...profile,user:{...profile.user,band:4.5,subFC:0,subLR:3.5,subGRA:4,subP:4.5}}:{hasActiveCall:false})));
   await act(async()=>root.render(createElement(App)));
-  const menu = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Menu')!;
+  const menu = Array.from(document.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === 'Menu')!;
   await act(async () => menu.click());
-  const account=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Account'))!;
+  const account=Array.from(document.querySelectorAll('button')).find(button=>button.textContent?.includes('Account'))!;
   await act(async()=>account.click());
-  const edit = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Edit scores'))!;
+  const edit = Array.from(document.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === 'Edit scores')!;
   await act(async () => edit.click());
-  expect(Array.from(container.querySelectorAll('select')).slice(0,4).map(select=>select.value)).toEqual(['0','3.5','4','4.5']);
+  expect(Array.from(container.querySelectorAll('.stepper output')).slice(0,4).map(output=>output.textContent)).toEqual(['0.0','3.5','4.0','4.5']);
 });
 
 it.each([
@@ -55,14 +55,14 @@ it('provides reauthentication when a dated suspension expires', async () => {
   const response = new Response(JSON.stringify({ code: 'suspended', bannedUntil: new Date(Date.now() + 60000).toISOString(), error: 'Account is temporarily suspended.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response).mockResolvedValueOnce(json(profile)).mockResolvedValueOnce(json({ hasActiveCall: false })));
   await act(async () => root.render(createElement(App)));
-  expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.includes('Retry Connection'))).toBe(false);
+  expect(Array.from(document.querySelectorAll('button')).some(button => button.textContent?.includes('Retry Connection'))).toBe(false);
   await act(async () => vi.advanceTimersByTimeAsync(61000));
-  expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.includes('Retry Connection'))).toBe(true);
+  expect(Array.from(document.querySelectorAll('button')).some(button => button.textContent?.includes('Retry Connection'))).toBe(true);
   expect(container.textContent).toContain('Expired. Re-authenticate to resume.');
   expect(transport.connect).not.toHaveBeenCalled();
-  const retry = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Retry Connection'))!;
+  const retry = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('Retry Connection'))!;
   await act(async () => retry.click());
-  expect(container.textContent).toContain('Practice fixture alias');
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
   expect(transport.connect).toHaveBeenCalled();
 });
 
@@ -97,11 +97,11 @@ it('aborts the first Strict Mode authentication and ignores a late stale respons
     .mockResolvedValueOnce(json({ hasActiveCall: false }));
   vi.stubGlobal('fetch', fetchMock);
   await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
-  await vi.waitFor(() => expect(container.textContent).toContain('Practice fixture alias'));
+  await vi.waitFor(() => expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5'));
   const options = fetchMock.mock.calls[0][1] as RequestInit;
   expect(options.signal?.aborted).toBe(true);
   await act(async () => { resolveFirst(json({ success: false, error: 'Stale rejection' })); });
-  expect(container.textContent).toContain('Practice fixture alias');
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
   expect(container.textContent).not.toContain('Stale rejection');
 });
 
@@ -134,7 +134,7 @@ it('forwards the selected call ID without copying launch credentials into API UR
   const fetchMock = vi.fn().mockResolvedValueOnce(json(profile)).mockResolvedValueOnce(json({ hasActiveCall: false }));
   vi.stubGlobal('fetch', fetchMock);
   await act(async () => root.render(createElement(App)));
-  await vi.waitFor(() => expect(container.textContent).toContain('Practice fixture alias'));
+  await vi.waitFor(() => expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5'));
   const url = String(fetchMock.mock.calls[1][0]);
   expect(url).toContain('active_call=selected-call');
   expect(url).not.toContain('synthetic-query-secret');
@@ -150,7 +150,7 @@ it('waits for a delayed Telegram launch without abandoning authentication', asyn
   await act(async () => vi.advanceTimersByTimeAsync(200));
   window.Telegram!.WebApp.initData = 'synthetic-delayed-launch';
   await act(async () => vi.advanceTimersByTimeAsync(100));
-  expect(container.textContent).toContain('Practice fixture alias');
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
   expect(transport.connect).toHaveBeenCalledWith('synthetic-delayed-launch');
 });
 
@@ -193,9 +193,9 @@ it('redirects a rejected signature and does not open a private policy route', as
 it('keeps history and account controls accessible with no call allowance', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ ...profile, user: { ...profile.user, callsRemaining: 0 } })).mockResolvedValueOnce(json({ hasActiveCall: false })));
   await act(async () => root.render(createElement(App)));
-  expect(container.textContent).toContain('Practice fixture alias');
-  expect(container.querySelector<HTMLButtonElement>('button[aria-label="Start speaking practice"]')?.disabled).toBe(true);
-  const menu = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Menu')!;
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
+  expect(container.querySelector<HTMLButtonElement>('button[aria-label="Find a partner"]')?.disabled).toBe(true);
+  const menu = Array.from(document.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === 'Menu')!;
   await act(async () => menu.click());
-  expect(container.querySelector('nav[aria-label="Your dashboard"]')).toBeTruthy();
+  expect(document.querySelector('[role="menu"][aria-label="Dashboard menu"]')).toBeTruthy();
 });

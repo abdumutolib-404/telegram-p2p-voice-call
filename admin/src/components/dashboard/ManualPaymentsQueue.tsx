@@ -1,3 +1,4 @@
+import { DialogPresence } from '../ui/DialogPresence';
 import { useClipboard, useLatestRequest } from '../../hooks/useAdminTools';
 import { Dialog } from '../ui/Dialog';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -192,7 +193,7 @@ export function ManualPaymentsQueue() {
       case 'REJECTED':
         return <StatusBadge variant="danger" label="Rejected" size="sm" />;
       case 'REFUND_PENDING':
-        return <StatusBadge variant="warning" label="Refund Requested" size="sm" />;
+        return <StatusBadge variant="warning" label="Refund requested" size="sm" />;
       case 'REFUNDED':
         return <StatusBadge variant="info" label="Refunded" size="sm" />;
       default:
@@ -236,7 +237,7 @@ export function ManualPaymentsQueue() {
                   borderRadius: '6px',
                   border: 'none',
                   backgroundColor: activeTab === 'queue' ? 'var(--primary-bg)' : 'transparent',
-                  color: activeTab === 'queue' ? '#FFFFFF' : 'var(--text-secondary)',
+                  color: activeTab === 'queue' ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontWeight: activeTab === 'queue' ? 600 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
@@ -244,9 +245,9 @@ export function ManualPaymentsQueue() {
                 }}
               >
                 <Inbox size={14} />
-                <span>Pending Receipts</span>
+                <span>Pending receipts</span>
                 {pendingCount > 0 && (
-                  <span style={{ padding: '0.1rem 0.45rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--warning)', color: '#FFFFFF', fontWeight: 600 }}>
+                  <span style={{ padding: '0.1rem 0.45rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--warning)', color: '#231A00', fontWeight: 600 }}>
                     {pendingCount}
                   </span>
                 )}
@@ -262,7 +263,7 @@ export function ManualPaymentsQueue() {
                   borderRadius: '6px',
                   border: 'none',
                   backgroundColor: activeTab === 'refunds' ? 'var(--primary-bg)' : 'transparent',
-                  color: activeTab === 'refunds' ? '#FFFFFF' : 'var(--text-secondary)',
+                  color: activeTab === 'refunds' ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontWeight: activeTab === 'refunds' ? 600 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
@@ -270,9 +271,9 @@ export function ManualPaymentsQueue() {
                 }}
               >
                 <RefreshCw size={14} />
-                <span>Refund Requests</span>
+                <span>Refund requests</span>
                 {refundCount > 0 && (
-                  <span style={{ padding: '0.1rem 0.45rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--danger)', color: '#FFFFFF', fontWeight: 600 }}>
+                  <span style={{ padding: '0.1rem 0.45rem', borderRadius: '9999px', fontSize: '0.7rem', backgroundColor: 'var(--danger)', color: 'var(--text-primary)', fontWeight: 600 }}>
                     {refundCount}
                   </span>
                 )}
@@ -288,7 +289,7 @@ export function ManualPaymentsQueue() {
                   borderRadius: '6px',
                   border: 'none',
                   backgroundColor: activeTab === 'history' ? 'var(--primary-bg)' : 'transparent',
-                  color: activeTab === 'history' ? '#FFFFFF' : 'var(--text-secondary)',
+                  color: activeTab === 'history' ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontWeight: activeTab === 'history' ? 600 : 500,
                   fontSize: '0.8rem',
                   cursor: 'pointer',
@@ -296,7 +297,7 @@ export function ManualPaymentsQueue() {
                 }}
               >
                 <History size={14} />
-                <span>Payment History</span>
+                <span>Payment history</span>
               </button>
             </div>
 
@@ -374,18 +375,18 @@ export function ManualPaymentsQueue() {
             <thead>
               <tr>
                 <th>Order #</th>
-                <th>Candidate & Telegram ID</th>
+                <th>Learner & Telegram ID</th>
                 <th>Plan & Amount</th>
                 {activeTab === 'refunds' ? (
                   <>
-                    <th>Purchase Date</th>
-                    <th>Used Limits</th>
-                    <th>Receiving Card Number</th>
-                    <th>Original Receipt</th>
+                    <th>Purchase date</th>
+                    <th>Used allowances</th>
+                    <th>Receiving card number</th>
+                    <th>Original receipt</th>
                   </>
                 ) : (
                   <>
-                    <th>Receipt Proof</th>
+                    <th>Receipt proof</th>
                     <th>Created / Date</th>
                   </>
                 )}
@@ -407,7 +408,7 @@ export function ManualPaymentsQueue() {
                         <code>{orderDisplay}</code>
                         <button
                           onClick={() => copyToClipboard(orderDisplay, `order-${req.id}`)}
-                          title="Copy Order #"
+                          title="Copy order number"
                           style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex' }}
                         >
                           {copiedId === `order-${req.id}` ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
@@ -415,7 +416,7 @@ export function ManualPaymentsQueue() {
                       </div>
                     </td>
 
-                    {/* Candidate */}
+                    {/* Learner */}
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{req.alias}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -436,13 +437,13 @@ export function ManualPaymentsQueue() {
                     {/* REFUND SPECIFIC COLUMNS */}
                     {activeTab === 'refunds' ? (
                       <>
-                        {/* Purchase Date */}
+                        {/* Purchase date */}
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
                           <div>{new Date(req.createdAt).toLocaleDateString()}</div>
                           <div style={{ color: 'var(--text-muted)' }}>{new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                         </td>
 
-                        {/* Used Limits */}
+                        {/* Used allowances */}
                         <td>
                           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: callsUsed > 0 ? 'var(--warning)' : 'var(--success)' }}>
                             {callsUsed} / {callLimit} calls
@@ -459,7 +460,7 @@ export function ManualPaymentsQueue() {
                               <code style={{ fontSize: '0.8rem', color: 'var(--primary-light)', fontWeight: 600 }}>{req.refundCardNumber}</code>
                               <button
                                 onClick={() => copyToClipboard(req.refundCardNumber!.replace(/\s/g, ''), `card-${req.id}`)}
-                                title="Copy Card Number"
+                                title="Copy card number"
                                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex' }}
                               >
                                 {copiedId === `card-${req.id}` ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
@@ -470,7 +471,7 @@ export function ManualPaymentsQueue() {
                           )}
                         </td>
 
-                        {/* Original Receipt */}
+                        {/* Original receipt */}
                         <td>
                           {req.paymentProof ? (
                             <button
@@ -487,7 +488,7 @@ export function ManualPaymentsQueue() {
                       </>
                     ) : (
                       <>
-                        {/* Receipt Proof */}
+                        {/* Receipt proof */}
                         <td>
                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                             {req.paymentProof && (
@@ -503,9 +504,9 @@ export function ManualPaymentsQueue() {
                               <button
                                 onClick={() => void viewReceipt(req, true)}
                                 className="btn-secondary"
-                                style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--success)' }}
+                                style={{ padding: '0 0.55rem', height: '28px', fontSize: '0.75rem', color: 'var(--success-text)' }}
                               >
-                                <FileText size={12} /> Refund Bill
+                                <FileText size={12} /> Refund proof
                               </button>
                             )}
                             {!req.paymentProof && !req.refundProof && (
@@ -579,14 +580,14 @@ export function ManualPaymentsQueue() {
                               className="btn-success"
                               style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
                             >
-                              <Check size={12} /> Approve Refund
+                              <Check size={12} /> Approve refund
                             </button>
                             <button
                               onClick={() => handleOpenActionModal('reject_refund', req)}
                               className="btn-danger"
                               style={{ padding: '0 0.65rem', height: '30px', fontSize: '0.75rem' }}
                             >
-                              <X size={12} /> Reject Refund
+                              <X size={12} /> Reject refund
                             </button>
                           </div>
                         )}
@@ -601,7 +602,7 @@ export function ManualPaymentsQueue() {
       )}
 
       {/* Receipt Viewer Modal */}
-      {inspectReceiptUrl && (
+      <DialogPresence>{inspectReceiptUrl && (
         <Dialog title="Receipt preview" pending={false} onClose={() => { setInspectReceiptUrl(null); }}><fieldset disabled={false} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <div
             className="glass-panel"
@@ -625,7 +626,7 @@ export function ManualPaymentsQueue() {
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                   Receipt Inspection — Order #{inspectReceiptUrl.order}
                 </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Candidate: {inspectReceiptUrl.user}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Learner: {inspectReceiptUrl.user}</span>
               </div>
               <button
                 onClick={() => setInspectReceiptUrl(null)}
@@ -677,10 +678,10 @@ export function ManualPaymentsQueue() {
             </div>
           </div>
         </fieldset></Dialog>
-      )}
+      )}</DialogPresence>
 
-      {/* Action Dialog: Approve Payment / Reject Payment / Approve Refund / Reject Refund */}
-      {selectedAction && (
+      {/* Action Dialog: Approve Payment / Reject Payment / Approve refund / Reject refund */}
+      <DialogPresence>{selectedAction && (
         <Dialog title="Payment action" pending={isProcessingAction} onClose={() => { setSelectedAction(null); }}><fieldset disabled={isProcessingAction} style={{border:0,padding:0,margin:0,minWidth:0}}>{actionError && <p role="alert" className="inline-error">{actionError}</p>}
           <div
             className="glass-panel"
@@ -696,17 +697,27 @@ export function ManualPaymentsQueue() {
           >
             <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: '0 0 0.35rem 0', color: 'var(--text-primary)' }}>
               {selectedAction.type === 'approve'
-                ? 'Approve Payment & Fulfill Plan'
+                ? 'Approve payment'
                 : selectedAction.type === 'reject'
-                ? 'Reject Payment Request'
+                ? 'Reject payment'
                 : selectedAction.type === 'refund'
-                ? 'Approve Refund & Attach Transfer Bill'
-                : 'Reject Refund Request'}
+                ? 'Approve refund'
+                : 'Reject refund'}
             </h3>
 
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 1.25rem 0' }}>
               Order <code style={{ color: 'var(--text-primary)' }}>#{selectedAction.item.orderNumber || selectedAction.item.id.slice(0, 4)}</code> for{' '}
               <strong>{selectedAction.item.alias}</strong> ({selectedAction.item.amountUzs.toLocaleString()} UZS for {selectedAction.item.planTier})
+            </p>
+
+            <p className="confirm-message">
+              {selectedAction.type === 'approve'
+                ? 'Confirm the transfer was received. Approval activates the purchased plan and records the decision in audit history.'
+                : selectedAction.type === 'reject'
+                ? 'Reject this receipt and notify the learner. The purchased plan will not be activated.'
+                : selectedAction.type === 'refund'
+                ? 'Confirm the money has been returned. Approval records the refund and sends the transfer proof to the learner.'
+                : 'Reject this refund request and send the reason to the learner. The decision is recorded in audit history.'}
             </p>
 
             {/* Target Card Highlight for Refunds */}
@@ -733,8 +744,8 @@ export function ManualPaymentsQueue() {
             {/* REFUND APPROVAL: Enforce Bank Transfer Bill Upload */}
             {selectedAction.type === 'refund' && (
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                  Bank Transfer Bill / Proof Image <span style={{ color: 'var(--danger)' }}>*</span>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'none', letterSpacing: '0.03em' }}>
+                  Refund transfer proof <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -752,7 +763,7 @@ export function ManualPaymentsQueue() {
                     }}
                   >
                     <Upload size={15} />
-                    <span>{refundBillProof ? 'Replace Bill Image' : 'Upload Bank Transfer Bill Image'}</span>
+                    <span>{refundBillProof ? 'Replace proof' : 'Upload refund proof'}</span>
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp,application/pdf"
@@ -764,11 +775,11 @@ export function ManualPaymentsQueue() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Or paste a PNG, JPEG, WebP or PDF data URL:</span>
                   </div>
-                  <input aria-label="https://... or upload image above"
+                  <input aria-label="Refund transfer proof data URL"
                     type="text"
                     value={refundBillProof.startsWith('data:') ? 'Image uploaded (base64)' : refundBillProof}
                     onChange={(e) => setRefundBillProof(e.target.value)}
-                    placeholder="https://... or upload image above"
+                    placeholder="data:application/pdf;base64,…"
                     disabled={refundBillProof.startsWith('data:')}
                     className="input-modern"
                     style={{ width: '100%', boxSizing: 'border-box', fontSize: '0.8rem' }}
@@ -777,7 +788,7 @@ export function ManualPaymentsQueue() {
                   {refundBillProof && (
                     <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <ImageIcon size={14} color="var(--success)" />
-                      <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>Transfer bill attached & ready to send</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--success-text)' }}>Transfer bill attached & ready to send</span>
                       <button
                         onClick={() => setRefundBillProof('')}
                         style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
@@ -793,10 +804,10 @@ export function ManualPaymentsQueue() {
             {/* REJECT REFUND: Enforce Mandatory Rejection Reason */}
             {selectedAction.type === 'reject_refund' && (
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                  Rejection Reason (Sent to Student on Telegram) <span style={{ color: 'var(--danger)' }}>*</span>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'none', letterSpacing: '0.03em' }}>
+                  Rejection reason (sent to learner on Telegram) <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
-                <input aria-label="Rejection Reason (Sent to Student on Telegram) *"
+                <input aria-label="Rejection reason (sent to learner on Telegram) *"
                   type="text"
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
@@ -810,11 +821,13 @@ export function ManualPaymentsQueue() {
             {/* Optional Audit Note for other actions */}
             {(selectedAction.type === 'approve' || selectedAction.type === 'reject' || selectedAction.type === 'refund') && (
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                  {selectedAction.type === 'reject' ? 'Rejection Reason (Sent to Student)' : 'Audit Note (Optional)'}
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'none', letterSpacing: '0.03em' }}>
+                  {selectedAction.type === 'reject' ? 'Rejection reason (sent to learner)' : 'Audit note (optional)'}
                 </label>
                 <input
                   type="text"
+                  aria-label={selectedAction.type === 'reject' ? 'Rejection reason' : 'Audit note (optional)'}
+                  maxLength={1000}
                   value={actionNote}
                   onChange={(e) => setActionNote(e.target.value)}
                   placeholder={
@@ -850,15 +863,15 @@ export function ManualPaymentsQueue() {
                 {isProcessingAction
                   ? 'Processing...'
                   : selectedAction.type === 'approve'
-                  ? 'Confirm Approval'
+                  ? 'Approve payment'
                   : selectedAction.type === 'refund'
-                  ? 'Approve & Send Bill'
-                  : 'Confirm Rejection'}
+                  ? 'Approve and send proof'
+                  : 'Confirm rejection'}
               </button>
             </div>
           </div>
         </fieldset></Dialog>
-      )}
+      )}</DialogPresence>
     </div>
   );
 }

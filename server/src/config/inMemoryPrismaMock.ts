@@ -6,6 +6,7 @@ type UserWhere = {
   id?: string | { in: string[] };
   telegramId?: bigint | string | number;
   alias?: string;
+  referredByUserId?: string | null;
   plan?: string | { not?: string; in?: string[] };
   subscriptionExpiresAt?: Date | string | null | { lte?: Date | string; gt?: Date | string; gte?: Date | string; not?: null };
   updatedAt?: DateFilter;
@@ -1419,6 +1420,7 @@ export class InMemoryPrismaMock {
   }
 
   private matchesUser(user: UserRow, where?: UserWhere): boolean {
+    if (where?.referredByUserId !== undefined && user.referredByUserId !== where.referredByUserId) return false;
     if (!where) return true;
     if (typeof where.id === 'string' && user.id !== where.id) return false;
     if (typeof where.id === 'object' && !where.id.in.includes(user.id)) return false;

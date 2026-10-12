@@ -12,12 +12,10 @@ import {
   rejectManualPaymentRefund,
 } from '../../services/plan';
 import { logger } from '../../utils/logger';
-import { currentTerms } from '../../services/terms';
+import { refundPolicyUrl } from '../../services/terms';
 
 const getPolicyUrl = () => {
-  const url = new URL(env.PRIVACY_POLICY_URL || currentTerms.privacyUrl);
-  url.hash = 'refunds';
-  return url.toString();
+  return refundPolicyUrl;
 };
 
 export const handleRefundRequest = async (ctx: MyContext) => {

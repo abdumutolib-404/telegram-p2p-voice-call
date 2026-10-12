@@ -14,6 +14,11 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
   currentValue.current = value;
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { if (!inFlight.current) setState('idle'); }, [value]);
+  useEffect(() => {
+    if (state !== 'success') return;
+    const timer = setTimeout(() => setState('idle'), 1700);
+    return () => clearTimeout(timer);
+  }, [state, value]);
   async function copy() {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -47,7 +52,7 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
   }
   return <span className="copy-control">
     <button ref={buttonRef} type="button" className="copy-button" aria-label={`${state === 'success' ? 'Copied' : 'Copy'} ${label}`} aria-busy={state === 'pending'} disabled={state === 'pending'} data-state={state} onClick={() => void copy()}>
-      {state === 'pending' ? <PendingIcon /> : state === 'success' ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+      {state === 'pending' ? <PendingIcon /> : state === 'success' ? <Check size={16} className="draw-check" aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
       <span>{state === 'success' ? 'Copied' : state === 'pending' ? 'Copying…' : 'Copy'}</span>
     </button>
     <span className="sr-only" role="status">{state === 'success' ? `${label} copied.` : ''}</span>

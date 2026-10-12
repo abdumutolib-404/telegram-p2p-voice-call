@@ -21,7 +21,7 @@ The client sends selected paid plans to the actual Telegram bot with an upgrade 
 
 ## Build settings and search
 
-- Landing: set `VITE_PUBLIC_PRICING_URL` to the backend's `/api/public/plans` HTTPS URL.
+- Landing: the browser uses `/api/public/plans` and `/api/public/stats` on the public site's own origin. Its Worker proxies only these two read endpoints to `PUBLIC_API_ORIGIN` in `landing/wrangler.jsonc`. Vite uses the same handler and reads the optional local `PUBLIC_API_ORIGIN` setting. `VITE_PUBLIC_PRICING_URL` and `VITE_PUBLIC_STATS_URL` can override browser URLs when needed.
 - Client: `VITE_SERVER_URL` supplies that same backend origin; `VITE_PUBLIC_SITE_URL` supplies the public comparison link.
 - Admin: `VITE_API_URL` supplies that same backend origin; `VITE_PUBLIC_SITE_URL` supplies the public comparison link.
 - Backend: optional `BOT_USERNAME` supplies a public checkout username before startup; successful bot initialization replaces it with Telegram's verified username. It contains no token.

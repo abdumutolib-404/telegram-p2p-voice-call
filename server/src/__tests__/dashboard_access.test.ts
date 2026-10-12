@@ -27,6 +27,18 @@ let sequence = 910000000n;
 async function member(data = {}) { sequence++; return prisma.user.create({ data: { telegramId: sequence, alias: `P2P-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, ...consent, ...data } }); }
 describe('Telegram-only member dashboard', () => {
   beforeEach(() => { setDashboardBot({ token: 'synthetic-token' } as Bot<MyContext>); vi.mocked(notificationQueue.enqueue).mockReset().mockResolvedValue(undefined); vi.mocked(sendLegacyRecording).mockReset().mockResolvedValue(undefined); });
+  it('stores optional report details with the reason and rejects oversized details', async () => {
+    const [a, b] = await Promise.all([member(), member()]);
+    const session = await prisma.callSession.create({ data: { userAId: a.id, userBId: b.id, roomName: crypto.randomUUID(), status: 'COMPLETED' } });
+    const token = signed(a.telegramId);
+    const invalid = await request(app).post(`/dashboard/sessions/${session.id}/report`).set('x-telegram-init-data', token).send({ reason: 'Harassment', details: 'x'.repeat(1001) });
+    expect(invalid.status).toBe(400);
+    expect(await prisma.callRating.count({ where: { callId: session.id, reported: true } })).toBe(0);
+    const response = await request(app).post(`/dashboard/sessions/${session.id}/report`).set('x-telegram-init-data', token).send({ reason: 'Harassment', details: '  Repeated insults during the call.  ' });
+    expect(response.status).toBe(200);
+    const rating = await prisma.callRating.findFirst({ where: { callId: session.id, reported: true } });
+    expect(rating?.feedback).toBe('Harassment\n\nRepeated insults during the call.');
+  });
   it('rejects direct and forged requests without reading private data', async () => {
     expect((await request(app).get('/dashboard/sessions')).status).toBe(403);
     expect((await request(app).get('/dashboard/sessions').set('x-telegram-init-data', 'forged')).body.code).toBe('auth_rejected');

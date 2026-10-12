@@ -11,6 +11,18 @@ import {
 import { getEffectiveEntitlement } from '../services/plan';
 
 describe('Referral Engine, Hall of Fame & Custom Plan Maker Test Suite', () => {
+  it('counts all qualifying rewards while returning only five recent rows', async () => {
+    const inviter = await prisma.user.create({ data: { telegramId: 818181818n, alias: 'P2P-COUNT' } });
+    for (let i = 0; i < 7; i++) {
+      const friend = await prisma.user.create({ data: { telegramId: BigInt(818181819 + i), alias: `P2P-COUNT-${i}`, referredByUserId: inviter.id } });
+      await prisma.referralReward.create({ data: { userId: inviter.id, referredUserId: friend.id, status: i === 0 ? 'USED' : 'AVAILABLE' } });
+    }
+    const stats = await getReferralStats(inviter.id);
+    expect(stats.totalInvited).toBe(7);
+    expect(stats.qualifyingCompleted).toBe(7);
+    expect(stats.activeBonusCalls).toBe(6);
+    expect(stats.rewards).toHaveLength(5);
+  });
   beforeEach(async () => {
     // Clear mock storage where applicable
   });

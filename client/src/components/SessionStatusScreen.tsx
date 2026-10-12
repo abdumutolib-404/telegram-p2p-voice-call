@@ -70,15 +70,14 @@ export function SessionStatusScreen({
         {onRestart && (
           <button type="button" className="primary-button" onClick={onRestart}>
             <RefreshCw size={18} aria-hidden="true" />
-            {cancelled ? 'Try Again' : 'Find Next Partner'}
+            {cancelled ? 'Find a partner' : 'Find next partner'}
           </button>
         )}
         {state === 'ended' && onDashboard && <button type="button" className="secondary-button" onClick={onDashboard}>History &amp; audio</button>}
         {state === 'connecting' && onCancel && <button type="button" className="secondary-button" onClick={onCancel}>Cancel connection</button>}
       </section>
       <footer className="app-footer">
-        <span>One conversation at a time.</span>
-        <span>PairTalk speaking practice</span>
+        © PairTalk {new Date().getFullYear()}. All rights reserved.
       </footer>
     </main>
   );

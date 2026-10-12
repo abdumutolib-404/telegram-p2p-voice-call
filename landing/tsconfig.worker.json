@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "module": "ESNext", "moduleResolution": "bundler",
+    "lib": ["ES2023"], "types": [], "strict": true, "skipLibCheck": true,
+    "noEmit": true, "allowImportingTsExtensions": true
+  },
+  "include": ["worker.ts", "public-api.ts", "worker-configuration.d.ts"]
+}

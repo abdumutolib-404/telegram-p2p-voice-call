@@ -12,7 +12,7 @@ let container: HTMLDivElement;
 let mounted: boolean;
 const onProfileUpdated = vi.fn(), onAccessLost = vi.fn(), onOpenActiveCall = vi.fn();
 const render = async () => act(async () => root.render(createElement(Dashboard, { initData: 'synthetic-signed-data', userData: profile, onProfileUpdated, onAccessLost, onOpenActiveCall, renderPractice: navigation => createElement('div', null, navigation, 'Practice fixture') })));
-const button = (text: string) => Array.from(container.querySelectorAll('button')).find(item => item.textContent?.includes(text))!;
+const button = (text: string) => Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes(text) || item.getAttribute('aria-label')?.includes(text))!;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -54,7 +54,46 @@ it('keeps practice usable without making unrelated dashboard requests', async ()
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+it('waits for deletion acknowledgement, closes its sheet and then collapses the partner row', async () => {
+  vi.useFakeTimers();
+  window.history.replaceState(null, '', '/?view=partners');
+  let resolveDelete!: (response: Response) => void;
+  let deleted = false;
+  vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => {
+    if (options?.method === 'DELETE') return new Promise<Response>(resolve => { resolveDelete = response => { deleted = true; resolve(response); }; });
+    return Promise.resolve(json(url.endsWith('/favorites') ? { favorites: deleted ? [] : [{ id: 'partner-one', alias: 'P2P-ONE12', band: 7, available: true }] } : { invitations: [] }));
+  }));
+  await render();
+  await act(async () => button('Remove').click());
+  await act(async () => button('Yes, delete').click());
+  expect(container.querySelector('.partner-row.is-removing')).toBeNull();
+  expect(container.querySelector('[role="dialog"]')?.getAttribute('aria-busy')).toBe('true');
+  await act(async () => resolveDelete(json({ success: true })));
+  expect(container.querySelector('[data-motion-state="closing"]')?.getAttribute('aria-hidden')).toBe('true');
+  await act(async () => vi.advanceTimersByTimeAsync(259));
+  expect(container.querySelector('.partner-row.is-removing')).toBeNull();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(container.querySelector('.partner-row.is-removing')).toBeTruthy();
+  await act(async () => vi.advanceTimersByTimeAsync(320));
+  expect(container.querySelector('.partner-row')).toBeNull();
+  expect(container.textContent).toContain('No saved partners yet');
+});
+
+it('retains the partner and confirmation when deletion fails', async () => {
+  window.history.replaceState(null, '', '/?view=partners');
+  vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => Promise.resolve(
+    options?.method === 'DELETE' ? json({ error: 'Deletion failed. Please retry.' }, 503) :
+      json(url.endsWith('/favorites') ? { favorites: [{ id: 'partner-one', alias: 'P2P-ONE12', band: 7, available: true }] } : { invitations: [] }),
+  )));
+  await render(); await act(async () => button('Remove').click());
+  await act(async () => button('Yes, delete').click());
+  expect(container.querySelector('.partner-row.is-removing')).toBeNull();
+  expect(container.querySelector('.partner-row')?.textContent).toContain('P2P-ONE12');
+  expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain('Deletion failed. Please retry.');
+});
+
 it('submits one signed rating and refreshes the persisted result', async () => {
+  vi.useFakeTimers();
   window.history.replaceState(null, '', '/?view=history');
   const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
     .mockResolvedValueOnce(json({ success: true }))
@@ -66,7 +105,9 @@ it('submits one signed rating and refreshes the persisted result', async () => {
   expect(options.headers).toMatchObject({ 'x-telegram-init-data': 'synthetic-signed-data' });
   expect(options.method).toBe('POST'); expect(JSON.parse(String(options.body))).toEqual({ stars: 5 });
   expect(options.cache).toBe('no-store');
-  expect((container.querySelector('[aria-label="5 stars"]') as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => vi.advanceTimersByTimeAsync(900));
+  expect(container.querySelector('[aria-label="5 stars"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Rated 5 out of 5"]')).toBeTruthy();
   expect(container.textContent).toContain('Rating saved. Thank you.');
 });
 
@@ -123,6 +164,7 @@ it('requests Telegram audio with signed headers and displays delivery failure be
 });
 
 it('confirms saving a partner and keeps failed reports open for correction', async () => {
+  vi.useFakeTimers();
   window.history.replaceState(null, '', '/?view=history');
   const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
     .mockResolvedValueOnce(json({ success: true }))
@@ -133,10 +175,15 @@ it('confirms saving a partner and keeps failed reports open for correction', asy
   expect(fetchMock).toHaveBeenCalledTimes(1);
   const saveDialog = container.querySelector('[role="dialog"]')!;
   await act(async () => (saveDialog.querySelector('.primary-button') as HTMLButtonElement).click());
+  expect(container.querySelector('[data-motion-state="closing"]')?.getAttribute('aria-hidden')).toBe('true');
+  await act(async () => vi.advanceTimersByTimeAsync(500));
   expect(container.querySelector('[role="dialog"]')).toBeNull();
-  expect(button('Partner saved').disabled).toBe(true);
-  expect(container.querySelector('article [role="status"]')?.textContent).toContain('Partner saved.');
+  expect(container.querySelector('summary[aria-label="Saved partner"]')).toBeTruthy();
+  expect(container.querySelector('button[aria-label="Save partner"]')).toBeNull();
+  expect(container.querySelector('article .sr-only[role="status"]')?.textContent).toContain('Partner saved.');
   await act(async () => button('Report').click());
+  expect(button('Submit report').disabled).toBe(true);
+  await act(async () => container.querySelector<HTMLInputElement>('input[value="Harassment"]')!.click());
   await act(async () => button('Submit report').click());
   expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain('Please retry this report.');
 });
@@ -146,7 +193,7 @@ it('only shows a sent confirmation after Telegram delivery has succeeded', async
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null })).mockResolvedValueOnce(json({ status: 'SENT' })));
   await render(); await act(async () => button('Send audio').click());
   expect(button('Sent to Telegram').disabled).toBe(true);
-  expect(container.querySelector('article [role="status"]')?.textContent).toContain('Sent to your PairTalk conversation');
+  expect(container.querySelector('article .sr-only[role="status"]')?.textContent).toContain('Sent to your PairTalk conversation');
 });
 
 it('updates queued audio to sent after delivery completes without another user click', async () => {
@@ -162,18 +209,22 @@ it('updates queued audio to sent after delivery completes without another user c
 });
 
 it('cancels profile edits without changing the displayed or persisted scores', async () => {
+  vi.useFakeTimers();
   window.history.replaceState(null, '', '/?view=account');
   const fetchMock = vi.fn().mockResolvedValue(json({ user: profile }));
   vi.stubGlobal('fetch', fetchMock); await render(); await act(async () => button('Edit scores').click());
-  const select = container.querySelector('select')!;
-  await act(async () => { select.value = '0'; select.dispatchEvent(new Event('change', { bubbles:true })); });
+  await act(async () => button('Decrease fluency and coherence').click());
+  expect(container.querySelector('output[aria-label="Fluency and coherence"]')?.textContent).toBe('6.5');
   await act(async () => button('Cancel').click());
+  expect(container.querySelector('[data-motion-state="closing"]')?.getAttribute('aria-hidden')).toBe('true');
+  await act(async () => vi.advanceTimersByTimeAsync(500));
   expect(container.querySelector('[role="dialog"]')).toBeNull();
   expect(container.querySelector('.score-summary')?.textContent).not.toContain('0.0');
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
 it('shows rating progress at the stars, rejects duplicate presses and waits for acknowledgement', async () => {
+  vi.useFakeTimers();
   window.history.replaceState(null, '', '/?view=history');
   let finish!: (response: Response) => void;
   const fetchMock = vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
@@ -187,7 +238,9 @@ it('shows rating progress at the stars, rejects duplicate presses and waits for 
   expect(container.querySelectorAll('.rated')).toHaveLength(0);
   await act(async () => finish(json({ success: true })));
   expect(container.querySelectorAll('.rated')).toHaveLength(4);
-  expect(container.querySelector('.dashboard-rating')?.getAttribute('aria-busy')).toBe('false');
+  await act(async () => vi.advanceTimersByTimeAsync(900));
+  expect(container.querySelector('[aria-label="Rated 4 out of 5"]')).toBeTruthy();
+  expect(container.querySelector('.dashboard-rating')).toBeNull();
   expect(container.querySelector('article [role="status"]')?.className).toBe('sr-only');
   expect(container.querySelector('.action-feedback')).toBeNull();
 });
@@ -203,12 +256,14 @@ it('keeps a failed rating unfilled and retryable, with its error beside the call
 });
 
 it('preserves an acknowledged rating if refreshing history fails', async () => {
+  vi.useFakeTimers();
   window.history.replaceState(null, '', '/?view=history');
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ sessions: [conversation], nextCursor: null }))
     .mockResolvedValueOnce(json({ success: true })).mockRejectedValueOnce(new Error('Refresh unavailable')));
   await render(); await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="3 stars"]')!.click());
-  expect(container.querySelectorAll('.rated')).toHaveLength(3);
-  expect(container.querySelector<HTMLButtonElement>('[aria-label="3 stars"]')!.disabled).toBe(true);
+  await act(async () => vi.advanceTimersByTimeAsync(900));
+  expect(container.querySelector('[aria-label="Rated 3 out of 5"]')).toBeTruthy();
+  expect(container.querySelector('[aria-label="3 stars"]')).toBeNull();
 });
 
 it('lets the user check an unconfirmed delivery again after bounded polling', async () => {
@@ -221,4 +276,23 @@ it('lets the user check an unconfirmed delivery again after bounded polling', as
   expect(container.querySelector('article [role="alert"]')?.textContent).toContain('Still awaiting Telegram confirmation');
   expect(container.textContent).not.toContain('Sent to Telegram');
   expect(fetchMock).toHaveBeenCalledTimes(14);
+});
+
+it('bounds score steppers and saves the actual values with a calculated overall', async () => {
+  window.history.replaceState(null, '', '/?view=account');
+  const fetchMock = vi.fn().mockResolvedValue(json({ user: { ...profile, subFC: 0, subLR: 9, subGRA: 7, subP: 6.5 } }));
+  vi.stubGlobal('fetch', fetchMock); await render();
+  await act(async () => button('Edit scores').click());
+  // The parent fixture retains band 7; edits start from its displayed assessment.
+  await act(async () => { for (let i = 0; i < 14; i++) button('Decrease fluency and coherence').click(); });
+  expect(button('Decrease fluency and coherence').disabled).toBe(true);
+  expect(container.querySelector('output[aria-label="Fluency and coherence"]')?.textContent).toBe('0.0');
+  await act(async () => { for (let i = 0; i < 4; i++) button('Increase lexical resource').click(); });
+  expect(button('Increase lexical resource').disabled).toBe(true);
+  expect(container.querySelector('output[aria-label="Lexical resource"]')?.textContent).toBe('9.0');
+  expect(container.querySelector('.stepper--overall output')?.textContent).toBe('6.0');
+  await act(async () => button('Save speaking scores').click());
+  const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH');
+  expect(JSON.parse(patch![1].body)).toEqual({ subFC: 0, subLR: 9, subGRA: 7, subP: 7 });
+  expect(patch![1].headers).toMatchObject({ 'x-telegram-init-data': 'synthetic-signed-data' });
 });

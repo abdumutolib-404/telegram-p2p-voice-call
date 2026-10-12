@@ -21,8 +21,8 @@ The Markdown pages below are built from the same public content as their HTML ve
 - [Pricing explanation](https://pairtalk.online/pricing.md): Readable pricing-page content; any quoted prices are dated snapshots, not a current checkout quote.
 - [Community statistics](https://pairtalk.online/stats): Available aggregate calls, session hours, participating learners, ratings, and update timestamps.
 - [Statistics methodology](https://pairtalk.online/stats.md): Counting definitions, voluntary feedback, privacy exclusions, and snapshot limitations.
-- [Published pricing API](https://api.pairtalk.online/api/public/plans): Public JSON catalog with a revision and checkedAt timestamp; availability depends on the backend.
-- [Public statistics API](https://api.pairtalk.online/api/public/stats): Aggregate JSON statistics with an updatedAt timestamp; unavailable data must not be estimated.
+- [Published pricing API](https://pairtalk.online/api/public/plans): Public JSON catalog with a revision and checkedAt timestamp; availability depends on the backend.
+- [Public statistics API](https://pairtalk.online/api/public/stats): Aggregate JSON statistics with an updatedAt timestamp; unavailable data must not be estimated.
 
 ## Safety and policies
 
