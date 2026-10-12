@@ -3,7 +3,7 @@
   "name": "app-pairtalk-dev",
   "compatibility_date": "2026-10-07",
   "build": {
-    "command": "npm run build"
+    "command": "npm ci && npm run build"
   },
   "assets": {
     "directory": "./dist",
