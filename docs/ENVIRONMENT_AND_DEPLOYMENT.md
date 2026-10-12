@@ -31,6 +31,8 @@ MASTER_PASSWORD and JWT_SECRET are application secrets you choose. ADMIN_TELEGRA
 
 Each frontend deploys independently as a static-asset Worker. Names match the existing Cloudflare projects.
 
+This development repository deploys `main` to `admin-pairtalk-dev.abdumutolib00.workers.dev`, `app-pairtalk-dev.abdumutolib00.workers.dev` and `telegram-p2p-voice-call.abdumutolib00.workers.dev`. The client and admin main-build triggers set `VITE_PUBLIC_SITE_URL` to the development landing origin so navigation and direct-browser redirects stay on the current development UI. The landing Worker's `PUBLIC_API_ORIGIN` uses the same Railway backend already configured for the development client and admin. The separate production Git remote and public custom-domain deployments are outside this repository's default publishing scope.
+
 | Application | Worker name | Build root | Configuration | Public build settings |
 | --- | --- | --- | --- | --- |
 | Admin | admin-pairtalk-dev | admin | [wrangler.jsonc](../admin/wrangler.jsonc) | VITE_API_URL, VITE_PUBLIC_SITE_URL |
