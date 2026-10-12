@@ -1,6 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { servePublicApi } from './public-api.ts';
+import { servePublicApi } from './public-api';
 export default defineConfig(({ mode }) => {
   const config = loadEnv(mode, process.cwd(), 'PUBLIC_');
   const publicApi: Plugin = {

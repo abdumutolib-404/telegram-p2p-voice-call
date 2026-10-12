@@ -1,5 +1,5 @@
-import { isPublicPricing } from '../server/src/contracts/pricing.ts';
-import { isPublicStats } from '../server/src/contracts/publicStats.ts';
+import { isPublicPricing } from '../server/src/contracts/pricing';
+import { isPublicStats } from '../server/src/contracts/publicStats';
 
 const validators = { '/api/public/plans': isPublicPricing, '/api/public/stats': isPublicStats };
 function error(message: string, status: number, head: boolean, extra: Record<string, string> = {}) {
