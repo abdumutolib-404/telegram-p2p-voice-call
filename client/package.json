@@ -37,7 +37,7 @@
     "wrangler": "4.148.0"
   },
   "engines": {
-    "node": ">=20 <25"
+    "node": ">=24 <25"
   },
   "overrides": {
     "sharp": "0.35.5",
