@@ -11,6 +11,7 @@ import { setupPaymentHandlers } from '../bot/handlers/payments';
 import { getPlansConfig } from '../services/plan';
 import { changeRecordingIntent, trackRecordingKey } from '../services/recordingLifecycle';
 import { isUserSessionRecorder } from '../utils/recordingAccess';
+import { lockRow } from '../utils/transactionLock';
 
 const providers = vi.hoisted(() => ({ recording: 0, stop: vi.fn(), delete: vi.fn(async () => {}), refund: vi.fn(async () => true) }));
 vi.mock('../config/livekit', () => ({
@@ -163,6 +164,13 @@ describe('security boundary regressions', () => {
     expect((await prisma.callSession.findUnique({where:{id:session.id}}))?.duration).toBe(1);
     expect((await prisma.user.findUnique({where:{id:a.id}}))?.dailyCallsUsed).toBe(0);
     expect(providers.delete).toHaveBeenCalledOnce();expect(providers.delete).toHaveBeenCalledWith(roomName);
+  });
+
+  it('rejects unallowed table identifiers in lockRow', async () => {
+    const mockTx = { $queryRaw: vi.fn() } as any;
+    await expect(lockRow(mockTx, 'InvalidTable' as any, 'some-id')).rejects.toThrow(
+      'Invalid table identifier for row lock: InvalidTable'
+    );
   });
 });
 
