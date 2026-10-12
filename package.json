@@ -9,5 +9,8 @@
   ],
   "scripts": {
     "build": "npm run --prefix landing build"
+  },
+  "devDependencies": {
+    "wrangler": "4.148.0"
   }
 }
