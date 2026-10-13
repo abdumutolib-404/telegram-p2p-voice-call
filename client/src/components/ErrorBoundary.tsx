@@ -92,26 +92,30 @@ export class ErrorBoundary extends Component<Props, State> {
 
           <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
             <button
+              type="button"
               onClick={this.handleCopyLogs}
               className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 border border-slate-700"
             >
-              {this.state.copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-mint-400" />}
+              {this.state.copied ? <Check className="w-4 h-4 text-emerald-400" aria-hidden="true" /> : <Copy className="w-4 h-4 text-mint-400" aria-hidden="true" />}
               <span>{this.state.copied ? 'Logs Copied!' : 'Copy Diagnostic Logs'}</span>
             </button>
 
             <button
+              type="button"
               onClick={() => this.setState((prev) => ({ showLogs: !prev.showLogs }))}
+              aria-expanded={this.state.showLogs}
               className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 border border-slate-700"
             >
-              <Terminal className="w-4 h-4 text-mint-400" />
+              <Terminal className="w-4 h-4 text-mint-400" aria-hidden="true" />
               <span>{this.state.showLogs ? 'Hide Logs' : 'View Network Logs'}</span>
             </button>
 
             <button
+              type="button"
               onClick={this.handleReload}
               className="py-2.5 px-4 bg-mint-600 hover:bg-mint-300 text-slate-950 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 shadow-md shadow-mint-600/30"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4" aria-hidden="true" />
               <span>Reload App</span>
             </button>
           </div>
