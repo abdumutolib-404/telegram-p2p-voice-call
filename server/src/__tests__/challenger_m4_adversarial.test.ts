@@ -261,24 +261,25 @@ describe('M4 Adversarial Challenge: PII Redaction & Structured Logger Stress Sui
       }
     });
 
-    // CHALLENGER DISCOVERY: Tests documenting edge case vulnerabilities for hardening
-    it('[CHALLENGE EVIDENCE] Demonstrates Telegram URL bot token leak without boundary fix', () => {
+    it('redacts Telegram bot token embedded in Telegram API URLs', () => {
       const url = 'https://api.telegram.org/bot1234567890:AAFlkj9834kjhkjfds_lkjsdf098324kjh/sendMessage';
       const redacted = redactString(url);
-      // Because \b between 't' and '1' is not a word boundary, url retains the token
-      const isLeaked = redacted.includes('1234567890:AAFlkj9834kjhkjfds_lkjsdf098324kjh');
-      expect(isLeaked).toBe(true);
+      expect(redacted).not.toContain('1234567890:AAFlkj9834kjhkjfds_lkjsdf098324kjh');
+      expect(redacted).toContain('[REDACTED_BOT_TOKEN]');
     });
 
-    it('[CHALLENGE EVIDENCE] Demonstrates compound key omission in exact-match Set', () => {
+    it('redacts compound secret keys in objects', () => {
       const obj = {
         secretKey: 'my_super_secret',
         clientSecret: 'my_client_secret',
+        secretCode: '9876543210:AAFlkj9834kjhkjfds_lkjsdf098324kjh',
+        secretToken: 'tok_12345',
       };
       const sanitized: any = redactSensitiveData(obj);
-      // Demonstrates that secretKey is not in REDACTED_KEYS exact match set
-      expect(sanitized.secretKey).toBe('my_super_secret');
-      expect(sanitized.clientSecret).toBe('my_client_secret');
+      expect(sanitized.secretKey).toBe('[REDACTED]');
+      expect(sanitized.clientSecret).toBe('[REDACTED]');
+      expect(sanitized.secretCode).toBe('[REDACTED]');
+      expect(sanitized.secretToken).toBe('[REDACTED]');
     });
   });
 
