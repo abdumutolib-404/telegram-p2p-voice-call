@@ -48,30 +48,49 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const totalUsers = await prisma.user.count();
+  // Performance Optimization: Parallelize independent DB queries via Promise.all.
+  // Previously, 6 Prisma queries were executed sequentially, incurring unnecessary network round-trip latency.
+  // Field-level projection (select) is used for transactions to minimize memory overhead and payload size.
+  const [
+    totalUsers,
+    mau,
+    dau,
+    allSessions,
+    starsTransactions,
+    manualPayments,
+  ] = await Promise.all([
+    prisma.user.count(),
+    prisma.user.count({ where: { updatedAt: { gte: thirtyDaysAgo } } }),
+    prisma.user.count({ where: { updatedAt: { gte: oneDayAgo } } }),
+    prisma.callSession.findMany({ select: { status: true, duration: true, recordingUrl: true, egressId: true } }),
+    prisma.starsTransaction.findMany({ select: { status: true, starsAmount: true, createdAt: true } }),
+    prisma.manualPaymentRequest.findMany({ select: { status: true, uzsAmount: true } }),
+  ]);
 
-  const mau = await prisma.user.count({
-    where: {
-      updatedAt: { gte: thirtyDaysAgo },
-    },
-  });
+  // Performance Optimization: Single-pass iteration over call sessions
+  // Replaces multiple .filter() and .reduce() array traversals with a single loop.
+  let totalCalls = 0;
+  let activeCalls = 0;
+  let cancelledCalls = 0;
+  let totalDurationSeconds = 0;
+  let recordingAttempts = 0;
+  let recordingsSucceeded = 0;
 
-  const dau = await prisma.user.count({
-    where: {
-      updatedAt: { gte: oneDayAgo },
-    },
-  });
+  for (let i = 0; i < allSessions.length; i++) {
+    const s = allSessions[i];
+    if (s.status === 'COMPLETED') {
+      totalCalls++;
+      const dur = s.duration || 0;
+      totalDurationSeconds += dur;
+      if (s.egressId || s.recordingUrl) recordingAttempts++;
+      if (s.recordingUrl) recordingsSucceeded++;
+    } else if (s.status === 'ACTIVE') {
+      activeCalls++;
+    } else if (s.status === 'CANCELLED') {
+      cancelledCalls++;
+    }
+  }
 
-  const allSessions = await prisma.callSession.findMany({
-    select: { status: true, duration: true, recordingUrl: true, egressId: true },
-  });
-
-  const totalCalls = allSessions.filter((s) => s.status === 'COMPLETED').length;
-  const activeCalls = allSessions.filter((s) => s.status === 'ACTIVE').length;
-  const cancelledCalls = allSessions.filter((s) => s.status === 'CANCELLED').length;
-
-  const completedSessions = allSessions.filter((s) => s.status === 'COMPLETED');
-  const totalDurationSeconds = completedSessions.reduce((acc, s) => acc + (s.duration || 0), 0);
   const totalMinutesSpoken = Math.round(totalDurationSeconds / 60);
 
   // Calculate Call Quality Score from measurable telemetry
@@ -94,10 +113,7 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     const completionRate = Math.round((totalCalls / finishedOrCancelled) * 100);
     const cancellationRate = Math.round((cancelledCalls / finishedOrCancelled) * 100);
 
-    const recordingAttempts = completedSessions.filter((s) => Boolean(s.egressId || s.recordingUrl)).length;
-    const recordingsSucceeded = completedSessions.filter((s) => Boolean(s.recordingUrl)).length;
     const recordingReliability = recordingAttempts > 0 ? Math.round((recordingsSucceeded / recordingAttempts) * 100) : 100;
-
     const audioReliability = Math.max(0, Math.min(100, Math.round(100 - cancellationRate * 1.2)));
     const averageDurationSeconds = totalCalls > 0 ? Math.round(totalDurationSeconds / totalCalls) : 0;
 
@@ -117,22 +133,30 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     };
   }
 
-  // 1. Telegram Stars Accounting
-  const starsTransactions = await prisma.starsTransaction.findMany();
-  const paidStarsTxs = starsTransactions.filter((t) => t.status === 'PAID');
-  const refundedStarsTxs = starsTransactions.filter((t) => t.status === 'REFUNDED');
-
-  const totalStars = paidStarsTxs.reduce((acc, t) => acc + t.starsAmount, 0);
-  const refundedStars = refundedStarsTxs.reduce((acc, t) => acc + t.starsAmount, 0);
-
-  // Build monthly breakdown for Stars chart
+  // Performance Optimization: Telegram Stars Accounting via single-pass loop
+  let totalStars = 0;
+  let refundedStars = 0;
+  let paidCount = 0;
+  let refundedCount = 0;
   const monthlyMap = new Map<string, { stars: number; usd: number }>();
-  for (const t of paidStarsTxs) {
-    const dateStr = new Date(t.createdAt).toLocaleString('en-US', { month: 'short', year: 'numeric' });
-    if (!monthlyMap.has(dateStr)) monthlyMap.set(dateStr, { stars: 0, usd: 0 });
-    const entry = monthlyMap.get(dateStr)!;
-    entry.stars += t.starsAmount;
-    entry.usd += t.starsAmount * 0.013;
+
+  for (let i = 0; i < starsTransactions.length; i++) {
+    const t = starsTransactions[i];
+    if (t.status === 'PAID') {
+      paidCount++;
+      totalStars += t.starsAmount;
+      const dateStr = new Date(t.createdAt).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+      let entry = monthlyMap.get(dateStr);
+      if (!entry) {
+        entry = { stars: 0, usd: 0 };
+        monthlyMap.set(dateStr, entry);
+      }
+      entry.stars += t.starsAmount;
+      entry.usd += t.starsAmount * 0.013;
+    } else if (t.status === 'REFUNDED') {
+      refundedCount++;
+      refundedStars += t.starsAmount;
+    }
   }
 
   const monthlyHistory: MonthlyRevenue[] = Array.from(monthlyMap.entries()).map(([month, data]) => ({
@@ -141,15 +165,27 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     usd: parseFloat(data.usd.toFixed(2)),
   }));
 
-  // 2. Manual UZS Accounting (Strict isolation: never count PENDING or REJECTED into approved revenue)
-  const manualPayments = await prisma.manualPaymentRequest.findMany();
-  const approvedManual = manualPayments.filter((p) => p.status === 'APPROVED');
-  const pendingManual = manualPayments.filter((p) => p.status === 'PENDING');
-  const rejectedManual = manualPayments.filter((p) => p.status === 'REJECTED');
+  // Performance Optimization: Manual UZS Accounting via single-pass loop
+  let approvedUzs = 0;
+  let approvedCount = 0;
+  let pendingUzs = 0;
+  let pendingCount = 0;
+  let rejectedUzs = 0;
+  let rejectedCount = 0;
 
-  const approvedUzs = approvedManual.reduce((acc, p) => acc + (p.uzsAmount || 0), 0);
-  const pendingUzs = pendingManual.reduce((acc, p) => acc + (p.uzsAmount || 0), 0);
-  const rejectedUzs = rejectedManual.reduce((acc, p) => acc + (p.uzsAmount || 0), 0);
+  for (let i = 0; i < manualPayments.length; i++) {
+    const p = manualPayments[i];
+    if (p.status === 'APPROVED') {
+      approvedCount++;
+      approvedUzs += p.uzsAmount || 0;
+    } else if (p.status === 'PENDING') {
+      pendingCount++;
+      pendingUzs += p.uzsAmount || 0;
+    } else if (p.status === 'REJECTED') {
+      rejectedCount++;
+      rejectedUzs += p.uzsAmount || 0;
+    }
+  }
 
   return {
     totalUsers,
@@ -161,18 +197,18 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
     starsRevenue: {
       totalStars,
       totalUsd: parseFloat((totalStars * 0.013).toFixed(2)),
-      transactionCount: paidStarsTxs.length,
-      refundedCount: refundedStarsTxs.length,
+      transactionCount: paidCount,
+      refundedCount,
       refundedStars,
       monthlyHistory,
     },
     manualUzsRevenue: {
       approvedUzs,
-      transactionCount: approvedManual.length,
+      transactionCount: approvedCount,
       pendingUzs,
-      pendingCount: pendingManual.length,
+      pendingCount,
       rejectedUzs,
-      rejectedCount: rejectedManual.length,
+      rejectedCount,
     },
     callQuality,
   };
