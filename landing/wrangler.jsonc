@@ -3,6 +3,9 @@
   "name": "telegram-p2p-voice-call",
   "main": "worker.ts",
   "compatibility_date": "2026-10-07",
+  "build": {
+    "command": "npm ci && npm run build"
+  },
   "vars": { "PUBLIC_API_ORIGIN": "https://telegram-p2p-voice-call-production-812e.up.railway.app" },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "assets": {
