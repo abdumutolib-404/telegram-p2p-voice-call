@@ -105,6 +105,7 @@ export const App: React.FC = () => {
     getRoom,
     isPartnerConnected,
     error: voiceError,
+    roomDeleted,
   } = useLiveKit();
 
   useEffect(() => {
@@ -429,6 +430,12 @@ export const App: React.FC = () => {
   }, [disconnectLiveKit, setAppState]);
 
   useEffect(() => {
+    if (!roomDeleted || (appStateRef.current !== 'in_call' && appStateRef.current !== 'connecting')) return;
+    setErrorMessage(null);
+    handleCallEnded();
+  }, [roomDeleted, handleCallEnded]);
+
+  useEffect(() => {
     if (!voiceError || appStateRef.current !== 'in_call') return;
     if (matchData) socketService.finishCall(matchData.roomName, userData.userId, 'voice_disconnected');
     setErrorMessage(voiceError);
@@ -656,8 +663,9 @@ export const App: React.FC = () => {
 
   if (appState === 'ready') {
     return (
-      <Dashboard initData={initData} userData={userData} onProfileUpdated={setUserData} onAccessLost={initAuth} onOpenActiveCall={initAuth} renderPractice={navigation => <ReadyScreen
+      <Dashboard initData={initData} userData={userData} onProfileUpdated={setUserData} onAccessLost={initAuth} onOpenActiveCall={initAuth} renderPractice={(navigation, shortcuts) => <ReadyScreen
         navigation={navigation}
+        shortcuts={shortcuts}
         userData={userData}
         onStart={
           pendingDirectCall ? handleJoinDirectCall : handleStartSearching
@@ -725,6 +733,12 @@ export const App: React.FC = () => {
   return (
     <SessionStatusScreen
       state="ended"
+      onPractice={() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', 'practice');
+        window.history.replaceState(null, '', url);
+        void initAuth();
+      }}
       onDashboard={() => {
         const url = new URL(window.location.href);
         url.searchParams.set('view', 'history');

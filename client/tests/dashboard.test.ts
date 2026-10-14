@@ -11,7 +11,7 @@ let root: Root;
 let container: HTMLDivElement;
 let mounted: boolean;
 const onProfileUpdated = vi.fn(), onAccessLost = vi.fn(), onOpenActiveCall = vi.fn();
-const render = async () => act(async () => root.render(createElement(Dashboard, { initData: 'synthetic-signed-data', userData: profile, onProfileUpdated, onAccessLost, onOpenActiveCall, renderPractice: navigation => createElement('div', null, navigation, 'Practice fixture') })));
+const render = async () => act(async () => root.render(createElement(Dashboard, { initData: 'synthetic-signed-data', userData: profile, onProfileUpdated, onAccessLost, onOpenActiveCall, renderPractice: (navigation, shortcuts) => createElement('div', null, navigation, shortcuts, 'Practice fixture') })));
 const button = (text: string) => Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes(text) || item.getAttribute('aria-label')?.includes(text))!;
 
 beforeEach(() => {
@@ -52,6 +52,17 @@ it('keeps practice usable without making unrelated dashboard requests', async ()
   await render();
   expect(container.textContent).toContain('Practice fixture');
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it.each([['History & audio', 'history', 'Call history'], ['Account & limits', 'account', 'Account']])('opens %s from the practice shortcut and returns to practice', async (label, view, heading) => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => json(url.includes('/sessions') ? { sessions: [], nextCursor: null } : { user: profile })));
+  await render();
+  await act(async () => button(label).click());
+  expect(new URLSearchParams(window.location.search).get('view')).toBe(view);
+  expect(container.querySelector('h1')?.textContent).toBe(heading);
+  await act(async () => button('Back to practice').click());
+  expect(container.textContent).toContain('Practice fixture');
+  expect(new URLSearchParams(window.location.search).get('view')).toBe('practice');
 });
 
 it('waits for deletion acknowledgement, closes its sheet and then collapses the partner row', async () => {

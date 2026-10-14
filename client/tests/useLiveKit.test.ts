@@ -33,6 +33,7 @@ const fixture = vi.hoisted(() => {
 
 vi.mock('livekit-client', () => ({
   Room: fixture.MockRoom,
+  DisconnectReason: { ROOM_DELETED: 5, SIGNAL_CLOSE: 6 },
   RoomEvent: {
     TrackSubscribed: 'subscribed', TrackPublished: 'published', ParticipantConnected: 'joined',
     ParticipantDisconnected: 'left', TrackUnsubscribed: 'unsubscribed',
@@ -71,6 +72,28 @@ async function begin(token: string) {
 }
 
 describe('voice connection ownership and failure handling', () => {
+  it('treats server room deletion as completion and resets it for a new call', async () => {
+    const first = await begin('ended-by-partner');
+    await act(async () => { first.room.connection.resolve(); await first.operation; });
+    await act(async () => first.room.callbacks.get('disconnected')?.(5));
+    expect(api.roomDeleted).toBe(true);
+    expect(api.error).toBeNull();
+    expect(api.isConnected).toBe(false);
+    expect(api.room).toBeNull();
+    const next = await begin('next-call');
+    await act(async () => { next.room.connection.resolve(); await next.operation; });
+    expect(api.roomDeleted).toBe(false);
+    expect(api.isConnected).toBe(true);
+  });
+
+  it('keeps unexpected voice transport loss actionable', async () => {
+    const current = await begin('transport-failure');
+    await act(async () => { current.room.connection.resolve(); await current.operation; });
+    await act(async () => current.room.callbacks.get('disconnected')?.(6));
+    expect(api.roomDeleted).toBe(false);
+    expect(api.error).toContain('Please reconnect');
+  });
+
   it('rejects missing credentials instead of reporting connection success', async () => {
     await act(async () => { await expect(api.connect('', '')).rejects.toThrow(/required/i); });
     expect(api.isConnected).toBe(false);

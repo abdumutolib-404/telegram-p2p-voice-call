@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Download } from 'lucide-react';
+import { Check, Send } from 'lucide-react';
 import { PendingIcon } from './CopyLink';
 
 export function RecordingAction({ status, state, busy, index, onSend }: {
@@ -19,7 +19,7 @@ export function RecordingAction({ status, state, busy, index, onSend }: {
   const suffix = index === undefined ? '' : ` ${index + 1}`;
   return <span className="audio-action">
     <button type="button" className="secondary-button" aria-label={`Send audio${suffix} to Telegram`} aria-busy={pending} data-state={state} disabled={busy || pending || receipt} onClick={onSend}>
-      {pending ? <PendingIcon /> : receipt ? <Check size={16} className="draw-check" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
+      {pending ? <PendingIcon /> : receipt ? <Check size={16} className="draw-check" aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
       {queued ? 'Queued for Telegram' : pending ? 'Sending…' : receipt ? 'Sent to Telegram' : `Send to Telegram${suffix}`}
     </button>
     {(popover || queued) && <span className="audio-delivery-note" role="status">{queued ? 'Queued · awaiting Telegram' : <><Check size={14} aria-hidden="true" /> Sent</>}</span>}

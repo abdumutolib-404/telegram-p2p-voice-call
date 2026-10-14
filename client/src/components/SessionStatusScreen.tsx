@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, PhoneOff, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Loader2, PhoneOff, RefreshCw } from 'lucide-react';
 import { Brand } from './Brand';
 
 interface SessionStatusScreenProps {
@@ -7,6 +7,7 @@ interface SessionStatusScreenProps {
   cancelled?: boolean;
   onRestart?: () => void;
   onDashboard?: () => void;
+  onPractice?: () => void;
   onCancel?: () => void;
   restartPending?: boolean;
 }
@@ -17,6 +18,7 @@ export function SessionStatusScreen({
   cancelled,
   onRestart,
   onDashboard,
+  onPractice,
   onCancel,
   restartPending = false,
 }: SessionStatusScreenProps) {
@@ -25,7 +27,9 @@ export function SessionStatusScreen({
     <main className="app-shell session-screen">
       <header className="app-header">
         <Brand />
-        <span className="status-pill">Speaking practice</span>
+        {state === 'ended' && onPractice
+          ? <button type="button" className="session-back secondary-button" aria-label="Back to practice" onClick={onPractice}><ArrowLeft size={18} aria-hidden="true" />Practice</button>
+          : <span className="status-pill">Speaking practice</span>}
       </header>
       <section className="session-card" aria-busy={pending}>
         <div className={`session-icon ${error ? 'has-warning' : ''}`}>
@@ -57,7 +61,7 @@ export function SessionStatusScreen({
                 ? 'Let’s reconnect.'
                 : cancelled
                   ? 'Ready when you are.'
-                  : 'Call concluded'}
+                  : 'Call ended'}
         </h1>
         <p>
           {state === 'loading'

@@ -173,8 +173,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .call-partner .recording-explanation { color: var(--text-2); }
 .call-avatar { width: 64px; height: 64px; border-radius: 30%; background: var(--other); color: var(--on-other); border: 0; }
 .call-waveform { width: 100%; background: transparent; border: 0; }
-.call-controls-panel { padding: 16px 20px max(20px,var(--app-safe-bottom)); border-top: 1px solid var(--border); background: var(--sunken); width: 100%; max-width: none; margin: 0; }
-.call-controls { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.call-controls-panel { padding: 16px 20px max(20px,var(--app-safe-bottom)); border-top: 1px solid var(--border); background: var(--bg); width: 100%; max-width: none; margin: 0; }
+.call-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; max-width: none; background: transparent; padding: 12px 0 0; }
 .call-controls button { min-height: 64px; padding: 10px; border: 1px solid var(--border); background: var(--card); border-radius: 12px; font-size: 13px; }
 .call-controls .end-call { background: var(--danger); color: var(--on-danger); border-color: var(--danger); }
 .recording-disclosure { color: var(--text-2); letter-spacing: 0; font-size: 12px; }

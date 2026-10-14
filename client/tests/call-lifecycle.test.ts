@@ -7,7 +7,7 @@ const fixture = vi.hoisted(() => ({
   events: new Map<string, Set<(...args: unknown[]) => unknown>>(),
   socket: { connected: true, on: vi.fn(), off: vi.fn(), io: { on: vi.fn(), off: vi.fn() } },
   finish: vi.fn(), peerReady: vi.fn(), join: vi.fn(), cancel: vi.fn(),
-  voice: { error: null as string | null, isConnected: true, isMicMuted: false, canPlaybackAudio: true,
+  voice: { roomDeleted: false, error: null as string | null, isConnected: true, isMicMuted: false, canPlaybackAudio: true,
     micError: null, micDeniedCount: 0, isPartnerConnected: true, analyserNode: null,
     connect: vi.fn(async () => {}), disconnect: vi.fn(), toggleMic: vi.fn(),
     retryMicrophone: vi.fn(async () => true), startAudio: vi.fn(async () => {}), getRoom: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('../src/services/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
-  vi.clearAllMocks(); fixture.events.clear(); fixture.voice.error = null;
+  vi.clearAllMocks(); fixture.events.clear(); fixture.voice.error = null; fixture.voice.roomDeleted = false;
   fixture.socket.connected = true;
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   fixture.voice.connect.mockResolvedValue();
@@ -85,7 +85,7 @@ it('sends one finish request when the user ends a call', async () => {
   const button = container.querySelector<HTMLButtonElement>('button[aria-label="End call"]');
   expect(button).toBeTruthy(); await act(async () => button!.click());
   expect(fixture.finish).toHaveBeenCalledTimes(1);
-  expect(container.textContent).toContain('Call concluded');
+  expect(container.textContent).toContain('Call ended');
 });
 
 it('returns to dashboard history after a completed call without starting another search', async () => {
@@ -108,6 +108,27 @@ it('leaves the call screen and informs the server when the voice room disconnect
   expect(container.textContent).toContain('The voice room disconnected. Please reconnect.');
   expect(fixture.finish).toHaveBeenCalledTimes(1);
   expect(fixture.voice.disconnect).toHaveBeenCalled();
+});
+
+it.each(['media-first', 'signaling-first'])('shows completion when the partner ends the call (%s)', async order => {
+  await startCall();
+  if (order === 'signaling-first') await emit('call_finished', { duration: 60 });
+  fixture.voice.roomDeleted = true;
+  await act(async () => root.render(createElement(App)));
+  if (order === 'media-first') await emit('call_finished', { duration: 60 });
+  expect(container.querySelector('h1')?.textContent).toBe('Call ended');
+  expect(container.textContent).not.toContain('Let’s reconnect');
+  expect(fixture.finish).not.toHaveBeenCalled();
+});
+
+it('returns from the after-call screen to practice without starting a search', async () => {
+  await startCall();
+  await emit('call_finished', { duration: 60 });
+  const searches = fixture.join.mock.calls.length;
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Back to practice"]')!.click());
+  expect(new URLSearchParams(window.location.search).get('view')).toBe('practice');
+  expect(container.querySelector('[aria-label="Find a partner"]')).toBeTruthy();
+  expect(fixture.join).toHaveBeenCalledTimes(searches);
 });
 
 it('shows an actionable error when signaling cannot connect while searching', async () => {

@@ -31,6 +31,7 @@ export interface UseLiveKitReturn {
   isConnected: boolean;
   isConnecting: boolean;
   error: string | null;
+  roomDeleted: boolean;
   isMicMuted: boolean;
   canPlaybackAudio: boolean;
   micError: string | null;
@@ -54,6 +55,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
   const [isPartnerConnected, setIsPartnerConnected] = useState<boolean>(false);
   const [remoteParticipantCount, setRemoteParticipantCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const [roomDeleted, setRoomDeleted] = useState(false);
   const [isMicMuted, setIsMicMutedState] = useState<boolean>(false);
   const [canPlaybackAudio, setCanPlaybackAudio] = useState<boolean>(true);
   const [micError, setMicError] = useState<string | null>(null);
@@ -181,13 +183,14 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
       isConnectingRef.current = true;
       setIsConnecting(true);
       setError(null);
+      setRoomDeleted(false);
       setMicError(null);
 
       const operation = (async () => {
         let livekitRoom: Room | null = null;
 
         try {
-          const { Room, RoomEvent, Track } = await import('livekit-client');
+          const { Room, RoomEvent, Track, DisconnectReason } = await import('livekit-client');
           ensureCurrent();
           livekitRoom = new Room({
             adaptiveStream: true,
@@ -370,8 +373,12 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
           });
 
           // Room disconnect event
-          livekitRoom.on(RoomEvent.Disconnected, () => {
+          livekitRoom.on(RoomEvent.Disconnected, reason => {
             if (!isCurrent()) return;
+            // Server teardown can arrive before signaling announces the completed call.
+            // A deleted room is terminal; an unexpected transport loss remains an error.
+            const deleted = reason === DisconnectReason.ROOM_DELETED;
+            if (deleted) attempt.cancelled = true;
             attemptRef.current = null;
             roomRef.current = null;
             setRoom(null);
@@ -381,7 +388,8 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
             setIsPartnerConnected(false);
             setRemoteParticipantCount(0);
             isConnectingRef.current = false;
-            setError('The voice room disconnected. Please reconnect.');
+            setRoomDeleted(deleted);
+            setError(deleted ? null : 'The voice room disconnected. Please reconnect.');
           });
 
           await livekitRoom.connect(url, token);
@@ -554,6 +562,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
     isConnected,
     isConnecting,
     error,
+    roomDeleted,
     isMicMuted,
     canPlaybackAudio,
     micError,

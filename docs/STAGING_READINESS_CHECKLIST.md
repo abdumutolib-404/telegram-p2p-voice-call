@@ -14,6 +14,8 @@ For each case retain the trigger, observed result, relevant request/session corr
 
 On October 14, the owner confirmed successful, very fast 7.5/7.5 matching after reopening both Mini Apps on development revision `4f6e830`. The equal-band retest passed for those two accounts. Audible audio, original-deadline recovery and playable recording output are not established by that matching result. The detailed record is in [Development validation](DEVELOPMENT_VALIDATION_2026-10-14.md); the broader pass conditions below remain open unless separately observed.
 
+After the reconnect window was extended to 60 seconds and deployed as `267d766`, the owner completed the requested close/reopen check and confirmed correct remaining time and both voices returning. This verifies the tested two-account recovery/audio path. It does not mark every duration, device, terminal-disconnect or provider-failure variant below as completed. The owner subsequently confirmed both voices in a test recording and correct Telegram delivery/status. The tested recording journey passed; slow delivery, ambiguous responses and all-segment ownership remain separate cases.
+
 | Case | Procedure | Pass condition |
 | --- | --- | --- |
 | Registration and consent | Launch both accounts through the correct bot, accept current PDF terms and complete profiles. Repeat with outdated consent, declined terms and an invalid/expired launch. | Registered users reach the dashboard; recovery instructions match the bot; declined/outdated/invalid access cannot enter calls. |

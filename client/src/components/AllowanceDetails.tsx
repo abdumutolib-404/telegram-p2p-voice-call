@@ -15,12 +15,12 @@ export function AllowanceDetails({ userData, compact = false }: { userData: User
   const end = period ? utcDate(period.endsAt) : null;
   if (!period || !start || !end) return null;
   return <div className={`allowance-details${compact ? ' allowance-details--compact' : ''}`}>
-    {!compact && <p>Included allowance starts {start} at {utcTime(period.startsAt)} UTC.</p>}
     <p>{period.kind === 'calendar_month'
       ? <>Included {compact ? 'allowance resets' : 'calls and recordings reset'} on {end} at 00:00 UTC.</>
       : compact ? <>Allowance ends {end} at {utcTime(period.endsAt)} UTC.</>
         : <>This allowance lasts until {end} at {utcTime(period.endsAt)} UTC. Renew in Telegram to continue with a paid plan.</>}</p>
     {!compact && userData.includedCallsRemaining !== undefined && <p>{userData.includedCallsRemaining} included {userData.includedCallsRemaining === 1 ? 'call' : 'calls'}{userData.bonusCallsRemaining ? <> + {userData.bonusCallsRemaining} bonus {userData.bonusCallsRemaining === 1 ? 'call' : 'calls'}</> : ''} remaining.</p>}
-    {Boolean(userData.bonusCallsRemaining) && <p>{compact ? <>{userData.bonusCallsRemaining} bonus {userData.bonusCallsRemaining === 1 ? 'call' : 'calls'} included · no expiry.</> : <>Bonus calls do not expire and are used after included calls.</>}</p>}
+    {compact && Boolean(userData.bonusCallsRemaining) && <p>{userData.bonusCallsRemaining} bonus {userData.bonusCallsRemaining === 1 ? 'call' : 'calls'} included · no expiry.</p>}
+    {!compact && <details className="allowance-explanation"><summary>How your allowance works</summary><p>Included allowance starts {start} at {utcTime(period.startsAt)} UTC.</p>{Boolean(userData.bonusCallsRemaining) && <p>Bonus calls do not expire and are used after included calls.</p>}</details>}
   </div>;
 }

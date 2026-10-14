@@ -62,7 +62,7 @@ it('provides reauthentication when a dated suspension expires', async () => {
   expect(transport.connect).not.toHaveBeenCalled();
   const retry = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('Retry Connection'))!;
   await act(async () => retry.click());
-  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Your band6.5');
   expect(transport.connect).toHaveBeenCalled();
 });
 
@@ -97,11 +97,11 @@ it('aborts the first Strict Mode authentication and ignores a late stale respons
     .mockResolvedValueOnce(json({ hasActiveCall: false }));
   vi.stubGlobal('fetch', fetchMock);
   await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
-  await vi.waitFor(() => expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5'));
+  await vi.waitFor(() => expect(container.querySelector('.dash__limits')?.textContent).toContain('Your band6.5'));
   const options = fetchMock.mock.calls[0][1] as RequestInit;
   expect(options.signal?.aborted).toBe(true);
   await act(async () => { resolveFirst(json({ success: false, error: 'Stale rejection' })); });
-  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Your band6.5');
   expect(container.textContent).not.toContain('Stale rejection');
 });
 
@@ -134,7 +134,7 @@ it('forwards the selected call ID without copying launch credentials into API UR
   const fetchMock = vi.fn().mockResolvedValueOnce(json(profile)).mockResolvedValueOnce(json({ hasActiveCall: false }));
   vi.stubGlobal('fetch', fetchMock);
   await act(async () => root.render(createElement(App)));
-  await vi.waitFor(() => expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5'));
+  await vi.waitFor(() => expect(container.querySelector('.dash__limits')?.textContent).toContain('Your band6.5'));
   const url = String(fetchMock.mock.calls[1][0]);
   expect(url).toContain('active_call=selected-call');
   expect(url).not.toContain('synthetic-query-secret');
@@ -150,7 +150,7 @@ it('waits for a delayed Telegram launch without abandoning authentication', asyn
   await act(async () => vi.advanceTimersByTimeAsync(200));
   window.Telegram!.WebApp.initData = 'synthetic-delayed-launch';
   await act(async () => vi.advanceTimersByTimeAsync(100));
-  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Your band6.5');
   expect(transport.connect).toHaveBeenCalledWith('synthetic-delayed-launch');
 });
 
@@ -193,7 +193,7 @@ it('redirects a rejected signature and does not open a private policy route', as
 it('keeps history and account controls accessible with no call allowance', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ ...profile, user: { ...profile.user, callsRemaining: 0 } })).mockResolvedValueOnce(json({ hasActiveCall: false })));
   await act(async () => root.render(createElement(App)));
-  expect(container.querySelector('.dash__limits')?.textContent).toContain('Target band6.5');
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Your band6.5');
   expect(container.querySelector<HTMLButtonElement>('button[aria-label="Find a partner"]')?.disabled).toBe(true);
   const menu = Array.from(document.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === 'Menu')!;
   await act(async () => menu.click());
