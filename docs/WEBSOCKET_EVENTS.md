@@ -37,7 +37,7 @@ Queue acknowledgements may be emitted by backend implementations. Consumer types
 
 ## Readiness, timers, and completion
 
-Initial room tokens allow microphone publication but deny subscriptions and data publication. Both canonical participants must become ready before the server durably records media authorization and enables provider subscriptions. Readiness is persisted across Node/Go replicas; repeated readiness retries permission updates without resetting the admission clock. The handshake window is 90 seconds and disconnect grace is 15 seconds.
+Initial room tokens allow microphone publication but deny subscriptions and data publication. Both canonical participants must become ready before the server durably records media authorization and enables provider subscriptions. Readiness is persisted across Node/Go replicas; repeated readiness retries permission updates without resetting the admission clock. The handshake window is 90 seconds and disconnect grace is 60 seconds, allowing time to reopen a mobile Mini App. The authorized call timer continues during grace; its original expiry can end the call before grace expires. Explicitly ending a call does not grant reconnect grace.
 
 The authoritative clock begins at persisted session admission (`createdAt`). When readiness completes, timeout is scheduled for the **remaining** duration, not a fresh full allowance. Reconnection and late readiness cannot reset that origin.
 

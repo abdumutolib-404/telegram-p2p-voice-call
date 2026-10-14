@@ -37,6 +37,18 @@ it('keeps an authorized deadline visible and running while a partner reconnects'
   await act(async () => vi.advanceTimersByTimeAsync(1000)); expect(finish).toHaveBeenCalledExactlyOnceWith('time_limit_reached');
 });
 
+it('shows the server reconnect window, falls back to one minute, and clears it on return', async () => {
+  await render();
+  await act(async () => fixture.events.get('partner_connection_lost')!({ gracePeriodSec: 60 }));
+  expect(container.textContent).toContain('Waiting up to 60 seconds');
+  await act(async () => fixture.events.get('partner_connection_lost')!({ gracePeriodSec: 30 }));
+  expect(container.textContent).toContain('Waiting up to 30 seconds');
+  await act(async () => fixture.events.get('partner_connection_lost')!({}));
+  expect(container.textContent).toContain('Waiting up to 60 seconds');
+  await act(async () => fixture.events.get('partner_reconnected')!({}));
+  expect(container.textContent).not.toContain('Waiting up to');
+});
+
 it('keeps recording pending until the matching server acknowledgement and prevents duplicate requests', async () => {
   await render();
   await act(async () => { record().click(); record().click(); });

@@ -192,7 +192,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     };
 
     const handlePartnerConnectionLost = (data: { gracePeriodSec?: number }) => {
-      setReconnectingGraceSec(data?.gracePeriodSec || 15);
+      const seconds = data?.gracePeriodSec;
+      setReconnectingGraceSec(typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 ? seconds : 60);
     };
 
     const handlePartnerReconnected = () => {

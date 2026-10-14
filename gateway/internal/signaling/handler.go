@@ -709,6 +709,8 @@ func (h *Hub) handleWebRTCSignal(socket *ClientSocket, event string, payload []b
 	h.EmitToRoomExcept(sig.RoomName, socket.ID, event, sig)
 }
 
+const disconnectGracePeriod = 60 * time.Second
+
 func (h *Hub) handleDisconnect(socket *ClientSocket) {
 	h.mu.RLock()
 	closing := h.closing
@@ -761,10 +763,10 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		return
 	}
 
-	// Notify room of connection loss with 15s grace period
+	// Allow a mobile Mini App to reopen without changing the call deadline.
 	h.EmitToRoom(activeCall.RoomName, "partner_connection_lost", PartnerConnectionLostEvent{
 		UserID:         socket.UserID,
-		GracePeriodSec: 15,
+		GracePeriodSec: int(disconnectGracePeriod / time.Second),
 	})
 
 	disconnectTimestamp := time.Now()
@@ -941,7 +943,11 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 			}
 		}
 	}
-	graceTimer := time.AfterFunc(15*time.Second, graceCheck)
+	h.scheduleDisconnectGrace(socket.UserID, graceCheck)
+}
+
+func (h *Hub) scheduleDisconnectGrace(userID string, graceCheck func()) {
+	graceTimer := time.AfterFunc(disconnectGracePeriod, graceCheck)
 
 	h.mu.Lock()
 	if h.closing {
@@ -949,10 +955,10 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 		h.mu.Unlock()
 		return
 	}
-	if existing, ok := h.disconnectGraceTimers[socket.UserID]; ok {
+	if existing, ok := h.disconnectGraceTimers[userID]; ok {
 		existing.Stop()
 	}
-	h.disconnectGraceTimers[socket.UserID] = graceTimer
+	h.disconnectGraceTimers[userID] = graceTimer
 	h.mu.Unlock()
 }
 

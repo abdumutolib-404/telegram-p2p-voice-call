@@ -75,9 +75,33 @@ describe('durable media authorization and accounting',()=>{
   const {a,b,session}=await fixture(),h=sockets(),first=h.connect(a.id);
   await registerReadyParticipant(session.id,a.id);await registerReadyParticipant(session.id,b.id);
   await vi.advanceTimersByTimeAsync(1000);first.events.disconnect('transport close');
-  await vi.advanceTimersByTimeAsync(16000);
+  await vi.advanceTimersByTimeAsync(20000);
+  expect((await prisma.callSession.findUnique({where:{id:session.id}}))?.status).toBe('ACTIVE');
+  expect(h.broadcast).toHaveBeenCalledWith('partner_connection_lost',expect.objectContaining({gracePeriodSec:60}));
+  await vi.advanceTimersByTimeAsync(40000);
   const completed=await prisma.callSession.findUnique({where:{id:session.id}});
-  expect(completed?.status).toBe('COMPLETED');expect(completed?.duration).toBeGreaterThanOrEqual(16);
+  expect(completed?.status).toBe('COMPLETED');expect(completed?.duration).toBeGreaterThanOrEqual(60);
+  expect((await prisma.user.findUnique({where:{id:a.id}}))?.dailyCallsUsed).toBe(1);
+ });
+ it('preserves authorization when the owner returns after the former 15-second window',async()=>{
+  const {a,b,session}=await fixture(),h=sockets(),first=h.connect(a.id);
+  await registerReadyParticipant(session.id,a.id);await registerReadyParticipant(session.id,b.id);
+  const authorizedAt=(await prisma.callSession.findUnique({where:{id:session.id}}))!.mediaAuthorizedAt;
+  first.events.disconnect('transport close');await vi.advanceTimersByTimeAsync(30000);
+  h.connect(a.id);await vi.advanceTimersByTimeAsync(31000);
+  const recovered=await prisma.callSession.findUnique({where:{id:session.id}});
+  expect(recovered?.status).toBe('ACTIVE');expect(recovered?.mediaAuthorizedAt).toEqual(authorizedAt);
+  expect(h.broadcast).toHaveBeenCalledWith('partner_reconnected',expect.anything());
+  expect((await prisma.user.findUnique({where:{id:a.id}}))?.dailyCallsUsed).toBe(0);
+ });
+ it('keeps the original authorized deadline even when it falls within disconnect grace',async()=>{
+  const {a,b,session}=await fixture(),h=sockets(),first=h.connect(a.id),second=h.connect(b.id);
+  await first.events.peer_ready({roomName:session.roomName});await second.events.peer_ready({roomName:session.roomName});
+  await vi.advanceTimersByTimeAsync(890000);first.events.disconnect('transport close');
+  await vi.advanceTimersByTimeAsync(10000);
+  expect((await prisma.callSession.findUnique({where:{id:session.id}}))?.status).toBe('COMPLETED');
+  expect((await prisma.callSession.findUnique({where:{id:session.id}}))?.duration).toBe(900);
+  await vi.advanceTimersByTimeAsync(50000);
   expect((await prisma.user.findUnique({where:{id:a.id}}))?.dailyCallsUsed).toBe(1);
  });
 });

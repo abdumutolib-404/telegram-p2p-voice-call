@@ -10,12 +10,16 @@ For each case retain the trigger, observed result, relevant request/session corr
 
 ## User and provider journeys
 
+### Dated observations
+
+On October 14, the owner confirmed successful, very fast 7.5/7.5 matching after reopening both Mini Apps on development revision `4f6e830`. The equal-band retest passed for those two accounts. Audible audio, original-deadline recovery and playable recording output are not established by that matching result. The detailed record is in [Development validation](DEVELOPMENT_VALIDATION_2026-10-14.md); the broader pass conditions below remain open unless separately observed.
+
 | Case | Procedure | Pass condition |
 | --- | --- | --- |
 | Registration and consent | Launch both accounts through the correct bot, accept current PDF terms and complete profiles. Repeat with outdated consent, declined terms and an invalid/expired launch. | Registered users reach the dashboard; recovery instructions match the bot; declined/outdated/invalid access cannot enter calls. |
 | Initial call | Match two devices. Confirm each microphone and remote audio before proceeding. | Both voices are audible. The timer starts at persisted media authorization and both clients share the same deadline. A never-authorized failed join consumes no allowance. |
 | Mid-call reopen | Reopen a 15-minute authorized call after ten minutes; also reconnect signaling on each backend. | About five minutes remain, with normal network tolerance. No immediate `time_limit_reached`, fresh full-duration restart or duplicate accounting occurs. |
-| Partner reconnect | Interrupt one device briefly and return within grace; also exercise the terminal disconnect case. | Authorized time continues. Recovery state and remaining time are truthful; terminal completion reaches both users and happens once. |
+| Partner reconnect | Interrupt one device and return after about 30 seconds, within the 60-second grace; also exercise the terminal disconnect case and a call whose original deadline occurs during grace. | Authorized time continues. A return after the former 15-second cutoff works. Recovery state and remaining time are truthful; original expiry still ends the call on time, and terminal completion happens once. |
 | Failed voice join and retry | Reject the LiveKit join, then immediately retry while server cleanup is delayed. Recover connectivity and retry again. | A finish request is issued, local media is released, duplicate retry is blocked, and no new queue admission occurs while the old session is active. Searching resumes after terminal confirmation. |
 | Other active session | Reopen the dashboard on another device/account session while retry is shown. | The UI offers recovery and never finishes a different active room merely to start a search. |
 | Microphone denial/autoplay | Deny microphone access, retry, allow it, and exercise the three-denial exit. Test iOS/Android app switching and blocked autoplay. | Pending/failure states remain usable; exit and charging follow persisted authorization and duration; both users can hear audio after recovery. |

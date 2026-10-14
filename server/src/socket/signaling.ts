@@ -111,6 +111,7 @@ const roomStartedAt = new Map<string, number>();
 const roomDurationLimits = new Map<string, number>();
 const userLastActionTime = new Map<string, number>();
 const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
+const DISCONNECT_GRACE_SECONDS = 60;
 
 let globalIo: Server | null = null;
 let globalBot: Bot<MyContext> | null = null;
@@ -1162,11 +1163,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           for (const session of activeSessions) {
             io.to(session.roomName).emit('partner_connection_lost', {
               userId: disconnectedUserId,
-              gracePeriodSec: 15,
+              gracePeriodSec: DISCONNECT_GRACE_SECONDS,
             });
           }
 
-          // 15-second grace period for mobile app blur / network reconnect
+          // Allow a mobile Mini App to reopen without changing the call deadline.
           const graceTimer = setTimeout(async () => {
             disconnectGraceTimers.delete(disconnectedUserId);
             const isReconnected = (userSockets.get(disconnectedUserId)?.size ?? 0) > 0;
@@ -1239,7 +1240,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 }, error);
               }
             }
-          }, 15000);
+          }, DISCONNECT_GRACE_SECONDS * 1000);
 
           disconnectGraceTimers.set(disconnectedUserId, graceTimer);
         } catch (error: unknown) {

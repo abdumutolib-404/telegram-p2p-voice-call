@@ -67,7 +67,7 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 		// Condition 1: createdAt < now - maxDuration - 5 minutes
 		isPastMaxDurationWithMargin := elapsedSeconds > (maxDurationSeconds + 5*60)
 
-		// Condition 2: both participants disconnected and not in 15s grace
+		// Condition 2: both participants disconnected and not in reconnect grace
 		bothDisconnected := false
 		if elapsedSeconds >= 90 {
 			liveSockets := h.GetSocketsInRoom(session.RoomName)
