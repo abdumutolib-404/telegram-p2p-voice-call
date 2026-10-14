@@ -26,16 +26,18 @@ async function recordingBuffer(key:string):Promise<{buffer:Buffer;size:number}> 
   } finally { stream.destroy(); }
 }
 
-/** Called only after the dashboard has checked participant, recorder and retention access. */
-export async function sendLegacyRecording(bot: Bot<MyContext>, telegramId: bigint, objectKey: string): Promise<void> {
-  const file = await recordingBuffer(objectKey);
-  if (!file.size || file.size > 50 * 1024 * 1024) throw new Error('Recording is unavailable for Telegram delivery.');
-  await bot.api.sendAudio(telegramId.toString(), new InputFile(file.buffer, 'PairTalk-recording.mp3'), {
-    caption: 'Your PairTalk practice recording. Download it to keep your own copy.',
-  });
+export function recordingDeliveryStatus(delivery: { status: string; leaseUntil: Date | null }): 'SENT' | 'QUEUED' | 'UNCONFIRMED' | 'FAILED' {
+  if (delivery.status === 'DONE') return 'SENT';
+  if (delivery.status === 'UNCONFIRMED' || (['PROCESSING', 'SENDING'].includes(delivery.status) && (!delivery.leaseUntil || delivery.leaseUntil <= new Date()))) return 'UNCONFIRMED';
+  if (delivery.status === 'FAILED') return 'FAILED';
+  if (['QUEUED', 'PROCESSING', 'SENDING'].includes(delivery.status)) return 'QUEUED';
+  throw new Error('Recording delivery status is unavailable.');
 }
 
 export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: () => boolean = () => false): Promise<void> {
+  // Older PROCESSING jobs may already have sent audio. Never replay an expired
+  // attempt whose outcome is unknown. Retain its owner so a late receipt can settle it.
+  await prisma.recordingDelivery.updateMany({where:{status:{in:['PROCESSING','SENDING']},OR:[{leaseUntil:{lte:new Date()}},{leaseUntil:null}]},data:{status:'UNCONFIRMED',leaseUntil:null,failure:'Delivery outcome is uncertain. Check Telegram before any further send.'}});
   // Polling covers a missed webhook, including earlier segments of a restarted recording.
   const captures = await prisma.recordingSegment.findMany({where:{status:'RECORDING',call:{status:{in:['COMPLETED','CANCELLED']}}},take:10});
   for (const capture of captures) {
@@ -48,11 +50,11 @@ export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: (
     }
   }
   const ready = await prisma.recordingSegment.findMany({where:{status:'READY',expiresAt:{gt:new Date()},deliveries:{none:{}}},take:20,orderBy:{createdAt:'asc'}});
-  for (const segment of ready) await prisma.$transaction(async tx => {
+  for (const segment of ready.filter(item => !item.egressId.startsWith('legacy:'))) await prisma.$transaction(async tx => {
     for (const userId of segment.ownerIds) await tx.recordingDelivery.upsert({where:{segmentId_userId:{segmentId:segment.id,userId}},create:{segmentId:segment.id,userId},update:{}});
   });
   const now = new Date();
-  const eligible = {OR:[{status:'QUEUED',nextAttemptAt:{lte:now}},{status:'PROCESSING',leaseUntil:{lte:now}}]};
+  const eligible = {status:'QUEUED',nextAttemptAt:{lte:now}};
   const jobs = await prisma.recordingDelivery.findMany({where:eligible,take:5,orderBy:{nextAttemptAt:'asc'}});
   for (const job of jobs) {
     if (stopped()) return;
@@ -60,6 +62,8 @@ export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: (
     const claim = await prisma.recordingDelivery.updateMany({where:{...eligible,segmentId:job.segmentId,userId:job.userId},data:{status:'PROCESSING',owner,leaseUntil:new Date(Date.now()+120000),attempts:{increment:1}}});
     if (claim.count!==1) continue;
     const key = {segmentId:job.segmentId,userId:job.userId,status:'PROCESSING',owner};
+    let sending = false;
+    let confirmedMessageId: number | undefined;
     try {
       const [segment,user] = await Promise.all([prisma.recordingSegment.findUnique({where:{id:job.segmentId}}),prisma.user.findUnique({where:{id:job.userId}})]);
       if (!segment || !user || segment.status!=='READY' || !segment.ownerIds.includes(user.id) || !segment.expiresAt || segment.expiresAt<=new Date()) {
@@ -72,10 +76,26 @@ export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: (
       const file = await recordingBuffer(segment.objectKey);
       if (!file.size) throw new Error('Audio is not available yet.');
       if (stopped()) throw new Error('Worker is stopping.');
+      const dispatch = await prisma.recordingDelivery.updateMany({where:key,data:{status:'SENDING',leaseUntil:new Date(Date.now()+120000)}});
+      if (dispatch.count !== 1) continue;
+      sending = true;
       const sent = await bot.api.sendAudio(user.telegramId.toString(),new InputFile(file.buffer,'PairTalk-recording.mp3'),{caption:'Your PairTalk practice recording. Download it to keep your own copy.'});
-      await prisma.recordingDelivery.updateMany({where:key,data:{status:'DONE',telegramMessageId:sent.message_id,owner:null,leaseUntil:null,failure:null}});
-    } catch {
-      await prisma.recordingDelivery.updateMany({where:key,data:{status:'QUEUED',owner:null,leaseUntil:null,nextAttemptAt:new Date(Date.now()+Math.min(900000,5000*2**Math.min(job.attempts,8))),failure:'Audio delivery unavailable; retry scheduled.'}});
+      if (!Number.isSafeInteger(sent.message_id) || sent.message_id <= 0) throw new Error('Delivery acknowledgement is unavailable.');
+      confirmedMessageId = sent.message_id;
+      await prisma.recordingDelivery.updateMany({where:{...key,status:{in:['SENDING','UNCONFIRMED']}},data:{status:'DONE',telegramMessageId:confirmedMessageId,owner:null,leaseUntil:null,failure:null}});
+    } catch (error) {
+      const response = error as { error_code?: number; parameters?: { retry_after?: number } } | null;
+      const seconds = response?.parameters?.retry_after;
+      const rateLimited = sending && confirmedMessageId === undefined && response?.error_code === 429 && Number.isInteger(seconds) && seconds! > 0 && seconds! <= 900 && job.attempts < 2;
+      const rejected = sending && confirmedMessageId === undefined && [400,401,403,404,413,429].includes(response?.error_code ?? 0);
+      const retry = !sending || rateLimited;
+      const status = confirmedMessageId !== undefined ? 'DONE' : retry ? 'QUEUED' : rejected ? 'FAILED' : 'UNCONFIRMED';
+      await prisma.recordingDelivery.updateMany({where:{...key,status:{in:sending?['SENDING','UNCONFIRMED']:['PROCESSING']}},data:{
+        status, owner:null, leaseUntil:null,
+        ...(confirmedMessageId !== undefined ? {telegramMessageId:confirmedMessageId} : {}),
+        nextAttemptAt:new Date(Date.now()+(rateLimited?seconds!*1000:Math.min(900000,5000*2**Math.min(job.attempts,8)))),
+        failure:status==='DONE'?null:retry?'Audio delivery unavailable; retry scheduled.':rejected?'Telegram rejected this audio delivery.':'Delivery outcome is uncertain. Check Telegram before any further send.',
+      }});
     }
   }
 }

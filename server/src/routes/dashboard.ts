@@ -19,7 +19,7 @@ import type { MyContext } from '../bot/types';
 import { scheduleConnectionHandshakeTimer, setRoomDurationLimit } from '../socket/signaling';
 import { isUserSessionRecorder } from '../utils/recordingAccess';
 import { lockRow } from '../utils/transactionLock';
-import { sendLegacyRecording } from '../services/recordingDelivery';
+import { recordingDeliveryStatus } from '../services/recordingDelivery';
 
 const router = Router();
 let dashboardBot: Bot<MyContext> | null = null;
@@ -87,7 +87,7 @@ router.get('/sessions/:id', action(async (req, res) => {
   res.json({ session: await sessionSummary(session, req.member!.id, getEffectiveEntitlement(req.member!).retentionDays, new Set(saved ? [saved.partnerId] : [])) });
 }));
 router.post('/sessions/:id/recording-delivery', action(async (req, res) => {
-  const { segmentId } = z.object({ segmentId: identifier.optional() }).strict().parse(req.body);
+  const { segmentId, retry = false } = z.object({ segmentId: identifier.optional(), retry: z.boolean().optional() }).strict().parse(req.body);
   const user = req.member!;
   const session = await ownSession(req.params.id, user.id);
   const now = new Date();
@@ -95,10 +95,25 @@ router.post('/sessions/:id/recording-delivery', action(async (req, res) => {
   if (!['COMPLETED', 'CANCELLED'].includes(session.status) || now.getTime() >= (session.endedAt ?? session.createdAt).getTime() + retentionDays * 86400000) {
     throw new ActionError(404, 'This recording is no longer available.');
   }
-  const segment = segmentId
+  let segment = segmentId
     ? await prisma.recordingSegment.findUnique({ where: { id: segmentId } })
     : await prisma.recordingSegment.findFirst({ where: { callId: session.id, status: 'READY', ownerIds: { has: user.id }, expiresAt: { gt: now } }, orderBy: { createdAt: 'desc' } });
   if (segmentId && !segment) throw new ActionError(404, 'This recording is no longer available.');
+  if (!segment) {
+    // Give pre-segment recordings the same durable receipt and claim protection.
+    // Legacy delivery remains user-requested; it does not notify other owners automatically.
+    if (!session.recordingUrl || (session.recordingExpiresAt && session.recordingExpiresAt <= now) || (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId,user.id))) throw new ActionError(404,'This recording is no longer available.');
+    if (!dashboardBot) throw new ActionError(503,'Telegram delivery is temporarily unavailable. Please retry.');
+    const ownerIds = [session.userAId,session.userBId].filter(id=>!session.recordedByUserId || isUserSessionRecorder(session.recordedByUserId,id));
+    const maxRetention = Math.max(getEffectiveEntitlement(session.userA).retentionDays,getEffectiveEntitlement(session.userB).retentionDays);
+    const expiresAt = new Date(Math.min(session.recordingExpiresAt?.getTime()??Infinity,(session.endedAt??session.createdAt).getTime()+maxRetention*86400000));
+    segment = await prisma.$transaction(async tx => {
+      const stored = await tx.recordingSegment.upsert({where:{objectKey:session.recordingUrl!},create:{callId:session.id,objectKey:session.recordingUrl!,egressId:`legacy:${session.id}:${crypto.createHash('sha256').update(session.recordingUrl!).digest('hex')}`,ownerIds,status:'READY',expiresAt},update:{}});
+      if (stored.callId !== session.id || stored.status !== 'READY' || !stored.ownerIds.includes(user.id) || !stored.expiresAt || stored.expiresAt <= now) throw new ActionError(404,'This recording is no longer available.');
+      await tx.recordingDelivery.upsert({where:{segmentId_userId:{segmentId:stored.id,userId:user.id}},create:{segmentId:stored.id,userId:user.id},update:{}});
+      return stored;
+    });
+  }
   if (segment) {
     if (segment.callId !== session.id || segment.status !== 'READY' || !segment.ownerIds.includes(user.id) || !segment.expiresAt || segment.expiresAt <= now) {
       throw new ActionError(404, 'This recording is no longer available.');
@@ -107,22 +122,20 @@ router.post('/sessions/:id/recording-delivery', action(async (req, res) => {
     const delivery = await prisma.$transaction(async tx => {
       // Preserve automatic delivery to every consenting recorder. Creating only
       // one job would make the worker's "no deliveries yet" scan skip the others.
-      const jobs = await Promise.all(segment.ownerIds.map(ownerId => tx.recordingDelivery.upsert({ where: { segmentId_userId: { segmentId: segment.id, userId: ownerId } }, create: { segmentId: segment.id, userId: ownerId }, update: {} })));
-      return jobs.find(job => job.userId === user.id)!;
+      const owners = segment!.egressId.startsWith('legacy:') ? [user.id] : segment!.ownerIds;
+      const jobs = await Promise.all(owners.map(ownerId => tx.recordingDelivery.upsert({ where: { segmentId_userId: { segmentId: segment!.id, userId: ownerId } }, create: { segmentId: segment!.id, userId: ownerId }, update: {} })));
+      let owned = jobs.find(job => job.userId === user.id)!;
+      if (retry && owned.status === 'FAILED') {
+        await tx.recordingDelivery.updateMany({where:{segmentId:owned.segmentId,userId:user.id,status:'FAILED'},data:{status:'QUEUED',nextAttemptAt:now,owner:null,leaseUntil:null,failure:null}});
+        owned = (await tx.recordingDelivery.findUnique({where:{segmentId_userId:{segmentId:owned.segmentId,userId:user.id}}}))!;
+      }
+      return owned;
     });
     if (delivery.status === 'EXPIRED') throw new ActionError(404, 'This recording is no longer available.');
-    const status = delivery.status === 'DONE' ? 'SENT' : 'QUEUED';
-    res.status(status === 'SENT' ? 200 : 202).json({ status });
+    const status = recordingDeliveryStatus(delivery);
+    res.status(status === 'QUEUED' ? 202 : 200).json({ status });
     return;
   }
-  // Older recordings predate segments; retain access checks before sending the file.
-  if (!session.recordingUrl || (session.recordingExpiresAt && session.recordingExpiresAt <= now) || (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId, user.id))) {
-    throw new ActionError(404, 'This recording is no longer available.');
-  }
-  if (!dashboardBot) throw new ActionError(503, 'Telegram delivery is temporarily unavailable. Please retry.');
-  try { await sendLegacyRecording(dashboardBot, user.telegramId, session.recordingUrl); }
-  catch { throw new ActionError(503, 'Audio could not be sent to Telegram. Please retry later.'); }
-  res.json({ status: 'SENT' });
 }));
 router.post('/sessions/:id/rating', action(async (req, res) => {
   const { stars } = z.object({ stars: z.number().int().min(1).max(5) }).strict().parse(req.body);

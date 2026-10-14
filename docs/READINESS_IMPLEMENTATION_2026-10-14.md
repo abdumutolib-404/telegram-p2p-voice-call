@@ -53,10 +53,14 @@ Local screenshots, the review gallery, machine-readable results and reproducible
 4. Confirm historical credential-revocation and recording-reconciliation work independently. This implementation does not establish their completion.
 5. Continue following the repository's `origin/main` process for authorized development publication and verify each frontend hosting build against the new main commit. The readiness corrections, Questions, reconnect window and UI follow-ups have now been published; active frontend versions and Railway successful statuses were checked separately from public health responses.
 
-The provider, integration and historical gates above remain partly open. Ordinary development publication is verified; this does not establish launch readiness or production capacity.
+The provider, integration and historical gates above remain partly open. Ordinary development publication is verified; this does not establish launch readiness or production capacity. The owner subsequently clarified that the requested assessment concerns our backend code, assuming Railway's managed PostgreSQL and Redis are healthy. These broader release cases are evidence limits, not requests for the owner to certify Railway or prerequisites for continued development. See [the scoped backend assessment](BACKEND_READINESS_2026-10-14.md).
 
 ## Development validation handoff
 
 The existing development deployment is the owner's selected environment for validation. Its bot is `ieltsSpeakBot`; the backend is the Railway service linked by this repository's commit status, and the three Cloudflare main-build triggers target the documented development frontends. The local primary-checkout `.env` contains placeholder configuration and is not evidence of Railway's live variables. Cloudflare build metadata and the Railway GitHub commit status can establish deployment revisions without exporting provider credentials. Microphone permission and audible two-way audio still require the two devices.
 
 Environment confirmation does not authorize spending funds, deleting existing recordings or interrupting providers for destructive tests. Those checklist cases require owned disposable fixtures and appropriate test arrangements. Deployment and observed journey results will be recorded separately from the completed local checks.
+
+## Recording delivery follow-up
+
+The code assessment reproduced automatic duplicate sends after an accepted Telegram request lost its acknowledgement. Recording delivery now uses a durable SENDING claim, parks uncertain/interrupted attempts as UNCONFIRMED, accepts late confirmed receipts, and retries known failures without replaying unknown outcomes. History exposes truthful uncertain/rejected statuses. Legacy recordings use the same durable protection while retaining user-requested delivery. The implementation and verification evidence are in [Backend readiness](BACKEND_READINESS_2026-10-14.md). This is a code correction in the existing application, with no new infrastructure or schema migration.

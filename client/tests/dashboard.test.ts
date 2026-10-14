@@ -219,6 +219,30 @@ it('updates queued audio to sent after delivery completes without another user c
   expect(fetchMock).toHaveBeenCalledTimes(3);
 });
 
+it('checks an unconfirmed delivery without submitting a resend request', async () => {
+  window.history.replaceState(null,'','/?view=history');
+  const fetchMock=vi.fn().mockResolvedValueOnce(json({sessions:[conversation],nextCursor:null})).mockResolvedValue(json({status:'UNCONFIRMED'}));
+  vi.stubGlobal('fetch',fetchMock);await render();await act(async()=>button('Send audio').click());
+  expect(container.textContent).toContain('We couldn’t confirm delivery');
+  expect(container.textContent).not.toContain('Queued for Telegram');
+  await act(async()=>button('Check audio').click());
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({});
+  expect(container.textContent).not.toContain('Sent to Telegram');
+});
+it('stops polling an uncertain outcome and retries only a known rejection explicitly', async () => {
+  vi.useFakeTimers();window.history.replaceState(null,'','/?view=history');
+  const fetchMock=vi.fn().mockResolvedValueOnce(json({sessions:[conversation],nextCursor:null})).mockResolvedValueOnce(json({status:'QUEUED'},202)).mockResolvedValueOnce(json({status:'UNCONFIRMED'}));
+  vi.stubGlobal('fetch',fetchMock);await render();await act(async()=>button('Send audio').click());
+  await act(async()=>vi.advanceTimersByTimeAsync(5000));
+  expect(button('Check audio')).toBeTruthy();
+  await act(async()=>vi.advanceTimersByTimeAsync(30000));expect(fetchMock).toHaveBeenCalledTimes(3);
+  fetchMock.mockResolvedValueOnce(json({status:'FAILED'}));
+  await act(async()=>button('Check audio').click());expect(button('Retry audio')).toBeTruthy();
+  fetchMock.mockResolvedValueOnce(json({status:'QUEUED'},202));
+  await act(async()=>button('Retry audio').click());
+  expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body)).toEqual({retry:true});
+});
+
 it('cancels profile edits without changing the displayed or persisted scores', async () => {
   vi.useFakeTimers();
   window.history.replaceState(null, '', '/?view=account');

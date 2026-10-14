@@ -10,10 +10,8 @@ import authRoutes from '../routes/auth';
 import type { Bot } from 'grammy';
 import type { MyContext } from '../bot/types';
 import { notificationQueue } from '../bot/notifications';
-import { sendLegacyRecording } from '../services/recordingDelivery';
 vi.mock('../socket/signaling', () => ({ scheduleConnectionHandshakeTimer: vi.fn(), setRoomDurationLimit: vi.fn() }));
 vi.mock('../bot/notifications', () => ({ notificationQueue: { enqueue: vi.fn().mockResolvedValue(undefined) } }));
-vi.mock('../services/recordingDelivery', () => ({ sendLegacyRecording: vi.fn().mockResolvedValue(undefined) }));
 const app = express(); app.use(express.json()); app.use('/dashboard', dashboardRoutes); app.use('/auth', authRoutes);
 app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => res.status(500).json({ error: error.message }));
 const consent = { onboarded: true, termsAcceptedVersion: currentTerms.version, termsAcceptedAt: new Date(), termsDocumentSha256: currentTerms.sha256 };
@@ -26,7 +24,7 @@ const signed = (id: bigint) => {
 let sequence = 910000000n;
 async function member(data = {}) { sequence++; return prisma.user.create({ data: { telegramId: sequence, alias: `P2P-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, ...consent, ...data } }); }
 describe('Telegram-only member dashboard', () => {
-  beforeEach(() => { setDashboardBot({ token: 'synthetic-token' } as Bot<MyContext>); vi.mocked(notificationQueue.enqueue).mockReset().mockResolvedValue(undefined); vi.mocked(sendLegacyRecording).mockReset().mockResolvedValue(undefined); });
+  beforeEach(() => { setDashboardBot({ token: 'synthetic-token' } as Bot<MyContext>); vi.mocked(notificationQueue.enqueue).mockReset().mockResolvedValue(undefined); });
   it('stores optional report details with the reason and rejects oversized details', async () => {
     const [a, b] = await Promise.all([member(), member()]);
     const session = await prisma.callSession.create({ data: { userAId: a.id, userBId: b.id, roomName: crypto.randomUUID(), status: 'COMPLETED' } });
@@ -143,7 +141,6 @@ describe('Telegram-only member dashboard', () => {
     await prisma.recordingDelivery.update({ where: { segmentId_userId: { segmentId: segment.id, userId: a.id } }, data: { status: 'DONE', telegramMessageId: 50 } });
     const sent = await request(app).post(route).set('x-telegram-init-data', token).send({ segmentId: segment.id });
     expect(sent.status).toBe(200); expect(sent.body.status).toBe('SENT');
-    expect(sendLegacyRecording).not.toHaveBeenCalled();
   });
   it('rejects foreign, expired and unfinished segments and a request without Telegram delivery available', async () => {
     const [a, b] = await Promise.all([member(), member()]);
@@ -170,15 +167,42 @@ describe('Telegram-only member dashboard', () => {
     expect(await prisma.recordingDelivery.count({ where: { segmentId: segment.id } })).toBe(2);
     expect(await prisma.recordingDelivery.findUnique({ where: { segmentId_userId: { segmentId: segment.id, userId: b.id } } })).toMatchObject({ status: 'QUEUED' });
   });
-  it('sends legacy audio only to the authenticated recorder and does not confirm a failed Telegram upload', async () => {
-    const [a, b] = await Promise.all([member(), member()]);
-    const session = await prisma.callSession.create({ data: { userAId: a.id, userBId: b.id, roomName: crypto.randomUUID(), status: 'COMPLETED', endedAt: new Date(), recordingUrl: 'private-key', recordedByUserId: a.id, recordingExpiresAt: new Date(Date.now() + 86400000) } });
+  it('queues legacy audio durably for the requesting recorder and preserves its access checks', async () => {
+    const [a,b] = await Promise.all([member(),member()]);
+    const session = await prisma.callSession.create({data:{userAId:a.id,userBId:b.id,roomName:crypto.randomUUID(),status:'COMPLETED',endedAt:new Date(),recordingUrl:'legacy-private-key',recordedByUserId:a.id,recordingExpiresAt:new Date(Date.now()+86400000)}});
     const route = `/dashboard/sessions/${session.id}/recording-delivery`;
-    expect((await request(app).post(route).set('x-telegram-init-data', signed(b.telegramId)).send({})).status).toBe(404);
-    const sent = await request(app).post(route).set('x-telegram-init-data', signed(a.telegramId)).send({});
-    expect(sent.body.status).toBe('SENT'); expect(sendLegacyRecording).toHaveBeenCalledWith(expect.anything(), a.telegramId, 'private-key');
-    vi.mocked(sendLegacyRecording).mockRejectedValueOnce(new Error('Synthetic Telegram failure'));
-    expect((await request(app).post(route).set('x-telegram-init-data', signed(a.telegramId)).send({})).status).toBe(503);
+    expect((await request(app).post(route).set('x-telegram-init-data',signed(b.telegramId)).send({})).status).toBe(404);
+    for (let attempt=0;attempt<2;attempt++) expect((await request(app).post(route).set('x-telegram-init-data',signed(a.telegramId)).send({})).body.status).toBe('QUEUED');
+    const segment = await prisma.recordingSegment.findFirst({where:{callId:session.id}});
+    expect(segment).toMatchObject({status:'READY',ownerIds:[a.id]});
+    expect(segment!.egressId.startsWith('legacy:')).toBe(true);
+    expect(await prisma.recordingDelivery.count({where:{segmentId:segment!.id}})).toBe(1);
+    await prisma.recordingDelivery.update({where:{segmentId_userId:{segmentId:segment!.id,userId:a.id}},data:{status:'DONE',telegramMessageId:42}});
+    expect((await request(app).post(route).set('x-telegram-init-data',signed(a.telegramId)).send({})).body.status).toBe('SENT');
+  });
+  it('does not deliver a legacy recording to another owner until they request it', async () => {
+    const [a,b] = await Promise.all([member(),member()]);
+    const session = await prisma.callSession.create({data:{userAId:a.id,userBId:b.id,roomName:crypto.randomUUID(),status:'COMPLETED',endedAt:new Date(),recordingUrl:'legacy-shared-key',recordedByUserId:'BOTH',recordingExpiresAt:new Date(Date.now()+86400000)}});
+    const route = `/dashboard/sessions/${session.id}/recording-delivery`;
+    for (let attempt=0;attempt<2;attempt++) await request(app).post(route).set('x-telegram-init-data',signed(a.telegramId)).send({});
+    expect(await prisma.recordingDelivery.count({where:{userId:b.id}})).toBe(0);
+    await request(app).post(route).set('x-telegram-init-data',signed(b.telegramId)).send({});
+    expect(await prisma.recordingDelivery.count({where:{userId:b.id}})).toBe(1);
+  });
+  it('keeps unconfirmed deliveries parked and retries known rejections only on explicit request', async () => {
+    const [a,b] = await Promise.all([member(),member()]);
+    const session = await prisma.callSession.create({data:{userAId:a.id,userBId:b.id,roomName:crypto.randomUUID(),status:'COMPLETED',endedAt:new Date()}});
+    const segment = await prisma.recordingSegment.create({data:{callId:session.id,objectKey:crypto.randomUUID(),egressId:crypto.randomUUID(),ownerIds:[a.id],status:'READY',expiresAt:new Date(Date.now()+86400000)}});
+    const key={segmentId:segment.id,userId:a.id};
+    await prisma.recordingDelivery.create({data:{...key,status:'UNCONFIRMED'}});
+    const send=(retry=false)=>request(app).post(`/dashboard/sessions/${session.id}/recording-delivery`).set('x-telegram-init-data',signed(a.telegramId)).send({segmentId:segment.id,...(retry?{retry:true}:{})});
+    expect((await send(true)).body.status).toBe('UNCONFIRMED');
+    expect((await prisma.recordingDelivery.findUnique({where:{segmentId_userId:key}}))?.status).toBe('UNCONFIRMED');
+    await prisma.recordingDelivery.update({where:{segmentId_userId:key},data:{status:'FAILED'}});
+    expect((await send()).body.status).toBe('FAILED');
+    expect((await send(true)).body.status).toBe('QUEUED');
+    await prisma.recordingDelivery.update({where:{segmentId_userId:key},data:{status:'SENDING',leaseUntil:new Date(Date.now()-1000)}});
+    expect((await send()).body.status).toBe('UNCONFIRMED');
   });
   it('sends a saved-partner invitation and accepts it exactly once', async () => {
     const [a, b] = await Promise.all([member(), member()]);

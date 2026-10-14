@@ -19,6 +19,8 @@ The 2026-10-04 review found unavailable Railway services and missing or mismatch
 | --- | --- |
 | Stars REFUND_PROCESSING / provider ambiguity | Check provider and saved charge state; use existing recovery, avoiding a second manual refund |
 | Notification UNCONFIRMED | Reconcile whether Telegram delivered before requeueing |
+| Recording delivery UNCONFIRMED | Check the existing Telegram conversation/receipt before any resend. Dashboard status checks never requeue uncertain outcomes; late confirmed receipts can settle the original claim. |
+| Recording delivery FAILED | Resolve the known Telegram rejection, then use the explicit History retry action. Ordinary status polling does not retry. |
 | Backlogged PostCallJob | Check leases, retries, database health, and oldest eligible work |
 | Recording deletion failure | Restore storage access/delete permissions; retain keys for retry |
 | Historical orphan object / missing owner metadata | Reconcile storage listings and retained logs; do not infer ownership from absence |

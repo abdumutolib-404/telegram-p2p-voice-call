@@ -5,7 +5,7 @@ import { PlansModal } from './PlansModal';
 import { DashboardDialog } from './DashboardDialog';
 import { MotionPresence } from './MotionPresence';
 import { HistoryMark } from './HistoryMark';
-import { RecordingAction } from './RecordingAction';
+import { RecordingAction, type RecordingDeliveryStatus } from './RecordingAction';
 import { DashboardMenu } from './DashboardMenu';
 import { Brand } from './Brand';
 import { AllowanceDetails } from './AllowanceDetails';
@@ -34,7 +34,7 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
   });
   const [feedback, setFeedback] = useState<Record<string, { message: string; error: boolean }>>({});
   const [savingSession, setSavingSession] = useState<Session | null>(null);
-  const [delivered, setDelivered] = useState<Record<string, 'QUEUED' | 'SENT'>>({});
+  const [delivered, setDelivered] = useState<Record<string, RecordingDeliveryStatus>>({});
   const [confirmRemove, setConfirmRemove] = useState<Partner | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [reportingSession, setReportingSession] = useState<Session | null>(null);
@@ -140,19 +140,19 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
         for (const [key] of queued) {
           const [, sessionId, segmentId] = key.split(':');
           try {
-            const data = await dashboardRequest<{ status: 'QUEUED' | 'SENT' }>(initData, `/sessions/${sessionId}/recording-delivery`, { method: 'POST', body: JSON.stringify(segmentId === 'latest' ? {} : { segmentId }), signal: controller.signal });
-            if (!controller.signal.aborted && data.status === 'SENT') {
+            const data = await dashboardRequest<{ status: RecordingDeliveryStatus }>(initData, `/sessions/${sessionId}/recording-delivery`, { method: 'POST', body: JSON.stringify(segmentId === 'latest' ? {} : { segmentId }), signal: controller.signal });
+            if (!controller.signal.aborted && ['SENT','UNCONFIRMED','FAILED'].includes(data.status)) {
               remaining.delete(key);
-              setDelivered(previous => ({ ...previous, [key]: 'SENT' }));
-              setActionStates(previous => ({ ...previous, [key]: 'success' }));
-              setFeedback(previous => ({ ...previous, [`session:${sessionId}`]: { message: 'Sent to your PairTalk conversation in Telegram.', error: false } }));
+              setDelivered(previous => ({ ...previous, [key]: data.status }));
+              setActionStates(previous => ({ ...previous, [key]: data.status === 'SENT' ? 'success' : 'error' }));
+              setFeedback(previous => ({ ...previous, [`session:${sessionId}`]: { message: data.status === 'SENT' ? 'Sent to your PairTalk conversation in Telegram.' : '', error: false } }));
             }
           } catch (err) {
             if (isAccessError(err)) reportError(err);
           }
         }
       }
-      if (!controller.signal.aborted && checks < 12) timer = window.setTimeout(() => void check(), 5000);
+      if (!controller.signal.aborted && remaining.size && checks < 12) timer = window.setTimeout(() => void check(), 5000);
       else if (!controller.signal.aborted && remaining.size) {
         setDelivered(previous => { const updated = { ...previous }; remaining.forEach(key => { if (updated[key] === 'QUEUED') delete updated[key]; }); return updated; });
         setActionStates(previous => { const updated = { ...previous }; remaining.forEach(key => { updated[key] = 'error'; }); return updated; });
@@ -243,12 +243,12 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     setFeedback(previous => ({ ...previous, [`session:${sessionId}`]: { message: '', error: false } }));
     const controller = new AbortController(); controllers.current.add(controller);
     try {
-      const data = await dashboardRequest<{ status: 'QUEUED' | 'SENT' }>(initData, `/sessions/${sessionId}/recording-delivery`, { method: 'POST', body: JSON.stringify(segmentId ? { segmentId } : {}), signal: controller.signal });
+      const data = await dashboardRequest<{ status: RecordingDeliveryStatus }>(initData, `/sessions/${sessionId}/recording-delivery`, { method: 'POST', body: JSON.stringify({ ...(segmentId ? { segmentId } : {}), ...(delivered[key] === 'FAILED' ? { retry: true } : {}) }), signal: controller.signal });
       if (!alive.current) return;
-      if (!['QUEUED', 'SENT'].includes(data.status)) throw new Error('Delivery status is unavailable. Please retry.');
+      if (!['QUEUED', 'SENT', 'UNCONFIRMED', 'FAILED'].includes(data.status)) throw new Error('Delivery status is unavailable. Please retry.');
       setDelivered(previous => ({ ...previous, [key]: data.status }));
-      setActionStates(previous => ({ ...previous, [key]: data.status === 'SENT' ? 'success' : 'pending' }));
-      setFeedback(previous => ({ ...previous, [`session:${sessionId}`]: { message: data.status === 'SENT' ? 'Sent to your PairTalk conversation in Telegram.' : 'Queued for Telegram. The bot will send your audio when delivery completes.', error: false } }));
+      setActionStates(previous => ({ ...previous, [key]: data.status === 'SENT' ? 'success' : data.status === 'QUEUED' ? 'pending' : 'error' }));
+      setFeedback(previous => ({ ...previous, [`session:${sessionId}`]: { message: data.status === 'SENT' ? 'Sent to your PairTalk conversation in Telegram.' : data.status === 'QUEUED' ? 'Queued for Telegram. The bot will send your audio when delivery completes.' : '', error: false } }));
     } catch (err) {
       if (!alive.current || (err instanceof Error && err.name === 'AbortError')) return;
       if (isAccessError(err)) reportError(err);

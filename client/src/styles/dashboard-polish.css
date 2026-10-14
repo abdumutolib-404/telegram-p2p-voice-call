@@ -27,6 +27,7 @@
 .history-recordings .audio-action button { min-height: 48px; max-width: 100%; padding: 10px 14px; color: var(--on-accent); background: var(--accent); border-color: transparent; font-size: 14px; }
 .history-recordings .audio-action button:hover:not(:disabled) { background: var(--accent-press); }
 .history-audio-expiry { font-size: 12px; color: var(--text-2); line-height: 1.6; overflow-wrap: anywhere; }
+.history-recordings .audio-delivery-warning { display: block; margin-top: 8px; max-width: 38ch; color: var(--text-2); font-size: 13px; line-height: 1.6; }
 .dashboard-card .history-no-audio { font-size: 13px; line-height: 1.6; }
 .dashboard-view-history .dashboard-rating { border-top: 1px solid var(--border); padding-top: 12px; }
 .dashboard-view-history .dashboard-rating.is-done { border: 0; padding: 0; }

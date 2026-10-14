@@ -4,6 +4,8 @@ The bot handles registration, Terms of Use consent, payments, refunds, billing s
 
 Calls, recordings, call-quality ratings, safety reports, saved partners, invitations, referral information, the active contest and speaking-profile preferences live in the responsive client dashboard. Older bot buttons route to the corresponding dashboard view. Post-call notifications link to the particular conversation. Ratings and reports are independent; each is recorded once per participant and conversation. Reports retain the existing moderation ladder.
 
+History's Send to Telegram action uses a durable receipt for both current segments and older recordings. The signed delivery endpoint returns QUEUED until work finishes, SENT after a confirmed message ID, UNCONFIRMED when a send outcome is uncertain, or FAILED for a known rejection. An uncertain attempt is not automatically resent; the UI offers a status check and asks the user to check their bot conversation. A known rejection offers an explicit retry (`retry: true`). Ordinary polling never resets FAILED or UNCONFIRMED. Recorder ownership and retention still apply to every request.
+
 ## Registration agreement
 
 1. `/start` sends the PDF before score selection. An existing account without current consent also receives it.
