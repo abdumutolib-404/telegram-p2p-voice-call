@@ -16,6 +16,7 @@ Reviewed against the working tree on 2026-10-05. These files describe the reposi
 | [Operations](OPERATIONS.md) | Recovery, release requirements, and unresolved decisions |
 | [Verification](VERIFICATION.md) | Reproducible checks and dated evidence |
 | [Readiness implementation](READINESS_IMPLEMENTATION_2026-10-14.md) | Call recovery, allowance clarity and current verification limits |
+| [Development validation](DEVELOPMENT_VALIDATION_2026-10-14.md) | Deployed revision evidence, device observations and questions UI follow-up |
 | [Staging readiness checklist](STAGING_READINESS_CHECKLIST.md) | Real-provider and rollout gates still to execute |
 | [Cross-device audio](WEBRTC_CROSS_DEVICE_AUDIO_GUIDE.md) | Audio implementation and physical-device test checklist |
 

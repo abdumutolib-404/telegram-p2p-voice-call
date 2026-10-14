@@ -25,6 +25,7 @@ let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks(); fixture.events.clear(); fixture.voice.error = null;
+  fixture.socket.connected = true;
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   fixture.voice.connect.mockResolvedValue();
   // No audio device/canvas is needed to verify app transitions; jsdom cannot render canvas.
@@ -60,6 +61,24 @@ async function startCall() {
   await emit('match_found', { roomName: 'synthetic-room', livekitToken: 'synthetic-token', partnerAlias: 'Fixture partner', partnerBand: 7, callDurationLimit: 900 });
   expect(fixture.peerReady).toHaveBeenCalledWith('synthetic-room');
 }
+
+it('waits for socket connection and joins once, then rejoins once after a disconnect', async () => {
+  fixture.socket.connected = false;
+  await search();
+  expect(fixture.join).not.toHaveBeenCalled();
+  expect(container.textContent).toContain('Connecting to matchmaking');
+  fixture.socket.connected = true;
+  await emit('connect', undefined);
+  expect(fixture.join).toHaveBeenCalledOnce();
+  await emit('queue_joined', { status: 'searching' });
+  expect(container.textContent).toContain('Searching for a match');
+  fixture.socket.connected = false;
+  await act(async () => root.render(createElement(App)));
+  expect(fixture.join).toHaveBeenCalledOnce();
+  fixture.socket.connected = true;
+  await emit('connect', undefined);
+  expect(fixture.join).toHaveBeenCalledTimes(2);
+});
 
 it('sends one finish request when the user ends a call', async () => {
   await startCall();

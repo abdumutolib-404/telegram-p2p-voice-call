@@ -502,12 +502,13 @@ export const App: React.FC = () => {
 
     // Auto-join queue when in radar state & handle reconnection
     const handleRejoin = () => {
+      if (!socket.connected) return;
       socketService.joinQueue(userData);
       hasJoinedQueueRef.current = true;
     };
 
     if (appState === 'radar') {
-      if (!hasJoinedQueueRef.current || !socket.connected) {
+      if (!hasJoinedQueueRef.current && socket.connected) {
         handleRejoin();
       }
       socket.on('connect', handleRejoin);

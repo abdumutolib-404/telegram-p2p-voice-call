@@ -53,7 +53,7 @@ func (b *claimBarrier) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 }
 
 func TestConcurrentJoinCannotStrandCompatibleUsers(t *testing.T) {
-	for _, bands := range [][2]float64{{6.5, 6.5}, {9, 8.5}, {8.5, 9}} {
+	for _, bands := range [][2]float64{{6.5, 6.5}, {7.5, 7.5}, {7.5, 7.0}, {7.0, 7.5}, {9, 8.5}, {8.5, 9}} {
 		t.Run(fmtBands(bands), func(t *testing.T) {
 			client, _ := queueTestClient(t)
 			client.AddHook(&claimBarrier{ready: make(chan struct{})})

@@ -49,7 +49,7 @@ it('ignores an obsolete question body after a different part is selected', async
     return json({ success: true, questions: [{ id: 'new-question', topicId: 'topic', part: 'PART_2', questionText: 'Current part-two prompt', questionType: 'CUE_CARD', source: 'synthetic', cueCardBullets: JSON.stringify(['Valid bullet']) }] });
   }));
   await render(true);
-  const button = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('PART 2'));
+  const button = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Part 2'));
   await act(async () => button!.click());
   await act(async () => resolveBody({ success: true, questions: [{ id: 'old-question', part: 'PART_1', questionText: 'Obsolete prompt' }] }));
   expect(container.textContent).toContain('Current part-two prompt');
@@ -69,7 +69,7 @@ it('supports keyboard dismissal and restores the opener focus', async () => {
 it('does not steal question focus when the parent call clock rerenders with a new close callback', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, questions: [], topics: [] })));
   await act(async () => root.render(createElement(QuestionsDrawer, { isOpen: true, onClose: () => close('first') })));
-  const part = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('PART 2'))!;
+  const part = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Part 2'))!;
   part.focus();
   await act(async () => root.render(createElement(QuestionsDrawer, { isOpen: true, onClose: () => close('latest') })));
   expect(document.activeElement).toBe(part);
@@ -82,7 +82,7 @@ it('handles malformed cue-card bullets without crashing the call interface', asy
     success: true, questions: [{ id: 'malformed-cue', topicId: 'topic', part: 'PART_2', questionText: 'A safe cue-card prompt', questionType: 'CUE_CARD', source: 'synthetic', cueCardBullets: JSON.stringify([{ unexpected: 'object' }, 'A valid bullet']) }],
   })));
   await render(true);
-  const button = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('PART 2'));
+  const button = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Part 2'));
   await act(async () => button!.click());
   expect(container.textContent).toContain('A safe cue-card prompt');
   expect(container.textContent).toContain('A valid bullet');
@@ -93,21 +93,21 @@ it('handles malformed cue-card bullets without crashing the call interface', asy
 const openCueCard = async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, questions: [], topics: [] })));
   await render(true);
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('PART 2'))!.click());
+  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Part 2'))!.click());
 };
 
 it('keeps cue-card phase deadlines when the browser delays timer callbacks', async () => {
   vi.useFakeTimers(); const startedAt = new Date('2026-10-03T06:00:00Z'); vi.setSystemTime(startedAt);
   await openCueCard();
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Prep (1m)'))!.click());
+  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Start preparation'))!.click());
   // Background tabs can postpone callbacks without pausing elapsed practice time.
   vi.setSystemTime(startedAt.getTime() + 75000);
   await act(async () => vi.advanceTimersByTimeAsync(1000));
-  expect(container.textContent).toContain('Candidate Speaking');
+  expect(container.textContent).toContain('Speaking');
   expect(container.textContent).toContain('01:44');
   vi.setSystemTime(startedAt.getTime() + 190000);
   await act(async () => document.dispatchEvent(new Event('visibilitychange')));
-  expect(container.textContent).toContain('Time Complete');
+  expect(container.textContent).toContain('Timer complete');
   expect(container.textContent).toContain('00:00');
   expect(vi.getTimerCount()).toBe(0);
 });
@@ -115,18 +115,18 @@ it('keeps cue-card phase deadlines when the browser delays timer callbacks', asy
 it('starts a fresh speaking deadline when preparation is skipped and clears it on close', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-03T06:00:00Z'));
   await openCueCard();
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Prep (1m)'))!.click());
+  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Start preparation'))!.click());
   await act(async () => vi.advanceTimersByTimeAsync(20000));
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Speak (2m)'))!.click());
+  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Start speaking'))!.click());
   expect(container.textContent).toContain('02:00');
   await act(async () => vi.advanceTimersByTimeAsync(120000));
-  expect(container.textContent).toContain('Time Complete');
+  expect(container.textContent).toContain('Timer complete');
   await render(false);
   expect(vi.getTimerCount()).toBe(0);
   await render(true);
-  expect(container.textContent).toContain('Exam Prep Timer');
+  expect(container.textContent).toContain('Practice timer');
   expect(container.textContent).toContain('01:00');
   await act(async () => vi.advanceTimersByTimeAsync(180000));
-  expect(container.textContent).toContain('Exam Prep Timer');
+  expect(container.textContent).toContain('Practice timer');
   expect(container.textContent).toContain('01:00');
 });

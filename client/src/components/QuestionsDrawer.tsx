@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PendingIcon } from './CopyLink';
-import { X, ChevronLeft, ChevronRight, Play, RotateCcw, Sparkles, Clock, BookOpen } from 'lucide-react';
+import '../styles/questions.css';
+import { X, ChevronLeft, ChevronRight, Play, RotateCcw, Clock, BookOpen } from 'lucide-react';
 
 export interface IeltsTopicItem {
   id: string;
@@ -227,6 +228,18 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
+  const currentQuestionId = questions[currentIndex]?.id;
+  useEffect(() => {
+    if (!isOpen) return;
+    const panel = panelRef.current;
+    const content = panel?.querySelector<HTMLElement>('.question-content');
+    if (!panel || !content) return;
+    content.scrollTop = 0;
+    if (panel.scrollTop > 0) {
+      const headingHeight = panel.querySelector<HTMLElement>('.questions-heading')?.offsetHeight ?? 0;
+      panel.scrollTop = Math.max(0, content.offsetTop - headingHeight);
+    }
+  }, [isOpen, activePart, selectedTopicId, currentIndex, currentQuestionId]);
 
   // Cue card timers
   const [timerState, setTimerState] = useState<TimerState>('READY');
@@ -418,251 +431,67 @@ export const QuestionsDrawer: React.FC<QuestionsDrawerProps> = ({ isOpen, onClos
   }
 
   return (
-    <div id="practice-questions" ref={panelRef} role="dialog" aria-label="IELTS practice questions" className="questions-drawer">
-      {/* Header Bar */}
-      <div className="px-4 py-3 bg-[#141b23] border-b border-slate-800/80 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-mint-400">
-          <BookOpen className="w-4 h-4" />
-          <span className="text-xs font-bold tracking-normal text-white">Practice prompts</span>
+    <div id="practice-questions" ref={panelRef} role="dialog" aria-labelledby="questions-title" className="questions-drawer questions-panel">
+      <header className="questions-heading">
+        <div>
+          <span className="questions-eyebrow"><BookOpen size={15} aria-hidden="true" /> Speaking practice</span>
+          <h2 id="questions-title">Practice prompts</h2>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close questions"
-          className="p-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <button type="button" onClick={onClose} aria-label="Close questions" className="questions-close"><X size={20} aria-hidden="true" /></button>
+      </header>
+
+      <div className="questions-filters">
+        <div className="questions-parts" role="group" aria-label="Speaking part">
+          {([
+            ['PART_1', 'Part 1', 'Introduction'],
+            ['PART_2', 'Part 2', 'Cue card'],
+            ['PART_3', 'Part 3', 'Discussion'],
+          ] as const).map(([part, label, description]) => (
+            <button key={part} type="button" aria-pressed={activePart === part} onClick={() => { setActivePart(part); resetCueCardTimer(); }}>
+              <strong>{label}</strong><span>{description}</span>
+            </button>
+          ))}
+        </div>
+        <div className="questions-topic"><label htmlFor="questions-topic">Topic</label>
+          <select id="questions-topic" value={selectedTopicId} onChange={event => setSelectedTopicId(event.target.value)}>
+            {topics.map(topic => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
+          </select>
+        </div>
       </div>
 
-      {/* Part Switcher Navigation */}
-      <div className="flex border-b border-slate-800 bg-[#0b0f14] text-xs">
-        <button
-          type="button"
-          aria-pressed={activePart === 'PART_1'}
-          onClick={() => {
-            setActivePart('PART_1');
-            resetCueCardTimer();
-          }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-normal transition-colors cursor-pointer ${
-            activePart === 'PART_1'
-              ? 'bg-mint-500/20 text-mint-300 border-b-2 border-mint-400'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          PART 1 • Intro
-        </button>
-        <button
-          type="button"
-          aria-pressed={activePart === 'PART_2'}
-          onClick={() => {
-            setActivePart('PART_2');
-            resetCueCardTimer();
-          }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-normal transition-colors cursor-pointer ${
-            activePart === 'PART_2'
-              ? 'bg-mint-500/20 text-mint-300 border-b-2 border-mint-400'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          PART 2 • Cue Card
-        </button>
-        <button
-          type="button"
-          aria-pressed={activePart === 'PART_3'}
-          onClick={() => {
-            setActivePart('PART_3');
-            resetCueCardTimer();
-          }}
-          className={`flex-1 py-2.5 text-center font-bold tracking-normal transition-colors cursor-pointer ${
-            activePart === 'PART_3'
-              ? 'bg-mint-500/20 text-mint-300 border-b-2 border-mint-400'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          PART 3 • Discussion
-        </button>
-      </div>
-
-      {/* Horizontal Topic Filter Scroll */}
-      <div className="px-3 py-2 bg-[#0b0f14] border-b border-slate-800/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-[11px]">
-        {topics.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            aria-pressed={selectedTopicId === t.id}
-            onClick={() => setSelectedTopicId(t.id)}
-            className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors cursor-pointer ${
-              selectedTopicId === t.id
-                ? 'bg-mint-400 text-slate-950 font-bold'
-                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {t.name}
-          </button>
-        ))}
-      </div>
-
-      {/* Main Content Area */}
-      <div className="question-content p-4 flex-1 overflow-y-auto min-h-0 flex flex-col justify-between" aria-busy={isLoading}>
-        {isLoading && questions.length > 0 && <p role="status" className="loading-state"><PendingIcon />Updating questions…</p>}
-        {questionNotice && <p role="status" className="text-xs text-slate-400 mb-3">{questionNotice}</p>}
+      <div className="question-content" aria-busy={isLoading}>
+        {(isLoading || questionNotice) && <p role="status" className="questions-notice">{isLoading && <PendingIcon />}{isLoading ? 'Updating questions…' : questionNotice}</p>}
         {isLoading && questions.length === 0 ? (
-          <div className="flex items-center justify-center my-auto py-8 text-xs text-slate-400 gap-2">
-            <Sparkles className="w-4 h-4 animate-spin text-mint-400" />
-            <span>Loading questions…</span>
-          </div>
+          <p className="questions-empty" role="status">Loading questions…</p>
         ) : !currentQuestion ? (
-          <div className="text-center my-auto py-6 text-xs text-slate-500">
-            No questions available for this filter.
-          </div>
+          <div className="questions-empty"><BookOpen size={24} aria-hidden="true" /><p>No questions for this topic yet.</p><span>Choose another topic or speaking part.</span></div>
         ) : (
-          <div key={`${activePart}:${selectedTopicId}:${currentQuestion.id}:${currentIndex}`} className="space-y-3 my-auto">
-            {/* Question Counter & Topic Badge */}
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span className="font-bold text-mint-400">
-                Question {currentIndex + 1} of {questions.length}
-              </span>
-              <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-slate-300">
-                {currentQuestion.topic?.name || 'General'}
-              </span>
-            </div>
-
-            {/* Prompt Text */}
-            <div className="text-sm font-semibold text-white leading-relaxed bg-[#141b23] border border-slate-800/80 p-3.5 rounded-2xl shadow-inner">
-              {currentQuestion.questionText}
-            </div>
-
-            {/* Part 2 Cue Card Bullets & Timers */}
-            {activePart === 'PART_2' && (
-              <div className="space-y-3 pt-1">
-                {parsedBullets.length > 0 && (
-                  <div className="bg-[#0b0f14] border border-slate-800 p-3 rounded-xl text-xs space-y-1.5 text-slate-300">
-                    <p className="text-slate-400 font-bold tracking-normal text-[10px]">You should say:</p>
-                    <ul className="list-disc list-inside space-y-1 text-slate-200 font-sans">
-                      {parsedBullets.map((bullet, idx) => (
-                        <li key={idx}>{bullet}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Preparation & Speaking Countdown Box */}
-                <div className="p-3 bg-gradient-to-r from-slate-900 to-[#141b23] border border-mint-500/30 rounded-2xl cue-timer flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                        timerState === 'PREPARING'
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                          : timerState === 'SPEAKING'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                          : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      <Clock className="w-4 h-4 animate-pulse" />
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-bold text-slate-400">
-                        {timerState === 'READY' && 'Exam Prep Timer'}
-                        {timerState === 'PREPARING' && 'Preparation Phase (1:00)'}
-                        {timerState === 'SPEAKING' && 'Candidate Speaking (2:00)'}
-                        {timerState === 'COMPLETED' && 'Time Complete'}
-                      </div>
-                      <div
-                        className={`text-lg font-semibold tracking-normal ${
-                          timerState === 'PREPARING'
-                            ? 'text-amber-400'
-                            : timerState === 'SPEAKING'
-                            ? 'text-emerald-400'
-                            : 'text-white'
-                        }`}
-                      >
-                        {formatTimerDisplay(timerSeconds)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Timer Controls */}
-                  <div className="flex items-center gap-1.5">
-                    {timerState === 'READY' && (
-                      <button
-                        type="button"
-                        onClick={startPreparationTimer}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-md shadow-amber-500/20"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Prep (1m)</span>
-                      </button>
-                    )}
-                    {timerState === 'PREPARING' && (
-                      <button
-                        type="button"
-                        onClick={startSpeakingTimer}
-                        className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-md shadow-emerald-500/20"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Speak (2m)</span>
-                      </button>
-                    )}
-                    {(timerState === 'PREPARING' || timerState === 'SPEAKING' || timerState === 'COMPLETED') && (
-                      <button
-                        type="button"
-                        onClick={resetCueCardTimer}
-                        aria-label="Reset cue-card timer"
-                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors cursor-pointer"
-                        title="Reset Timer"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+          <article className="question-card" key={`${activePart}:${selectedTopicId}:${currentQuestion.id}:${currentIndex}`}>
+            <div className="question-meta"><span>Question {currentIndex + 1} of {questions.length}</span><span>{currentQuestion.topic?.name || 'General'}</span></div>
+            <h3 className="question-prompt">{currentQuestion.questionText}</h3>
+            {activePart === 'PART_2' && <>
+              {parsedBullets.length > 0 && <div className="question-cue-points"><p>You should say:</p><ul>{parsedBullets.map((bullet, index) => <li key={index}>{bullet}</li>)}</ul></div>}
+              <div className="cue-timer questions-timer" data-phase={timerState.toLowerCase()}>
+                <div className="questions-timer-heading"><Clock size={18} aria-hidden="true" /><span>
+                  {timerState === 'READY' ? 'Practice timer' : timerState === 'PREPARING' ? 'Preparation' : timerState === 'SPEAKING' ? 'Speaking' : 'Timer complete'}
+                </span><strong>{formatTimerDisplay(timerSeconds)}</strong></div>
+                <p>{timerState === 'READY' ? '1 minute to prepare, then 2 minutes to speak.' : timerState === 'PREPARING' ? 'Make a few notes. Speaking starts when preparation ends.' : timerState === 'SPEAKING' ? 'Keep speaking until the timer ends.' : 'Swap roles or move on to another prompt.'}</p>
+                <div className="questions-timer-actions">
+                  {timerState === 'READY' && <button type="button" className="questions-timer-start" onClick={startPreparationTimer}><Play size={15} aria-hidden="true" />Start preparation</button>}
+                  {timerState === 'PREPARING' && <button type="button" className="questions-timer-start" onClick={startSpeakingTimer}><Play size={15} aria-hidden="true" />Start speaking</button>}
+                  {timerState !== 'READY' && <button type="button" onClick={resetCueCardTimer} aria-label="Reset cue-card timer"><RotateCcw size={16} aria-hidden="true" />Reset</button>}
                 </div>
               </div>
-            )}
-          </div>
+            </>}
+          </article>
         )}
-
-        {/* Navigation Arrows */}
-        <div className="question-navigation flex items-center justify-between pt-3 mt-3 border-t border-slate-800/80">
-          <button
-            type="button"
-            disabled={currentIndex === 0}
-            onClick={() => {
-              setCurrentIndex((prev) => Math.max(0, prev - 1));
-              resetCueCardTimer();
-            }}
-            className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 text-xs font-bold transition-all cursor-pointer ${
-              currentIndex === 0
-                ? 'opacity-40 border-slate-800 text-slate-500 cursor-not-allowed'
-                : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-mint-500/50 hover:text-mint-300'
-            }`}
-          >
-            <ChevronLeft className="w-3.5 h-3.5" />
-            <span>Previous</span>
-          </button>
-
-          <span className="text-[11px] text-slate-500">
-            Choose Previous or Next
-          </span>
-
-          <button
-            type="button"
-            disabled={currentIndex >= questions.length - 1}
-            onClick={() => {
-              setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1));
-              resetCueCardTimer();
-            }}
-            className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 text-xs font-bold transition-all cursor-pointer ${
-              currentIndex >= questions.length - 1
-                ? 'opacity-40 border-slate-800 text-slate-500 cursor-not-allowed'
-                : 'border-mint-500/50 bg-mint-500/10 text-mint-300 hover:bg-mint-500/20'
-            }`}
-          >
-            <span>Next</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
       </div>
+
+      <footer className="question-navigation">
+        <button type="button" disabled={currentIndex === 0 || !currentQuestion} onClick={() => { setCurrentIndex(previous => Math.max(0, previous - 1)); resetCueCardTimer(); }}><ChevronLeft size={18} aria-hidden="true" />Previous</button>
+        <button type="button" className="question-next" disabled={!currentQuestion || currentIndex >= questions.length - 1} onClick={() => { setCurrentIndex(previous => Math.min(questions.length - 1, previous + 1)); resetCueCardTimer(); }}>Next<ChevronRight size={18} aria-hidden="true" /></button>
+      </footer>
     </div>
   );
+
 };
