@@ -875,7 +875,10 @@ export function getCanonicalKeywords(keywords: string[]): string[] {
   // re-instantiating RegExp objects in an O(N^2) inner loop (reduces execution time by ~82%).
   const resultItems: { kw: string; regex: RegExp }[] = [];
   for (const kw of sorted) {
-    const isPluralOfExisting = resultItems.some((item) => item.regex.test(kw));
+    const isPluralOfExisting = resultItems.some((item) => {
+      item.regex.lastIndex = 0;
+      return item.regex.test(kw);
+    });
     if (!isPluralOfExisting) {
       resultItems.push({ kw, regex: buildKeywordRegex(kw) });
     }
