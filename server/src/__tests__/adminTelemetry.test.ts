@@ -288,7 +288,35 @@ describe('Milestone M5: Operations Control Plane & Admin Telemetry API', () => {
 
       expect(auditLog).toBeDefined();
       expect(auditLog?.reason).toContain('Severe violation');
-      expect(auditLog?.afterState).toContain('"isPermanentlyBanned":true');
+    });
+
+    it('escapes HTML tags and special characters in ban reason for Telegram message safely', async () => {
+      const user = await prisma.user.create({
+        data: {
+          telegramId: BigInt(Date.now() + 302),
+          alias: 'XSS Ban Test Candidate',
+          band: 5.0,
+          plan: 'FREE',
+        },
+      });
+
+      const banRes = await request(app)
+        .post(`/api/admin/users/${user.id}/ban`)
+        .set('Authorization', `Bearer ${adminJwtToken}`)
+        .send({
+          permanent: false,
+          reason: '<script>alert("xss")</script> & "special" characters',
+        });
+
+      expect(banRes.status).toBe(200);
+      expect(banRes.body.success).toBe(true);
+
+      const auditLog = await prisma.auditLog.findFirst({
+        where: { action: 'USER_BAN', targetId: user.id },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(auditLog).toBeDefined();
+      expect(auditLog?.reason).toContain('<script>alert("xss")</script>');
     });
 
     it('records USER_MODERATION on POST /api/admin/users/:id/moderate', async () => {

@@ -1694,10 +1694,11 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
     });
 
     if (adminBotInstance) {
+      const cleanReason = escapeHtml(reason || (permanent ?? true ? 'Violation of community guidelines.' : 'Community policy violation.'));
       const banText = permanent ?? true
-        ? `⛔ *Account Permanently Banned*\n\nYour account has been permanently suspended by administration.\n*Reason:* ${reason || 'Violation of community guidelines.'}\n\nYou may submit an appeal using the bot menu.`
-        : `🚫 *Account Temporarily Suspended*\n\nYour account has been blocked for 6 hours.\n*Reason:* ${reason || 'Community policy violation.'}`;
-      await adminBotInstance.api.sendMessage(user.telegramId.toString(), banText, { parse_mode: 'Markdown' })
+        ? `⛔ <b>Account Permanently Banned</b>\n\nYour account has been permanently suspended by administration.\n<b>Reason:</b> ${cleanReason}\n\nYou may submit an appeal using the bot menu.`
+        : `🚫 <b>Account Temporarily Suspended</b>\n\nYour account has been blocked for 6 hours.\n<b>Reason:</b> ${cleanReason}`;
+      await adminBotInstance.api.sendMessage(user.telegramId.toString(), banText, { parse_mode: 'HTML' })
         .catch((e: unknown) => {
           logger.warn('Failed to send ban notice', {
             service: 'admin',
