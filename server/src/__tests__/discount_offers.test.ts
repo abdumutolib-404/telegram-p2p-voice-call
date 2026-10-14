@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
 import { currentTerms } from '../services/terms';
-import { getPlansConfig,updatePlansConfig,approveManualPaymentRequest,rejectManualPaymentRequest,getEffectiveEntitlement,calculateEffectiveCallDuration } from '../services/plan';
+import { getPlansConfig,updatePlansConfig,approveManualPaymentRequest,rejectManualPaymentRequest,getEffectiveEntitlement,calculateEffectiveCallDuration,revokePlanOnRefund,refundManualPaymentRequest } from '../services/plan';
 import { createDiscountCampaign,activeDiscountOffers,recoverDiscountNotices,viewDiscountOffer,beginDiscountCheckout,authorizeDiscountStars,settleDiscountStars,claimFreeDiscount,submitDiscountReceipt } from '../services/discounts';
 import { discountCampaignInput,discountedPrice } from '../contracts/discounts';
 import adminRoutes from '../routes/admin';
@@ -84,6 +84,24 @@ it('claims a 100% offer once under simultaneous repeated clicks',async()=>{
   const {user,offer}=await fixture(100);await expect(beginDiscountCheckout(offer.id,user.telegramId,'XTR')).rejects.toThrow('offer is free');const results=await Promise.allSettled([claimFreeDiscount(offer.id,user.telegramId),claimFreeDiscount(offer.id,user.telegramId)]);
   expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(await prisma.starsTransaction.count()).toBe(0);
   const after=await prisma.user.findUnique({where:{id:user.id}});expect(after?.plan).toBe('PLUS');expect(getEffectiveEntitlement(after).source).toBe('PLAN_DEFAULT');expect(calculateEffectiveCallDuration(after,{plan:'FREE',subscriptionStatus:'NONE'})).toBe(30);expect((await prisma.discountOffer.findUnique({where:{id:offer.id}}))?.status).toBe('CLAIMED');
+});
+it('preserves a new 100% subscription when an older same-tier Stars purchase is refunded',async()=>{
+  const user=await member({plan:'PRO',subscriptionStatus:'EXPIRED',subscriptionExpiresAt:new Date(Date.now()-86400000)});
+  const old=await prisma.starsTransaction.create({data:{userId:user.id,telegramPaymentId:'synthetic-old-purchase',planTier:'PRO',starsAmount:255,status:'PAID',createdAt:new Date(Date.now()-31*86400000)}});
+  const campaign=await createDiscountCampaign({requestId:crypto.randomUUID(),plan:'PRO',percent:100,recipientCount:1,validMinutes:60},'12345678');
+  const offer=(await prisma.discountOffer.findMany({where:{campaignId:campaign.id}}))[0];await claimFreeDiscount(offer.id,user.telegramId);
+  const refunded=await revokePlanOnRefund({transactionId:old.id,adminId:'12345678',providerConfirmed:true});expect(refunded.user.plan).toBe('PRO');expect(refunded.user.subscriptionStatus).toBe('ACTIVE');
+});
+it('preserves a new 100% subscription when an older same-tier card purchase is refunded',async()=>{
+  const now=new Date();const user=await member({plan:'PRO',subscriptionStatus:'EXPIRED',subscriptionExpiresAt:new Date(Date.now()-86400000)});
+  vi.setSystemTime(new Date(now.getTime()-31*86400000));const old=await prisma.manualPaymentRequest.create({data:{userId:user.id,telegramId:user.telegramId,alias:user.alias,plan:'PRO',uzsAmount:55000,status:'APPROVED',reviewedAt:new Date()}});vi.setSystemTime(now);
+  const campaign=await createDiscountCampaign({requestId:crypto.randomUUID(),plan:'PRO',percent:100,recipientCount:1,validMinutes:60},'12345678');const offer=(await prisma.discountOffer.findMany({where:{campaignId:campaign.id}}))[0];await claimFreeDiscount(offer.id,user.telegramId);
+  const proof='data:application/pdf;base64,'+Buffer.from('%PDF-1.4 synthetic refund proof').toString('base64');
+  const refunded=await refundManualPaymentRequest({requestId:old.id,adminId:'12345678',refundProof:proof});expect(refunded.user.plan).toBe('PRO');expect(refunded.user.subscriptionStatus).toBe('ACTIVE');
+});
+it('still revokes the subscription when refunding the discounted paid claim itself',async()=>{
+  const {user,offer}=await fixture();const checkout=await beginDiscountCheckout(offer.id,user.telegramId,'XTR');await authorizeDiscountStars(offer.id,user.telegramId,checkout.order,80,'refund-own-query');await settleDiscountStars({id:offer.id,telegramId:user.telegramId,order:checkout.order,amount:80,chargeId:'refund-own-charge'});
+  const payment=await prisma.starsTransaction.findUnique({where:{telegramPaymentId:'refund-own-charge'}});const refunded=await revokePlanOnRefund({transactionId:payment!.id,adminId:'12345678',providerConfirmed:true});expect(refunded.user.plan).toBe('FREE');expect((await prisma.discountOffer.findUnique({where:{id:offer.id}}))?.status).toBe('CLAIMED');
 });
 it('uses one durable Stars order and accepts only one distinct pre-checkout query',async()=>{
   const {user,offer}=await fixture();const [a,b]=await Promise.all([beginDiscountCheckout(offer.id,user.telegramId,'XTR'),beginDiscountCheckout(offer.id,user.telegramId,'XTR')]);expect(a.order).toBe(b.order);

@@ -801,7 +801,8 @@ export async function refundManualPaymentRequest(params: {
     const boundary = req.reviewedAt || req.createdAt;
     const laterManual = await tx.manualPaymentRequest.findFirst({ where:{userId:req.userId,status:{in:['APPROVED','REFUND_PENDING']},reviewedAt:{gt:boundary}} });
     const laterStars = await tx.starsTransaction.findFirst({ where:{userId:req.userId,status:'PAID',createdAt:{gt:boundary}} });
-    const preserve = !!laterManual || !!laterStars || !!currentUser?.customPlanName || currentUser?.plan !== req.plan;
+    const laterFreeDiscount = await hasNewerFreeDiscount(tx,req.userId,req.plan,boundary);
+    const preserve = !!laterManual || !!laterStars || laterFreeDiscount || !!currentUser?.customPlanName || currentUser?.plan !== req.plan;
     const updatedUser = preserve ? currentUser! : await tx.user.update({
       where: { id: req.userId },
       data: {
@@ -820,7 +821,7 @@ export async function refundManualPaymentRequest(params: {
         targetId: req.userId,
         adminId: params.adminId,
         beforeState: JSON.stringify({ plan: req.plan, status: req.status }),
-        afterState: JSON.stringify({ plan: 'FREE', status: 'REFUNDED' }),
+        afterState: JSON.stringify({ plan: updatedUser.plan, status: 'REFUNDED', preservedNewerSubscription: preserve }),
         reason: params.note || 'Manual payment refund approved with transfer proof',
       },
     });
@@ -882,6 +883,14 @@ export async function rejectManualPaymentRefund(params: {
   return result;
 }
 
+async function hasNewerFreeDiscount(tx:Prisma.TransactionClient,userId:string,tier:string,after:Date):Promise<boolean>{
+  // A 100% claim grants entitlement without a payment transaction. Refunding an
+  // older purchase of the same plan must preserve the newer grant.
+  const claims=await tx.discountOffer.findMany({where:{userId,status:'CLAIMED',claimedPaymentId:'FREE',claimedAt:{gt:after}}});
+  for(const claim of claims){const campaign=await tx.discountCampaign.findUnique({where:{id:claim.campaignId}});if(campaign?.percent===100&&campaign.plan===tier)return true;}
+  return false;
+}
+
 export async function revokePlanOnRefund(params: {
   transactionId: string;
   adminId: string;
@@ -924,8 +933,9 @@ export async function revokePlanOnRefund(params: {
     if (changed.count !== 1) throw new Error('Refund already processed.');
     const newerStars = await db.starsTransaction.findFirst({ where: { userId: tx.userId, status: 'PAID', createdAt: { gt: tx.createdAt } } });
     const newerManual = await db.manualPaymentRequest.findFirst({ where: { userId: tx.userId, status: { in: ['APPROVED', 'REFUND_PENDING'] }, reviewedAt: { gt: tx.createdAt } } });
+    const newerFreeDiscount = await hasNewerFreeDiscount(db,tx.userId,tx.planTier,tx.createdAt);
     const user = await db.user.findUnique({ where: { id: tx.userId } });
-    const preserveSubscription = tx.entitlementApplied === false || !!newerStars || !!newerManual || !!user?.customPlanName || user?.plan !== tx.planTier;
+    const preserveSubscription = tx.entitlementApplied === false || !!newerStars || !!newerManual || newerFreeDiscount || !!user?.customPlanName || user?.plan !== tx.planTier;
     const updatedUser = preserveSubscription ? user! : await db.user.update({ where: { id: tx.userId }, data: {
       plan: 'FREE', subscriptionStatus: 'REFUNDED', subscriptionExpiresAt: null, subscriptionStartsAt: null, subscriptionDurationDays: null, maxDuration: plansConfig.FREE.maxDuration, dailyLimit: plansConfig.FREE.dailyLimit, recordingLimitOverride:null,retentionOverride:null,
     } });
