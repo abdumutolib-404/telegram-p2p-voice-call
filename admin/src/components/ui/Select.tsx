@@ -24,6 +24,7 @@ export function Select({ value, onValueChange, children, className = '', style, 
       onValueChange(options[index].value); setOpen(false); anchor.current?.focus({ preventScroll: true });
     }
   };
+  const supportsPopover = typeof HTMLElement !== 'undefined' && typeof HTMLElement.prototype.showPopover === 'function';
   return <div className="custom-select" style={style}>
     <button ref={anchor} id={id} type="button" className={`select-trigger ${className}`} role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open && !disabled} aria-controls={mounted ? listId : undefined} aria-activedescendant={open && !disabled && active >= 0 ? `${listId}-${active}` : undefined} disabled={disabled}
       onClick={() => { setActive(selected >= 0 && !options[selected].disabled ? selected : enabled[0] ?? -1); setOpen(!open); }}
@@ -43,7 +44,7 @@ export function Select({ value, onValueChange, children, className = '', style, 
           if (index !== undefined) { setActive(index); setOpen(true); }
         }
       }}><span>{selected >= 0 ? options[selected].label : 'Choose an option'}</span><ChevronDown size={16} aria-hidden="true" /></button>
-    {mounted && createPortal(<div ref={panel} popover="manual" id={listId} className="select-list" role="listbox" aria-label={label} data-state={phase} data-side={side} style={position} inert={!open || disabled ? true : undefined} aria-hidden={!open || disabled ? true : undefined}>
+    {mounted && createPortal(<div ref={panel} popover={supportsPopover ? 'manual' : undefined} id={listId} className="select-list" role="listbox" aria-label={label} data-state={phase} data-side={side} style={position} inert={!open || disabled ? true : undefined} aria-hidden={!open || disabled ? true : undefined}>
       {options.map((option, index) => <div id={`${listId}-${index}`} key={option.value} role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} data-index={index} data-active={active === index} className="select-option" onPointerMove={() => { if (!option.disabled) setActive(index); }} onPointerDown={event => event.preventDefault()} onClick={() => choose(index)}><span>{option.label}</span>{option.value === value && <Check size={16} aria-hidden="true" />}</div>)}
     </div>, anchor.current?.closest('dialog') ?? document.body)}
   </div>;
