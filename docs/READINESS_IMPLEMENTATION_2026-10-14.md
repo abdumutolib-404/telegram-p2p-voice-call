@@ -47,13 +47,13 @@ Local screenshots, the review gallery, machine-readable results and reproducible
 
 ## Remaining release gates
 
-1. Run the actual call journeys in the existing development deployment. The owner confirmed on October 14 that the documented deployment is development, Railway holds its provider configuration, pushing main deploys the development services, and two Telegram accounts/devices are available. This resolves the environment-identification question; the real-device journeys remain unexecuted.
-2. Run the real-provider cases in [the staging validation checklist](STAGING_READINESS_CHECKLIST.md), including audio/reconnect, microphone denial, recordings, delivery, retention, purchase/refund and provider ambiguity.
+1. Run the actual call journeys in the existing development deployment. The owner confirmed on October 14 that the documented deployment is development, Railway holds its provider configuration, pushing main deploys the development services, and two Telegram accounts/devices are available. This resolves the environment-identification question. The owner has since confirmed equal-band matching, correct-time reopen recovery with both voices, and playable recording/Telegram delivery for the tested two-account setup. See [the dated development observations](DEVELOPMENT_VALIDATION_2026-10-14.md); the remaining device and failure variants are separate open cases.
+2. Finish the remaining real-provider cases in [the staging validation checklist](STAGING_READINESS_CHECKLIST.md), including audio/reconnect, microphone denial, recordings, delivery, retention, purchase/refund and provider ambiguity.
 3. Finish combined Node/PostgreSQL/Redis integration, Redis-bound gateway checks and a supported Linux race run. Actual PostgreSQL and the Go recovery test are now verified locally; a production-backup migration rehearsal and historical timezone/data review remain separate release work.
 4. Confirm historical credential-revocation and recording-reconciliation work independently. This implementation does not establish their completion.
-5. Publish only when requested, following the repository's `origin/main` process, and verify each development frontend hosting build against the new main commit. Local previews and HTTP health responses do not prove a deployed revision.
+5. Continue following the repository's `origin/main` process for authorized development publication and verify each frontend hosting build against the new main commit. The readiness corrections, Questions, reconnect window and UI follow-ups have now been published; active frontend versions and Railway successful statuses were checked separately from public health responses.
 
-These gates remain open. Passing the local corrections does not establish launch readiness or production capacity.
+The provider, integration and historical gates above remain partly open. Ordinary development publication is verified; this does not establish launch readiness or production capacity.
 
 ## Development validation handoff
 

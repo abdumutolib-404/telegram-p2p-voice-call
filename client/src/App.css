@@ -1289,7 +1289,7 @@ select:focus-visible {
 .dashboard-alert { color: #ffd4c8; background: #3c231e; }
 .dashboard-alert p { color: inherit; margin: 0 0 12px; }
 .dashboard-notice { color: #b0efdf; background: #20352f; }
-.action-error { color: #ffd4c8 !important; font-size: 14px; margin-top: 16px !important; }
+.action-error { color: var(--danger-text) !important; font-size: 14px; margin-top: 16px !important; }
 .history-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
 .dashboard-view-history .dashboard-cards { grid-template-columns: minmax(0,1fr); }
 .dashboard-view-history .dashboard-card { display: grid; grid-template-columns: minmax(230px,.8fr) minmax(0,1.2fr); gap: 0 24px; }
