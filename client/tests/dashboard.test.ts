@@ -48,10 +48,11 @@ it('requests Telegram delivery for a particular private segment',async()=>{
 });
 
 it('keeps practice usable without making unrelated dashboard requests', async () => {
-  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const fetchMock = vi.fn().mockResolvedValue(json({offers:[],serverNow:new Date().toISOString()})); vi.stubGlobal('fetch', fetchMock);
   await render();
   expect(container.textContent).toContain('Practice fixture');
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls[0][0]).toContain('/discount-offers');
 });
 
 it.each([['History & audio', 'history', 'Call history'], ['Account & limits', 'account', 'Account']])('opens %s from the practice shortcut and returns to practice', async (label, view, heading) => {
@@ -255,7 +256,7 @@ it('cancels profile edits without changing the displayed or persisted scores', a
   await act(async () => vi.advanceTimersByTimeAsync(500));
   expect(container.querySelector('[role="dialog"]')).toBeNull();
   expect(container.querySelector('.score-summary')?.textContent).not.toContain('0.0');
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls.every(([,options])=>!options?.method||options.method==='GET')).toBe(true);
 });
 
 it('shows rating progress at the stars, rejects duplicate presses and waits for acknowledgement', async () => {

@@ -9,6 +9,7 @@ import { RecordingAction, type RecordingDeliveryStatus } from './RecordingAction
 import { DashboardMenu } from './DashboardMenu';
 import { Brand } from './Brand';
 import { AllowanceDetails } from './AllowanceDetails';
+import { DiscountOffers } from './DiscountOffers';
 import { DashboardError, dashboardRequest, publicSiteUrl } from '../services/dashboard';
 import type { UserMatchData } from '../types';
 
@@ -299,10 +300,10 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     onOpenActiveCall();
   }
   const navigation = <DashboardMenu items={views} current={view} onNavigate={navigate} />;
-  const shortcuts = <nav className="practice-shortcuts" aria-label="Practice shortcuts">
+  const shortcuts = <><DiscountOffers initData={initData} onAccessLost={onAccessLost}/><nav className="practice-shortcuts" aria-label="Practice shortcuts">
     <button type="button" onClick={() => navigate('history')}><History size={18} aria-hidden="true" /><span>History & audio</span></button>
     <button type="button" onClick={() => navigate('account')}><Settings size={18} aria-hidden="true" /><span>Account & limits</span></button>
-  </nav>;
+  </nav></>;
   function audioButton(session: Session, segmentId?: string, index?: number) {
     const key = `audio:${session.id}:${segmentId || 'latest'}`;
     return <RecordingAction key={key} status={delivered[key]} state={actionStates[key] || 'idle'} busy={busy} index={index} onSend={() => void sendRecording(session.id, segmentId)} />;
@@ -315,6 +316,7 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
       <h1>{view === 'history' ? 'Call history' : view === 'partners' ? 'Saved partners' : view === 'community' ? 'Invites' : view === 'leaderboard' ? 'Hall of Fame' : view === 'upgrade' ? 'Upgrade' : 'Account'}</h1>
       {view === 'history' && <p className="dashboard-view-intro">Your conversations, recordings and feedback.</p>}
       {view === 'account' && <p className="dashboard-view-intro">Your allowance, speaking profile and preferences.</p>}
+      {(view==='account'||view==='upgrade')&&<DiscountOffers initData={initData} onAccessLost={onAccessLost}/>}
       {error && <div className="dashboard-alert" role="alert"><p>{error}</p><button type="button" className="secondary-button" disabled={busy || loading} onClick={() => setReload(previous => previous + 1)}>Reload current view</button></div>}
       <span role="status" className="sr-only">{feedback.page?.message}</span>
       {loading && <p role="status" className="loading-state"><PendingIcon />Loading your {view === 'history' ? 'conversations' : view}…</p>}

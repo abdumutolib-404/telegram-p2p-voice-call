@@ -10,6 +10,7 @@ export interface SessionData {
   p?: number;
   appealText?: string;
   pendingPaymentPlan?: 'PLUS' | 'PRO' | 'BOSS';
+  pendingDiscountOfferId?: string;
   pendingRefundManualReqId?: string;
 }
 

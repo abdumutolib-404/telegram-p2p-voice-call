@@ -29,6 +29,8 @@ Client-side platform checks are navigation behavior. The security boundary is th
 
 ## Deployment
 
+Exclusive discounts are managed under Plans and limits → Discount. Personal offers appear in the dashboard and Telegram, with independent Stars/UZS reductions, one claim per recipient/campaign and a server-enforced deadline. See [Discount offers](DISCOUNT_OFFERS.md) for eligibility, checkout, receipt review and rollout details.
+
 Run `npm run db:deploy` from `server/` before starting the new server or gateway. The additive migration creates the acceptance audit table and nullable account fields. It does not assume existing users have agreed; those users must use `/start` once. Deploy the server, client and gateway from the same release. Bot startup refreshes the command list and signed Mini App menu when it becomes the polling owner. Financial settlement callbacks and billing support remain available independently of renewed consent.
 
 Use the existing isolated verification scripts with synthetic credentials. Never start polling with production credentials as a local UI test. The existing UI gallery is separate from application authentication and uses sample data.

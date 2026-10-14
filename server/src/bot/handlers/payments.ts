@@ -152,6 +152,7 @@ export async function renderPlansOverview(ctx: MyContext) {
   const plans = await loadPlanConfiguration();
   const offers = planIds.filter(id => plans[id].active).map(id => publicPlan(id, plans[id]));
   ctx.session.pendingPaymentPlan = undefined;
+  ctx.session.pendingDiscountOfferId = undefined;
   ctx.session.step = 'idle';
 
   const telegramId = ctx.from?.id ? BigInt(ctx.from.id) : null;
@@ -360,6 +361,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     }
 
     ctx.session.pendingPaymentPlan = tier;
+    ctx.session.pendingDiscountOfferId = undefined;
     ctx.session.step = 'awaiting_receipt';
 
     const formattedAmount = config.uzsPrice.toLocaleString('en-US');
@@ -389,13 +391,13 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
     const requestId = ctx.match[1];
     const telegramId = BigInt(ctx.from.id);
     try {
-      const updated = await prisma.manualPaymentRequest.updateMany({
-        where: {
-          id: requestId,
-          telegramId,
-          status: 'PENDING',
-        },
-        data: { status: 'REJECTED', adminNote: 'Cancelled by user' },
+      const updated = await prisma.$transaction(async tx=>{
+        const request=await tx.manualPaymentRequest.findFirst({where:{id:requestId,telegramId,status:'PENDING'}});
+        if(!request)return{count:0};
+        await lockRow(tx,'User',request.userId);
+        const changed=await tx.manualPaymentRequest.updateMany({where:{id:requestId,telegramId,status:'PENDING'},data:{status:'REJECTED',adminNote:'Cancelled by user'}});
+        if(changed.count===1&&request.discountOfferId)await tx.discountOffer.updateMany({where:{id:request.discountOfferId,status:'SUBMITTED',claimedPaymentId:request.id},data:{status:'AVAILABLE',checkoutCurrency:null,checkoutOrder:null,authorizedAt:null,claimedPaymentId:null}});
+        return changed;
       });
 
       if (updated.count === 0) {

@@ -20,6 +20,7 @@ import { scheduleConnectionHandshakeTimer, setRoomDurationLimit } from '../socke
 import { isUserSessionRecorder } from '../utils/recordingAccess';
 import { lockRow } from '../utils/transactionLock';
 import { recordingDeliveryStatus } from '../services/recordingDelivery';
+import { activeDiscountOffers } from '../services/discounts';
 
 const router = Router();
 let dashboardBot: Bot<MyContext> | null = null;
@@ -35,6 +36,7 @@ const action = (handler: (req: MemberRequest, res: Response) => Promise<void>) =
   });
 };
 const identifier = z.string().uuid();
+router.get('/discount-offers',action(async(req,res)=>{res.json({offers:await activeDiscountOffers(req.member!),serverNow:new Date()});}));
 async function ownSession(id: string, userId: string) {
   identifier.parse(id);
   const session = await prisma.callSession.findFirst({ where: { id, OR: [{ userAId: userId }, { userBId: userId }] }, include: { userA: true, userB: true, ratings: true } });

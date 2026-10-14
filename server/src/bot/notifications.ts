@@ -14,7 +14,7 @@ const notificationNamespace = crypto.createHash('sha256').update(env.BOT_TOKEN).
 /** Must run inside the business transaction when delivery depends on a committed award. */
 export async function persistNotification(
   tx: Prisma.TransactionClient, telegramId: string, text: string,
-  options?: SendMessageOptions, urgent = false, dedupeKey?: string
+  options?: SendMessageOptions, urgent = false, dedupeKey?: string, expiresAt?: Date
 ): Promise<boolean> {
   const optionsJson = options ? JSON.stringify(options) : null;
   if (text.length > 8192 || (optionsJson?.length ?? 0) > 16384 || (dedupeKey?.length ?? 0) > 256) {
@@ -27,7 +27,7 @@ export async function persistNotification(
   if (await tx.notificationJob.count({ where: { namespace: notificationNamespace, status: { in: ['QUEUED', 'SENDING'] } } }) >= 1000) {
     throw new Error('Notification queue is full.');
   }
-  await tx.notificationJob.create({ data: { namespace: notificationNamespace, telegramId, text, optionsJson, urgent, dedupeKey } });
+  await tx.notificationJob.create({ data: { namespace: notificationNamespace, telegramId, text, optionsJson, urgent, dedupeKey, expiresAt: expiresAt ?? null } });
   return true;
 }
 
@@ -59,9 +59,10 @@ export class NotificationQueue {
   private async drainPersistent(bot: Bot<MyContext>) {
     await prisma.notificationJob.updateMany({where:{namespace:this.namespace,status:'SENDING',leasedAt:{lt:new Date(Date.now()-120000)}},data:{status:'UNCONFIRMED',failure:'Delivery outcome uncertain after worker interruption; review before sending again.'}});
     while (!this.stopped) {
+      await prisma.notificationJob.updateMany({where:{namespace:this.namespace,status:'QUEUED',expiresAt:{lte:new Date()}},data:{status:'EXPIRED',failure:'Offer expired before notification delivery.'}});
       const job = await prisma.notificationJob.findFirst({where:{namespace:this.namespace,status:'QUEUED',nextAttemptAt:{lte:new Date()}},orderBy:[{urgent:'desc'},{createdAt:'asc'}]});
       if (!job) return;
-      const claim = await prisma.notificationJob.updateMany({where:{id:job.id,status:'QUEUED'},data:{status:'SENDING',leasedAt:new Date()}});
+      const claim = await prisma.notificationJob.updateMany({where:{id:job.id,status:'QUEUED',OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]},data:{status:'SENDING',leasedAt:new Date()}});
       if (claim.count !== 1) continue;
       this.controller = new AbortController();
       try {

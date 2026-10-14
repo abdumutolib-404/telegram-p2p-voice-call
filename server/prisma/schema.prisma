@@ -19,6 +19,7 @@ model NotificationJob {
   urgent        Boolean  @default(false)
   retries       Int      @default(0)
   nextAttemptAt DateTime @default(now())
+  expiresAt     DateTime?
   leasedAt      DateTime?
   failure       String?
   createdAt     DateTime @default(now())
@@ -99,6 +100,7 @@ model User {
   favoritedBy         FavoritePartner[]      @relation("PartnerFavorites")
   termsAcceptances     TermsAcceptance[]
   recordingUsage      RecordingUsage[]
+  discountOffers      DiscountOffer[]
 
   @@index([subscriptionExpiresAt])
   @@index([isBanned])
@@ -232,6 +234,8 @@ model StarsTransaction {
   telegramPaymentId String    @unique
   starsAmount       Int
   planTier          String    // "PLUS", "PRO", "BOSS"
+  discountOfferId   String?
+  discountOffer     DiscountOffer? @relation(fields: [discountOfferId], references: [id])
   entitlementApplied Boolean @default(true)
   status            String    @default("PAID") // "PAID", "REFUND_PENDING", "REFUNDED"
   refundReason      String?
@@ -255,6 +259,8 @@ model ManualPaymentRequest {
   alias            String
   plan             String    // "PLUS", "PRO", "BOSS"
   uzsAmount        Int
+  discountOfferId  String?
+  discountOffer    DiscountOffer? @relation(fields: [discountOfferId], references: [id])
   paymentProof     String?
   status           String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED", "REFUND_PENDING", "REFUNDED"
   refundCardNumber String?
@@ -270,6 +276,47 @@ model ManualPaymentRequest {
   @@index([userId, status])
   @@index([status, createdAt])
   @@index([orderNumber])
+}
+
+model DiscountCampaign {
+  id               String @id @default(uuid())
+  requestId        String @unique
+  adminId          String
+  plan             String
+  percent          Float
+  recipientCount   Int
+  validMinutes     Int
+  originalStars    Int
+  originalUzs      Int
+  starsPrice       Int
+  uzsPrice         Int
+  planSnapshot     String
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  offers           DiscountOffer[]
+  @@index([expiresAt])
+}
+
+model DiscountOffer {
+  id                 String @id @default(uuid())
+  campaignId         String
+  campaign           DiscountCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User @relation(fields: [userId], references: [id])
+  status             String @default("AVAILABLE")
+  noticeQueuedAt     DateTime?
+  checkoutCurrency   String?
+  checkoutOrder      String? @unique
+  preCheckoutId      String? @unique
+  authorizedAt       DateTime?
+  claimedAt          DateTime?
+  claimedPaymentId   String?
+  createdAt          DateTime @default(now())
+  starsTransactions  StarsTransaction[]
+  manualPayments     ManualPaymentRequest[]
+  @@unique([campaignId, userId])
+  @@index([userId, status])
+  @@index([noticeQueuedAt, createdAt])
 }
 
 model AuditLog {

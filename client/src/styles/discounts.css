@@ -1,0 +1,14 @@
+.discount-offers { width:100%; max-width:100%; margin:20px 0; text-align:left; }
+.discount-offer { padding:20px; margin-top:12px; border:1px solid var(--border); border-radius:18px; background:var(--card); }
+.discount-offer-heading { display:flex; align-items:flex-start; gap:10px; color:var(--text); }
+.discount-offer-heading svg { flex-shrink:0; margin-top:3px; }
+.discount-offer-heading h2 { font-size:17px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; margin:0; }
+.discount-offer-prices { display:flex; flex-wrap:wrap; gap:12px 24px; margin:16px 0; }
+.discount-offer-prices span { display:flex; flex-wrap:wrap; gap:6px; align-items:baseline; }
+.discount-offer-prices s,.discount-offer-note,.discount-offer-error { color:var(--text-2); font-size:13px; line-height:1.6; }
+.discount-offer-prices strong { color:var(--text); font-size:16px; }
+.discount-offer-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.discount-offer-footer p { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-2); }
+.discount-offer-footer [role=timer] { font-variant-numeric:tabular-nums; color:var(--text); }
+.discount-offer-footer a { text-decoration:none; }
+.discount-offer-note { margin-top:12px; }

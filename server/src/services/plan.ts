@@ -5,6 +5,7 @@ import { createCanonicalError } from '../types/canonical';
 import { lockRow } from '../utils/transactionLock';
 import { decodePaymentProof } from '../utils/paymentProof';
 import type { Prisma } from '@prisma/client';
+import { discountPlan } from '../contracts/discounts';
 
 export interface PlanTierConfig {
   name: string;
@@ -412,9 +413,9 @@ export async function getMaxOrderNumberFromDb(): Promise<number> {
     });
     for (const record of manualRecords) {
       if (record?.orderNumber) {
-        const match = record.orderNumber.match(/\d+/);
+        const match = record.orderNumber.match(/^A(\d+)$/);
         if (match) {
-          const num = parseInt(match[0], 10);
+          const num = parseInt(match[1], 10);
           if (!isNaN(num) && num > maxOrderNum) {
             maxOrderNum = num;
           }
@@ -432,9 +433,9 @@ export async function getMaxOrderNumberFromDb(): Promise<number> {
     });
     for (const record of starsRecords) {
       if (record?.orderNumber) {
-        const match = record.orderNumber.match(/\d+/);
+        const match = record.orderNumber.match(/^A(\d+)$/);
         if (match) {
-          const num = parseInt(match[0], 10);
+          const num = parseInt(match[1], 10);
           if (!isNaN(num) && num > maxOrderNum) {
             maxOrderNum = num;
           }
@@ -462,7 +463,7 @@ export async function initializeOrderSequence(): Promise<void> {
           totalStars = await prisma.starsTransaction.count();
         } catch {}
         const maxOrderNumberFromDb = await getMaxOrderNumberFromDb();
-        const initialValue = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+        const initialValue = Math.max(inMemoryFallbackSequence, totalManual + totalStars, maxOrderNumberFromDb);
 
         const redis = getRedis();
         const existing = await redis.get('counter:order_sequence');
@@ -484,7 +485,7 @@ export async function initializeOrderSequence(): Promise<void> {
             totalStars = await prisma.starsTransaction.count();
           } catch {}
           const maxOrderNumberFromDb = await getMaxOrderNumberFromDb().catch(() => 0);
-          inMemoryFallbackSequence = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+          inMemoryFallbackSequence = Math.max(inMemoryFallbackSequence, totalManual + totalStars, maxOrderNumberFromDb);
         }
       } finally {
         initSequencePromise = null;
@@ -518,7 +519,7 @@ export async function generateOrderNumber(prefix: string = 'A'): Promise<string>
           totalStars = await prisma.starsTransaction.count();
         } catch {}
         const maxOrderNumberFromDb = await getMaxOrderNumberFromDb().catch(() => 0);
-        inMemoryFallbackSequence = Math.max(totalManual + totalStars, maxOrderNumberFromDb);
+        inMemoryFallbackSequence = Math.max(inMemoryFallbackSequence, totalManual + totalStars, maxOrderNumberFromDb);
       }
     }
     inMemoryFallbackSequence += 1;
@@ -632,7 +633,7 @@ export async function approveManualPaymentRequest(params: {
   const tier = (req.plan.toUpperCase() as keyof SystemPlansConfig) in plansConfig
     ? (req.plan.toUpperCase() as keyof SystemPlansConfig)
     : 'PLUS';
-  const config = plansConfig[tier] || plansConfig.PLUS;
+  let config = plansConfig[tier] || plansConfig.PLUS;
 
   // Downgrade protection: Prevent an active PRO/BOSS user from being downgraded to PLUS
   if (req.user && isDowngrade(req.user.plan, tier)) {
@@ -648,6 +649,16 @@ export async function approveManualPaymentRequest(params: {
   const result = await prisma.$transaction(async (tx) => {
     await lockRow(tx, 'User', req.userId);
     const currentUser = await tx.user.findUnique({ where: { id: req.userId } });
+    if (req.discountOfferId) {
+      const offer = await tx.discountOffer.findUnique({where:{id:req.discountOfferId}});
+      const campaign = offer ? await tx.discountCampaign.findUnique({where:{id:offer.campaignId}}) : null;
+      if (!offer || !campaign || offer.userId!==req.userId || offer.status!=='SUBMITTED' || offer.claimedPaymentId!==req.id || !offer.authorizedAt || offer.authorizedAt>=campaign.expiresAt || campaign.plan!==tier || campaign.uzsPrice!==req.uzsAmount) throw new Error('Discount payment is not authorized or its offer was already claimed.');
+      if (!currentUser || currentUser.isBanned || currentUser.isPermanentlyBanned || (currentUser.bannedUntil && currentUser.bannedUntil>new Date())) throw new Error('Suspended accounts cannot claim discount offers.');
+      const profile=getPaidUserProfile(currentUser);
+      if(profile.isActivePaid&&(profile.plan===tier||isDowngrade(profile.plan,tier)))throw new Error('This discount would replace an incompatible active subscription.');
+      config=discountPlan(campaign.planSnapshot);
+      await tx.discountOffer.update({where:{id:offer.id},data:{status:'CLAIMED',claimedAt:new Date()}});
+    }
     if (currentUser && isDowngrade(currentUser.plan, tier) && currentUser.subscriptionStatus === 'ACTIVE' && (!currentUser.subscriptionExpiresAt || currentUser.subscriptionExpiresAt > new Date())) throw new Error('Cannot downgrade an active subscription.');
     const updated = await tx.manualPaymentRequest.updateMany({
       where: { id: req.id, status: 'PENDING' },
@@ -668,12 +679,13 @@ export async function approveManualPaymentRequest(params: {
       data: {
         plan: tier,
         subscriptionStatus: 'ACTIVE',
-        subscriptionExpiresAt: expiresAt,
+        subscriptionExpiresAt: req.discountOfferId ? new Date(Date.now()+config.subscriptionDurationDays*86400000) : expiresAt,
         subscriptionStartsAt: new Date(),
         subscriptionDurationDays: config.subscriptionDurationDays,
         maxDuration: config.maxDuration,
         dailyLimit: config.dailyLimit,
         dailyCallsUsed: 0,
+        ...(req.discountOfferId ? {recordingLimitOverride:null,retentionOverride:null,customPlanName:null} : {}),
       },
     });
 
@@ -712,6 +724,7 @@ export async function rejectManualPaymentRequest(params: {
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    await lockRow(tx,'User',req.userId);
     const updated = await tx.manualPaymentRequest.updateMany({
       where: { id: req.id, status: 'PENDING' },
       data: {
@@ -725,6 +738,8 @@ export async function rejectManualPaymentRequest(params: {
     if (updated.count !== 1) {
       throw new Error('Payment request not found or already processed.');
     }
+
+    if(req.discountOfferId) await tx.discountOffer.updateMany({where:{id:req.discountOfferId,status:'SUBMITTED',claimedPaymentId:req.id},data:{status:'AVAILABLE',checkoutCurrency:null,checkoutOrder:null,authorizedAt:null,claimedPaymentId:null}});
 
     await tx.auditLog.create({
       data: {

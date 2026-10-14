@@ -36,6 +36,8 @@ import { logger, getRecentErrors } from '../utils/logger';
 import { setRequestContextUserId } from '../utils/requestContext';
 import adminTelemetryRouter from './adminTelemetry';
 import adminIeltsRouter from './adminIelts';
+import { createDiscountCampaign, listDiscountCampaigns, DiscountError } from '../services/discounts';
+import { ZodError } from 'zod';
 
 const router = Router();
 const adminAuthLimiter = createActionRateLimiter('ADMIN_LOGIN', getClientIp);
@@ -627,6 +629,14 @@ router.get('/stats', adminAuthMiddleware, async (req, res) => {
 });
 
 // GET /api/admin/plans (Protected)
+router.get('/plans/discounts',adminAuthMiddleware,async (_req,res)=>{
+  try { res.json({campaigns:await listDiscountCampaigns(),serverNow:new Date()}); }
+  catch(error){logger.error('Discount campaign list failed',{service:'admin'},error);res.status(500).json({error:'Discount campaigns are unavailable.'});}
+});
+router.post('/plans/discounts',adminAuthMiddleware,async (req:AdminAuthenticatedRequest,res)=>{
+  try { const campaign=await createDiscountCampaign(req.body,req.adminUser!.telegramId);res.status(201).json({id:campaign.id,recipientCount:campaign.recipientCount,starsPrice:campaign.starsPrice,uzsPrice:campaign.uzsPrice,expiresAt:campaign.expiresAt}); }
+  catch(error){if(error instanceof ZodError){res.status(400).json({error:'Plan, discount percentage (0.01–100), recipient count (1–10,000) and valid period (1 minute–365 days) are required.'});return;}if(error instanceof DiscountError){res.status(error.status).json({error:error.message});return;}logger.error('Discount campaign creation failed',{service:'admin'},error);res.status(500).json({error:'Could not create the campaign. Retry the same submission to check its result.'});}
+});
 router.get('/plans', adminAuthMiddleware, async (req, res) => {
   try { res.json(await loadPlanConfiguration()); } catch { res.status(503).json({ error:'Subscription configuration is unavailable.' }); }
 });

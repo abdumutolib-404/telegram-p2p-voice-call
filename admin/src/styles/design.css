@@ -69,6 +69,16 @@ textarea.input-modern { min-height: 96px; }
 .dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .field-label { font-size: 13px; line-height: 1.5; margin: 16px 0 8px; font-weight: 500; text-transform: none; }
 .field-help { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.discount-dialog { width:min(600px,calc(100vw - 32px)); overflow:auto; }
+.discount-fields { border:0; padding:0; margin:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 16px; }
+.discount-fields .input-modern { width:100%; min-width:0; }
+.discount-period { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; }
+.discount-preview { padding:16px; margin:16px 0; border:1px solid var(--border-card); border-radius:12px; background:var(--sunken); }
+.discount-preview p { margin-top:8px; }
+.discount-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:16px; }
+.discount-history { margin-top:24px; border-top:1px solid var(--border-card); padding-top:16px; }
+.discount-history article { margin-top:16px; }
+@media(max-width:480px){.discount-fields{grid-template-columns:1fr}.discount-dialog{padding:20px}}
 .draft-banner { padding: 12px 16px; margin-top: 16px; border: 1px dashed var(--warning-border); border-radius: 12px; color: var(--warning-text); }
 body .qm-hero { background: transparent; border: 0; padding: 0; box-shadow: none; border-radius: 0; }
 body .qm-hero-title { font-size: 28px; font-weight: 600; }

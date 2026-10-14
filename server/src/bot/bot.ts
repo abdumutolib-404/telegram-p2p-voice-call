@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { telegramTransport } from './telegramTransport';
+import { setupDiscountHandlers } from './handlers/discounts';
 import { TELEGRAM_CLIENT_OPTIONS } from './polling';
 import { Bot, session } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
@@ -327,7 +328,7 @@ export function createBot(token: string): Bot<MyContext> {
     if (ctx.preCheckoutQuery || ctx.message?.successful_payment) return next();
     const data = ctx.callbackQuery?.data || '';
     const text = ctx.message?.text || '';
-    const buying = /^(?:select_plan|buy_plan|manual_pay):/.test(data) || /^(?:\/plans(?:\s|$)|⭐ (?:Upgrade|Subscription|Plans))/.test(text) || ctx.session.step === 'awaiting_receipt';
+    const buying = /^(?:select_plan|buy_plan|manual_pay|discount(?:_free|_stars|_card)?):/.test(data) || /^(?:\/plans(?:\s|$)|⭐ (?:Upgrade|Subscription|Plans))/.test(text) || ctx.session.step === 'awaiting_receipt';
     if (buying && ctx.from) {
       const user = await prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from.id) } });
       if (!user?.onboarded || !hasAcceptedCurrentTerms(user)) { await offerTerms(ctx); return; }
@@ -339,6 +340,7 @@ export function createBot(token: string): Bot<MyContext> {
   setupAdminCommand(bot);
   setupMenuHandlers(bot);
   setupDashboardNavigation(bot);
+  setupDiscountHandlers(bot);
   setupPaymentHandlers(bot);
   setupRefundHandlers(bot);
   setupCallbackHandlers(bot);

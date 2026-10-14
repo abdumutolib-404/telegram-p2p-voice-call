@@ -183,6 +183,7 @@ interface AppealRow {
 }
 
 interface StarsTransactionRow {
+  discountOfferId?: string | null;
   id: string;
   orderNumber?: string | null;
   userId: string;
@@ -199,6 +200,7 @@ interface StarsTransactionRow {
 }
 
 interface ManualPaymentRequestRow {
+  discountOfferId?: string | null;
   id: string;
   orderNumber: string;
   userId: string;
@@ -267,6 +269,10 @@ export class InMemoryPrismaMock {
   private readonly notificationJobs = new Map<string, Record<string, unknown>>();
   private readonly postCallJobs = new Map<string, Record<string, unknown>>();
   notificationJob = jobModel(this.notificationJobs, 'id');
+  private readonly discountCampaignRows = new Map<string, Record<string, unknown>>();
+  private readonly discountOfferRows = new Map<string, Record<string, unknown>>();
+  discountCampaign = jobModel(this.discountCampaignRows, 'id');
+  discountOffer = jobModel(this.discountOfferRows, 'campaignId_userId');
   postCallJob = jobModel(this.postCallJobs, 'callId');
   private readonly recordingUsageRows = new Map<string, Record<string, unknown>>();
   private readonly recordingSegmentRows = new Map<string, Record<string, unknown>>();
@@ -939,6 +945,8 @@ export class InMemoryPrismaMock {
   };
 
   starsTransaction = {
+    count: async (args?: {where?:Record<string,unknown>}) => jobModel(this.starsTransactions as unknown as Map<string,Record<string,unknown>>,'id').count(args),
+    deleteMany: async (args?: {where?:Record<string,unknown>}) => jobModel(this.starsTransactions as unknown as Map<string,Record<string,unknown>>,'id').deleteMany(args),
     create: async (args: { data: Record<string, unknown> }): Promise<StarsTransactionRow> => {
       const id = stringValue(args.data.id, crypto.randomUUID());
       const telegramPaymentId = stringValue(args.data.telegramPaymentId);
@@ -957,6 +965,7 @@ export class InMemoryPrismaMock {
         userId: stringValue(args.data.userId),
         telegramPaymentId,
         starsAmount: numberValue(args.data.starsAmount, 0),
+        discountOfferId: args.data.discountOfferId ? stringValue(args.data.discountOfferId) : null,
         planTier: stringValue(args.data.planTier),
         entitlementApplied: args.data.entitlementApplied !== false,
         status: stringValue(args.data.status, 'PAID'),
@@ -1047,6 +1056,7 @@ export class InMemoryPrismaMock {
         alias: stringValue(args.data.alias),
         plan: stringValue(args.data.plan, 'PLUS'),
         uzsAmount: numberValue(args.data.uzsAmount, 0),
+        discountOfferId: args.data.discountOfferId ? stringValue(args.data.discountOfferId) : null,
         paymentProof: args.data.paymentProof ? stringValue(args.data.paymentProof) : null,
         status: stringValue(args.data.status, 'PENDING'),
         adminNote: args.data.adminNote ? stringValue(args.data.adminNote) : null,
@@ -1595,6 +1605,14 @@ function jobModel(rows: Map<string, Record<string, unknown>>, primary: string) {
       if (existing) { await updateMany({where:args.where,data:args.update}); return list({where:args.where})[0]; }
       const now = new Date(); const row = {status:"QUEUED",attempts:0,owner:null,leaseUntil:null,failure:null,nextAttemptAt:now,createdAt:now,id:crypto.randomUUID(),...args.create};
       rows.set(identity(row),row);return {...row};
+    },
+    createMany: async (args: { data: Record<string, unknown>[] }) => {
+      for (const data of args.data) {
+        const row = { id:crypto.randomUUID(),createdAt:new Date(),...data };
+        if(rows.has(identity(row)))throw new Error('Unique job constraint');
+        rows.set(identity(row),row);
+      }
+      return {count:args.data.length};
     },
     create: async (args: { data: Record<string, unknown> }) => {
       const now = new Date();

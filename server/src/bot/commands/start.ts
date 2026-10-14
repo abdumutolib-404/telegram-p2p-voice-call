@@ -8,6 +8,7 @@ import { offerTerms } from '../handlers/terms';
 import { bindReferral } from '../../services/referralService';
 import { renderPlanSelection, renderPlansOverview } from '../handlers/payments';
 import { handleRefundRequest } from '../handlers/refund';
+import { renderDiscountOffer } from '../handlers/discounts';
 import { logger } from '../../utils/logger';
 
 export const getMainMenuKeyboard = () => {
@@ -59,6 +60,7 @@ export function setupStartCommand(bot: Bot<MyContext>) {
     // Always reset any in-progress form/session state on /start
     ctx.session.step = 'idle';
     ctx.session.pendingPaymentPlan = undefined;
+    ctx.session.pendingDiscountOfferId = undefined;
     ctx.session.pendingRefundManualReqId = undefined;
 
     const startPayload = typeof ctx.match === 'string' ? ctx.match.trim() : '';
@@ -70,6 +72,7 @@ export function setupStartCommand(bot: Bot<MyContext>) {
       // Financial support remains available even when new terms await consent.
       if (startPayload === 'refund') { await handleRefundRequest(ctx); return; }
       if (!hasAcceptedCurrentTerms(user)) { await offerTerms(ctx); return; }
+      if (/^discount_[a-f0-9-]{36}$/.test(startPayload)) { await renderDiscountOffer(ctx,startPayload.slice(9));return; }
       // 1. Deep Link: Plan Upgrade from Mini App (e.g. /start upgrade_plus)
       if (startPayload.startsWith('upgrade_')) {
         const tier = startPayload.replace('upgrade_', '').toUpperCase();

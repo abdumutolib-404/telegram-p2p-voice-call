@@ -41,6 +41,7 @@ import { initializeOrderSequence } from './services/plan';
 import { surgeAlertService } from './services/surgeAlertService';
 import { startEventSubscriber, EventSubscriberHandle } from './services/eventSubscriber';
 import { startPostCallWorker } from './services/postCallOutbox';
+import { startDiscountNoticeWorker } from './services/discounts';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
 import { requestIdMiddleware } from './middleware/requestId';
 import { logger } from './utils/logger';
@@ -468,6 +469,7 @@ let stopRefundRecovery: (() => Promise<void>) | null = null;
 let stopManualCrawlerWorker: (() => Promise<void>) | null = null;
 let stopPostCallWorker: (() => Promise<void>) | null = null;
 let stopNotificationWorker: (() => Promise<void>) | null = null;
+let stopDiscountWorker: (() => Promise<void>) | null = null;
 
 let stopPolling: (() => Promise<void>) | null = null;
 const stopWorkers: Array<() => void> = [];
@@ -544,6 +546,7 @@ async function bootstrap(): Promise<void> {
     // Start bot polling under distributed leader election only after Redis and DB are ready
     if (bot) {
       stopNotificationWorker = notificationQueue.startWorker(() => bot);
+      stopDiscountWorker = startDiscountNoticeWorker();
       stopPolling = startBotWithRetry(bot);
       stopRefundRecovery = startStarsRefundRecovery(bot.api);
     }
@@ -593,6 +596,7 @@ async function bootstrap(): Promise<void> {
     }, error);
     stopPlanRefresh?.(); await stopRefundRecovery?.();
     await stopPostCallWorker?.();
+    await stopDiscountWorker?.();
     await stopManualCrawlerWorker?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();
@@ -643,6 +647,7 @@ const gracefulShutdown = async (signal: string) => {
   try {
     stopPlanRefresh?.();
     await stopPostCallWorker?.();
+    await stopDiscountWorker?.();
     await stopManualCrawlerWorker?.();
     await stopRefundRecovery?.();
     await stopNotificationWorker?.().catch(() => undefined);

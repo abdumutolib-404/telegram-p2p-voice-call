@@ -141,6 +141,12 @@ describe('Monotonic Order ID Counter & Collision Resistance', () => {
     expect(res.request).toBeDefined();
     expect(res.request!.orderNumber).toMatch(/^A\d+$/);
   });
+  it('ignores hexadecimal discount orders when seeding the numeric A counter', async () => {
+    const user=await prisma.user.create({data:{telegramId:99988876n,alias:'Synthetic discount order'}});
+    await prisma.manualPaymentRequest.create({data:{orderNumber:'D9999999999999999',userId:user.id,telegramId:user.telegramId,alias:user.alias,plan:'PLUS',uzsAmount:8000}});
+    await prisma.starsTransaction.create({data:{orderNumber:'D8888888888888888',userId:user.id,telegramPaymentId:'synthetic-discount-order',starsAmount:80,planTier:'PLUS'}});
+    expect(await getMaxOrderNumberFromDb()).toBe(0);
+  });
 
   it('safely falls back to monotonic sequence when Redis throws', async () => {
     resetOrderSequenceForTesting();
