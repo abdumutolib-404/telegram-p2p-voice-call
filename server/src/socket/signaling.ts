@@ -550,8 +550,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
                 token,
                 livekitToken: token,
                 livekitUrl: env.LIVEKIT_HOST,
-                callDurationLimit: remainingSeconds,
+                callDurationLimit: callDurationLimitSeconds,
                 maxDurationSeconds: callDurationLimitSeconds,
+                startedAt: activeCall.mediaAuthorizedAt?.getTime() ?? null,
+                expiresAt: activeCall.mediaAuthorizedAt ? activeCall.mediaAuthorizedAt.getTime() + callDurationLimitSeconds * 1000 : null,
               });
               if (startedAt) {
                 socket.emit('call_started', {

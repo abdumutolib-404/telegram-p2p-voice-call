@@ -8,7 +8,7 @@ Reviewed 2026-10-05. Local verification is recorded in [Verification](VERIFICATI
 - Use a separate staging bot, database, Redis, LiveKit project, and private object-storage bucket.
 - Test real Telegram admin OTP, purchases/refunds, two-account calls, microphone denial, reconnect, both voices in playable recordings, download denial, and storage expiry/retry.
 - Back up and rehearse migrations on a restore. Drain active calls and deploy the recording lifecycle migration with Node and Go together.
-- Confirm remote CI results for the release revision. Historical local results are not evidence of a current remote workflow.
+- Record the manual verification checklist against the exact release revision; this repository currently has no GitHub verification workflow. Check frontend hosting build results and deployed commit separately. Historical local results are not evidence of a current deployment.
 - Measure actual host/device latency, memory, and call stability before promising throughput.
 
 The 2026-10-04 review found unavailable Railway services and missing or mismatched provider account access. Those are dated observations; provider access was not rechecked during documentation cleanup.

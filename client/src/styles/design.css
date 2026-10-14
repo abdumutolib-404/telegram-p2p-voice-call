@@ -85,7 +85,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .hcard__actions .secondary-button { font-size: 13px; min-height: 44px; padding: 0 10px; gap: 6px; }
 .audio-action { position: relative; }
 .audio-delivery-note { position: absolute; z-index: 2; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: var(--shadow-float); font-size: 12px; color: var(--accent-text); animation: audio-note-enter 180ms ease-out both; }
-@keyframes audio-note-enter { from { opacity: 0; margin-bottom: -4px; } to { opacity: 1; margin-bottom: 0; } }
+@keyframes audio-note-enter { from { margin-bottom: -4px; } to { margin-bottom: 0; } }
 .partner-availability { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 8px 0 12px !important; }
 .partner-availability::before { content: ''; height: 8px; width: 8px; border-radius: 50%; background: var(--text-2); }
 .partner-availability.is-available::before { background: var(--accent); }

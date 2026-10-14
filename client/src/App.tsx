@@ -60,6 +60,8 @@ export const App: React.FC = () => {
   // 3. Refs (unconditional)
   const [queueJoined,setQueueJoined] = useState(false);
   const [cancelPending,setCancelPending] = useState(false);
+  const [restartPending, setRestartPending] = useState(false);
+  const restartInFlight = useRef(false);
   const hasJoinedQueueRef = useRef(false);
   const matchAttemptRef = useRef(0);
   const authAttemptRef = useRef(0);
@@ -129,7 +131,7 @@ export const App: React.FC = () => {
       const attempt = ++matchAttemptRef.current;
 
       const livekitToken = data.livekitToken || data.token || '';
-      const callDurationLimit = data.callDurationLimit ?? data.maxDurationSeconds ?? 900;
+      const callDurationLimit = data.maxDurationSeconds ?? data.callDurationLimit ?? 900;
 
       const normalizedData: MatchFoundPayload = {
         ...data,
@@ -138,6 +140,7 @@ export const App: React.FC = () => {
       };
 
       setMatchData(normalizedData);
+      setSynchronizedStartedAt(data.startedAt ?? null);
       setAppState('connecting');
 
       const livekitUrl =
@@ -158,11 +161,13 @@ export const App: React.FC = () => {
       } catch (err) {
         if (attempt !== matchAttemptRef.current || (err instanceof Error && err.name === 'AbortError')) return;
         console.error('Failed to establish audio connection:', err);
+        socketService.finishCall(data.roomName, userData.userId, 'connection_failed');
+        disconnectLiveKit();
         setErrorMessage('Unable to establish voice connection. Please try again.');
         setAppState('ended');
       }
     },
-    [connectLiveKit, disconnectLiveKit, setAppState]
+    [connectLiveKit, disconnectLiveKit, setAppState, userData.userId]
   );
 
   // 6. Telegram WebApp Initialization & Deterministic Access-Control Verification (unconditional)
@@ -333,6 +338,9 @@ export const App: React.FC = () => {
           plan: data.user.plan || 'FREE',
           planExpiresAt: data.user.planExpiresAt || null,
           callsRemaining: data.user.callsRemaining ?? 0,
+          includedCallsRemaining: data.user.includedCallsRemaining,
+          bonusCallsRemaining: data.user.bonusCallsRemaining,
+          allowancePeriod: data.user.allowancePeriod,
           totalCallsLimit: data.user.totalCallsLimit,
           maxCallDuration: data.user.maxCallDuration,
           recordingsRemaining: data.user.recordingsRemaining,
@@ -366,6 +374,9 @@ export const App: React.FC = () => {
                 partnerAlias: activeData.partnerAlias,
                 partnerBand: activeData.partnerBand,
                 callDurationLimit: activeData.callDurationLimit,
+                maxDurationSeconds: activeData.maxDurationSeconds,
+                startedAt: activeData.startedAt,
+                expiresAt: activeData.expiresAt,
               });
               setAppState('ready');
               return;
@@ -439,6 +450,9 @@ export const App: React.FC = () => {
     };
     const onQueueJoined=()=>setQueueJoined(true);
     const onCallStarted = (data: { startedAt: number; durationSeconds: number; expiresAt: number }) => {
+      if (appStateRef.current !== 'connecting' && appStateRef.current !== 'in_call') return;
+      if (!Number.isFinite(data.startedAt) || !Number.isFinite(data.durationSeconds) || data.durationSeconds <= 0) return;
+      setMatchData(previous => previous ? { ...previous, callDurationLimit: data.durationSeconds, maxDurationSeconds: data.durationSeconds, expiresAt: data.expiresAt } : previous);
       setSynchronizedStartedAt(data.startedAt);
     };
     const onSocketError = (err: { code?: string; message?: string } | string) => {
@@ -558,18 +572,33 @@ export const App: React.FC = () => {
   }, [pendingDirectCall, startAudio, handleMatchFound, retryMicrophone, getRoom]);
 
   const handleRestart = async () => {
+    if (restartInFlight.current || appStateRef.current !== 'ended') return;
+    restartInFlight.current = true;
+    setRestartPending(true);
     startAudio().catch(() => {});
     try {
-      const summary = await dashboardRequest<{ user: Partial<UserMatchData> }>(initData, '/summary');
+      const summary = await dashboardRequest<{ user: Partial<UserMatchData>; activeCall: { roomName: string } | null }>(initData, '/summary');
       if (appStateRef.current !== 'ended') return;
+      if (!summary.user || summary.activeCall === undefined) throw new Error('Session status unavailable.');
       setUserData(previous => ({ ...previous, ...summary.user }));
+      if (summary.activeCall) {
+        if (summary.activeCall.roomName === matchData?.roomName) {
+          socketService.finishCall(summary.activeCall.roomName, userData.userId, 'call_recovery');
+          setErrorMessage('Your previous session is still closing. Wait a moment, then try again.');
+        } else {
+          setErrorMessage('You have another active session. Open your dashboard to return to it.');
+        }
+        return;
+      }
       if ((summary.user.callsRemaining ?? 0) <= 0) { setErrorMessage('You have used your available calls. Open your dashboard to review your allowance.'); return; }
-    } catch { setErrorMessage('Unable to refresh your call allowance. Please retry.'); return; }
-    setPendingDirectCall(null);
-    setMatchData(null);
-    setErrorMessage(null);
-    setQueueJoined(false);
-    setAppState('radar');
+      setPendingDirectCall(null);
+      setMatchData(null);
+      setSynchronizedStartedAt(null);
+      setErrorMessage(null);
+      setQueueJoined(false);
+      setAppState('radar');
+    } catch { if (appStateRef.current === 'ended') setErrorMessage('Unable to refresh your session and call allowance. Please retry.'); }
+    finally { restartInFlight.current = false; setRestartPending(false); }
   };
 
   const handleStartSearching = () => {
@@ -704,6 +733,7 @@ export const App: React.FC = () => {
       error={errorMessage}
       cancelled={isCancelled}
       onRestart={handleRestart}
+      restartPending={restartPending}
     />
   );
 };

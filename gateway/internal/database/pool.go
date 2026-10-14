@@ -26,6 +26,8 @@ func NewPool(ctx context.Context, databaseURL string) (*DB, error) {
 	config.MinConns = 2
 	config.MaxConnLifetime = 1 * time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute
+	// The shared schema stores UTC wall times in timestamp-without-time-zone columns.
+	config.ConnConfig.RuntimeParams["timezone"] = "UTC"
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {

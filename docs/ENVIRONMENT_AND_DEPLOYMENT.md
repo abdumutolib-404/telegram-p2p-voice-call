@@ -6,6 +6,8 @@ Reviewed 2026-10-07. Production uses Cloudflare Workers for the three frontends,
 
 Each application has its own template: [server/.env.example](../server/.env.example), [client/.env.example](../client/.env.example), [admin/.env.example](../admin/.env.example), and [landing/.env.example](../landing/.env.example). Copy a template only if its local .env is absent. Preserve existing provider values. Configure backend secrets in the host's secret controls and public frontend variables in Cloudflare build settings.
 
+The shared schema stores UTC wall times in timestamp columns without timezone metadata. Node's Prisma connection URL and the Go pool both enforce UTC sessions, so database-generated timestamps do not inherit a host-local offset. Keep the application database's default timezone UTC for manual SQL and migration operations as well. Existing stored values are not automatically converted by a session setting; confirm historical timezone assumptions when rehearsing a release on a backup.
+
 There is no root environment template or root npm package. Install each package separately using Node 24 and npm ci. The optional local Compose password is documented in server/.env.example.
 
 ## Provider values

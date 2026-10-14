@@ -48,6 +48,9 @@ export interface UserMatchData {
   plan?: 'FREE' | 'PLUS' | 'PRO' | 'BOSS' | string;
   planExpiresAt?: string | null;
   callsRemaining?: number;
+  includedCallsRemaining?: number;
+  bonusCallsRemaining?: number;
+  allowancePeriod?: { kind: 'calendar_month' | 'subscription'; startsAt: string; endsAt: string };
   totalCallsLimit?: number;
   maxCallDuration?: number; // minutes or seconds
   recordingsRemaining?: number;
@@ -67,6 +70,8 @@ export interface MatchFoundPayload {
   partnerBand: number;
   callDurationLimit?: number; // seconds
   maxDurationSeconds?: number;
+  startedAt?: number | null;
+  expiresAt?: number | null;
 }
 
 export interface RecordStatusPayload {

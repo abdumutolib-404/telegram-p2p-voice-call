@@ -8,7 +8,7 @@ import { publishGatewayCommand } from '../config/redis';
 import { initDataLockdownMiddleware } from '../middleware/initDataLockdown';
 import { requireRegisteredMember, type MemberRequest } from '../middleware/registeredMember';
 import { createActionRateLimiter } from '../middleware/rateLimit';
-import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod, calculateEffectiveCallDuration } from '../services/plan';
+import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod, calculateEffectiveCallDuration, getAllowancePeriod } from '../services/plan';
 import { getActiveBonusCallsCount, getReferralStats, getContestStatus } from '../services/referralService';
 import { hasAcceptedCurrentTerms, currentTerms } from '../services/terms';
 import { saveCallQualityRating } from '../services/callFeedback';
@@ -55,8 +55,11 @@ async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, u
 router.get('/summary', action(async (req, res) => {
   const user = req.member!;
   const entitlement = getEffectiveEntitlement(user);
-  const [callsUsed, recordingsUsed, bonus] = await Promise.all([getUserCallsUsedThisPeriod(user.id, user), getUserRecordingsUsedThisPeriod(user.id, user), getActiveBonusCallsCount(user.id)]);
-  res.json({ user: { userId: user.id, alias: user.alias, band: user.band, subFC: user.subFC, subLR: user.subLR, subGRA: user.subGRA, subP: user.subP, plan: entitlement.plan, planExpiresAt: user.subscriptionExpiresAt, dnd: user.dnd, callsRemaining: Math.max(0, entitlement.callLimit - callsUsed) + bonus, totalCallsLimit: entitlement.callLimit, maxCallDuration: entitlement.maxCallDuration, recordingsRemaining: Math.max(0, entitlement.recordingLimit - recordingsUsed), recordingsLimit: entitlement.recordingLimit, recordingRetentionDays: entitlement.retentionDays }, terms: { version: currentTerms.version, acceptedAt: user.termsAcceptedAt, url: currentTerms.termsUrl } });
+  const [callsUsed, recordingsUsed, bonus, activeCall] = await Promise.all([
+    getUserCallsUsedThisPeriod(user.id, user), getUserRecordingsUsedThisPeriod(user.id, user), getActiveBonusCallsCount(user.id),
+    prisma.callSession.findFirst({ where: { status: 'ACTIVE', OR: [{ userAId: user.id }, { userBId: user.id }] }, select: { roomName: true } }),
+  ]);
+  res.json({ activeCall: activeCall ? { roomName: activeCall.roomName } : null, user: { userId: user.id, alias: user.alias, band: user.band, subFC: user.subFC, subLR: user.subLR, subGRA: user.subGRA, subP: user.subP, plan: entitlement.plan, planExpiresAt: user.subscriptionExpiresAt, dnd: user.dnd, callsRemaining: Math.max(0, entitlement.callLimit - callsUsed) + bonus, includedCallsRemaining: Math.max(0, entitlement.callLimit - callsUsed), bonusCallsRemaining: bonus, allowancePeriod: getAllowancePeriod(user), totalCallsLimit: entitlement.callLimit, maxCallDuration: entitlement.maxCallDuration, recordingsRemaining: Math.max(0, entitlement.recordingLimit - recordingsUsed), recordingsLimit: entitlement.recordingLimit, recordingRetentionDays: entitlement.retentionDays }, terms: { version: currentTerms.version, acceptedAt: user.termsAcceptedAt, url: currentTerms.termsUrl } });
 }));
 
 const band = z.number().min(0).max(9).refine(value => Number.isInteger(value * 2));

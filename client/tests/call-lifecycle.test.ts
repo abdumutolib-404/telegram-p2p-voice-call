@@ -44,7 +44,7 @@ beforeEach(() => {
     : { hasActiveCall: false }), { status: 200 })));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.Telegram; container.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); delete window.Telegram; container.remove(); });
 
 async function emit(name: string, payload: unknown) {
   await act(async () => { for (const listener of Array.from(fixture.events.get(name) ?? [])) await listener(payload); });
@@ -100,10 +100,76 @@ it('shows an actionable error when signaling cannot connect while searching', as
 it('refreshes the allowance before next partner and does not search when it is exhausted',async()=>{
   await startCall();await act(async()=>container.querySelector<HTMLButtonElement>('button[aria-label="End call"]')!.click());
   const searches=fixture.join.mock.calls.length;
-  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({user:{callsRemaining:0}}),{status:200})));
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({user:{callsRemaining:0},activeCall:null}),{status:200})));
   const next=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Find next partner'))!;
   await act(async()=>next.click());
   expect(container.textContent).toContain('You have used your available calls');expect(fixture.join).toHaveBeenCalledTimes(searches);
+});
+
+it('preserves five minutes on a rejoin after ten minutes and ends only at the original deadline', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-14T10:00:00Z'));
+  const startedAt = Date.now() - 600000;
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/auth')
+    ? { success: true, user: { id: 'synthetic-user', alias: 'Fixture', band: 7, callsRemaining: 3 } }
+    : { hasActiveCall: true, roomName: 'synthetic-room', livekitToken: 'synthetic-token', partnerAlias: 'Partner', partnerBand: 7, callDurationLimit: 300 }), { status: 200 })));
+  await act(async () => root.render(createElement(App)));
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Join voice call"]')!.click());
+  await emit('call_started', { startedAt, durationSeconds: 900, expiresAt: startedAt + 900000 });
+  expect(container.textContent).toContain('05:00 remaining');
+  expect(fixture.finish).not.toHaveBeenCalled();
+  await act(async () => vi.advanceTimersByTimeAsync(299000));
+  expect(fixture.finish).not.toHaveBeenCalled();
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(fixture.finish).toHaveBeenCalledExactlyOnceWith('synthetic-room', 'synthetic-user', 'time_limit_reached');
+});
+
+it('uses recovery timestamps before a delayed call_started event arrives', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-14T10:00:00Z'));
+  await search();
+  await emit('match_found', { roomName: 'synthetic-room', livekitToken: 'synthetic-token', partnerAlias: 'Partner', partnerBand: 7,
+    callDurationLimit: 300, maxDurationSeconds: 900, startedAt: Date.now() - 600000 });
+  expect(container.textContent).toContain('05:00 remaining');
+  expect(fixture.finish).not.toHaveBeenCalled();
+});
+
+it('releases a rejected voice join without announcing a ready peer', async () => {
+  fixture.voice.connect.mockRejectedValueOnce(new Error('Synthetic join failure'));
+  await search();
+  await emit('match_found', { roomName: 'synthetic-room', livekitToken: 'synthetic-token', partnerAlias: 'Partner', partnerBand: 7 });
+  expect(fixture.finish).toHaveBeenCalledExactlyOnceWith('synthetic-room', 'synthetic-user', 'connection_failed');
+  expect(fixture.peerReady).not.toHaveBeenCalled();
+  expect(fixture.voice.disconnect).toHaveBeenCalled();
+  expect(container.textContent).toContain('Unable to establish voice connection');
+});
+
+it('blocks duplicate retry presses and a new search until the previous server session closes', async () => {
+  await startCall();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="End call"]')!.click());
+  const searches = fixture.join.mock.calls.length;
+  let resolve!: (response: Response) => void;
+  const fetchMock = vi.fn(() => new Promise<Response>(done => { resolve = done; })); vi.stubGlobal('fetch', fetchMock);
+  const next = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Find next partner'))!;
+  await act(async () => { next.click(); next.click(); });
+  expect(fetchMock).toHaveBeenCalledOnce(); expect(next.disabled).toBe(true);
+  await act(async () => resolve(new Response(JSON.stringify({ user: { callsRemaining: 2 }, activeCall: { roomName: 'synthetic-room' } }))));
+  expect(container.textContent).toContain('still closing'); expect(fixture.join).toHaveBeenCalledTimes(searches);
+  expect(fixture.finish).toHaveBeenLastCalledWith('synthetic-room', 'synthetic-user', 'call_recovery');
+  fetchMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ user: { callsRemaining: 2 }, activeCall: null }))));
+  await act(async () => next.click());
+  expect(container.textContent).toContain('Finding your partner'); expect(fixture.join.mock.calls.length).toBeGreaterThan(searches);
+});
+
+it('keeps a failed status refresh retryable and does not terminate a different active session', async () => {
+  await startCall(); await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="End call"]')!.click());
+  const searches = fixture.join.mock.calls.length, finishes = fixture.finish.mock.calls.length;
+  const next = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Find next partner'))!;
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Synthetic outage')));
+  await act(async () => next.click());
+  expect(next.disabled).toBe(false); expect(container.textContent).toContain('Unable to refresh your session');
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ user: { callsRemaining: 2 }, activeCall: { roomName: 'other-room' } }))));
+  await act(async () => next.click());
+  expect(container.textContent).toContain('another active session');
+  expect(fixture.finish).toHaveBeenCalledTimes(finishes); expect(fixture.join).toHaveBeenCalledTimes(searches);
 });
 
 it('lets the user cancel a stalled voice connection and ignores its late success',async()=>{

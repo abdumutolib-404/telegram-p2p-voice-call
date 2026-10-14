@@ -42,6 +42,8 @@ type MatchFoundEvent struct {
 	LivekitURL         string  `json:"livekitUrl"`
 	CallDurationLimit  int     `json:"callDurationLimit"`
 	MaxDurationSeconds int     `json:"maxDurationSeconds"`
+	StartedAt          int64   `json:"startedAt,omitempty"`
+	ExpiresAt          int64   `json:"expiresAt,omitempty"`
 }
 
 type CallFinishedEvent struct {

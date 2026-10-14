@@ -80,9 +80,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     }
   }, [isPartnerConnected, partnerConnectedAt]);
 
-  // Synchronized countdown timer: only runs when both peers are actively connected
+  // Once authorized, the server deadline continues through a partner reconnect.
   useEffect(() => {
-    if (!isPartnerConnected) {
+    if (!isPartnerConnected && !synchronizedStartedAt) {
       return;
     }
 
@@ -345,16 +345,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           <span>
             {isPartnerConnected
               ? 'Time in conversation'
-              : 'Connecting your session'}
+              : synchronizedStartedAt ? 'Waiting for your partner to reconnect' : 'Connecting your session'}
           </span>
           <div
-            className={`call-timer ${!isPartnerConnected ? 'is-connecting' : ''} ${isNearEnd ? 'text-amber-300' : ''}`}
+            className={`call-timer ${!isPartnerConnected && !synchronizedStartedAt ? 'is-connecting' : ''} ${isNearEnd ? 'text-amber-300' : ''}`}
             aria-label={`Call duration ${formatTime(elapsedSeconds)}`}
           >
-            {isPartnerConnected ? formatTime(elapsedSeconds) : 'Connecting…'}
+            {isPartnerConnected || synchronizedStartedAt ? formatTime(elapsedSeconds) : 'Connecting…'}
           </div>
-          <p className={isNearEnd && isPartnerConnected ? 'near-end' : ''}>
-            {!isPartnerConnected
+          <p className={isNearEnd && (isPartnerConnected || synchronizedStartedAt) ? 'near-end' : ''}>
+            {!isPartnerConnected && !synchronizedStartedAt
               ? 'Your timer begins when both of you are connected.'
               : isNearEnd
                 ? 'Less than 1 minute remaining'

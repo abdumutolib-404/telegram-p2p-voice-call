@@ -15,6 +15,8 @@ Reviewed against the working tree on 2026-10-05. These files describe the reposi
 | [Shared pricing](PLATFORM_PRICING.md) | Admin publication, live comparison, client choices and Telegram quotes |
 | [Operations](OPERATIONS.md) | Recovery, release requirements, and unresolved decisions |
 | [Verification](VERIFICATION.md) | Reproducible checks and dated evidence |
+| [Readiness implementation](READINESS_IMPLEMENTATION_2026-10-14.md) | Call recovery, allowance clarity and current verification limits |
+| [Staging readiness checklist](STAGING_READINESS_CHECKLIST.md) | Real-provider and rollout gates still to execute |
 | [Cross-device audio](WEBRTC_CROSS_DEVICE_AUDIO_GUIDE.md) | Audio implementation and physical-device test checklist |
 
 ## Product and learner guidance

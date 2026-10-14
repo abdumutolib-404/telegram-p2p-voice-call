@@ -252,6 +252,14 @@ select:focus-visible {
   font-size: 12px;
   margin-top: 14px;
 }
+.allowance-details {
+  color: var(--text-2);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.allowance-details p + p { margin-top: 0.375rem; }
+.allowance-details--compact { margin-top: 1rem; }
 .practice-panel {
   min-width: 0;
   background: var(--app-surface);
@@ -415,6 +423,8 @@ select:focus-visible {
 }
 .partner-orbit {
   position: relative;
+  overflow: clip;
+  overflow-clip-margin: 6px;
   width: min(280px, calc(100vw - 64px));
   height: min(280px, calc(100vw - 64px));
   margin: 34px auto 26px;

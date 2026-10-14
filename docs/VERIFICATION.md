@@ -21,9 +21,12 @@ node scripts/isolated-command.cjs <private-runtime.json> schema
 node scripts/isolated-command.cjs <private-runtime.json> integration
 node scripts/gateway-check.cjs <private-runtime.json> test ./... -count=1
 node scripts/gateway-check.cjs <private-runtime.json> vet ./...
+node scripts/check-postgres-readiness.cjs <private-runtime.json>
 ```
 
 For Go race checks, run the gateway test command with -race in a supported Linux environment. Remove only the exact owned disposable containers when finished; do not remove application volumes or use global Docker cleanup.
+
+The PostgreSQL readiness probe requires a current backend production build (`node scripts/verify.cjs compile`). It exercises the actual Prisma adapter on multiple pooled connections, checks database-generated UTC timestamps and preserves other startup options. It accepts only the dedicated loopback verification database and does not start bots or contact media/payment providers. The gateway database tests also cover UTC sessions and non-UTC stale-session cutoff inputs. See [the October 14 implementation evidence](READINESS_IMPLEMENTATION_2026-10-14.md) for the native PostgreSQL run and remaining Redis/provider limits.
 
 Frontend checks:
 

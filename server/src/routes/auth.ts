@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { createActionRateLimiter, getClientIp } from '../middleware/rateLimit';
 import { hasAcceptedCurrentTerms } from '../services/terms';
-import { getEffectiveEntitlement, getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod } from '../services/plan';
+import { getEffectiveEntitlement, getPaidUserProfile, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod, getAllowancePeriod } from '../services/plan';
 import { getActiveBonusCallsCount } from '../services/referralService';
 import { logger } from '../utils/logger';
 import { setRequestContextUserId } from '../utils/requestContext';
@@ -156,6 +156,9 @@ router.post('/verify', authLimiter, async (req, res) => {
         subP: dbUser.subP,
         plan: dbUser.plan,
         callsRemaining,
+        includedCallsRemaining: Math.max(0, effectiveLimit - callsUsed),
+        bonusCallsRemaining: activeBonusCalls,
+        allowancePeriod: getAllowancePeriod(dbUser),
         totalCallsLimit: effectiveLimit,
         isBanned: false,
         dnd: dbUser.dnd,

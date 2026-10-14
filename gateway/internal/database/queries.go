@@ -837,7 +837,7 @@ func (db *DB) GetStalePendingSessions(ctx context.Context, olderThan time.Time) 
 		FROM "CallSession"
 		WHERE status = 'PENDING' AND "createdAt" < $1
 	`
-	rows, err := db.Pool.Query(ctx, query, olderThan)
+	rows, err := db.Pool.Query(ctx, query, olderThan.UTC())
 	if err != nil {
 		return nil, err
 	}

@@ -249,6 +249,11 @@ func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
 			tokenTTL,
 		)
 		if err == nil {
+			var startedAt, expiresAt int64
+			if activeCall.MediaAuthorizedAt != nil {
+				startedAt = activeCall.MediaAuthorizedAt.UnixMilli()
+				expiresAt = startedAt + int64(durationLimitSeconds)*1000
+			}
 			socket.Join(activeCall.RoomName)
 			socket.Emit("match_found", MatchFoundEvent{
 				RoomName:           activeCall.RoomName,
@@ -258,8 +263,10 @@ func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
 				Token:              token,
 				LivekitToken:       token,
 				LivekitURL:         h.LiveKitHost,
-				CallDurationLimit:  remainingSeconds,
+				CallDurationLimit:  durationLimitSeconds,
 				MaxDurationSeconds: durationLimitSeconds,
+				StartedAt:          startedAt,
+				ExpiresAt:          expiresAt,
 			})
 		}
 	}

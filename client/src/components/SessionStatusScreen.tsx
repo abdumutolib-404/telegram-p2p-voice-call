@@ -8,6 +8,7 @@ interface SessionStatusScreenProps {
   onRestart?: () => void;
   onDashboard?: () => void;
   onCancel?: () => void;
+  restartPending?: boolean;
 }
 
 export function SessionStatusScreen({
@@ -17,6 +18,7 @@ export function SessionStatusScreen({
   onRestart,
   onDashboard,
   onCancel,
+  restartPending = false,
 }: SessionStatusScreenProps) {
   const pending = state !== 'ended';
   return (
@@ -68,9 +70,9 @@ export function SessionStatusScreen({
                   : 'Thanks for making time to practice. Review your call, rate your partner and find available recordings in History & audio.')}
         </p>
         {onRestart && (
-          <button type="button" className="primary-button" onClick={onRestart}>
-            <RefreshCw size={18} aria-hidden="true" />
-            {cancelled ? 'Find a partner' : 'Find next partner'}
+          <button type="button" className="primary-button" onClick={onRestart} disabled={restartPending} aria-busy={restartPending}>
+            {restartPending ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={18} aria-hidden="true" />}
+            {restartPending ? 'Checking your session…' : cancelled ? 'Find a partner' : 'Find next partner'}
           </button>
         )}
         {state === 'ended' && onDashboard && <button type="button" className="secondary-button" onClick={onDashboard}>History &amp; audio</button>}

@@ -2,6 +2,7 @@ import { PhoneCall } from 'lucide-react';
 import type { UserMatchData } from '../types';
 import type { ReactNode } from 'react';
 import { Brand } from './Brand';
+import { AllowanceDetails } from './AllowanceDetails';
 
 interface ReadyScreenProps {
   userData: UserMatchData;
@@ -23,6 +24,7 @@ export function ReadyScreen({ userData, onStart, directPartner, onDismissDirect,
         <div className="limit"><span>Target band</span><strong className="accent">{userData.band.toFixed(1)}</strong></div>
         <div className="limit"><span>Calls available</span><strong>{userData.callsRemaining ?? '—'}</strong></div>
       </div>
+      <AllowanceDetails userData={userData} compact />
       {directPartner && <div className="direct-call-notice"><h1>Your session is ready.</h1><p>Join your voice session with <strong>{directPartner.alias}</strong>{directPartner.band !== undefined && <> · Band {directPartner.band.toFixed(1)}</>}.</p></div>}
       <div className="dash__stage">
         <button className="callbtn" type="button" onClick={onStart} disabled={exhausted} aria-label={directPartner ? 'Join voice call' : 'Find a partner'}>

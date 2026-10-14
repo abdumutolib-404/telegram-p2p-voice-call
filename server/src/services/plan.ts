@@ -270,13 +270,24 @@ export function getEffectiveEntitlement(user: {
   };
 }
 
-export function allowancePeriodStart(user: { subscriptionStartsAt?: Date | string | null; subscriptionDurationDays?: number | null; subscriptionExpiresAt?: Date | string | null }): Date {
-  const now = new Date();
+export function allowancePeriodStart(user: { subscriptionStartsAt?: Date | string | null; subscriptionDurationDays?: number | null; subscriptionExpiresAt?: Date | string | null }, now = new Date()): Date {
   if (user.subscriptionExpiresAt && new Date(user.subscriptionExpiresAt) > now) {
     if (user.subscriptionStartsAt) return new Date(user.subscriptionStartsAt);
     return new Date(new Date(user.subscriptionExpiresAt).getTime() - (user.subscriptionDurationDays || 30) * 86400000);
   }
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+/** Describes the existing usage period; it does not renew or change entitlements. */
+export function getAllowancePeriod(user: Parameters<typeof allowancePeriodStart>[0]) {
+  const now = new Date();
+  const subscriptionEnd = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) : null;
+  const subscription = Boolean(subscriptionEnd && subscriptionEnd > now);
+  return {
+    kind: subscription ? 'subscription' as const : 'calendar_month' as const,
+    startsAt: allowancePeriodStart(user, now).toISOString(),
+    endsAt: (subscription ? subscriptionEnd! : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))).toISOString(),
+  };
 }
 
 export async function getUserCallsUsedThisPeriod(userId: string, user?: any, transaction?: Pick<Prisma.TransactionClient, 'user' | 'callSession'>): Promise<number> {

@@ -166,7 +166,10 @@ router.get('/active', initDataLockdownMiddleware, async (req: AuthenticatedTeleg
       livekitUrl: env.LIVEKIT_HOST,
       partnerAlias: partner.alias,
       partnerBand: partner.band,
-      callDurationLimit: remainingSeconds,
+      callDurationLimit: callDurationLimitSeconds,
+      maxDurationSeconds: callDurationLimitSeconds,
+      startedAt: session.mediaAuthorizedAt?.getTime() ?? null,
+      expiresAt: session.mediaAuthorizedAt ? session.mediaAuthorizedAt.getTime() + callDurationLimitSeconds * 1000 : null,
     });
   } catch (error: unknown) {
     logger.error('Active session lookup failed', {

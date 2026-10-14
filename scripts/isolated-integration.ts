@@ -40,7 +40,7 @@ async function user(data:any={}) {
 async function purchase(owner:any) {return prisma.starsTransaction.create({data:{userId:owner.id,telegramPaymentId:crypto.randomUUID(),starsAmount:1,planTier:'PLUS',status:'PAID'}});}
 async function main(){
  const database=new URL(process.env.DATABASE_URL||'');
- const poolOptions:Record<string,string>={connection_limit:'20',pool_timeout:'10'};
+ const poolOptions:Record<string,string>={connection_limit:'20',pool_timeout:'10',options:'-c timezone=UTC'};
  if(database.protocol!=='postgresql:'||database.hostname!=='127.0.0.1'||database.port!=='55432'||database.pathname!=='/pairtalk_check'||Array.from(database.searchParams).some(([key,value])=>poolOptions[key]!==value)||process.env.REDIS_URL!=='redis://127.0.0.1:56379'||process.env.NODE_ENV==='test')throw new Error('Integration checks require the dedicated loopback verification services and actual database mode.');
  await connectDB();assert(await connectRedis());
  await check('PostgreSQL representative read and Redis PING',async()=>{await prisma.user.findFirst();assert.equal(await getRedis().ping(),'PONG');});

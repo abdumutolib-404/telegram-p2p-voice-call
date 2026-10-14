@@ -23,7 +23,7 @@ Room actions require membership in the persisted active session before allocatin
 
 | Event | Relevant fields |
 | --- | --- |
-| match_found | roomName, livekitToken (legacy token alias), livekitUrl, partnerAlias, partnerBand, duration limit in seconds |
+| match_found | roomName, livekitToken (legacy token alias), livekitUrl, partnerAlias, partnerBand, full callDurationLimit/maxDurationSeconds in seconds; recovery includes authorized startedAt/expiresAt in milliseconds |
 | call_started | startedAt and expiresAt in milliseconds; durationSeconds |
 | record_status | roomName and record boolean for this user's saved-copy intent |
 | room_recording_status | roomName, state (`on`, `off`, `unknown`), updatedAt in milliseconds |
@@ -51,6 +51,8 @@ room_recording_status describes room-wide capture independently of personal inte
 
 ## Recovery and checks
 
-Use the authenticated active-call endpoint when recovering a session. Tokens and remaining duration come from current server state. A stale client must not revive a completed call. Test duplicate readiness, unauthorized rooms, delay before readiness, reconnect during grace, repeated finish, recording stop/restart, and completion racing a webhook.
+Use the authenticated active-call endpoint when recovering a session. Tokens, the full duration limit and authorized start/expiry come from current server state. Do not combine a reduced remaining-duration limit with an original start timestamp. An unstarted call has no authorized start/expiry. The client also refreshes full duration from call_started and keeps an authorized deadline running while a partner reconnects.
+
+A rejected voice join sends the existing idempotent finish_call action. Before another search, the client checks the dashboard summary: an existing active call prevents admission, and a retry can repeat cleanup for the same room. A stale client must not revive a completed call. Test duplicate readiness, unauthorized rooms, delay before readiness, reconnect during grace, repeated finish, recording stop/restart, and completion racing a webhook.
 
 Sources: [Node signaling](../server/src/socket/signaling.ts), [Go handler](../gateway/internal/signaling/handler.go), [Go timers](../gateway/internal/signaling/timers.go), and both shared completion helpers. See [Verification](VERIFICATION.md).

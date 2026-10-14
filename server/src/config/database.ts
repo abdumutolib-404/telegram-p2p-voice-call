@@ -23,6 +23,10 @@ function getDatabaseUrlWithPoolParams(): string | undefined {
     if (!url.searchParams.has('pool_timeout')) {
       url.searchParams.set('pool_timeout', '10');
     }
+    // Match Go's UTC sessions for the shared timestamp-without-time-zone schema.
+    // Append the setting so an earlier timezone option cannot override the invariant.
+    const options = url.searchParams.get('options')?.trim();
+    url.searchParams.set('options', `${options ? options + ' ' : ''}-c timezone=UTC`);
     const withPool = url.toString();
     process.env.DATABASE_URL = withPool;
     return withPool;

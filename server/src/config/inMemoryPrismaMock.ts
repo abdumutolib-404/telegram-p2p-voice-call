@@ -23,6 +23,8 @@ type CallSessionWhere = {
   roomName?: string;
   userAId?: string | {in:string[]};
   userBId?: string | {in:string[]};
+  userA?: UserWhere;
+  userB?: UserWhere;
   recordedByUserId?: string | null | { contains?: string; startsWith?: string; endsWith?: string };
   status?: string | { in?: string[] };
   egressId?: string | null;
@@ -1469,6 +1471,14 @@ export class InMemoryPrismaMock {
     if (where.roomName && session.roomName !== where.roomName) return false;
     if (where.userAId && (typeof where.userAId==='string' ? session.userAId!==where.userAId : !where.userAId.in.includes(session.userAId))) return false;
     if (where.userBId && (typeof where.userBId==='string' ? session.userBId!==where.userBId : !where.userBId.in.includes(session.userBId))) return false;
+    if (where.userA) {
+      const user = this.users.get(session.userAId);
+      if (!user || !this.matchesUser(user, where.userA)) return false;
+    }
+    if (where.userB) {
+      const user = this.users.get(session.userBId);
+      if (!user || !this.matchesUser(user, where.userB)) return false;
+    }
     if (typeof where.status === 'string' && session.status !== where.status) return false;
     if (typeof where.status === 'object' && where.status.in && !where.status.in.includes(session.status)) return false;
     if (where.egressId !== undefined && session.egressId !== where.egressId) return false;

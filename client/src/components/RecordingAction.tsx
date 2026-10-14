@@ -20,7 +20,7 @@ export function RecordingAction({ status, state, busy, index, onSend }: {
   return <span className="audio-action">
     <button type="button" className="secondary-button" aria-label={`Send audio${suffix} to Telegram`} aria-busy={pending} data-state={state} disabled={busy || pending || receipt} onClick={onSend}>
       {pending ? <PendingIcon /> : receipt ? <Check size={16} className="draw-check" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
-      {queued ? 'Queued for Telegram' : pending ? 'Sending…' : receipt ? 'Sent to Telegram' : `Download${suffix}`}
+      {queued ? 'Queued for Telegram' : pending ? 'Sending…' : receipt ? 'Sent to Telegram' : `Send to Telegram${suffix}`}
     </button>
     {(popover || queued) && <span className="audio-delivery-note" role="status">{queued ? 'Queued · awaiting Telegram' : <><Check size={14} aria-hidden="true" /> Sent</>}</span>}
   </span>;

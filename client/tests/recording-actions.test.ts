@@ -23,6 +23,20 @@ const render = () => act(async () => root.render(createElement(ActiveCallScreen,
 })));
 const record = () => container.querySelector<HTMLButtonElement>('button[aria-label="Start recording"], button[aria-label="Stop recording"]')!;
 
+it('keeps an authorized deadline visible and running while a partner reconnects', async () => {
+  vi.setSystemTime(new Date('2026-10-14T10:00:00Z'));
+  const finish = vi.fn();
+  await act(async () => root.render(createElement(ActiveCallScreen, {
+    roomName: 'fixture-room', userId: 'fixture-user', partnerAlias: 'Partner', partnerBand: 7,
+    callDurationLimit: 900, synchronizedStartedAt: Date.now() - 600000, isPartnerConnected: false,
+    isMicMuted: false, onToggleMic: vi.fn(), onFinishCall: finish,
+  })));
+  expect(container.textContent).toContain('Waiting for your partner to reconnect');
+  expect(container.textContent).toContain('05:00 remaining');
+  await act(async () => vi.advanceTimersByTimeAsync(299000)); expect(finish).not.toHaveBeenCalled();
+  await act(async () => vi.advanceTimersByTimeAsync(1000)); expect(finish).toHaveBeenCalledExactlyOnceWith('time_limit_reached');
+});
+
 it('keeps recording pending until the matching server acknowledgement and prevents duplicate requests', async () => {
   await render();
   await act(async () => { record().click(); record().click(); });
