@@ -51,7 +51,7 @@ export function App({
     >
       <SiteLayout path={path}>
         {path === "/" ? (
-          <LandingPage />
+          <LandingPage initialPricing={initialPricing} />
         ) : path === "/stats" ? (
           <StatsPage />
         ) : path === "/pricing" ? (

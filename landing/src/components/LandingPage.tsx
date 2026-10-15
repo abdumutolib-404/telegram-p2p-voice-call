@@ -5,7 +5,7 @@ import { StatsSummary } from "./StatsPage";
 import { usePublicStats } from "../lib/publicStats";
 import { faqs } from "../content";
 import { usePricing } from "../../../platform/usePricing";
-import { planPeriod } from "../../../server/src/contracts/pricing";
+import { planPeriod, type PublicPricing } from "../../../server/src/contracts/pricing";
 import { PracticeComparison } from "./PracticeComparison";
 const prompts = [
   ["Everyday conversation","What do you enjoy about the place where you live?","Answer directly, then add a reason or a small example."],
@@ -16,13 +16,13 @@ function PracticeBoard() {
   const [part,setPart]=useState(1);
   return <div className="card card--float prompt-card" role="group" aria-label="Example practice prompts"><div className="seg seg--full" role="group" aria-label="IELTS Speaking part">{prompts.map((_,i)=><button key={i} type="button" aria-pressed={part===i} onClick={()=>setPart(i)}>Part {i+1}</button>)}</div><div className="stack" aria-live="polite"><p className="small accent prompt-kind">{prompts[part][0]}</p><p className="prompt-card__q">{prompts[part][1]}</p><p className="prompt-card__hint">{prompts[part][2]}</p></div></div>;
 }
-function FreeTicket() {
-  const {data} = usePricing(import.meta.env.VITE_PUBLIC_PRICING_URL || "/api/public/plans",true);
+function FreeTicket({ data }: { data: PublicPricing | null }) {
   const plan = data?.plans.find(plan=>plan.id==="FREE");
   return <div className="ticket"><div className="ticket__price"><strong>Free</strong><span className="muted">no card needed</span></div><ul className="checks">{plan?<><li><Check className="i" />{plan.unlimitedCalls?"Unlimited calls":`${plan.calls} calls`} per {planPeriod(plan)}</li><li><Check className="i" />Up to {plan.maxCallMinutes} minutes per call</li></>:<li><Check className="i" />See current allowances on the plans page</li>}<li><Check className="i" />Partner matching and in-call prompts</li></ul><p className="small muted ticket-note">Allowances and prices are confirmed in Telegram before purchase.</p></div>;
 }
-export function LandingPage() {
+export function LandingPage({ initialPricing = null }: { initialPricing?: PublicPricing | null }) {
   const {data:stats}=usePublicStats();
+  const {data:pricing, loading:pricingLoading} = usePricing(import.meta.env.VITE_PUBLIC_PRICING_URL || "/api/public/plans", true, initialPricing);
   return <>
 
     <section className="hero" id="start">
@@ -117,7 +117,7 @@ export function LandingPage() {
     </section>
 
 
-    <PracticeComparison />
+    <PracticeComparison pricing={pricing} loading={pricingLoading} />
 
     <section className="band--accent section free" id="plans">
       <div className="wrap split">
@@ -126,7 +126,7 @@ export function LandingPage() {
           <p className="body-l muted measure">Try peer practice on the free plan. Choose a paid plan in Telegram when you want more calls or longer sessions.</p>
           <div className="row"><a className="btn btn--primary btn--lg" href={practiceUrl}>Start with a free call</a><a className="link" href="/pricing">Compare plans</a></div>
         </div>
-        <FreeTicket /></div></section>
+        <FreeTicket data={pricing} /></div></section>
 
     <section className="section" id="faq"><div className="wrap faq-grid"><div className="stack"><h2>Before you say hello.</h2><a className="link" href="/faq">All questions and answers</a></div><div>{faqs.slice(0,6).map(faq=><details className="acc" name="home-faq" key={faq.q}><summary>{faq.q}</summary><div className="acc__body">{faq.a}</div></details>)}</div></div></section><section className="band section" style={{"paddingBlock": "56px"} as CSSProperties}>
       <div className="wrap cta-band">
