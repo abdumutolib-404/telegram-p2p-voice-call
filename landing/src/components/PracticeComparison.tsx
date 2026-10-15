@@ -3,15 +3,42 @@ import { Check } from "lucide-react";
 import { formatPlanPrice, planPeriod, recommendPlan, type PublicPricing } from "../../../server/src/contracts/pricing";
 import { practiceUrl } from "./SiteLayout";
 
-// Dated external benchmark, not a live tutor quote or a Stars exchange rate.
+// Dated tutoring benchmark, not a live quote or a Stars exchange rate.
 const tutorUsdPerHour = 17;
 const usdToUzs = 11963.16;
 const example = { calls: 10, minutes: 30, days: 30 };
 const tutorHours = example.calls * example.minutes / 60;
 const uzsEstimate = (usd: number) => `≈ ${(Math.round(usd * usdToUzs / 1000) * 1000).toLocaleString("en-US")} UZS`;
 
+type ComparisonRow = { label: string; ours: ReactNode; other: ReactNode; cost?: boolean };
+
+function Benefit({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return <><strong className="practice-comparison__benefit">{title}</strong><span className="practice-comparison__note">{children}</span></>;
+}
 function Price({ children, note }: { children: ReactNode; note: ReactNode }) {
   return <><strong className="practice-comparison__price num">{children}</strong><span className="practice-comparison__note">{note}</span></>;
+}
+function ComparisonTable({ id, title, competitor, note, rows }: { id: string; title: string; competitor: string; note: string; rows: ComparisonRow[] }) {
+  return <div className="practice-comparison__group">
+    <h3 id={id}>{title}</h3>
+    <p className="practice-comparison__scroll-hint" id={`${id}-scroll`}>Swipe to see the full comparison.</p>
+    <div className="practice-comparison__scroll" role="region" aria-labelledby={id} aria-describedby={`${id}-scroll`} tabIndex={0}>
+      <table className="practice-comparison">
+        <caption className="sr-only">{title}</caption>
+        <colgroup><col className="practice-comparison__label-column" /><col /><col /></colgroup>
+        <thead><tr>
+          <th scope="col">What matters</th>
+          <th scope="col" className="practice-comparison__featured"><span className="practice-comparison__brand">PairTalk</span></th>
+          <th scope="col">{competitor}<span className="practice-comparison__note">{note}</span></th>
+        </tr></thead>
+        <tbody>{rows.map(row => <tr key={row.label} className={row.cost ? "practice-comparison__budget" : undefined}>
+          <th scope="row">{row.label}</th>
+          <td className="practice-comparison__featured"><div className="practice-comparison__advantage"><Check className="i i--sm" aria-hidden="true" /><div>{row.ours}</div></div></td>
+          <td>{row.other}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+  </div>;
 }
 
 export function PracticeComparison({ pricing, loading }: { pricing: PublicPricing | null; loading: boolean }) {
@@ -21,103 +48,73 @@ export function PracticeComparison({ pricing, loading }: { pricing: PublicPricin
     { calls: example.calls, minutes: example.minutes, recordings: 0, retentionDays: 1 }, "UZS",
   ) : undefined;
   const unavailable = loading ? "Checking current prices…" : "Check current plans";
-  const rows: { label: string; pairtalk: ReactNode; tutors: ReactNode; communities: ReactNode; cost?: boolean }[] = [
+  const communityRows: ComparisonRow[] = [
     {
-      label: "Price to get started",
-      pairtalk: free
-        ? <Price note={`${free.unlimitedCalls ? "Unlimited" : free.calls} calls per ${planPeriod(free)} · up to ${free.maxCallMinutes} min each`}>0 UZS / 0 Stars</Price>
+      label: "Finding someone online",
+      ours: <Benefit title="Instant matchmaking">Tap to join the live queue. No posts, DMs or chasing replies.</Benefit>,
+      other: <Benefit title="Post and wait">Ask who’s available, message people and hope someone replies.</Benefit>,
+    },
+    {
+      label: "A partner at your level",
+      ours: <Benefit title="Automatic level-based matching">Your self-assessed speaking level and skills guide the match.</Benefit>,
+      other: <Benefit title="Find the right fit yourself">Ask about levels and try partners until someone fits.</Benefit>,
+    },
+    {
+      label: "Ready when you are",
+      ours: <Benefit title="Start a search on your schedule">Open Telegram and join the queue when you want to practise.</Benefit>,
+      other: <Benefit title="Coordinate every conversation">Work through replies, time zones and schedules before you can talk.</Benefit>,
+    },
+    {
+      label: "What to talk about",
+      ours: <Benefit title="IELTS prompts built into the call">Parts 1, 2 and 3 are ready when your conversation starts.</Benefit>,
+      other: <Benefit title="Bring your own structure">Find prompts, agree a format and set up the call yourself.</Benefit>,
+    },
+  ];
+  const tutorRows: ComparisonRow[] = [
+    {
+      label: "Try before paying",
+      ours: free
+        ? <Benefit title="Start with free practice calls">{free.unlimitedCalls ? "Unlimited" : free.calls} free calls per {planPeriod(free)}, up to {free.maxCallMinutes} minutes each. No card needed.</Benefit>
         : <a href="/pricing">{unavailable}</a>,
-      tutors: <Price note={`$${tutorUsdPerHour}/hour · representative Preply average`}>{uzsEstimate(tutorUsdPerHour)} / hour</Price>,
-      communities: <Price note="For free groups. You organise the practice.">0 UZS</Price>,
+      other: <Benefit title="The first trial is paid">Preply charges for the initial trial lesson before a subscription.</Benefit>,
     },
     {
       label: "10 sessions × 30 min",
       cost: true,
-      pairtalk: plan
+      ours: plan
         ? <Price note={`${plan.name} · full ${planPeriod(plan)} price · ${plan.unlimitedCalls ? "unlimited" : plan.calls} included calls`}>
             {formatPlanPrice(plan, "UZS")}<span className="practice-comparison__alternate">or {formatPlanPrice(plan, "XTR")}</span>
           </Price>
         : <a href="/pricing">{loading ? unavailable : "See plans for this routine"}</a>,
-      tutors: <Price note={`$${tutorUsdPerHour * tutorHours} for ${tutorHours} teaching hours · estimate`}>{uzsEstimate(tutorUsdPerHour * tutorHours)}</Price>,
-      communities: <Price note="No lesson fee; finding partners takes your own time.">0 UZS</Price>,
+      other: <Price note={`$${tutorUsdPerHour * tutorHours} for ${tutorHours} hours at Preply’s $${tutorUsdPerHour}/hour published average · estimate`}>{uzsEstimate(tutorUsdPerHour * tutorHours)}</Price>,
     },
     {
-      label: "Finding a partner",
-      pairtalk: "Automatic matching based on your self-assessed level and skills.",
-      tutors: "Compare profiles and choose a tutor yourself.",
-      communities: "Post in the group, message people and wait for replies.",
-    },
-    {
-      label: "Starting a call",
-      pairtalk: "Join the queue when you’re ready. No lesson booking needed.",
-      tutors: "Book an available lesson slot around the tutor’s schedule.",
-      communities: "Agree a time and calling tool with each partner.",
-    },
-    {
-      label: "IELTS prompts",
-      pairtalk: "Parts 1, 2 and 3 built into your call. Less time preparing topics.",
-      tutors: "Lesson materials and format depend on the tutor.",
-      communities: "Find your own prompts or rely on resources shared in the group.",
-    },
-    {
-      label: "Contact privacy",
-      pairtalk: "Speak under an alias. Your Telegram contact details stay hidden.",
-      tutors: "Usually requires an account or sharing details to arrange lessons.",
-      communities: "Your profile visibility depends on the group and your privacy settings.",
-    },
-    {
-      label: "Record and review",
-      pairtalk: "Built-in recording and Telegram delivery, within your plan’s allowance.",
-      tutors: "Recording availability depends on the tutor and platform.",
-      communities: "You may need a separate recording tool and storage.",
-    },
-    {
-      label: "Feedback",
-      pairtalk: "Swap practical feedback with a fellow learner after speaking.",
-      tutors: "Expert corrections and individual guidance: the reason to pay for a tutor.",
-      communities: "Informal peer advice; structured feedback is not guaranteed.",
+      label: "Fitting practice into your day",
+      ours: <Benefit title="No lesson booking needed">Join matchmaking when you have time to speak.</Benefit>,
+      other: <Benefit title="Book around the tutor’s availability">Choose an open lesson slot and fit practice around it.</Benefit>,
     },
   ];
 
-  return (
-    <section className="band section" id="compare" aria-labelledby="comparison-title">
-      <div className="wrap">
-        <div className="section-head practice-comparison__intro">
-          <h2 id="comparison-title">More speaking. Less searching.</h2>
-          <p>Automatic matching, IELTS prompts and affordable calls, all inside Telegram. See what you save in money and effort.</p>
-        </div>
-        <p className="practice-comparison__scenario">The example budget covers {example.calls} sessions of {example.minutes} minutes within {example.days} days: {tutorHours} hours of conversation.</p>
-        <p className="practice-comparison__scroll-hint" id="comparison-scroll-hint">Swipe the table to compare all three options.</p>
-        <div className="practice-comparison__scroll" role="region" aria-label="Compare PairTalk, private tutors and free communities" aria-describedby="comparison-scroll-hint" tabIndex={0}>
-          <table className="practice-comparison">
-            <caption className="sr-only">PairTalk advantages, prices and estimated practice costs compared with private tutors and free practice communities</caption>
-            <colgroup><col className="practice-comparison__label-column" /><col className="practice-comparison__featured-column" /><col /><col /></colgroup>
-            <thead><tr>
-              <th scope="col">What matters</th>
-              <th scope="col" className="practice-comparison__featured"><span className="practice-comparison__brand">PairTalk</span><span className="practice-comparison__note">Built for regular practice</span></th>
-              <th scope="col">Private tutors<span className="practice-comparison__note">Paid one-to-one lessons</span></th>
-              <th scope="col">Free communities<span className="practice-comparison__note">Self-organised practice groups</span></th>
-            </tr></thead>
-            <tbody>{rows.map(row => <tr key={row.label} className={row.cost ? "practice-comparison__budget" : undefined}>
-              <th scope="row">{row.label}</th>
-              <td className="practice-comparison__featured">{typeof row.pairtalk === "string" ? <div className="practice-comparison__advantage"><Check className="i i--sm" aria-hidden="true" /><span>{row.pairtalk}</span></div> : row.pairtalk}</td>
-              <td>{row.tutors}</td>
-              <td>{row.communities}</td>
-            </tr>)}</tbody>
-          </table>
-        </div>
-        <div className="practice-comparison__footer">
-          <div>
-            <p>PairTalk prices come from our current plans. Stars and UZS are separate payment options. Tutor costs are estimates; free communities have no lesson fee.</p>
-            <details className="practice-comparison__sources"><summary>Prices, sources and assumptions</summary>
-              <p>Tutor benchmark: <a href="https://preply.com/en/online/tutors-ielts">Preply’s published IELTS tutor average</a> of $17/hour, checked 15 October 2026. UZS estimates use the <a href="https://cbu.uz/en/arkhiv-kursov-valyut/">Central Bank of Uzbekistan</a> rate of 11,963.16 UZS per USD on that date, rounded to the nearest 1,000 UZS. Five hours × $17 = $85. These are teaching-time estimates, not checkout quotes; individual rates, lesson lengths and billing vary.</p>
-              <p>The PairTalk example shows the full price of the lowest-priced current UZS plan covering 10 calls of at least 30 minutes in a 30-day period, including any unused allowance. Free-community figures refer to groups with no membership or lesson fee. Tutor lessons include expert guidance; peer conversations do not. Matching depends on available learners. Recording requires both partners’ agreement.</p>
-              <a href="/pricing">See all current PairTalk prices and allowances</a>
-            </details>
-          </div>
-          <a className="btn btn--primary" href={practiceUrl}>Try PairTalk free</a>
-        </div>
+  return <section className="band section" id="compare" aria-labelledby="comparison-title">
+    <div className="wrap">
+      <div className="section-head practice-comparison__intro">
+        <h2 id="comparison-title">Less waiting. More speaking.</h2>
+        <p>Skip the group-chat search and the cost of booking a tutor for every conversation. PairTalk matches you by level, with free calls to get started.</p>
       </div>
-    </section>
-  );
+      <ComparisonTable id="compare-communities" title="Skip the group-chat search." competitor="Practice communities" note="Self-organised group chats" rows={communityRows} />
+      <p className="practice-comparison__availability">Matchmaking starts immediately; connection time depends on compatible learners being online.</p>
+      <ComparisonTable id="compare-tutors" title="Keep your practice affordable." competitor="Private tutoring" note="Preply price and trial benchmark" rows={tutorRows} />
+      <div className="practice-comparison__footer">
+        <div>
+          <p>The cost example covers {example.calls} sessions of {example.minutes} minutes within {example.days} days. PairTalk prices update from our current plans; Stars and UZS are separate payment options.</p>
+          <details className="practice-comparison__sources"><summary>Prices, sources and assumptions</summary>
+            <p>Tutor benchmark: <a href="https://preply.com/en/online/tutors-ielts">Preply’s published IELTS tutor average</a> of $17/hour, checked 15 October 2026. UZS estimates use the <a href="https://cbu.uz/en/arkhiv-kursov-valyut/">Central Bank of Uzbekistan</a> rate of 11,963.16 UZS per USD on that date, rounded to the nearest 1,000 UZS. Five hours × $17 = $85. These are teaching-time estimates, not checkout quotes; individual rates, lesson lengths and billing vary.</p>
+            <p><a href="https://help.preply.com/en/articles/4179487-how-to-book-a-trial-lesson">Preply’s initial trial lessons are paid</a>; its replacement-trial policy and other tutors’ offers may differ. The PairTalk example uses the full price of the lowest-priced current UZS plan covering 10 calls of at least 30 minutes in a 30-day period, including any unused allowance. PairTalk provides peer practice; tutoring includes professional teaching.</p>
+            <a href="/pricing">See all current PairTalk prices and allowances</a>
+          </details>
+        </div>
+        <a className="btn btn--primary" href={practiceUrl}>Try PairTalk free</a>
+      </div>
+    </div>
+  </section>;
 }

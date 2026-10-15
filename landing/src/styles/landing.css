@@ -1,7 +1,10 @@
 /* Landing — header, hero, sections, footer */
 
 .practice-comparison__intro h2 { max-width: 22ch; }
-.practice-comparison__scenario { margin-bottom: var(--s-4); color: var(--text-2); font-size: .9375rem; }
+.practice-comparison__group + .practice-comparison__group { margin-top: var(--s-7); }
+.practice-comparison__group h3 { margin-bottom: var(--s-5); }
+.practice-comparison__availability { color: var(--text-2); font-size: .8125rem; margin-block: var(--s-3) var(--s-7); }
+.practice-comparison__benefit { color: var(--text); font-weight: 600; }
 .practice-comparison__scroll {
   max-width: 100%;
   overflow-x: auto;
@@ -9,8 +12,8 @@
   border-radius: var(--r-lg);
   background: var(--card);
 }
-.practice-comparison { width: 100%; min-width: 880px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: .9375rem; }
-.practice-comparison__label-column { width: 17%; }
+.practice-comparison { width: 100%; min-width: 720px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: .9375rem; }
+.practice-comparison__label-column { width: 22%; }
 .practice-comparison th, .practice-comparison td { text-align: left; vertical-align: top; padding: var(--s-5); border-bottom: 1px solid var(--border); }
 .practice-comparison thead th { font-size: 1.125rem; font-weight: 600; background: var(--card); }
 .practice-comparison thead th:first-child { font-size: .875rem; color: var(--text-2); }
@@ -35,7 +38,7 @@
 .practice-comparison__sources p { margin-block: var(--s-3); }
 .practice-comparison__sources a { color: var(--accent-text); text-underline-offset: 3px; }
 @media (max-width: 920px) {
-  .practice-comparison { min-width: 820px; }
+  .practice-comparison { min-width: 720px; }
   .practice-comparison__label-column { width: 136px; }
   .practice-comparison th, .practice-comparison td { padding: var(--s-4); }
   .practice-comparison tr > :first-child { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--border); }
