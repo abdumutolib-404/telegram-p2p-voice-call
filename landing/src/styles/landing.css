@@ -1,5 +1,54 @@
 /* Landing — header, hero, sections, footer */
 
+.practice-comparison__intro h2 { max-width: 22ch; }
+.practice-comparison {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.practice-comparison__option {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 5;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.practice-comparison__option--featured {
+  border-color: var(--accent-text);
+  background: var(--accent-wash);
+}
+.practice-comparison__heading { padding: var(--s-5) var(--s-5) var(--s-2); }
+.practice-comparison__heading p { margin-top: var(--s-2); color: var(--text-2); }
+.practice-comparison__option--featured h3 { color: var(--accent-text); }
+.practice-comparison__option dl {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 4;
+}
+.practice-comparison__detail {
+  margin-inline: var(--s-5);
+  padding-block: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.practice-comparison__detail:last-child { padding-bottom: var(--s-5); }
+.practice-comparison__detail dt { font-size: .8125rem; font-weight: 600; margin-bottom: var(--s-2); }
+.practice-comparison__detail dd { color: var(--text-2); font-size: .9375rem; }
+.practice-comparison__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin-top: var(--s-5);
+}
+.practice-comparison__footer p { color: var(--text-2); font-size: .8125rem; max-width: 76ch; }
+@media (max-width: 760px) {
+  .practice-comparison { grid-template-columns: 1fr; }
+  .practice-comparison__option, .practice-comparison__option dl { display: block; }
+}
+
 .site-header {
   position: sticky; top: 0; z-index: 50;
   background: color-mix(in srgb, var(--bg) 88%, transparent);

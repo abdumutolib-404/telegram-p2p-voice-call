@@ -6,6 +6,7 @@ import { usePublicStats } from "../lib/publicStats";
 import { faqs } from "../content";
 import { usePricing } from "../../../platform/usePricing";
 import { planPeriod } from "../../../server/src/contracts/pricing";
+import { PracticeComparison } from "./PracticeComparison";
 const prompts = [
   ["Everyday conversation","What do you enjoy about the place where you live?","Answer directly, then add a reason or a small example."],
   ["Your long turn","Describe a skill you would like to learn.","What is it? Why does it interest you? How would you start learning it?"],
@@ -115,6 +116,8 @@ export function LandingPage() {
       </div>
     </section>
 
+
+    <PracticeComparison />
 
     <section className="band--accent section free" id="plans">
       <div className="wrap split">
