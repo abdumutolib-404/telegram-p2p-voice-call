@@ -122,7 +122,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       title: 'Call allowance reached',
       description:
         message ||
-        'You have reached your practice call allowance. Open Calls and recordings in your dashboard or the Telegram bot to add more calls. Existing subscription renewals follow their original terms.',
+        'You have reached your practice call allowance. Open Pay as you go in your dashboard or the Telegram bot to add more calls. Existing subscription renewals follow their original terms.',
       icon: CreditCard,
       iconColor: 'text-mint-400',
     },

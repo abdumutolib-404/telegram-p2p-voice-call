@@ -75,7 +75,7 @@ export function PricingPage({
         <section className="wrap page-head">
           <h1>Your practice. Your amount.</h1>
           <p>
-            Start with three free calls, then choose call and recordings
+            Start with three free calls, then choose calls and recordings
             separately. No subscription required.
           </p>
         </section>
