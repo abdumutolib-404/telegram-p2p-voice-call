@@ -1,17 +1,19 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import type { AppState, MatchFoundPayload, UserMatchData, LockdownReason } from './types';
 import { socketService } from './services/socket';
-import { useLiveKit } from './hooks/useLiveKit';
+import { useLiveKit, preloadVoiceClient } from './hooks/useLiveKit';
 import { LockdownScreen } from './components/LockdownScreen';
 import { RadarScreen } from './components/RadarScreen';
-import { ActiveCallScreen } from './components/ActiveCallScreen';
-import { PrivacyScreen } from './components/PrivacyScreen';
-import { GuidelinesScreen } from './components/GuidelinesScreen';
 import { Dashboard } from './components/Dashboard';
 import { dashboardRequest, redirectToLanding } from './services/dashboard';
 import { logger } from './services/logger';
 import { ReadyScreen } from './components/ReadyScreen';
 import { SessionStatusScreen } from './components/SessionStatusScreen';
+
+const loadCallScreen = () => import('./components/ActiveCallScreen');
+const ActiveCallScreen = lazy(() => loadCallScreen().then(module => ({ default: module.ActiveCallScreen })));
+const PrivacyScreen = lazy(() => import('./components/PrivacyScreen'));
+const GuidelinesScreen = lazy(() => import('./components/GuidelinesScreen'));
 
 type ActiveView = 'main' | 'privacy' | 'guidelines';
 
@@ -148,7 +150,7 @@ export const App: React.FC = () => {
         data.livekitUrl || import.meta.env.VITE_LIVEKIT_URL || 'wss://pairtalk-d4a5d9pm.livekit.cloud';
 
       try {
-        await connectLiveKit(livekitUrl, livekitToken);
+        await Promise.all([connectLiveKit(livekitUrl, livekitToken), loadCallScreen()]);
         if (attempt !== matchAttemptRef.current) return;
 
         const currentState = appStateRef.current as AppState;
@@ -275,7 +277,7 @@ export const App: React.FC = () => {
         const errData = await res.json().catch(() => ({}));
         ensureCurrent();
         const errorCode = typeof errData.code === 'string' ? errData.code.toUpperCase() : '';
-        
+
         // Deterministic Error Gate Classification
         if (res.status === 429 || errorCode === 'RATE_LIMITED') {
           logger.warn('AUTH', 'RATE_LIMITED: Client rate limit threshold reached');
@@ -610,6 +612,9 @@ export const App: React.FC = () => {
   };
 
   const handleStartSearching = () => {
+    // Warm call assets on user intent while matchmaking runs, without opening a microphone.
+    void loadCallScreen().catch(() => undefined);
+    void preloadVoiceClient().catch(() => undefined);
     startAudio().catch(() => {});
     setPendingDirectCall(null);
     setQueueJoined(false);
@@ -622,23 +627,23 @@ export const App: React.FC = () => {
 
   if (activeView === 'privacy' && appState === 'ready') {
     return (
-      <PrivacyScreen
+      <Suspense fallback={<SessionStatusScreen state="loading" />}><PrivacyScreen
         onBack={() => {
           window.location.hash = '';
           setActiveView('main');
         }}
-      />
+      /></Suspense>
     );
   }
 
   if (activeView === 'guidelines' && appState === 'ready') {
     return (
-      <GuidelinesScreen
+      <Suspense fallback={<SessionStatusScreen state="loading" />}><GuidelinesScreen
         onBack={() => {
           window.location.hash = '';
           setActiveView('main');
         }}
-      />
+      /></Suspense>
     );
   }
 
@@ -708,7 +713,7 @@ export const App: React.FC = () => {
   // 6. Active Voice Call Screen
   if (appState === 'in_call' && matchData) {
     return (
-      <ActiveCallScreen
+      <Suspense fallback={<SessionStatusScreen state="connecting" onCancel={() => handleFinishCall('connection_cancelled')} />}><ActiveCallScreen
         roomName={matchData.roomName}
         userId={userData.userId}
         partnerAlias={matchData.partnerAlias}
@@ -725,7 +730,7 @@ export const App: React.FC = () => {
         onRetryMic={retryMicrophone}
         onFinishCall={handleFinishCall}
         onUnlockAudio={startAudio}
-      />
+      /></Suspense>
     );
   }
 

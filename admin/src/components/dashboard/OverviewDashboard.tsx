@@ -1,19 +1,19 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { AdminStats, UserItem, ManualPaymentRequestItem, AppealItem, SystemHealthTelemetry, MatchmakingQueueTelemetry, ActiveCallsTelemetry } from '../../types';
+import type { AdminStats, UserItem, SystemHealthTelemetry, MatchmakingQueueTelemetry, ActiveCallsTelemetry } from '../../types';
 import { adminFetch } from '../../api/client';
 import { useVisiblePolling } from '../../hooks/useAdminTools';
 import { PageHeader } from '../ui/PageHeader';
 import { StatCard } from '../ui/StatCard';
 export function OverviewDashboard({ onNavigateTab }: { onNavigateTab:(tab:'users'|'plans'|'payments'|'appeals'|'analytics'|'contest'|'audit')=>void }) {
   const [stats,setStats]=useState<AdminStats|null>(null), [users,setUsers]=useState<UserItem[]|null>(null);
-  const [payments,setPayments]=useState<ManualPaymentRequestItem[]|null>(null), [appeals,setAppeals]=useState<AppealItem[]|null>(null);
+  const [queueCounts,setQueueCounts]=useState<{payments:number;appeals:number}|null>(null);
   const [health,setHealth]=useState<SystemHealthTelemetry|null>(null), [queue,setQueue]=useState<MatchmakingQueueTelemetry|null>(null), [calls,setCalls]=useState<ActiveCallsTelemetry|null>(null);
   const [errors,setErrors]=useState<string[]>([]), [loading,setLoading]=useState(false), [updated,setUpdated]=useState<string|null>(null);
   const busy=useRef(false), mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const refresh=useCallback(async()=>{
     if(busy.current)return;busy.current=true;setLoading(true);
-    const sources=[['Statistics','/api/admin/stats',setStats],['Learners','/api/admin/users',setUsers],['Payments','/api/admin/payments/manual?tab=queue',setPayments],['Appeals','/api/admin/appeals',setAppeals],['Service health','/api/admin/telemetry/health',setHealth],['Waiting queue','/api/admin/telemetry/queue',setQueue],['Active calls','/api/admin/telemetry/active-calls',setCalls]] as const;
+    const sources=[['Statistics','/api/admin/stats',setStats],['Learners','/api/admin/users',setUsers],['Queue counts','/api/admin/queue-counts',setQueueCounts],['Service health','/api/admin/telemetry/health',setHealth],['Waiting queue','/api/admin/telemetry/queue',setQueue],['Active calls','/api/admin/telemetry/active-calls',setCalls]] as const;
     const results=await Promise.allSettled(sources.map(async ([,endpoint,setter])=>{const data=await adminFetch<never>(endpoint);if(mounted.current)setter(data);}));
     if(mounted.current){setErrors(results.flatMap((result,index)=>result.status==='rejected'?[sources[index][0]+': '+(result.reason instanceof Error?result.reason.message:'Unavailable')]:[]));if(results.some(r=>r.status==='fulfilled'))setUpdated(new Date().toISOString());setLoading(false);}busy.current=false;
   },[]);
@@ -27,7 +27,7 @@ export function OverviewDashboard({ onNavigateTab }: { onNavigateTab:(tab:'users
     <div className="overview-metrics">
       <StatCard label="Learners" value={value(stats?.totalUsers)} onClick={()=>onNavigateTab('users')}/><StatCard label="Daily active" value={value(stats?.dau)}/>
       <StatCard label="Active calls" value={value(calls?.activeCallsCount)}/><StatCard label="Waiting for a partner" value={value(queue?.waitingCount)}/>
-      <StatCard label="Pending payments" value={payments?payments.filter(p=>p.status==='PENDING').length:'Unavailable'} onClick={()=>onNavigateTab('payments')}/><StatCard label="Pending appeals" value={appeals?appeals.filter(p=>!p.status||p.status.toUpperCase()==='PENDING').length:'Unavailable'} onClick={()=>onNavigateTab('appeals')}/>
+      <StatCard label="Pending payments" value={queueCounts?.payments??'Unavailable'} onClick={()=>onNavigateTab('payments')}/><StatCard label="Pending appeals" value={queueCounts?.appeals??'Unavailable'} onClick={()=>onNavigateTab('appeals')}/>
     </div>
 
     <div className="overview-panels"><section className="glass-panel overview-panel"><h2>Registration sample</h2><p>Latest {users?.length??'unavailable'} learners returned by the server; this is a sample, not total platform growth. Dates are UTC.</p>{users&&sample.length===0?<p>No registrations in this sample.</p>:<div className="overview-table-scroll"><table className="data-table"><thead><tr><th scope="col">Date (UTC)</th><th scope="col">Registrations in sample</th></tr></thead><tbody>{sample.map(([date,count])=><tr key={date}><td>{date}</td><td>{count}</td></tr>)}</tbody></table></div>}</section>

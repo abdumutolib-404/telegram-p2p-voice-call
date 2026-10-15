@@ -43,11 +43,12 @@ async function ownSession(id: string, userId: string) {
   if (!session) throw new ActionError(404, 'Session not found.');
   return session;
 }
-async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, userId: string, retentionDays: number, savedPartnerIds?: ReadonlySet<string>) {
+type SummaryRecording = { id: string; callId: string; createdAt: Date; expiresAt: Date | null };
+async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, userId: string, retentionDays: number, savedPartnerIds?: ReadonlySet<string>, availableSegments?: SummaryRecording[]) {
   const partner = session.userAId === userId ? session.userB : session.userA;
   const rating = session.ratings.find(item => item.raterId === userId && !item.reported);
   const expiry = Math.min(session.recordingExpiresAt?.getTime() ?? Infinity, (session.endedAt ?? session.createdAt).getTime() + retentionDays * 86400000);
-  const segments = await prisma.recordingSegment.findMany({where:{callId:session.id,status:"READY",ownerIds:{has:userId},expiresAt:{gt:new Date()}},orderBy:{createdAt:"asc"}});
+  const segments = availableSegments ?? await prisma.recordingSegment.findMany({where:{callId:session.id,status:"READY",ownerIds:{has:userId},expiresAt:{gt:new Date()}},orderBy:{createdAt:"asc"}});
   const recipientExpiry=(session.endedAt??session.createdAt).getTime()+retentionDays*86400000;
   const recordings = recipientExpiry > Date.now() ? segments.map(segment=>({id:segment.id,createdAt:segment.createdAt,expiresAt:new Date(Math.min(segment.expiresAt!.getTime(),recipientExpiry))})) : [];
   const recordingAvailable = Boolean(session.recordingUrl && expiry > Date.now() && (!session.recordedByUserId || isUserSessionRecorder(session.recordedByUserId, userId)));
@@ -81,7 +82,17 @@ router.get('/sessions', action(async (req, res) => {
   const retention = getEffectiveEntitlement(req.member!).retentionDays;
   const savedRows = await prisma.favoritePartner.findMany({ where: { userId: req.member!.id }, select: { partnerId: true } });
   const savedPartnerIds = new Set(savedRows.map(row => row.partnerId));
-  res.json({ sessions: await Promise.all(sessions.slice(0, 20).map(session => sessionSummary(session, req.member!.id, retention, savedPartnerIds))), nextCursor: sessions.length > 20 ? sessions[19].id : null });
+  const page = sessions.slice(0, 20);
+  const segments = page.length ? await prisma.recordingSegment.findMany({
+    where: { callId: { in: page.map(session => session.id) }, status: 'READY', ownerIds: { has: req.member!.id }, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'asc' }, select: { id: true, callId: true, createdAt: true, expiresAt: true },
+  }) : [];
+  const byCall = new Map<string, SummaryRecording[]>();
+  for (const segment of segments) {
+    const items = byCall.get(segment.callId) ?? [];
+    items.push(segment); byCall.set(segment.callId, items);
+  }
+  res.json({ sessions: await Promise.all(page.map(session => sessionSummary(session, req.member!.id, retention, savedPartnerIds, byCall.get(session.id) ?? []))), nextCursor: sessions.length > 20 ? sessions[19].id : null });
 }));
 router.get('/sessions/:id', action(async (req, res) => {
   const session = await ownSession(req.params.id, req.member!.id);

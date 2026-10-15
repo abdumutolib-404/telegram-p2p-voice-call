@@ -621,6 +621,21 @@ router.post('/login', adminAuthLimiter, async (req, res) => {
   });
 });
 
+// GET /api/admin/queue-counts (Protected)
+router.get('/queue-counts', adminAuthMiddleware, async (_req, res) => {
+  try {
+    const [pending, refunds, appeals] = await Promise.all([
+      prisma.manualPaymentRequest.count({ where: { status: 'PENDING' } }),
+      prisma.manualPaymentRequest.count({ where: { status: 'REFUND_PENDING' } }),
+      prisma.unblockAppeal.count({ where: { status: 'PENDING' } }),
+    ]);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ payments: pending, refunds, appeals });
+  } catch {
+    res.status(500).json({ error: 'Queue counts are temporarily unavailable.' });
+  }
+});
+
 // GET /api/admin/stats (Protected)
 router.get('/stats', adminAuthMiddleware, async (req, res) => {
   try {

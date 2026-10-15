@@ -18,7 +18,7 @@ vi.mock('../src/services/socket', () => ({ socketService: {
   finishCall: fixture.finish, peerReady: fixture.peerReady, joinQueue: fixture.join, cancelQueue: fixture.cancel,
   getRecordingStatus: vi.fn(),
 } }));
-vi.mock('../src/hooks/useLiveKit', () => ({ useLiveKit: () => fixture.voice }));
+vi.mock('../src/hooks/useLiveKit', () => ({ useLiveKit: () => fixture.voice, preloadVoiceClient: vi.fn().mockResolvedValue({}) }));
 vi.mock('../src/services/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 let root: Root;

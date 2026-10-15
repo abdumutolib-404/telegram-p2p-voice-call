@@ -7,6 +7,11 @@ import type {
   RemoteAudioTrack,
 } from 'livekit-client';
 
+/** Share the same narrow import for intent warmup and connection. */
+export function preloadVoiceClient() {
+  return import('livekit-client').then(({ Room, RoomEvent, Track, DisconnectReason }) => ({ Room, RoomEvent, Track, DisconnectReason }));
+}
+
 interface ConnectionAttempt {
   key: string;
   cancelled: boolean;
@@ -190,7 +195,7 @@ export function useLiveKit(options: UseLiveKitOptions = {}): UseLiveKitReturn {
         let livekitRoom: Room | null = null;
 
         try {
-          const { Room, RoomEvent, Track, DisconnectReason } = await import('livekit-client');
+          const { Room, RoomEvent, Track, DisconnectReason } = await preloadVoiceClient();
           ensureCurrent();
           livekitRoom = new Room({
             adaptiveStream: true,

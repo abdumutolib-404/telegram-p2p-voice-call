@@ -5,7 +5,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { adminFetch } from './api/client';
 import { useVisiblePolling } from './hooks/useAdminTools';
-import type { ManualPaymentRequestItem, AppealItem } from './types';
 import { AudioLines, LogOut, LayoutDashboard, UsersRound, BookOpen, Trophy, SlidersHorizontal, CreditCard, ShieldCheck, ChartNoAxesCombined, History } from 'lucide-react';
 import './App.css';
 const Overview = lazy(() => import('./components/dashboard/OverviewDashboard').then(m => ({ default: m.OverviewDashboard })));
@@ -40,15 +39,11 @@ function MainDashboard() {
     try {
       do {
       badgesDirty.current = false;
-      const [payments, refunds, appeals] = await Promise.allSettled([
-        adminFetch<ManualPaymentRequestItem[]>('/api/admin/payments/manual?tab=queue'),
-        adminFetch<ManualPaymentRequestItem[]>('/api/admin/payments/manual?tab=refunds'), adminFetch<AppealItem[]>('/api/admin/appeals'),
-      ]);
-      setCounts(previous => ({
-        payments: payments.status === 'fulfilled' && refunds.status === 'fulfilled' ? payments.value.filter(p => p.status === 'PENDING').length + refunds.value.filter(p => p.status === 'REFUND_PENDING').length : previous.payments,
-        appeals: appeals.status === 'fulfilled' ? appeals.value.filter(p => !p.status || p.status.toUpperCase() === 'PENDING').length : previous.appeals,
-      }));
+      const counts = await adminFetch<{ payments: number; refunds: number; appeals: number }>('/api/admin/queue-counts');
+      setCounts({ payments: counts.payments + counts.refunds, appeals: counts.appeals });
       } while (badgesDirty.current);
+    } catch {
+      // Preserve the last confirmed counts when a background refresh is unavailable.
     } finally { busy.current = false; }
   }, [isAuthenticated]);
   useEffect(() => { void badges(); window.addEventListener('admin:queues-changed', badges); return () => window.removeEventListener('admin:queues-changed', badges); }, [badges]);

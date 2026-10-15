@@ -27,6 +27,7 @@ http.createServer(async(req,res)=>{
   if(p.includes('/payments/manual/')){res.writeHead(200,{'Content-Type':'application/pdf'});res.end('%PDF-1.4\nSynthetic preview');return;}
   if(p==='/api/admin/payments/manual')return json(res,[{...payment,...(url.searchParams.get('tab')==='refunds'?{status:'REFUND_PENDING',refundProof:'protected'}:{})}]);
   if(p==='/api/admin/appeals')return json(res,[appeal]);
+  if(p==='/api/admin/queue-counts')return json(res,{payments:1,refunds:1,appeals:1});
   if(p.includes('/telemetry/')){if(mode==='partial')return json(res,{error:'Synthetic telemetry unavailable'},503);if(p.endsWith('/health'))return json(res,{database:{status:'healthy',latencyMs:1},redis:{status:'healthy',latencyMs:1},bot:{status:'disabled'},livekit:{status:'unavailable'}});if(p.endsWith('/queue'))return json(res,{waitingCount:0});if(p.endsWith('/active-calls'))return json(res,{activeCallsCount:0,rooms:[]});return json(res,{recentErrors:[]});}
   if(p==='/api/admin/audit-logs')return json(res,[{id:'synthetic-audit',action:'STARS_REFUND_FAILED',adminId:'synthetic',targetId:candidate.id,createdAt,beforeState:'{}',afterState:'{}',reason:'Synthetic test'}]);
   if(p==='/api/admin/contest')return json(res,{isActive:false,contest:null,leaderboard:[],totalReferrals:0,activeBonusCalls:0});

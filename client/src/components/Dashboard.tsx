@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Clock, Heart, History, Mic, Settings, Users, Trophy, Star, Check, AlertTriangle, Sparkles, Edit3, ArrowLeft, Minus, Plus, Trash2 } from 'lucide-react';
 import { CopyButton, PendingIcon } from './CopyLink';
-import { PlansModal } from './PlansModal';
 import { DashboardDialog } from './DashboardDialog';
 import { MotionPresence } from './MotionPresence';
 import { HistoryMark } from './HistoryMark';
@@ -12,6 +11,8 @@ import { AllowanceDetails } from './AllowanceDetails';
 import { DiscountOffers } from './DiscountOffers';
 import { DashboardError, dashboardRequest, publicSiteUrl } from '../services/dashboard';
 import type { UserMatchData } from '../types';
+
+const PlansModal = lazy(() => import('./PlansModal').then(module => ({ default: module.PlansModal })));
 
 type View = 'practice' | 'history' | 'partners' | 'community' | 'leaderboard' | 'account' | 'upgrade';
 interface Session { recordings?: {id:string;createdAt:string;expiresAt:string}[]; id: string; partnerAlias: string; partnerBand: number; status: string; duration: number; createdAt: string; rating: number | null; reported: boolean; saved?: boolean; recordingAvailable: boolean; recordingExpiresAt: string | null }
@@ -381,7 +382,7 @@ export function Dashboard({ completedRoomName, initData, userData, onProfileUpda
         {!community.contest.leaderboard.length && <div className="dashboard-empty"><Trophy size={28} aria-hidden="true" /><h2>The next challenge is ahead.</h2><p>Qualifying invites will appear here when a contest begins.</p></div>}
         <ol className="lb">{community.contest.leaderboard.map(row => <li key={row.rank} className={row.alias === userData.alias ? 'is-you' : ''}><span className="leaderboard-rank">{row.rank}</span><b>{row.alias === userData.alias ? `You · ${row.alias}` : row.alias}</b><small>{row.invitesCount} invites</small></li>)}</ol>
       </>}
-      {!loading && view === 'upgrade' && <PlansModal isOpen currentPlan={userData.plan} inline onClose={() => navigate('practice')} />}
+      {!loading && view === 'upgrade' && <Suspense fallback={<p role="status" className="loading-state"><PendingIcon />Loading plans…</p>}><PlansModal isOpen currentPlan={userData.plan} inline onClose={() => navigate('practice')} /></Suspense>}
       {!loading && view === 'account' && <div className="dashboard-cards">
         <article className="dashboard-card account-allowance" aria-label="Your limits"><div className="acc-head"><h2>Your limits</h2><span className="chip chip--info">{userData.plan || 'Free'}</span></div><div className="limits"><div className="big"><span>Calls available</span><strong>{userData.callsRemaining ?? '—'}</strong></div><div><span>Per call</span><strong>{userData.maxCallDuration ?? '—'} min</strong></div><div><span>Recordings</span><strong>{userData.recordingsRemaining ?? '—'}</strong></div><div><span>Audio kept</span><strong>{userData.recordingRetentionDays ?? '—'} days</strong></div></div><AllowanceDetails userData={userData} /><button className="primary-button account-upgrade" type="button" onClick={() => navigate('upgrade')}><Sparkles size={17} aria-hidden="true" />{(userData.plan || 'FREE').toUpperCase() === 'FREE' ? 'Explore plans' : 'View plans'}</button></article>
         <article className="dashboard-card account-scores" aria-label="Speaking scores"><div className="acc-head"><h2>Speaking scores</h2><button type="button" className="secondary-button" aria-label="Edit scores" onClick={() => { setScores({ subFC: userData.subFC ?? userData.band, subLR: userData.subLR ?? userData.band, subGRA: userData.subGRA ?? userData.band, subP: userData.subP ?? userData.band }); setEditingProfile(true); }}><Edit3 size={16} aria-hidden="true" />Edit</button></div><div key={`${userData.subFC}-${userData.subLR}-${userData.subGRA}-${userData.subP}`} className={`scores score-summary ${actionStates.profile === 'success' ? 'is-updated' : ''}`}>{[['Fluency', userData.subFC ?? userData.band], ['Vocabulary', userData.subLR ?? userData.band], ['Grammar', userData.subGRA ?? userData.band], ['Pronunciation', userData.subP ?? userData.band], ['Overall band', overall({subFC: userData.subFC ?? userData.band, subLR: userData.subLR ?? userData.band, subGRA: userData.subGRA ?? userData.band, subP: userData.subP ?? userData.band})]].map(([label, value]) => <div className={`score ${label === 'Overall band' ? 'score--o' : ''}`} key={label}><span>{label}</span><strong>{Number(value).toFixed(1)}</strong></div>)}</div>{actionFeedback('profile')}</article>

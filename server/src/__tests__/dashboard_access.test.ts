@@ -24,6 +24,22 @@ const signed = (id: bigint) => {
 let sequence = 910000000n;
 async function member(data = {}) { sequence++; return prisma.user.create({ data: { telegramId: sequence, alias: `P2P-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, ...consent, ...data } }); }
 describe('Telegram-only member dashboard', () => {
+  it('loads a full history page with one recording query while preserving ownership and expiry', async () => {
+    const [a,b] = await Promise.all([member(),member()]);
+    const expiresAt=new Date(Date.now()+86400000);
+    for(let index=0;index<20;index++){
+      const call=await prisma.callSession.create({data:{roomName:crypto.randomUUID(),userAId:a.id,userBId:b.id,status:'COMPLETED'}});
+      for(const [status,ownerIds,expiry] of [
+        ['READY',[a.id],expiresAt],['READY',[b.id],expiresAt],['RECORDING',[a.id],expiresAt],['READY',[a.id],new Date(Date.now()-1000)],
+      ] as const) await prisma.recordingSegment.create({data:{callId:call.id,objectKey:crypto.randomUUID(),egressId:crypto.randomUUID(),ownerIds:[...ownerIds],status,expiresAt:expiry}});
+    }
+    const recordings=vi.spyOn(prisma.recordingSegment,'findMany');
+    const response=await request(app).get('/dashboard/sessions').set('x-telegram-init-data',signed(a.telegramId));
+    expect(response.status).toBe(200);expect(response.body.sessions).toHaveLength(20);
+    expect(recordings).toHaveBeenCalledTimes(1);
+    expect(response.body.sessions.every((row:{recordings:unknown[]})=>row.recordings.length===1)).toBe(true);
+    recordings.mockRestore();
+  });
   it('filters after-call actions to the owned completed room', async () => {
     const [a,b,outsider] = await Promise.all([member(),member(),member()]);
     const roomName=crypto.randomUUID();
