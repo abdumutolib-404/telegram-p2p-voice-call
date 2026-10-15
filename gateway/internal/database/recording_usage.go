@@ -38,6 +38,9 @@ func (db *DB) consumeRecording(ctx context.Context, tx pgx.Tx, callID, userID st
 	if user == nil {
 		return errors.New("recording owner is missing")
 	}
+	if user.Restricted(time.Now()) {
+		return errors.New("recording is unavailable for this account")
+	}
 	var participant bool
 	if err := tx.QueryRow(ctx, `SELECT status='ACTIVE' AND ($2="userAId" OR $2="userBId") FROM "CallSession" WHERE id=$1`, callID, userID).Scan(&participant); err != nil {
 		return err

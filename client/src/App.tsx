@@ -749,7 +749,11 @@ export const App: React.FC = () => {
       cancelled={isCancelled}
       onRestart={handleRestart}
       restartPending={restartPending}
-    />
+    >
+      {matchData?.roomName && <Dashboard key={matchData.roomName} completedRoomName={matchData.roomName}
+        initData={initData} userData={userData} onProfileUpdated={setUserData} onAccessLost={initAuth}
+        onOpenActiveCall={initAuth} renderPractice={() => null} />}
+    </SessionStatusScreen>
   );
 };
 

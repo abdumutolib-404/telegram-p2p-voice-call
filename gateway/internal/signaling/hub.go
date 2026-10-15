@@ -29,16 +29,17 @@ type Hub struct {
 	LiveKitAPISecret      string
 	AdminTelegramIDs      []string
 
-	userSockets           map[string]map[string]*ClientSocket // userId -> socketId -> socket
-	roomSockets           map[string]map[string]*ClientSocket // roomName -> socketId -> socket
-	activeEgresses        map[string]*ActiveEgress            // roomName -> egress
-	serverSessionTimers   map[string]*time.Timer              // roomName -> timer
-	disconnectGraceTimers map[string]*time.Timer              // userId -> timer
-	userLastActionTime    map[string]int64                    // userId -> timestampMs
-	roomPeers             map[string]map[string]bool          // roomName -> userId -> true
-	roomStartedAt         map[string]int64                    // roomName -> startedAtMs
-	roomDurationLimits    map[string]int                      // roomName -> durationSeconds
-	handshakeTimers       map[string]*time.Timer              // roomName -> timer
+	userSockets            map[string]map[string]*ClientSocket // userId -> socketId -> socket
+	roomSockets            map[string]map[string]*ClientSocket // roomName -> socketId -> socket
+	activeEgresses         map[string]*ActiveEgress            // roomName -> egress
+	serverSessionTimers    map[string]*time.Timer              // roomName -> timer
+	serverSessionDeadlines map[string]time.Time
+	disconnectGraceTimers  map[string]*time.Timer     // userId -> timer
+	userLastActionTime     map[string]int64           // userId -> timestampMs
+	roomPeers              map[string]map[string]bool // roomName -> userId -> true
+	roomStartedAt          map[string]int64           // roomName -> startedAtMs
+	roomDurationLimits     map[string]int             // roomName -> durationSeconds
+	handshakeTimers        map[string]*time.Timer     // roomName -> timer
 
 	roomMutexes      sync.Map // roomName -> *sync.Mutex
 	userMutexes      sync.Map // userId -> *sync.Mutex
@@ -60,29 +61,30 @@ func NewHub(
 ) *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Hub{
-		DB:                    db,
-		Matchmaking:           matchmaking,
-		LiveKit:               livekit,
-		PubSub:                pubsub,
-		BotToken:              botToken,
-		LiveKitHost:           lkHost,
-		LiveKitAPIKey:         lkKey,
-		LiveKitAPISecret:      lkSecret,
-		AdminTelegramIDs:      adminTelegramIDs,
-		userSockets:           make(map[string]map[string]*ClientSocket),
-		roomSockets:           make(map[string]map[string]*ClientSocket),
-		activeEgresses:        make(map[string]*ActiveEgress),
-		serverSessionTimers:   make(map[string]*time.Timer),
-		disconnectGraceTimers: make(map[string]*time.Timer),
-		userLastActionTime:    make(map[string]int64),
-		roomPeers:             make(map[string]map[string]bool),
-		roomStartedAt:         make(map[string]int64),
-		roomDurationLimits:    make(map[string]int),
-		handshakeTimers:       make(map[string]*time.Timer),
-		eventSlots:            make(chan struct{}, 256),
-		queuedEventSlots:      make(chan struct{}, 1024),
-		ctx:                   ctx,
-		cancel:                cancel,
+		DB:                     db,
+		Matchmaking:            matchmaking,
+		LiveKit:                livekit,
+		PubSub:                 pubsub,
+		BotToken:               botToken,
+		LiveKitHost:            lkHost,
+		LiveKitAPIKey:          lkKey,
+		LiveKitAPISecret:       lkSecret,
+		AdminTelegramIDs:       adminTelegramIDs,
+		userSockets:            make(map[string]map[string]*ClientSocket),
+		roomSockets:            make(map[string]map[string]*ClientSocket),
+		activeEgresses:         make(map[string]*ActiveEgress),
+		serverSessionTimers:    make(map[string]*time.Timer),
+		serverSessionDeadlines: make(map[string]time.Time),
+		disconnectGraceTimers:  make(map[string]*time.Timer),
+		userLastActionTime:     make(map[string]int64),
+		roomPeers:              make(map[string]map[string]bool),
+		roomStartedAt:          make(map[string]int64),
+		roomDurationLimits:     make(map[string]int),
+		handshakeTimers:        make(map[string]*time.Timer),
+		eventSlots:             make(chan struct{}, 256),
+		queuedEventSlots:       make(chan struct{}, 1024),
+		ctx:                    ctx,
+		cancel:                 cancel,
 	}
 }
 
@@ -100,6 +102,7 @@ func (h *Hub) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.closing = true
+	clear(h.serverSessionDeadlines)
 	for _, timers := range []map[string]*time.Timer{h.serverSessionTimers, h.handshakeTimers, h.disconnectGraceTimers} {
 		for key, timer := range timers {
 			timer.Stop()
@@ -148,7 +151,7 @@ func (h *Hub) Authenticate(ctx context.Context, initData string) (*database.User
 	}
 
 	user, err := h.DB.GetRegisteredUserByTelegramID(ctx, tgUser.ID, auth.TermsVersion, auth.TermsDocumentSHA256)
-	if err != nil || user == nil {
+	if err != nil || user.Restricted(time.Now()) {
 		return nil, false
 	}
 
@@ -223,7 +226,7 @@ func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
 		partnerUser = activeCall.UserA
 	}
 
-	if selfUser == nil || partnerUser == nil {
+	if selfUser.Restricted(time.Now()) || partnerUser.Restricted(time.Now()) {
 		return
 	}
 
@@ -400,6 +403,7 @@ func (h *Hub) finishRoomState(roomName string, payload CallFinishedEvent) {
 	delete(h.roomStartedAt, roomName)
 	delete(h.roomDurationLimits, roomName)
 	delete(h.activeEgresses, roomName)
+	delete(h.serverSessionDeadlines, roomName)
 	for _, timers := range []map[string]*time.Timer{h.serverSessionTimers, h.handshakeTimers} {
 		if timer := timers[roomName]; timer != nil {
 			timer.Stop()
@@ -494,6 +498,7 @@ func (h *Hub) GetUserSockets(userID string) []*ClientSocket {
 func (h *Hub) ClearSessionTimer(roomName string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	delete(h.serverSessionDeadlines, roomName)
 	if timer, ok := h.serverSessionTimers[roomName]; ok {
 		timer.Stop()
 		delete(h.serverSessionTimers, roomName)

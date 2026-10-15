@@ -5,6 +5,7 @@ import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, calculateEffective
 import { consumeOldestBonusCall } from './referralService';
 import { isUserSessionRecorder } from '../utils/recordingAccess';
 import { pubClient } from '../config/redis';
+import { isAccountRestricted } from './accountRestriction';
 
 interface Completion {
   endedAt: Date;
@@ -16,6 +17,7 @@ interface Completion {
   recordingExpiresAt?: Date | null;
   reason?: string;
   deniedUserId?: string;
+  restrictionCleanupPending?: boolean;
 }
 
 /** Shares Go's participant-first lock order; the terminal claim and allowance writes commit together. */
@@ -35,6 +37,7 @@ export async function completeCallSession(id: string, completion: Completion): P
     const a = await tx.user.findUnique({ where: { id: session.userAId } });
     const b = await tx.user.findUnique({ where: { id: session.userBId } });
     if (!a || !b) throw new Error('Call participant is missing.');
+    if (completion.reason === 'account_restricted' && !isAccountRestricted(a) && !isAccountRestricted(b)) return { count: 0 };
     const endedAt = new Date(Math.min(Date.now(), completion.endedAt.getTime()));
     if (!Number.isFinite(endedAt.getTime())) throw new Error('Invalid call end time.');
     const duration = status === 'CANCELLED' || !session.mediaAuthorizedAt ? 0 : Math.min(calculateEffectiveCallDuration(a,b)*60, Math.max(0, Math.floor((endedAt.getTime() - session.mediaAuthorizedAt.getTime()) / 1000)));
@@ -88,9 +91,17 @@ export async function completeCallSession(id: string, completion: Completion): P
     }
     return claimed;
   }, { maxWait: 10000, timeout: 15000 });
-  if (claimed.count===1 && pubClient) {
+  if (claimed.count===1 && pubClient?.status === 'ready') {
     const terminal=await prisma.callSession.findUnique({where:{id}}).catch(()=>null);
-    if (terminal) await pubClient.publish('pairtalk:events',JSON.stringify({type:'CALL_FINISHED',sessionId:id,roomName:terminal.roomName})).catch(()=>undefined);
+    if (terminal) {
+      let timeout: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          pubClient.publish('pairtalk:events',JSON.stringify({type:'CALL_FINISHED',sessionId:id,roomName:terminal.roomName})).catch(()=>undefined),
+          new Promise<void>(resolve => { timeout = setTimeout(resolve, 500); }),
+        ]);
+      } finally { clearTimeout(timeout); }
+    }
   }
   return claimed;
 }

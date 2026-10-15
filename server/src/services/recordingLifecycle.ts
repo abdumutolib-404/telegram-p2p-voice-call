@@ -2,12 +2,13 @@ import { prisma } from '../config/database';
 import { lockRow } from '../utils/transactionLock';
 import { getEffectiveEntitlement, getUserRecordingsUsedThisPeriod } from './plan';
 import type { Prisma } from '@prisma/client';
+import { isAccountRestricted } from './accountRestriction';
 
 async function consumeRecording(tx: Prisma.TransactionClient, callId: string, userId: string) {
+  const user = await tx.user.findUnique({ where: { id: userId } });
+  if (!user || isAccountRestricted(user)) throw new Error('Recording is unavailable for this account.');
   const existing = await tx.recordingUsage.findUnique({ where: { callId_userId: { callId, userId } } });
   if (existing) return;
-  const user = await tx.user.findUnique({ where: { id: userId } });
-  if (!user) throw new Error('Recording owner no longer exists.');
   const entitlement = getEffectiveEntitlement(user);
   if (!entitlement.isAdmin && await getUserRecordingsUsedThisPeriod(userId, user, tx) >= entitlement.recordingLimit) {
     throw new Error('Recording allowance reached.');

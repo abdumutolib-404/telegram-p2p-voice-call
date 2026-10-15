@@ -1,3 +1,4 @@
+import { startRestrictionWorker } from './services/restrictionEffects';
 import { startManualCrawlerWorker } from "./services/crawler/manualJobs";
 import { loadPlanConfiguration, startPlanConfigurationRefresh } from './services/planConfiguration';
 import cookieParser from 'cookie-parser';
@@ -51,6 +52,7 @@ import { startStarsRefundRecovery } from './services/starsRefund';
 import { notificationQueue } from './bot/notifications';
 import { createFrontendRouter, httpsAuthority } from './services/frontendRouting';
 import { closeExternalConnections } from './utils/safeFetch';
+import { requestBodyMiddleware } from './middleware/requestBody';
 
 // Global BigInt JSON serialization guard
 (BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
@@ -147,9 +149,7 @@ app.use(cors({
 
 app.options('*', cors());
 app.use(cookieParser());
-app.use('/api/livekit/webhook', express.raw({ type: '*/*', limit: '2mb' }));
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ limit: '15mb', extended: true }));
+app.use(requestBodyMiddleware());
 
 // --- Static Path Resolvers & Pre-Rendered SEO HTML ---
 let memoLandingDistPath: string | null | undefined;
@@ -469,6 +469,7 @@ let stopRefundRecovery: (() => Promise<void>) | null = null;
 let stopManualCrawlerWorker: (() => Promise<void>) | null = null;
 let stopPostCallWorker: (() => Promise<void>) | null = null;
 let stopNotificationWorker: (() => Promise<void>) | null = null;
+let stopRestrictionWorker: (() => Promise<void>) | null = null;
 let stopDiscountWorker: (() => Promise<void>) | null = null;
 
 let stopPolling: (() => Promise<void>) | null = null;
@@ -555,6 +556,7 @@ async function bootstrap(): Promise<void> {
     void primeAllCrawlerCaches().catch(() => undefined);
 
     setupSocketSignaling(io, bot ?? undefined);
+    stopRestrictionWorker = startRestrictionWorker();
     const zombieTimer = startZombieSessionCleaner(io, bot ?? undefined);
     stopWorkers.push(() => clearInterval(zombieTimer));
     eventSubscriberHandle = startEventSubscriber(() => bot);
@@ -597,6 +599,7 @@ async function bootstrap(): Promise<void> {
     stopPlanRefresh?.(); await stopRefundRecovery?.();
     await stopPostCallWorker?.();
     await stopDiscountWorker?.();
+    await stopRestrictionWorker?.();
     await stopManualCrawlerWorker?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();
@@ -648,6 +651,7 @@ const gracefulShutdown = async (signal: string) => {
     stopPlanRefresh?.();
     await stopPostCallWorker?.();
     await stopDiscountWorker?.();
+    await stopRestrictionWorker?.();
     await stopManualCrawlerWorker?.();
     await stopRefundRecovery?.();
     await stopNotificationWorker?.().catch(() => undefined);

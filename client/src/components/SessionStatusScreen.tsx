@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, Loader2, PhoneOff, RefreshCw } from 'lucide-react';
 import { Brand } from './Brand';
 
@@ -10,6 +11,7 @@ interface SessionStatusScreenProps {
   onPractice?: () => void;
   onCancel?: () => void;
   restartPending?: boolean;
+  children?: ReactNode;
 }
 
 export function SessionStatusScreen({
@@ -21,6 +23,7 @@ export function SessionStatusScreen({
   onPractice,
   onCancel,
   restartPending = false,
+  children,
 }: SessionStatusScreenProps) {
   const pending = state !== 'ended';
   return (
@@ -71,7 +74,7 @@ export function SessionStatusScreen({
               : error ||
                 (cancelled
                   ? 'Your partner search was cancelled. Start again whenever you’re ready.'
-                  : 'Thanks for making time to practice. Review your call, rate your partner and find available recordings in History & audio.')}
+                  : 'Thanks for making time to practice. Rate your call and manage any saved audio below, or visit History & audio.')}
         </p>
         {onRestart && (
           <button type="button" className="primary-button" onClick={onRestart} disabled={restartPending} aria-busy={restartPending}>
@@ -82,6 +85,7 @@ export function SessionStatusScreen({
         {state === 'ended' && onDashboard && <button type="button" className="secondary-button" onClick={onDashboard}>History &amp; audio</button>}
         {state === 'connecting' && onCancel && <button type="button" className="secondary-button" onClick={onCancel}>Cancel connection</button>}
       </section>
+      {children}
       <footer className="app-footer">
         © PairTalk {new Date().getFullYear()}. All rights reserved.
       </footer>

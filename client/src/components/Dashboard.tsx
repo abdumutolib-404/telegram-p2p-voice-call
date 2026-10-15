@@ -18,7 +18,7 @@ interface Session { recordings?: {id:string;createdAt:string;expiresAt:string}[]
 interface Partner { id: string; alias: string; band: number; available: boolean }
 interface Invitation { id: string; status: string; incoming: boolean; partnerAlias: string; expiresAt: string }
 interface Community { referralPayload: string; referrals: { totalInvited: number; qualifyingCompleted?: number; activeBonusCalls: number; rewards: { id: string; referredAlias: string; status: string; expiresAt: string | null }[] }; contest: { isActive: boolean; contest: { title: string; description: string | null } | null; leaderboard: { rank: number; alias: string; invitesCount: number }[] } }
-interface Props { initData: string; userData: UserMatchData; onProfileUpdated: (data: UserMatchData) => void; onAccessLost: () => void; onOpenActiveCall: () => void; renderPractice: (navigation: ReactNode, shortcuts: ReactNode) => ReactNode }
+interface Props { completedRoomName?: string; initData: string; userData: UserMatchData; onProfileUpdated: (data: UserMatchData) => void; onAccessLost: () => void; onOpenActiveCall: () => void; renderPractice: (navigation: ReactNode, shortcuts: ReactNode) => ReactNode }
 const views: { id: View; label: string; icon: typeof Mic }[] = [
   { id: 'practice', label: 'Practice', icon: Mic }, { id: 'history', label: 'History & audio', icon: History }, { id: 'partners', label: 'Partners', icon: Heart }, { id: 'community', label: 'Invites', icon: Users }, { id: 'leaderboard', label: 'Hall of Fame', icon: Trophy }, { id: 'account', label: 'Account', icon: Settings }, { id: 'upgrade', label: 'Upgrade', icon: Sparkles },
 ];
@@ -28,8 +28,9 @@ const expiry = (value: string) => { const parsed = new Date(value); return Numbe
 const overall = (scores: {subFC: number; subLR: number; subGRA: number; subP: number}) => Math.round((scores.subFC + scores.subLR + scores.subGRA + scores.subP) / 4 * 2) / 2;
 const isAccessError = (error: unknown) => error instanceof DashboardError && error.status === 403 && ['auth_rejected', 'browser_direct', 'terms_required', 'registration_required', 'banned', 'suspended'].includes(error.code || '');
 
-export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, onOpenActiveCall, renderPractice }: Props) {
+export function Dashboard({ completedRoomName, initData, userData, onProfileUpdated, onAccessLost, onOpenActiveCall, renderPractice }: Props) {
   const [view, setView] = useState<View>(() => {
+    if (completedRoomName) return 'history';
     const value = new URLSearchParams(window.location.search).get('view');
     return views.some(item => item.id === value) ? value as View : 'practice';
   });
@@ -74,9 +75,10 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
   const load = useCallback(async (target: View, signal: AbortSignal) => {
     if (target === 'practice') return;
     if (target === 'history') {
-      const data = await dashboardRequest<{ sessions: Session[]; nextCursor: string | null }>(initData, '/sessions', { signal });
+      const data = await dashboardRequest<{ sessions: Session[]; nextCursor: string | null }>(initData, completedRoomName ? `/sessions?roomName=${encodeURIComponent(completedRoomName)}` : '/sessions', { signal });
+      if (!Array.isArray(data.sessions)) throw new Error('Your conversation could not be loaded. Please try again.');
       let items = data.sessions;
-      const callId = new URLSearchParams(window.location.search).get('call');
+      const callId = completedRoomName ? null : new URLSearchParams(window.location.search).get('call');
       if (callId && !items.some(item => item.id === callId)) {
         const selected = await dashboardRequest<{ session: Session }>(initData, `/sessions/${encodeURIComponent(callId)}`, { signal });
         items = [selected.session, ...items];
@@ -101,7 +103,7 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     }
   // Account refresh deliberately uses the current profile without reloading on each edit.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initData, onProfileUpdated]);
+  }, [initData, onProfileUpdated, completedRoomName]);
   useEffect(() => {
     if (view === 'practice') return;
     const controller = new AbortController(); controllers.current.add(controller);
@@ -109,6 +111,19 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     void load(view, controller.signal).catch(reportError).finally(() => { controllers.current.delete(controller); if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [view, load, reportError, reload]);
+  useEffect(() => {
+    if (!completedRoomName) return;
+    const controller = new AbortController();
+    let checks = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      if (controller.signal.aborted) return;
+      try { await load('history', controller.signal); } catch (error) { reportError(error); }
+      if (!controller.signal.aborted && ++checks < 15) timer = setTimeout(refresh, 2000);
+    };
+    timer = setTimeout(refresh, 2000);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [completedRoomName, load, reportError]);
   useEffect(() => {
     if (view !== 'partners') return;
     let inFlight = false;
@@ -309,11 +324,13 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
     return <RecordingAction key={key} status={delivered[key]} state={actionStates[key] || 'idle'} busy={busy} index={index} onSend={() => void sendRecording(session.id, segmentId)} />;
   }
   if (view === 'practice') return renderPractice(navigation, shortcuts);
-  return <main className="app-shell dashboard-screen">
-    <header className="app-header"><Brand /><div className="app-header-actions">{navigation}</div></header>
+  const Container = completedRoomName ? 'div' : 'main';
+  const Title = completedRoomName ? 'h2' : 'h1';
+  return <Container className={completedRoomName ? "after-call-dashboard" : "app-shell dashboard-screen"}>
+    {!completedRoomName && <header className="app-header"><Brand /><div className="app-header-actions">{navigation}</div></header>}
     <section key={view} className={`dashboard-content dashboard-view-${view}`} aria-busy={loading}>
-      <button type="button" className="text-button dashboard-back" aria-label="Back to practice" onClick={() => navigate('practice')}><ArrowLeft size={16} aria-hidden="true" /> Practice</button>
-      <h1>{view === 'history' ? 'Call history' : view === 'partners' ? 'Saved partners' : view === 'community' ? 'Invites' : view === 'leaderboard' ? 'Hall of Fame' : view === 'upgrade' ? 'Upgrade' : 'Account'}</h1>
+      {!completedRoomName && <button type="button" className="text-button dashboard-back" aria-label="Back to practice" onClick={() => navigate('practice')}><ArrowLeft size={16} aria-hidden="true" /> Practice</button>}
+      <Title className="dashboard-view-title">{completedRoomName ? 'Your conversation' : view === 'history' ? 'Call history' : view === 'partners' ? 'Saved partners' : view === 'community' ? 'Invites' : view === 'leaderboard' ? 'Hall of Fame' : view === 'upgrade' ? 'Upgrade' : 'Account'}</Title>
       {view === 'history' && <p className="dashboard-view-intro">Your conversations, recordings and feedback.</p>}
       {view === 'account' && <p className="dashboard-view-intro">Your allowance, speaking profile and preferences.</p>}
       {(view==='account'||view==='upgrade')&&<DiscountOffers initData={initData} onAccessLost={onAccessLost}/>}
@@ -321,7 +338,7 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
       <span role="status" className="sr-only">{feedback.page?.message}</span>
       {loading && <p role="status" className="loading-state"><PendingIcon />Loading your {view === 'history' ? 'conversations' : view}…</p>}
       {!loading && view === 'history' && <>
-        {!sessions.length && !error && <div className="dashboard-empty"><History size={28} aria-hidden="true" /><h2>Your first conversation is ahead.</h2><p>Completed calls and available recordings will appear here.</p><button className="secondary-button" onClick={() => navigate('practice')}>Start practicing</button></div>}
+        {!sessions.length && !error && <div className="dashboard-empty"><History size={28} aria-hidden="true" /><h2>{completedRoomName ? 'Finishing your conversation…' : 'Your first conversation is ahead.'}</h2><p>{completedRoomName ? 'Your feedback and audio actions will appear as soon as the call is saved. You can also open History & audio.' : 'Completed calls and available recordings will appear here.'}</p>{!completedRoomName && <button className="secondary-button" onClick={() => navigate('practice')}>Start practicing</button>}</div>}
         <div className="dashboard-cards">{sessions.map(session => <article className="dashboard-card hcard" key={session.id}>
           <p className="hcard__meta">{date(session.createdAt)} – {Math.floor(session.duration / 60)}m {session.duration % 60}s{session.status !== 'COMPLETED' && <> · {session.status.toLowerCase()}</>}</p>
           <div className="hcard__who"><h2 className="hcard__alias break-anywhere">{session.partnerAlias}</h2>{session.rating !== null && ratingChoices[session.id] === undefined && <span className={`hcard__rating ${actionStates[`/sessions/${session.id}/rating`] === 'success' ? 'is-new' : ''}`} aria-label={`Rated ${session.rating} out of 5`}>– {session.rating}/5 <Star size={16} fill="currentColor" aria-hidden="true" /></span>}
@@ -380,12 +397,12 @@ export function Dashboard({ initData, userData, onProfileUpdated, onAccessLost, 
       <MotionPresence>{confirmRemove && <DashboardDialog title={`Delete ${confirmRemove.alias}?`} pending={busy} onClose={() => setConfirmRemove(null)}><p>Are you sure you want to delete {confirmRemove.alias}? This action cannot be undone!</p>{actionFeedback(`partner:${confirmRemove.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setConfirmRemove(null)}>No</button><button type="button" className="secondary-button danger-button" disabled={busy} onClick={async () => { if (await run(`/favorites/${confirmRemove.id}`, 'DELETE', undefined, 'Partner removed.', `partner:${confirmRemove.id}`)) { setConfirmRemove(null); setFeedback(previous => ({ ...previous, page: { message: 'Partner removed.', error: false } })); } }}>{busy && <PendingIcon />}{busy ? 'Removing…' : 'Yes, delete'}</button></div></DashboardDialog>}</MotionPresence>
       <MotionPresence>{savingSession && <DashboardDialog title="Save this partner?" pending={busy} onClose={() => setSavingSession(null)}><p>You can invite <strong>{savingSession.partnerAlias}</strong> to future calls.</p>{actionFeedback(`session:${savingSession.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setSavingSession(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy} onClick={async () => { if (await run(`/sessions/${savingSession.id}/favorite`, 'POST', undefined, 'Partner saved.', `session:${savingSession.id}`)) setSavingSession(null); }}>{busy && <PendingIcon />}{busy ? 'Saving…' : 'Save partner'}</button></div></DashboardDialog>}</MotionPresence>
       <MotionPresence>{reportingSession && <DashboardDialog title="Report this partner" pending={busy} onClose={() => setReportingSession(null)}>
-        <p>What happened with <strong>{reportingSession.partnerAlias}</strong>? Choose a reason.</p>
-        <div className="choices" role="radiogroup" aria-label="Reason">{reasons.map(reason => <label className="choice" key={reason}><input type="radio" name="report-reason" value={reason} disabled={busy} checked={reportReason === reason} onChange={() => setReportReason(reason)} />{reason}</label>)}</div>
-        <label className="field" htmlFor="report-details">Details (optional)<textarea className="textarea" id="report-details" maxLength={1000} disabled={busy} value={reportDetails} onChange={event => setReportDetails(event.target.value)} /></label>
+        <div className="report-intro"><span className="report-intro-icon"><AlertTriangle size={22} aria-hidden="true" /></span><p>Help keep speaking practice safe. What happened during your call with <strong>{reportingSession.partnerAlias}</strong>?</p></div>
+        <fieldset className="report-reasons"><legend>Choose a reason</legend>{reasons.map(reason => <label className={`report-reason ${reportReason === reason ? 'is-selected' : ''}`} key={reason}><input type="radio" name="report-reason" value={reason} disabled={busy} checked={reportReason === reason} onChange={() => setReportReason(reason)} /><span>{reason}</span></label>)}</fieldset>
+        <label className="field report-details" htmlFor="report-details"><span>Additional details <small>(optional)</small></span><textarea className="textarea" id="report-details" aria-describedby="report-details-help" rows={4} placeholder="Share anything that will help us understand what happened." maxLength={1000} disabled={busy} value={reportDetails} onChange={event => setReportDetails(event.target.value)} /></label><p className="report-details-help" id="report-details-help"><span>Your written details are kept private from this partner.</span><span>{reportDetails.length}/1000</span></p>
         {actionFeedback(`session:${reportingSession.id}`, true)}<div className="dashboard-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setReportingSession(null)}>Cancel</button><button type="button" className="secondary-button danger-button" disabled={busy || !reportReason} onClick={async () => { if (await run(`/sessions/${reportingSession.id}/report`, 'POST', { reason: reportReason, ...(reportDetails.trim() ? {details: reportDetails.trim()} : {}) }, 'Report submitted.', `session:${reportingSession.id}`)) setReportingSession(null); }}>{busy && <PendingIcon />}{busy ? 'Submitting…' : 'Submit report'}</button></div>
       </DashboardDialog>}</MotionPresence>
     </section>
-    <footer className="app-footer">© PairTalk {new Date().getFullYear()}. All rights reserved.</footer>
-  </main>;
+    {!completedRoomName && <footer className="app-footer">© PairTalk {new Date().getFullYear()}. All rights reserved.</footer>}
+  </Container>;
 }

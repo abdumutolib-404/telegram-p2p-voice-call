@@ -8,6 +8,7 @@ import { webCrawlerService } from './webCrawlerService';
 import { generateCanonicalSemanticKey, isSemanticDuplicate } from './semanticMatcher';
 import { aiCurationService } from './aiCurationService';
 import { IeltsPart } from '@prisma/client';
+import { MAX_CURATION_CANDIDATES } from './budget';
 
 export interface IngestionResult {
   status: 'SUCCESS' | 'FAILED' | 'LOCKED';
@@ -32,6 +33,10 @@ export class QuestionIngestionService {
   }): Promise<IngestionResult> {
     const startTime = Date.now();
     const lease = new CrawlerLease();
+    const assertRunOwned = async () => {
+      if (Date.now() - startTime > 180000) throw new Error('Ingestion run exceeded its three-minute budget.');
+      await lease.assertOwned();
+    };
 
     // A manual force request still respects active distributed ownership.
     if (!await lease.acquire()) {
@@ -75,13 +80,13 @@ export class QuestionIngestionService {
       // 3. Ensure all 15 Canonical Cambridge IELTS Topic Families exist in database
       const topicMap = new Map<string, string>(); // slug -> topicId
       for (const t of SEED_TOPICS) {
-        await lease.assertOwned();
+        await assertRunOwned();
         let topic = await prisma.ieltsTopic.findUnique({ where: { slug: t.slug } });
         if (!topic) {
           // Guard against name uniqueness collision if legacy record has same name
           topic = await prisma.ieltsTopic.findUnique({ where: { name: t.name } });
           if (topic) {
-            await lease.assertOwned();
+            await assertRunOwned();
             topic = await prisma.ieltsTopic.update({
               where: { id: topic.id },
               data: {
@@ -92,7 +97,7 @@ export class QuestionIngestionService {
               },
             });
           } else {
-            await lease.assertOwned();
+            await assertRunOwned();
             topic = await prisma.ieltsTopic.create({
               data: {
                 name: t.name,
@@ -137,7 +142,7 @@ export class QuestionIngestionService {
       // b) Custom URL crawl if requested
       // c) Deep web crawl if requested
       // d) Custom source payload
-      const candidateQuestions: RawCandidateQuestion[] = [
+      let candidateQuestions: RawCandidateQuestion[] = [
         ...OFFICIAL_2026_EXAM_FORECAST_BANK,
         ...(options?.customSources ?? []),
       ];
@@ -146,9 +151,9 @@ export class QuestionIngestionService {
       // Custom URL Crawl on-demand
       if (options?.customUrl && options.customUrl.startsWith('http')) {
         try {
-          await lease.assertOwned();
+          await assertRunOwned();
           const crawledFromUrl = await webCrawlerService.fetchAndExtractUrl(options.customUrl);
-          await lease.assertOwned();
+          await assertRunOwned();
           candidateQuestions.push(...crawledFromUrl);
           sourcesProcessed++;
         } catch (err) {
@@ -159,9 +164,9 @@ export class QuestionIngestionService {
       // Deep Crawl configured sources if flag set
       if (options?.deepCrawl) {
         try {
-          await lease.assertOwned();
+          await assertRunOwned();
           const crawledFromWeb = await webCrawlerService.crawlAllConfiguredSources();
-          await lease.assertOwned();
+          await assertRunOwned();
           candidateQuestions.push(...crawledFromWeb);
           sourcesProcessed += VERIFIED_CRAWLER_TARGETS.filter(t => t.enabled).length;
         } catch (err) {
@@ -170,6 +175,17 @@ export class QuestionIngestionService {
       }
 
       questionsDiscovered = candidateQuestions.length;
+
+      // Preserve one representative for refresh/reactivation, before paid curation.
+      const uniqueCandidates = new Map<string, RawCandidateQuestion>();
+      for (const item of candidateQuestions) {
+        if (item.questionText.length > 2048 || (item.cueCardBullets?.length ?? 0) > 8192 || (item.extractedTopicName?.length ?? 0) > 512) throw new Error('Crawl candidate exceeds the supported input budget.');
+        const key = `${generateQuestionFingerprint(item.part, item.questionText, item.cueCardBullets)}:${(item.extractedTopicName ?? item.suggestedTopicSlug ?? '').toLowerCase().trim()}`;
+        if (uniqueCandidates.has(key)) { duplicatesSkipped++; continue; }
+        uniqueCandidates.set(key, item);
+        if (uniqueCandidates.size > MAX_CURATION_CANDIDATES) throw new Error('Ingestion exceeds the 500-question curation budget. Narrow the selected sources.');
+      }
+      candidateQuestions = [...uniqueCandidates.values()];
 
       // Pass raw candidate batches through aiCurationService.curateQuestionBatch
       const curationInputs = candidateQuestions.map((item) => {
@@ -191,12 +207,12 @@ export class QuestionIngestionService {
         };
       });
 
-      await lease.assertOwned();
+      await assertRunOwned();
       const curatedResults = await aiCurationService.curateQuestionBatch(curationInputs);
-      await lease.assertOwned();
+      await assertRunOwned();
 
       for (let i = 0; i < candidateQuestions.length; i++) {
-        await lease.assertOwned();
+        await assertRunOwned();
         const item = candidateQuestions[i];
         const curated = curatedResults[i];
 
@@ -238,7 +254,7 @@ export class QuestionIngestionService {
             SEED_TOPICS.find((s) => s.slug === 'leisure-habits-daily')!;
           let dbTopic = await prisma.ieltsTopic.findUnique({ where: { slug: seed.slug } });
           if (!dbTopic) {
-            await lease.assertOwned();
+            await assertRunOwned();
             dbTopic = await prisma.ieltsTopic.create({
               data: {
                 name: seed.name,
@@ -262,7 +278,7 @@ export class QuestionIngestionService {
 
         if (existing) {
           if (existing.topicId !== topicId || !existing.isActive || existing.part !== part) {
-            await lease.assertOwned();
+            await assertRunOwned();
             await prisma.ieltsQuestion.update({
               where: { id: existing.id },
               data: {

@@ -6,6 +6,7 @@ import { lockRow } from '../utils/transactionLock';
 import { decodePaymentProof } from '../utils/paymentProof';
 import type { Prisma } from '@prisma/client';
 import { discountPlan } from '../contracts/discounts';
+import { purchaseRefundUsage, assertPurchaseRefundEligible } from './refundUsage';
 
 export interface PlanTierConfig {
   name: string;
@@ -643,9 +644,6 @@ export async function approveManualPaymentRequest(params: {
     }
   }
 
-  const durationDays = config.subscriptionDurationDays ?? 30;
-  const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
-
   const result = await prisma.$transaction(async (tx) => {
     await lockRow(tx, 'User', req.userId);
     const currentUser = await tx.user.findUnique({ where: { id: req.userId } });
@@ -660,6 +658,8 @@ export async function approveManualPaymentRequest(params: {
       await tx.discountOffer.update({where:{id:offer.id},data:{status:'CLAIMED',claimedAt:new Date()}});
     }
     if (currentUser && isDowngrade(currentUser.plan, tier) && currentUser.subscriptionStatus === 'ACTIVE' && (!currentUser.subscriptionExpiresAt || currentUser.subscriptionExpiresAt > new Date())) throw new Error('Cannot downgrade an active subscription.');
+    const grantedAt = new Date();
+    const expiresAt = new Date(grantedAt.getTime() + (config.subscriptionDurationDays ?? 30) * 86400000);
     const updated = await tx.manualPaymentRequest.updateMany({
       where: { id: req.id, status: 'PENDING' },
       data: {
@@ -667,6 +667,9 @@ export async function approveManualPaymentRequest(params: {
         adminNote: params.note || 'Payment verified and approved by admin',
         reviewedBy: params.adminId,
         reviewedAt: new Date(),
+        entitlementStartsAt: grantedAt,
+        entitlementExpiresAt: expiresAt,
+        refundCallLimit: config.dailyLimit,
       },
     });
 
@@ -679,8 +682,8 @@ export async function approveManualPaymentRequest(params: {
       data: {
         plan: tier,
         subscriptionStatus: 'ACTIVE',
-        subscriptionExpiresAt: req.discountOfferId ? new Date(Date.now()+config.subscriptionDurationDays*86400000) : expiresAt,
-        subscriptionStartsAt: new Date(),
+        subscriptionExpiresAt: expiresAt,
+        subscriptionStartsAt: grantedAt,
         subscriptionDurationDays: config.subscriptionDurationDays,
         maxDuration: config.maxDuration,
         dailyLimit: config.dailyLimit,
@@ -762,6 +765,21 @@ export async function rejectManualPaymentRequest(params: {
   return result;
 }
 
+export async function requestManualPaymentRefund(requestId: string, telegramId: bigint, cardNumber: string) {
+  const initial = await prisma.manualPaymentRequest.findUnique({ where: { id: requestId } });
+  if (!initial || initial.telegramId !== telegramId) throw new Error('Payment request not found.');
+  return prisma.$transaction(async tx => {
+    await lockRow(tx, 'User', initial.userId);
+    const current = await tx.manualPaymentRequest.findUnique({ where: { id: requestId } });
+    if (!current || current.telegramId !== telegramId || !['APPROVED', 'REFUND_PENDING'].includes(current.status)) return { count: 0 };
+    await assertPurchaseRefundEligible(current, getDailyLimitForPlan(current.plan), tx, current.refundRequestedAt ?? new Date());
+    return tx.manualPaymentRequest.updateMany({ where: { id: requestId, telegramId, status: current.status }, data: {
+      status: 'REFUND_PENDING', refundCardNumber: cardNumber, refundRequestedAt: current.refundRequestedAt ?? new Date(),
+      adminNote: `[REFUND_REQUESTED] User submitted a refund request on ${new Date().toISOString()}`,
+    } });
+  });
+}
+
 export async function refundManualPaymentRequest(params: {
   requestId: string;
   adminId: string;
@@ -784,6 +802,9 @@ export async function refundManualPaymentRequest(params: {
 
   const result = await prisma.$transaction(async (tx) => {
     await lockRow(tx, 'User', req.userId);
+    const current = await tx.manualPaymentRequest.findUnique({ where: { id: req.id } });
+    if (!current || !['APPROVED', 'REFUND_PENDING'].includes(current.status)) throw new Error('Refund request already processed.');
+    await assertPurchaseRefundEligible(current, getDailyLimitForPlan(current.plan), tx, current.refundRequestedAt ?? new Date());
     const changed = await tx.manualPaymentRequest.updateMany({
       where: { id: req.id, status: req.status },
       data: {
@@ -909,8 +930,7 @@ export async function revokePlanOnRefund(params: {
 
   // Server-Enforced Refund Policy:
   // Refunds are granted ONLY if callsUsed < callLimit * 0.10 OR (Date.now() - purchaseDate) < 48 * 3600 * 1000
-  const callsUsed = await getUserCallsUsedThisPeriod(tx.userId, tx.user);
-  const callLimit = getDailyLimitForPlan(tx.planTier);
+  const {callsUsed,callLimit} = await purchaseRefundUsage(tx,getDailyLimitForPlan(tx.planTier));
   const purchaseDate = new Date(tx.createdAt).getTime();
   const now = Date.now();
   const ageMs = now - purchaseDate;

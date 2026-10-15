@@ -42,7 +42,7 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/auth')
     ? { success: true, user: { id: 'synthetic-user', alias: 'Fixture alias', band: 7, plan: 'FREE', callsRemaining: 3 } }
-    : { hasActiveCall: false }), { status: 200 })));
+    : url.includes('/sessions') ? { sessions: [], nextCursor: null } : { hasActiveCall: false }), { status: 200 })));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); delete window.Telegram; container.remove(); });
@@ -91,7 +91,7 @@ it('sends one finish request when the user ends a call', async () => {
 it('returns to dashboard history after a completed call without starting another search', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/auth')
     ? { success: true, user: { id: 'synthetic-user', alias: 'Fixture alias', band: 7, plan: 'FREE', callsRemaining: 3 } }
-    : url.includes('/dashboard/sessions') ? { sessions: [], nextCursor: null } : { hasActiveCall: false }), { status: 200 })));
+    : url.includes('/dashboard/sessions') ? { sessions: [], nextCursor: null } : url.includes('/sessions') ? { sessions: [], nextCursor: null } : { hasActiveCall: false }), { status: 200 })));
   await startCall();
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="End call"]')!.click());
   const history = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('History & audio'))!;
@@ -140,7 +140,7 @@ it('shows an actionable error when signaling cannot connect while searching', as
 it('refreshes the allowance before next partner and does not search when it is exhausted',async()=>{
   await startCall();await act(async()=>container.querySelector<HTMLButtonElement>('button[aria-label="End call"]')!.click());
   const searches=fixture.join.mock.calls.length;
-  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({user:{callsRemaining:0},activeCall:null}),{status:200})));
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.includes('/sessions') ? {sessions:[],nextCursor:null} : {user:{callsRemaining:0},activeCall:null}),{status:200})));
   const next=Array.from(container.querySelectorAll('button')).find(button=>button.textContent?.includes('Find next partner'))!;
   await act(async()=>next.click());
   expect(container.textContent).toContain('You have used your available calls');expect(fixture.join).toHaveBeenCalledTimes(searches);

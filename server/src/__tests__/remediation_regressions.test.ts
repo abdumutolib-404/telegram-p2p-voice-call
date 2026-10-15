@@ -54,6 +54,8 @@ describe('Financial transition regressions',()=>{
  it('rejects an ineligible refund before contacting Telegram',async()=>{
   const {tx,user}=await purchase({createdAt:new Date(Date.now()-72*3600000)});
   await prisma.user.update({where:{id:user.id},data:{lastCallDate:new Date().toISOString().slice(0,7),dailyCallsUsed:10}});
+  const partner=await purchase();
+  await prisma.callSession.create({data:{roomName:crypto.randomUUID(),userAId:user.id,userBId:partner.user.id,status:'COMPLETED',duration:60,createdAt:new Date(tx.createdAt.getTime()+1000)}});
   const provider={refundStarPayment:vi.fn().mockResolvedValue(true)};
   await expect(processStarsRefund({transactionId:tx.id,adminId:'synthetic'},provider)).rejects.toThrow('eligibility');expect(provider.refundStarPayment).not.toHaveBeenCalled();
  });

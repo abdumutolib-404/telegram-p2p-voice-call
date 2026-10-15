@@ -223,6 +223,9 @@ describe('Championship Lifecycle, Refund Policy, Access Pipeline & Moderation Te
         },
       });
 
+      const partner = await prisma.user.create({data:{telegramId:9002001n,alias:'HistoricalRefundPartner'}});
+      for (let index=0;index<2;index++) await prisma.callSession.create({data:{roomName:`historical-refund-${index}`,userAId:user.id,userBId:partner.id,status:'COMPLETED',duration:30,createdAt:new Date(oldDate.getTime()+1000+index)}});
+
       await expect(
         revokePlanOnRefund({
           transactionId: tx.id,

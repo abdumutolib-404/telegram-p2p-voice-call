@@ -577,6 +577,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
               telegramPaymentId: payment.telegram_payment_charge_id,
               starsAmount: payment.total_amount,
               planTier: tier,
+              entitlementApplied: false,
               status: 'PAID',
             },
           });
@@ -594,7 +595,8 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         }
         const targetTier = tier;
         const targetConfig = plans[targetTier as keyof typeof plans] || plans.PLUS;
-        const expiresAt = new Date(Date.now() + targetConfig.subscriptionDurationDays * 24 * 60 * 60 * 1000);
+        const grantedAt = new Date();
+        const expiresAt = new Date(grantedAt.getTime() + targetConfig.subscriptionDurationDays * 24 * 60 * 60 * 1000);
 
         const updatedUser = await tx.user.update({
           where: { id: user.id },
@@ -602,7 +604,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
             plan: targetTier,
             subscriptionStatus: 'ACTIVE',
             subscriptionExpiresAt: expiresAt,
-            subscriptionStartsAt: new Date(),
+            subscriptionStartsAt: grantedAt,
             subscriptionDurationDays: targetConfig.subscriptionDurationDays,
             maxDuration: targetConfig.maxDuration,
             dailyLimit: targetConfig.dailyLimit,
@@ -617,6 +619,9 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
             telegramPaymentId: payment.telegram_payment_charge_id,
             starsAmount: payment.total_amount,
             planTier: tier,
+            entitlementStartsAt: grantedAt,
+            entitlementExpiresAt: expiresAt,
+            refundCallLimit: targetConfig.dailyLimit,
             status: 'PAID',
           },
         });

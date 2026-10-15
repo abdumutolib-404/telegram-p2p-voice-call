@@ -347,8 +347,9 @@ func (h *Hub) handlePeerReady(socket *ClientSocket, payload []byte) {
 		h.SetRoomDurationLimit(req.RoomName, durationLimit)
 	}
 	remaining := durationLimit - int(time.Since(session.DurationAnchor()).Seconds())
-	if remaining < 1 {
-		remaining = 1
+	if remaining <= 0 {
+		h.ScheduleAuthoritativeSessionTeardown(req.RoomName, 0)
+		return
 	}
 	h.ScheduleAuthoritativeSessionTeardown(req.RoomName, remaining)
 	// Keep the durable gate even after a partial provider failure; retry on readiness.

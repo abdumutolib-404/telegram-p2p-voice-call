@@ -387,3 +387,8 @@ Motion follows the supplied prototype: the right drawer slides over 240ms with a
 ## 13. Review polish
 
 The latest review supersedes the reference drawer with a compact anchored menu. Dropdowns use 160ms opacity and 4px movement with a 0.98 scale and cubic-bezier(.2,.8,.2,1), without an overshoot. They remain inert during exit, preserve their anchor through viewport changes, and support Escape, outside dismissal and keyboard selection. Native admin dialogs retain content for their 180ms exit; reduced motion removes this delay. Buttons use short explicit hover and pressed transitions. Acknowledged rating text stays fully opaque throughout its subtle scale animation. Web interface labels use text and SVG icons rather than emoji.
+
+
+## Shared call feedback
+
+The after-call screen reuses History's controls for rating, saving a partner, reporting, and Telegram audio delivery. It loads the completed room specifically and refreshes briefly while the call is being saved. Report choices use full-row touch targets, a visible selected state, bounded optional details and the shared accessible dialog. Saved/reported marks remain visible; opening their explanation closes it after three seconds. Existing theme tokens, focus behavior and reduced motion apply to these controls. Superseded development design notes were consolidated into this maintained reference; ignored screenshot archives remain available locally.

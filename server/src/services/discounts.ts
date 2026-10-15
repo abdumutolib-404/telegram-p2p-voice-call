@@ -168,6 +168,7 @@ export async function settleDiscountStars(input:{id:string;telegramId:bigint;ord
     if(!valid)return{status:'refund' as const,transactionId:purchase.id};
     await tx.discountOffer.update({where:{id:offer.id},data:{status:'CLAIMED',claimedAt:new Date(),claimedPaymentId:input.chargeId}});
     const updated=await grant(tx,user.id,campaign);
+    await tx.starsTransaction.update({where:{id:purchase.id},data:{entitlementStartsAt:updated.subscriptionStartsAt,entitlementExpiresAt:updated.subscriptionExpiresAt,refundCallLimit:discountPlan(campaign.planSnapshot).dailyLimit}});
     return{status:'success' as const,user:updated};
   });
 }

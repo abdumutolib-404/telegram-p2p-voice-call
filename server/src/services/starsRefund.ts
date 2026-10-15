@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { lockRow } from '../utils/transactionLock';
-import { getDailyLimitForPlan, getUserCallsUsedThisPeriod, revokePlanOnRefund } from './plan';
+import { getDailyLimitForPlan, revokePlanOnRefund } from './plan';
+import { purchaseRefundUsage } from './refundUsage';
 import { logger } from '../utils/logger';
 type Provider = { refundStarPayment: (userId: number, chargeId: string) => Promise<unknown> };
 
@@ -12,8 +13,8 @@ export async function processStarsRefund(params: { transactionId: string; adminI
     if (purchase.status === 'REFUNDED') return purchase;
     if (purchase.status === 'REFUND_PROCESSING') throw new Error('This refund is already processing. Check its status before retrying.');
     if (purchase.status !== 'PAID' && purchase.status !== 'REFUND_PENDING') throw new Error('This transaction cannot be refunded.');
-    const callsUsed = await getUserCallsUsedThisPeriod(purchase.userId, purchase.user);
-    if (callsUsed >= getDailyLimitForPlan(purchase.planTier) * .10 && Date.now() - purchase.createdAt.getTime() >= 48 * 3600000) throw new Error('Refund eligibility period and usage allowance exceeded.');
+    const {callsUsed,callLimit} = await purchaseRefundUsage(purchase,getDailyLimitForPlan(purchase.planTier),tx);
+    if (callsUsed >= callLimit * .10 && Date.now() - purchase.createdAt.getTime() >= 48 * 3600000) throw new Error('Refund eligibility period and usage allowance exceeded.');
     const changed = await tx.starsTransaction.updateMany({ where: { id: purchase.id, status: purchase.status }, data: {
       status: 'REFUND_PROCESSING', refundRequestedAt: new Date(), refundAdminId: params.adminId,
       refundReason: params.reason || 'Stars refund requested', refundFailure: null,

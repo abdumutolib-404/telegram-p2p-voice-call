@@ -11,7 +11,7 @@ import type { Bot } from 'grammy';
 import type { MyContext } from '../bot/types';
 import { notificationQueue } from '../bot/notifications';
 vi.mock('../socket/signaling', () => ({ scheduleConnectionHandshakeTimer: vi.fn(), setRoomDurationLimit: vi.fn() }));
-vi.mock('../bot/notifications', () => ({ notificationQueue: { enqueue: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock('../bot/notifications', async (importOriginal) => ({ ...await importOriginal<typeof import('../bot/notifications')>(), notificationQueue: { enqueue: vi.fn().mockResolvedValue(undefined) } }));
 const app = express(); app.use(express.json()); app.use('/dashboard', dashboardRoutes); app.use('/auth', authRoutes);
 app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => res.status(500).json({ error: error.message }));
 const consent = { onboarded: true, termsAcceptedVersion: currentTerms.version, termsAcceptedAt: new Date(), termsDocumentSha256: currentTerms.sha256 };
@@ -24,6 +24,16 @@ const signed = (id: bigint) => {
 let sequence = 910000000n;
 async function member(data = {}) { sequence++; return prisma.user.create({ data: { telegramId: sequence, alias: `P2P-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, ...consent, ...data } }); }
 describe('Telegram-only member dashboard', () => {
+  it('filters after-call actions to the owned completed room', async () => {
+    const [a,b,outsider] = await Promise.all([member(),member(),member()]);
+    const roomName=crypto.randomUUID();
+    const call=await prisma.callSession.create({data:{roomName,userAId:a.id,userBId:b.id,status:'COMPLETED'}});
+    await prisma.callSession.create({data:{roomName:crypto.randomUUID(),userAId:a.id,userBId:b.id,status:'COMPLETED'}});
+    const own=await request(app).get(`/dashboard/sessions?roomName=${roomName}`).set('x-telegram-init-data',signed(a.telegramId));
+    expect(own.status).toBe(200);expect(own.body.sessions.map((row:{id:string})=>row.id)).toEqual([call.id]);
+    const other=await request(app).get(`/dashboard/sessions?roomName=${roomName}`).set('x-telegram-init-data',signed(outsider.telegramId));
+    expect(other.body.sessions).toEqual([]);
+  });
   beforeEach(() => { setDashboardBot({ token: 'synthetic-token' } as Bot<MyContext>); vi.mocked(notificationQueue.enqueue).mockReset().mockResolvedValue(undefined); });
   it('stores optional report details with the reason and rejects oversized details', async () => {
     const [a, b] = await Promise.all([member(), member()]);

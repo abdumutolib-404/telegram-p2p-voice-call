@@ -424,7 +424,10 @@ export class WebCrawlerService {
     };
 
     for (let i = 0; i < lines.length; i++) {
+      if (intermediateList.length >= 500) throw new Error('Crawl page exceeds the 500-question budget.');
       const line = lines[i];
+      // Reject the whole oversized line; a truncated prefix is not a question.
+      if (line.length > 2048) continue;
       const lower = line.toLowerCase();
 
       // Detect and record Section Headings (e.g. [[SECTION_HEADING: Accommodation]])
@@ -488,10 +491,11 @@ export class WebCrawlerService {
       }
 
       // Detect General and Discussion Questions (ends with '?' or '?' followed by quotes/emojis)
+      const firstQuestion = line.search(/[?？]/u);
       const isQuestionLine =
         line.endsWith('?') ||
         /[?？]["'”’\s]*$/u.test(line) ||
-        /[?？].*(?:\p{Extended_Pictographic}|[\u{1F300}-\u{1FAFF}])/u.test(line);
+        (firstQuestion >= 0 && /(?:\p{Extended_Pictographic}|[\u{1F300}-\u{1FAFF}])/u.test(line.slice(firstQuestion + 1)));
 
       if (isQuestionLine) {
         if (

@@ -1,3 +1,4 @@
+import { isAccountRestricted } from '../services/accountRestriction';
 import crypto from 'node:crypto';
 import { authenticationAdmission } from './authenticationAdmission';
 import { admitCall } from '../services/callAdmission';
@@ -105,6 +106,7 @@ const activeEgresses = new Map<string, ActiveEgress>();
 const roomOperationTails = new Map<string, Promise<void>>();
 const userJoinTails = new Map<string, Promise<void>>();
 const serverSessionTimers = new Map<string, NodeJS.Timeout>();
+const serverSessionDeadlines = new Map<string, number>();
 const connectionHandshakeTimers = new Map<string, NodeJS.Timeout>();
 const activeRoomPeers = new Map<string, Set<string>>();
 const roomStartedAt = new Map<string, number>();
@@ -146,6 +148,7 @@ async function joinActiveRoom(socket:Socket,roomName:string):Promise<boolean> {
 }
 
 const clearSessionTimer = (roomName: string) => {
+  serverSessionDeadlines.delete(roomName);
   const existing = serverSessionTimers.get(roomName);
   if (existing) {
     clearTimeout(existing);
@@ -201,8 +204,9 @@ export function scheduleConnectionHandshakeTimer(
             if (!authorized?.mediaAuthorizedAt) return;
             roomStartedAt.set(roomName,authorized.mediaAuthorizedAt.getTime());
             const elapsed = Math.floor((Date.now() - authorized.mediaAuthorizedAt.getTime()) / 1000);
-            const remaining = Math.max(1, calculateEffectiveCallDuration(currentSession.userA, currentSession.userB) * 60 - elapsed);
+            const remaining = Math.max(0, calculateEffectiveCallDuration(currentSession.userA, currentSession.userB) * 60 - elapsed);
             scheduleAuthoritativeSessionTeardown(roomName, remaining, effectiveBot ?? undefined, effectiveIo ?? undefined);
+            if (remaining <= 0) return;
             await enableCallSubscriptions(roomName,[currentSession.userAId,currentSession.userBId]);
             return;
           }
@@ -286,12 +290,17 @@ export function scheduleAuthoritativeSessionTeardown(
   botInstance?: Bot<MyContext>,
   ioInstance?: Server
 ): NodeJS.Timeout {
+  const deadline = Date.now() + Math.max(0, callDurationLimitSeconds) * 1000;
+  const existing = serverSessionTimers.get(roomName);
+  if (existing && (serverSessionDeadlines.get(roomName) ?? Infinity) <= deadline) return existing;
   clearSessionTimer(roomName);
   clearConnectionHandshakeTimer(roomName);
   const effectiveIo = ioInstance ?? globalIo;
   const effectiveBot = botInstance ?? globalBot;
 
   const timer = setTimeout(() => {
+    if (serverSessionTimers.get(roomName) !== timer) return;
+    serverSessionTimers.delete(roomName); serverSessionDeadlines.delete(roomName);
     void (async () => {
       try {
         await runSerialized(roomOperationTails, roomName, async () => {
@@ -352,6 +361,7 @@ export function scheduleAuthoritativeSessionTeardown(
   }, callDurationLimitSeconds * 1000);
 
   serverSessionTimers.set(roomName, timer);
+  serverSessionDeadlines.set(roomName, deadline);
   return timer;
 }
 
@@ -461,7 +471,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
       }
 
       const dbUser = await prisma.user.findUnique({ where: { telegramId: tgUser.id } });
-      if (!dbUser?.onboarded || !hasAcceptedCurrentTerms(dbUser)) {
+      if (!dbUser?.onboarded || !hasAcceptedCurrentTerms(dbUser) || isAccountRestricted(dbUser)) {
         logger.warn('Socket authentication rejected: User profile not found', {
           service: 'signaling',
           event: 'socket:auth_user_not_found',
@@ -532,6 +542,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const isUserA = activeCall.userAId === userId;
             const selfUser = isUserA ? activeCall.userA : activeCall.userB;
             const partnerUser = isUserA ? activeCall.userB : activeCall.userA;
+            if (isAccountRestricted(selfUser) || isAccountRestricted(partnerUser)) return;
             const callDurationLimitMinutes = calculateEffectiveCallDuration(selfUser, partnerUser);
             const callDurationLimitSeconds = callDurationLimitMinutes * 60;
             const startedAt = roomStartedAt.get(activeCall.roomName);
@@ -897,8 +908,9 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
         }
 
         // Authoritative server duration teardown starts now
-        const remainingSeconds = Math.max(1, durationLimitSeconds - Math.floor((Date.now() - startedAt) / 1000));
+        const remainingSeconds = Math.max(0, durationLimitSeconds - Math.floor((Date.now() - startedAt) / 1000));
         scheduleAuthoritativeSessionTeardown(roomName, remainingSeconds, bot, io);
+        if (remainingSeconds <= 0) return;
         await enableCallSubscriptions(roomName,[readySession.userAId,readySession.userBId]);
         roomStartedAt.set(roomName, startedAt);
 
@@ -1321,6 +1333,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           }, remainingSeconds * 1000);
 
           serverSessionTimers.set(session.roomName, timer);
+          serverSessionDeadlines.set(session.roomName, Date.now() + remainingSeconds * 1000);
         }
       }
       logger.info(`Reconciled ${activeSessions.length} active call sessions on startup.`, {

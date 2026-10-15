@@ -2,6 +2,7 @@ import { GoogleGenerativeAI, GenerativeModel, SchemaType, ResponseSchema } from 
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { CANONICAL_TOPIC_SLUGS, classifyTopic, normalizeToCanonicalSlug } from './taxonomy';
+import { createCurationBudget, curationBudgetAvailable, reserveCurationRequest, MAX_CURATION_CANDIDATES, type CurationBudget } from './budget';
 
 async function generateWithDeadline(model: GenerativeModel, prompt: string, timeoutMs: number) {
   const controller = new AbortController();
@@ -661,9 +662,13 @@ export class AiCurationService {
    */
   public async curateQuestionBatch(
     candidates: Array<{ text: string; bullets?: string[]; contextTopic?: string }>,
+    budget: CurationBudget = createCurationBudget(),
   ): Promise<CuratedQuestionResult[]> {
     if (!candidates || candidates.length === 0) {
       return [];
+    }
+    if (candidates.length > MAX_CURATION_CANDIDATES || candidates.some(candidate => candidate.text.length > 2048 || (candidate.contextTopic?.length ?? 0) > 512 || (candidate.bullets?.length ?? 0) > 12 || candidate.bullets?.some(bullet => typeof bullet !== 'string' || bullet.length > 512))) {
+      throw new Error('Curation input exceeds the supported candidate budget.');
     }
 
     // Chunk into batches of 50 for optimal Gemini throughput and reliability
@@ -671,7 +676,7 @@ export class AiCurationService {
       const results: CuratedQuestionResult[] = [];
       for (let i = 0; i < candidates.length; i += 50) {
         const slice = candidates.slice(i, i + 50);
-        const sliceResults = await this.curateQuestionBatch(slice);
+        const sliceResults = await this.curateQuestionBatch(slice, budget);
         for (let j = 0; j < sliceResults.length; j++) {
           sliceResults[j].index = i + j;
           results.push(sliceResults[j]);
@@ -682,6 +687,7 @@ export class AiCurationService {
 
     // Initialize with heuristic curation fallback results for guaranteed coverage
     const results: CuratedQuestionResult[] = candidates.map((c, i) => heuristicCuration(c, i));
+    if (!curationBudgetAvailable(budget)) return results;
 
     const apiKey = this.getSanitizedApiKey();
     const defaultModel = this.activeModel || this.getCandidateModels()[0] || 'gemini-2.5-flash';
@@ -722,6 +728,7 @@ export class AiCurationService {
       // Tier 1: Try candidate models in priority order
       const modelsToTry = this.getCandidateModels();
       for (const modelName of modelsToTry) {
+        if (!curationBudgetAvailable(budget)) break;
         lastAttemptedModel = modelName;
         try {
           const model = genAI.getGenerativeModel({
@@ -734,7 +741,7 @@ export class AiCurationService {
             systemInstruction: SYSTEM_INSTRUCTION,
           });
 
-          const response = await generateWithDeadline(model, prompt, 30000);
+          const response = await generateWithDeadline(model, prompt, reserveCurationRequest(budget, prompt));
           responseText = response.response.text();
           if (responseText) {
             succeededModel = modelName;
@@ -751,7 +758,7 @@ export class AiCurationService {
           });
 
           // If schema rejected by API (400 / INVALID_ARGUMENT), retry prompt-based JSON without schema
-          if (errMsg.includes('400') || errMsg.includes('schema') || errMsg.includes('INVALID_ARGUMENT')) {
+          if (curationBudgetAvailable(budget) && (errMsg.includes('400') || errMsg.includes('schema') || errMsg.includes('INVALID_ARGUMENT'))) {
             try {
               const promptJsonModel = genAI.getGenerativeModel({
                 model: modelName,
@@ -761,7 +768,7 @@ export class AiCurationService {
                 },
                 systemInstruction: `${SYSTEM_INSTRUCTION}\nOutput must be a valid JSON array of objects with keys: index (number), isValidIeltsSpeaking (boolean), rejectionReason (string or null), part (PART_1, PART_2, or PART_3), canonicalTopicSlug (string), cleanedText (string).`,
               });
-              const response = await generateWithDeadline(promptJsonModel, prompt, 30000);
+              const response = await generateWithDeadline(promptJsonModel, prompt, reserveCurationRequest(budget, prompt));
               responseText = response.response.text();
               if (responseText) {
                 succeededModel = modelName;
@@ -776,9 +783,12 @@ export class AiCurationService {
       }
 
       // Tier 2: If candidate models failed or returned 404, trigger autonomous model discovery
-      if (!responseText) {
+      if (!responseText && curationBudgetAvailable(budget)) {
+        // Discovery is also external work and shares the run's request budget.
+        reserveCurationRequest(budget, 'model discovery');
         const discovered = await discoverSupportedGeminiModels(apiKey);
         for (const discoveredModel of discovered) {
+          if (!curationBudgetAvailable(budget)) break;
           if (modelsToTry.includes(discoveredModel)) continue;
           lastAttemptedModel = discoveredModel;
           try {
@@ -792,7 +802,7 @@ export class AiCurationService {
               systemInstruction: SYSTEM_INSTRUCTION,
             });
 
-            const response = await generateWithDeadline(model, prompt, 30000);
+            const response = await generateWithDeadline(model, prompt, reserveCurationRequest(budget, prompt));
             responseText = response.response.text();
             if (responseText) {
               succeededModel = discoveredModel;

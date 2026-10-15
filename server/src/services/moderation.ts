@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { persistNotification } from '../bot/notifications';
+import { recoverRestrictedCalls } from './restrictionEffects';
 import { prisma } from '../config/database';
 import { lockRow } from '../utils/transactionLock';
 import { getRedis } from '../config/redis';
@@ -85,6 +88,10 @@ export class ModerationService {
       });
 
       const newWarningCount = targetUser.warningCount + 1;
+      await persistNotification(tx, targetUser.telegramId.toString(), newWarningCount >= 5
+        ? 'Your PairTalk account has been permanently suspended following repeated community violations. You may appeal using /appeal.'
+        : newWarningCount >= 3 ? 'Your PairTalk account has been suspended for 6 hours following repeated community violations.'
+        : `Community warning (${newWarningCount}/3): a call report was recorded. Please follow the community guidelines.`, undefined, true, `moderation:report:${callId}:${reporterUserId}`);
 
       if (newWarningCount < 3) {
         // 1st or 2nd report -> Warning
@@ -143,6 +150,7 @@ export class ModerationService {
       await this.invalidateBanCache(targetTelegramId);
     }
 
+    if (result.penaltyLevel !== 'WARNING') await recoverRestrictedCalls(targetUserId).catch(() => undefined);
     return result;
   }
 
@@ -158,6 +166,7 @@ export class ModerationService {
     warningCount: number;
     notificationText: string;
   }> {
+    reason = reason?.slice(0, 1000);
     const result = await prisma.$transaction(async (tx) => {
       await lockRow(tx, 'User', userId);
       const user = await tx.user.findUnique({ where: { id: userId } });
@@ -197,6 +206,8 @@ export class ModerationService {
         data: updateData,
       });
 
+      await persistNotification(tx, updated.telegramId.toString(), notificationText.replace(/\*/g, ''), undefined, true, `moderation:${randomUUID()}`);
+
       return {
         user: updated,
         penaltyLevel,
@@ -209,6 +220,7 @@ export class ModerationService {
       await this.invalidateBanCache(result.user.telegramId);
     }
 
+    if (result.penaltyLevel !== 'WARNING') await recoverRestrictedCalls(userId).catch(() => undefined);
     return result;
   }
 
@@ -240,41 +252,32 @@ export class ModerationService {
   /**
    * Explicitly ban a user and invalidate ban cache
    */
-  async banUser(userId: string, permanent: boolean = true, durationMs: number = 6 * 60 * 60 * 1000) {
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        isBanned: true,
-        isPermanentlyBanned: permanent,
-        bannedUntil: permanent ? null : new Date(Date.now() + durationMs),
-      },
+  async banUser(userId: string, permanent = true, durationMs = 6 * 60 * 60 * 1000, reason?: string) {
+    const user = await prisma.$transaction(async tx => {
+      await lockRow(tx, 'User', userId);
+      const updated = await tx.user.update({ where: { id: userId }, data: {
+        isBanned: true, isPermanentlyBanned: permanent, bannedUntil: permanent ? null : new Date(Date.now() + durationMs),
+      } });
+      await persistNotification(tx, updated.telegramId.toString(),
+        `${permanent ? 'Your PairTalk account has been permanently suspended. You may appeal using /appeal.' : `Your PairTalk account has been suspended until ${updated.bannedUntil!.toISOString()}.`}\n\nReason: ${(reason || 'Community policy violation.').slice(0, 1000)}`,
+        undefined, true, `moderation:${randomUUID()}`);
+      return updated;
     });
-
-    if (user.telegramId) {
-      await this.invalidateBanCache(user.telegramId);
-    }
-
+    await this.invalidateBanCache(user.telegramId);
+    await recoverRestrictedCalls(userId).catch(() => undefined);
     return user;
   }
 
-  /**
-   * Explicitly unban a user and invalidate ban cache
-   */
   async unbanUser(userId: string) {
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        isBanned: false,
-        isPermanentlyBanned: false,
-        bannedUntil: null,
-        warningCount: 0,
-      },
+    const user = await prisma.$transaction(async tx => {
+      await lockRow(tx, 'User', userId);
+      const updated = await tx.user.update({ where: { id: userId }, data: {
+        isBanned: false, isPermanentlyBanned: false, bannedUntil: null, warningCount: 0,
+      } });
+      await persistNotification(tx, updated.telegramId.toString(), 'Your PairTalk account restriction has been lifted. You can use PairTalk again.', undefined, true, `moderation:${randomUUID()}`);
+      return updated;
     });
-
-    if (user.telegramId) {
-      await this.invalidateBanCache(user.telegramId);
-    }
-
+    await this.invalidateBanCache(user.telegramId);
     return user;
   }
 

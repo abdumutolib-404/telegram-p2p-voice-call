@@ -133,6 +133,7 @@ model CallSession {
   activeRecorderIds  String?
   readyParticipantIds String[]    @default([])
   mediaAuthorizedAt DateTime?
+  restrictionCleanupPending Boolean @default(false)
   recordingKeys     String[]     @default([])
   duration           Int          @default(0) // call duration in seconds
   createdAt          DateTime     @default(now())
@@ -149,6 +150,7 @@ model CallSession {
   @@index([status])
   @@index([recordingExpiresAt])
   @@index([status, recordingUrl, createdAt])
+  @@index([restrictionCleanupPending, id])
 }
 
 // Consumption survives retention cleanup and owner replacement on a new segment.
@@ -237,6 +239,9 @@ model StarsTransaction {
   discountOfferId   String?
   discountOffer     DiscountOffer? @relation(fields: [discountOfferId], references: [id])
   entitlementApplied Boolean @default(true)
+  entitlementStartsAt DateTime?
+  entitlementExpiresAt DateTime?
+  refundCallLimit Int?
   status            String    @default("PAID") // "PAID", "REFUND_PENDING", "REFUNDED"
   refundReason      String?
   refundedAt        DateTime?
@@ -252,6 +257,7 @@ model StarsTransaction {
 }
 
 model ManualPaymentRequest {
+  refundRequestedAt DateTime?
   id               String    @id @default(uuid())
   orderNumber      String    @unique @default("A0")
   userId           String
@@ -260,6 +266,9 @@ model ManualPaymentRequest {
   plan             String    // "PLUS", "PRO", "BOSS"
   uzsAmount        Int
   discountOfferId  String?
+  entitlementStartsAt DateTime?
+  entitlementExpiresAt DateTime?
+  refundCallLimit Int?
   discountOffer    DiscountOffer? @relation(fields: [discountOfferId], references: [id])
   paymentProof     String?
   status           String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED", "REFUND_PENDING", "REFUNDED"

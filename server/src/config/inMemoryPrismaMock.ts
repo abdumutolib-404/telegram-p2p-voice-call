@@ -3,6 +3,8 @@ import crypto from 'node:crypto';
 type IdSelector = { id?: string; telegramId?: bigint | string | number; alias?: string };
 type DateFilter = { gte?: Date | string; lte?: Date | string; not?: string | null };
 type UserWhere = {
+  bannedUntil?: null | { gt?: Date };
+  AND?: UserWhere[];
   id?: string | { in: string[] };
   telegramId?: bigint | string | number;
   alias?: string;
@@ -19,6 +21,8 @@ type UserWhere = {
 };
 type UserData = Record<string, unknown>;
 type CallSessionWhere = {
+  restrictionCleanupPending?: boolean;
+  duration?: { gte?: number };
   id?: string;
   roomName?: string;
   userAId?: string | {in:string[]};
@@ -141,6 +145,7 @@ interface ContestRow {
 }
 
 interface CallSessionRow {
+  restrictionCleanupPending: boolean;
   id: string;
   roomName: string;
   userAId: string;
@@ -183,6 +188,9 @@ interface AppealRow {
 }
 
 interface StarsTransactionRow {
+  entitlementStartsAt?: Date | null;
+  entitlementExpiresAt?: Date | null;
+  refundCallLimit?: number | null;
   discountOfferId?: string | null;
   id: string;
   orderNumber?: string | null;
@@ -200,6 +208,10 @@ interface StarsTransactionRow {
 }
 
 interface ManualPaymentRequestRow {
+  refundRequestedAt?: Date | null;
+  entitlementStartsAt?: Date | null;
+  entitlementExpiresAt?: Date | null;
+  refundCallLimit?: number | null;
   discountOfferId?: string | null;
   id: string;
   orderNumber: string;
@@ -711,6 +723,7 @@ export class InMemoryPrismaMock {
         readyParticipantIds: Array.isArray(args.data.readyParticipantIds) ? args.data.readyParticipantIds as string[] : [],
         mediaAuthorizedAt: args.data.mediaAuthorizedAt ? dateValue(args.data.mediaAuthorizedAt, now) : null,
         recordingKeys: Array.isArray(args.data.recordingKeys) ? args.data.recordingKeys as string[] : [],
+        restrictionCleanupPending: Boolean(args.data.restrictionCleanupPending),
         duration: numberValue(args.data.duration, 0),
         createdAt: dateValue(args.data.createdAt, now),
         endedAt: args.data.endedAt ? dateValue(args.data.endedAt, now) : null,
@@ -747,10 +760,11 @@ export class InMemoryPrismaMock {
       };
     },
 
-    findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc' } | Array<{ createdAt?: 'asc' | 'desc'; id?: 'asc' | 'desc' }>; cursor?: { id: string }; skip?: number; take?: number; include?: { userA?: boolean; userB?: boolean; ratings?: boolean } }): Promise<any[]> => {
+    findMany: async (args?: { where?: CallSessionWhere; orderBy?: { createdAt?: 'asc' | 'desc'; id?: 'asc' | 'desc' } | Array<{ createdAt?: 'asc' | 'desc'; id?: 'asc' | 'desc' }>; cursor?: { id: string }; skip?: number; take?: number; include?: { userA?: boolean; userB?: boolean; ratings?: boolean } }): Promise<any[]> => {
       let list = [...this.callSessions.values()].filter((session) => this.matchesCallSession(session, args?.where));
       if (Array.isArray(args?.orderBy)) list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
       else if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (!Array.isArray(args?.orderBy) && args?.orderBy?.id) list.sort((a,b) => args.orderBy && !Array.isArray(args.orderBy) && args.orderBy.id === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id));
       if (args?.cursor) { const index = list.findIndex(session => session.id === args.cursor!.id); list = index < 0 ? [] : list.slice(index + (args.skip ?? 0)); }
       else if (args?.skip) list = list.slice(args.skip);
       if (args?.take !== undefined) list = list.slice(0, args.take);
@@ -968,6 +982,9 @@ export class InMemoryPrismaMock {
         discountOfferId: args.data.discountOfferId ? stringValue(args.data.discountOfferId) : null,
         planTier: stringValue(args.data.planTier),
         entitlementApplied: args.data.entitlementApplied !== false,
+        entitlementStartsAt: args.data.entitlementStartsAt ? dateValue(args.data.entitlementStartsAt, now) : null,
+        entitlementExpiresAt: args.data.entitlementExpiresAt ? dateValue(args.data.entitlementExpiresAt, now) : null,
+        refundCallLimit: typeof args.data.refundCallLimit === 'number' ? args.data.refundCallLimit : null,
         status: stringValue(args.data.status, 'PAID'),
         refundReason: args.data.refundReason ? stringValue(args.data.refundReason) : null,
         refundRequestedAt: args.data.refundRequestedAt ? dateValue(args.data.refundRequestedAt, now) : null,
@@ -1017,14 +1034,11 @@ export class InMemoryPrismaMock {
       }
       return {count};
     },
-    findMany: async (args?: { where?: { userId?: string; status?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<any[]> => {
-      let list = [...this.starsTransactions.values()];
-      if (args?.where?.userId) list = list.filter((tx) => tx.userId === args.where!.userId);
-      if (args?.where?.status) list = list.filter((tx) => tx.status === args.where!.status);
-      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    findMany: async (args?: any): Promise<any[]> => {
+      const list = await jobModel(this.starsTransactions as unknown as Map<string,Record<string,unknown>>,'id').findMany(args);
       return list.map((row) => ({
         ...row,
-        ...(args?.include?.user ? { user: this.users.get(row.userId) } : {}),
+        ...(args?.include?.user ? { user: this.users.get(String(row.userId)) } : {}),
       }));
     },
     update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<StarsTransactionRow> => {
@@ -1058,11 +1072,15 @@ export class InMemoryPrismaMock {
         uzsAmount: numberValue(args.data.uzsAmount, 0),
         discountOfferId: args.data.discountOfferId ? stringValue(args.data.discountOfferId) : null,
         paymentProof: args.data.paymentProof ? stringValue(args.data.paymentProof) : null,
+        entitlementStartsAt: args.data.entitlementStartsAt ? dateValue(args.data.entitlementStartsAt, now) : null,
+        entitlementExpiresAt: args.data.entitlementExpiresAt ? dateValue(args.data.entitlementExpiresAt, now) : null,
+        refundCallLimit: typeof args.data.refundCallLimit === 'number' ? args.data.refundCallLimit : null,
         status: stringValue(args.data.status, 'PENDING'),
         adminNote: args.data.adminNote ? stringValue(args.data.adminNote) : null,
         reviewedBy: args.data.reviewedBy ? stringValue(args.data.reviewedBy) : null,
         reviewedAt: args.data.reviewedAt ? dateValue(args.data.reviewedAt, now) : null,
-        createdAt: now,
+        refundRequestedAt: args.data.refundRequestedAt ? dateValue(args.data.refundRequestedAt, now) : null,
+        createdAt: args.data.createdAt ? dateValue(args.data.createdAt, now) : now,
       };
       this.manualPaymentRequests.set(id, row);
       return { ...row };
@@ -1084,25 +1102,14 @@ export class InMemoryPrismaMock {
         ...(args.include?.user ? { user: this.users.get(row.userId) } : {}),
       };
     },
-      findFirst: async (args?: any): Promise<ManualPaymentRequestRow | null> => {
-        for (const row of this.manualPaymentRequests.values()) {
-          if (args?.where?.id && row.id !== args.where.id) continue;
-          if (args?.where?.telegramId !== undefined && row.telegramId !== BigInt(args.where.telegramId)) continue;
-        if (args?.where?.userId && row.userId !== args.where.userId) continue;
-        if (args?.where?.status && (typeof args.where.status === 'string' ? row.status !== args.where.status : !args.where.status.in?.includes(row.status))) continue;
-        if (args?.where?.reviewedAt?.gt && (!row.reviewedAt || row.reviewedAt <= args.where.reviewedAt.gt)) continue;
-        return { ...row };
-      }
-      return null;
+    findFirst: async (args?: any): Promise<ManualPaymentRequestRow | null> => {
+      return (await this.manualPaymentRequest.findMany(args))[0] ?? null;
     },
-    findMany: async (args?: { where?: { userId?: string; status?: string }; orderBy?: { createdAt?: 'asc' | 'desc' }; include?: { user?: boolean } }): Promise<any[]> => {
-      let list = [...this.manualPaymentRequests.values()];
-      if (args?.where?.userId) list = list.filter((r) => r.userId === args.where!.userId);
-      if (args?.where?.status) list = list.filter((r) => r.status === args.where!.status);
-      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    findMany: async (args?: any): Promise<any[]> => {
+      const list = await jobModel(this.manualPaymentRequests as unknown as Map<string,Record<string,unknown>>,'id').findMany(args);
       return list.map((r) => ({
         ...r,
-        ...(args?.include?.user ? { user: this.users.get(r.userId) } : {}),
+        ...(args?.include?.user ? { user: this.users.get(String(r.userId)) } : {}),
       }));
     },
     update: async (args: { where: { id: string }; data: Record<string, unknown> }): Promise<ManualPaymentRequestRow> => {
@@ -1471,11 +1478,16 @@ export class InMemoryPrismaMock {
     if (where.isBanned !== undefined && user.isBanned !== where.isBanned) return false;
     if (where.isPermanentlyBanned !== undefined && user.isPermanentlyBanned !== where.isPermanentlyBanned) return false;
     if (where.warningCount?.gt !== undefined && user.warningCount <= where.warningCount.gt) return false;
+    if (where.bannedUntil === null && user.bannedUntil !== null) return false;
+    if (where.bannedUntil?.gt && (!user.bannedUntil || user.bannedUntil <= where.bannedUntil.gt)) return false;
+    if (where.AND && !where.AND.every(condition => this.matchesUser(user, condition))) return false;
     if (where.OR && !where.OR.some((condition) => this.matchesUser(user, condition))) return false;
     return true;
   }
 
   private matchesCallSession(session: CallSessionRow, where?: CallSessionWhere): boolean {
+    if (where?.restrictionCleanupPending !== undefined && session.restrictionCleanupPending !== where.restrictionCleanupPending) return false;
+    if (where?.duration?.gte !== undefined && session.duration < where.duration.gte) return false;
     if (!where) return true;
     if (where.id && session.id !== where.id) return false;
     if (where.roomName && session.roomName !== where.roomName) return false;

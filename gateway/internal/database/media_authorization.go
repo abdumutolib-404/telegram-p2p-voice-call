@@ -15,6 +15,29 @@ func (db *DB) RegisterReadyParticipant(ctx context.Context, id, userID string) (
 		return false, err
 	}
 	defer tx.Rollback(ctx)
+	// Participant locks precede the call lock, matching admission and completion.
+	var initialA, initialB string
+	err = tx.QueryRow(ctx, `SELECT "userAId","userBId" FROM "CallSession" WHERE id=$1`, id).Scan(&initialA, &initialB)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if userID != initialA && userID != initialB {
+		return false, nil
+	}
+	participants := []string{initialA, initialB}
+	sort.Strings(participants)
+	for _, participant := range participants {
+		user, err := scanUser(tx.QueryRow(ctx, `SELECT `+userSelectColumns+` FROM "User" WHERE id=$1 FOR UPDATE`, participant))
+		if err != nil {
+			return false, err
+		}
+		if user.Restricted(time.Now()) {
+			return false, nil
+		}
+	}
 	var status, a, b string
 	var ready []string
 	var authorizedAt *time.Time

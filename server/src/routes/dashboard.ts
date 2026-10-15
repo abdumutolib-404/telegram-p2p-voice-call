@@ -75,8 +75,9 @@ router.patch('/account', action(async (req, res) => {
 
 router.get('/sessions', action(async (req, res) => {
   const cursor = req.query.cursor === undefined ? undefined : identifier.parse(req.query.cursor);
+  const roomName = req.query.roomName === undefined ? undefined : z.string().min(1).max(128).parse(req.query.roomName);
   if (cursor) await ownSession(cursor, req.member!.id);
-  const sessions = await prisma.callSession.findMany({ where: { status: { in: ['COMPLETED', 'CANCELLED', 'DECLINED'] }, OR: [{ userAId: req.member!.id }, { userBId: req.member!.id }] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), take: 21, include: { userA: true, userB: true, ratings: true } });
+  const sessions = await prisma.callSession.findMany({ where: { ...(roomName ? { roomName } : {}), status: { in: ['COMPLETED', 'CANCELLED', 'DECLINED'] }, OR: [{ userAId: req.member!.id }, { userBId: req.member!.id }] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), take: 21, include: { userA: true, userB: true, ratings: true } });
   const retention = getEffectiveEntitlement(req.member!).retentionDays;
   const savedRows = await prisma.favoritePartner.findMany({ where: { userId: req.member!.id }, select: { partnerId: true } });
   const savedPartnerIds = new Set(savedRows.map(row => row.partnerId));

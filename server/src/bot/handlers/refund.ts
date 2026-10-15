@@ -5,14 +5,15 @@ import { MyContext } from '../types';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import {
-  getUserCallsUsedThisPeriod,
   getDailyLimitForPlan,
+  requestManualPaymentRefund,
   revokePlanOnRefund,
   refundManualPaymentRequest,
   rejectManualPaymentRefund,
 } from '../../services/plan';
 import { logger } from '../../utils/logger';
 import { refundPolicyUrl } from '../../services/terms';
+import { purchaseRefundUsage } from '../../services/refundUsage';
 
 const getPolicyUrl = () => {
   return refundPolicyUrl;
@@ -115,8 +116,8 @@ export const handleRefundRequest = async (ctx: MyContext) => {
     }
 
     // 2. Authoritative Server-Side Refund Verification (<10% calls OR <48 hours)
-    const callsUsed = await getUserCallsUsedThisPeriod(user.id, user);
-    const callLimit = getDailyLimitForPlan(planTier) || 10;
+    const selectedPurchase = activeTxType === 'STARS' ? latestStarsTx! : latestManualReq!;
+    const {callsUsed,callLimit} = await purchaseRefundUsage(selectedPurchase,getDailyLimitForPlan(planTier) || 10);
     const purchaseAgeMs = Date.now() - new Date(txDate).getTime();
     const purchaseAgeHours = Math.floor(purchaseAgeMs / (1000 * 60 * 60));
 
@@ -332,14 +333,7 @@ export function setupRefundHandlers(bot: Bot<MyContext>) {
       }
 
       // Mark request as REFUND_PENDING with receiving card stored
-      const changed = await prisma.manualPaymentRequest.updateMany({
-        where: { id: req.id, telegramId, status: req.status },
-        data: {
-          status: 'REFUND_PENDING',
-          refundCardNumber: formattedCard,
-          adminNote: `[REFUND_REQUESTED] User submitted refund request for card: ${formattedCard} on ${new Date().toISOString()}`,
-        },
-      });
+      const changed = await requestManualPaymentRefund(req.id, telegramId, formattedCard);
       if (changed.count !== 1) { await ctx.reply('This payment changed. Open /refund again to see its current status.'); return; }
 
       ctx.session.step = 'idle';

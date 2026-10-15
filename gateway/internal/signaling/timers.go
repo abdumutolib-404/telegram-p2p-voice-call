@@ -9,10 +9,9 @@ import (
 )
 
 func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeconds int) {
-	h.ClearSessionTimer(roomName)
 	h.ClearConnectionHandshakeTimer(roomName)
 
-	timer := time.AfterFunc(time.Duration(durationSeconds)*time.Second, func() {
+	h.installSessionDeadline(roomName, time.Now().Add(time.Duration(durationSeconds)*time.Second), func() {
 		roomLock := h.getRoomMutex(roomName)
 		roomLock.Lock()
 		defer roomLock.Unlock()
@@ -139,7 +138,6 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 		}
 	})
 
-	h.SetSessionTimer(roomName, timer)
 }
 
 func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds int) {
@@ -188,8 +186,9 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 			h.SetRoomStartedAt(roomName, session.MediaAuthorizedAt.UnixMilli())
 			limit := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
 			remaining := limit - int(time.Since(session.DurationAnchor()).Seconds())
-			if remaining < 1 {
-				remaining = 1
+			if remaining <= 0 {
+				h.ScheduleAuthoritativeSessionTeardown(roomName, 0)
+				return
 			}
 			h.ScheduleAuthoritativeSessionTeardown(roomName, remaining)
 			_ = h.LiveKit.EnableCallSubscriptions(ctx, roomName, session.UserAID, session.UserBID)

@@ -1,3 +1,6 @@
+import { persistNotification } from '../bot/notifications';
+import { recoverRestrictedCalls } from '../services/restrictionEffects';
+import { randomUUID } from 'node:crypto';
 import { loadPlanConfiguration, savePlanConfiguration } from '../services/planConfiguration';
 import { processStarsRefund } from '../services/starsRefund';
 import { safeFetch } from '../utils/safeFetch';
@@ -37,7 +40,7 @@ import { setRequestContextUserId } from '../utils/requestContext';
 import adminTelemetryRouter from './adminTelemetry';
 import adminIeltsRouter from './adminIelts';
 import { createDiscountCampaign, listDiscountCampaigns, DiscountError } from '../services/discounts';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 
 const router = Router();
 const adminAuthLimiter = createActionRateLimiter('ADMIN_LOGIN', getClientIp);
@@ -1660,21 +1663,14 @@ router.patch('/users/:id/plan', adminAuthMiddleware, async (req, res) => {
 // POST /api/admin/users/:id/ban (Protected)
 router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { permanent, reason } = req.body;
+  const parsed = z.object({ permanent: z.boolean().default(true), reason: z.string().trim().max(1000).optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid suspension details.' });
+  const { permanent, reason } = parsed.data;
   const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
   try {
     const userBefore = await prisma.user.findUnique({ where: { id } });
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        isBanned: true,
-        isPermanentlyBanned: permanent ?? true,
-        bannedUntil: permanent ? null : new Date(Date.now() + 6 * 60 * 60 * 1000),
-      },
-    });
-
-    await moderationService.invalidateBanCache(user.telegramId);
+    const user = await moderationService.banUser(id, permanent, 6 * 60 * 60 * 1000, reason);
 
     await recordAdminAuditLog({
       action: 'USER_BAN',
@@ -1693,20 +1689,6 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
       reason: reason || (permanent ? 'Permanent suspension' : 'Temporary 6h suspension'),
     });
 
-    if (adminBotInstance) {
-      const banText = permanent ?? true
-        ? `⛔ *Account Permanently Banned*\n\nYour account has been permanently suspended by administration.\n*Reason:* ${reason || 'Violation of community guidelines.'}\n\nYou may submit an appeal using the bot menu.`
-        : `🚫 *Account Temporarily Suspended*\n\nYour account has been blocked for 6 hours.\n*Reason:* ${reason || 'Community policy violation.'}`;
-      await adminBotInstance.api.sendMessage(user.telegramId.toString(), banText, { parse_mode: 'Markdown' })
-        .catch((e: unknown) => {
-          logger.warn('Failed to send ban notice', {
-            service: 'admin',
-            event: 'ban_notice_failed',
-            userId: id,
-          }, e);
-        });
-    }
-
     res.json({ success: true, user: { ...user, telegramId: user.telegramId.toString() } });
   } catch (err) {
     res.status(500).json({ error: 'Failed to ban user.' });
@@ -1716,7 +1698,9 @@ router.post('/users/:id/ban', adminAuthMiddleware, async (req, res) => {
 // POST /api/admin/users/:id/moderate (Protected)
 router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { action, reason } = req.body;
+  const parsed = z.object({ action: z.string(), reason: z.string().trim().max(1000).optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid moderation details.' });
+  const { action, reason } = parsed.data;
   const adminId = (req as any).adminUser?.telegramId ? String((req as any).adminUser.telegramId) : 'admin';
 
   if (!action || !['warn', 'block', 'ban', 'unblock', 'reset-calls', 'reset-score'].includes(action)) {
@@ -1752,16 +1736,6 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
           },
           reason: reason || 'Warning issued',
         });
-        if (adminBotInstance) {
-          await adminBotInstance.api.sendMessage(escalation.user.telegramId.toString(), escalation.notificationText, { parse_mode: 'Markdown' })
-            .catch((e: unknown) => {
-              logger.warn('Failed to send warn notice', {
-                service: 'admin',
-                event: 'warn_notice_failed',
-                userId: id,
-              }, e);
-            });
-        }
         return res.json({
           success: true,
           user: { ...escalation.user, telegramId: escalation.user.telegramId.toString(), planTier: escalation.user.plan.toLowerCase(), status: escalation.user.isPermanentlyBanned ? "banned" : escalation.user.isBanned ? "blocked" : "warned" },
@@ -1814,10 +1788,13 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
         break;
     }
 
-    const updated = await prisma.user.update({
-      where: { id },
-      data: updateData,
+    const updated = await prisma.$transaction(async tx => {
+      await lockRow(tx, 'User', id);
+      const updated = await tx.user.update({ where: { id }, data: updateData });
+      if (notificationText) await persistNotification(tx, updated.telegramId.toString(), notificationText.replace(/\*/g, ''), undefined, true, `moderation:${randomUUID()}`);
+      return updated;
     });
+    if (['block', 'ban'].includes(action)) await recoverRestrictedCalls(id).catch(() => undefined);
 
     if (['block', 'ban', 'unblock'].includes(action)) {
       await moderationService.invalidateBanCache(updated.telegramId);
@@ -1855,17 +1832,6 @@ router.post('/users/:id/moderate', adminAuthMiddleware, async (req, res) => {
       },
       reason: reason || `Moderation action: ${action}`,
     });
-
-    if (adminBotInstance && notificationText) {
-      await adminBotInstance.api.sendMessage(updated.telegramId.toString(), notificationText, { parse_mode: 'Markdown' })
-        .catch((e: unknown) => {
-          logger.warn('Failed to send moderation notice', {
-            service: 'admin',
-            event: 'moderation_notice_failed',
-            userId: id,
-          }, e);
-        });
-    }
 
     const now = new Date();
     let status = 'active';
