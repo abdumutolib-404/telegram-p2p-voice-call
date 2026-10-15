@@ -1,3 +1,4 @@
+import { reserveCredit } from './credits';
 import { prisma } from '../config/database';
 import { lockRow } from '../utils/transactionLock';
 import { getEffectiveEntitlement, getUserCallsUsedThisPeriod } from './plan';
@@ -19,7 +20,14 @@ export async function admitCall(userAId: string, userBId: string, roomName: stri
       const used = await getUserCallsUsedThisPeriod(user.id, user, tx);
       if (!entitlement.isUnlimited && used >= entitlement.callLimit && await getActiveBonusCallsCount(user.id, tx) <= 0) throw new Error('Participant call allowance has been reached.');
     }
-    return tx.callSession.create({ data: { roomName, userAId, userBId, status } });
+    const session = await tx.callSession.create({ data: { roomName, userAId, userBId, status } });
+    for (const user of users) {
+      if (!user) continue;
+      const ent = getEffectiveEntitlement(user);
+      const used = await getUserCallsUsedThisPeriod(user.id,user,tx);
+      if (!ent.isAdmin && used >= ent.baseCallLimit && await getActiveBonusCallsCount(user.id,tx) <= 0) await reserveCredit(tx,session.id,user.id,'CALL');
+    }
+    return session;
   }, { maxWait: 10000, timeout: 15000 });
 }
 
@@ -33,7 +41,7 @@ export async function activatePendingCall(id: string) {
       if (!user?.onboarded || !hasAcceptedCurrentTerms(user) || user.isPermanentlyBanned || (user.isBanned && !user.bannedUntil) || (user.bannedUntil && user.bannedUntil > new Date())) throw new Error('Participant is unavailable.');
       if (userId === invitation.userBId && user.dnd) throw new Error('Participant is unavailable.');
       const entitlement=getEffectiveEntitlement(user),used=await getUserCallsUsedThisPeriod(user.id,user,tx);
-      if (!entitlement.isUnlimited && used >= entitlement.callLimit && await getActiveBonusCallsCount(user.id,tx) <= 0) throw new Error('Participant call allowance has been reached.');
+      if (!entitlement.isUnlimited && !user.creditCallActive && used >= entitlement.callLimit && await getActiveBonusCallsCount(user.id,tx) <= 0) throw new Error('Participant call allowance has been reached.');
     }
     return tx.callSession.updateMany({where:{id,status:'PENDING',createdAt:{gt:new Date(Date.now()-60000)}},data:{status:'ACTIVE'}});
   },{maxWait:10000,timeout:15000});

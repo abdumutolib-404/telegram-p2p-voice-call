@@ -342,6 +342,7 @@ export const App: React.FC = () => {
           planExpiresAt: data.user.planExpiresAt || null,
           callsRemaining: data.user.callsRemaining ?? 0,
           includedCallsRemaining: data.user.includedCallsRemaining,
+          creditOnly:data.user.creditOnly,creditBalance:data.user.creditBalance,
           bonusCallsRemaining: data.user.bonusCallsRemaining,
           allowancePeriod: data.user.allowancePeriod,
           totalCallsLimit: data.user.totalCallsLimit,

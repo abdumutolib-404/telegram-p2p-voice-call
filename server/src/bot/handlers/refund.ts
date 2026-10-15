@@ -1,4 +1,5 @@
 import { processStarsRefund } from '../../services/starsRefund';
+import { renderCreditRefunds } from './credits';
 import { Bot, InlineKeyboard } from 'grammy';
 import { escapeHtml } from '../../utils/sanitize';
 import { MyContext } from '../types';
@@ -20,6 +21,10 @@ const getPolicyUrl = () => {
 };
 
 export const handleRefundRequest = async (ctx: MyContext) => {
+  if(await renderCreditRefunds(ctx))return;
+  return handleLegacyRefundRequest(ctx);
+};
+export const handleLegacyRefundRequest = async (ctx: MyContext) => {
   const telegramIdNum = ctx.from?.id;
   if (!telegramIdNum) return;
   const telegramId = BigInt(telegramIdNum);
@@ -183,6 +188,7 @@ export const handleRefundRequest = async (ctx: MyContext) => {
 export function setupRefundHandlers(bot: Bot<MyContext>) {
   // Command: /refund
   bot.command('refund', handleRefundRequest);
+  bot.callbackQuery('legacy_refunds',async ctx=>{await ctx.answerCallbackQuery();await handleLegacyRefundRequest(ctx);});
 
   // Button callback: request_refund
   bot.callbackQuery('request_refund', async (ctx) => {

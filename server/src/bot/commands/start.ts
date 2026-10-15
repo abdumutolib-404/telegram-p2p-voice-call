@@ -8,6 +8,7 @@ import { offerTerms } from '../handlers/terms';
 import { bindReferral } from '../../services/referralService';
 import { renderPlanSelection, renderPlansOverview } from '../handlers/payments';
 import { handleRefundRequest } from '../handlers/refund';
+import { renderCreditOverview } from '../handlers/credits';
 import { renderDiscountOffer } from '../handlers/discounts';
 import { logger } from '../../utils/logger';
 
@@ -73,6 +74,9 @@ export function setupStartCommand(bot: Bot<MyContext>) {
       if (startPayload === 'refund') { await handleRefundRequest(ctx); return; }
       if (!hasAcceptedCurrentTerms(user)) { await offerTerms(ctx); return; }
       if (/^discount_[a-f0-9-]{36}$/.test(startPayload)) { await renderDiscountOffer(ctx,startPayload.slice(9));return; }
+      if (startPayload === 'credits') { await renderCreditOverview(ctx); return; }
+      const creditBasket=/^credits_(\d{1,4})_(\d{1,4})_([01])$/.exec(startPayload);
+      if(creditBasket){const calls=Number(creditBasket[1]),recordings=Number(creditBasket[2]);if(calls<=1000&&recordings<=1000&&calls+recordings>0){await renderCreditOverview(ctx,{calls,recordings,storage:recordings>0&&creditBasket[3]==='1'});return;}}
       // 1. Deep Link: Plan Upgrade from Mini App (e.g. /start upgrade_plus)
       if (startPayload.startsWith('upgrade_')) {
         const tier = startPayload.replace('upgrade_', '').toUpperCase();

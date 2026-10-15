@@ -130,7 +130,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		stage, outcome = "eligibility", "quota_exceeded"
 		socket.Emit("error", SocketErrorEvent{
 			Code:    "MATCHMAKING_QUOTA_EXCEEDED",
-			Message: fmt.Sprintf("You have reached your monthly limit of %d calls. Invite friends with '👥 Invite Friends' to earn bonus calls or upgrade your plan!", ent.CallLimit),
+			Message: "Your call allowance has been used. Open Credits in your dashboard to add calls, or earn bonus calls by inviting friends.",
 		})
 		return
 	}
@@ -418,6 +418,10 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Unable to check recording allowance."})
 			return
 		}
+		if !consumed && !ent.IsAdmin && recUsed >= ent.BaseRecordingLimit && database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) > 15 {
+			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_LIMIT_REACHED", Message: "Recording credits cover calls up to 15 minutes. This longer call requires its legacy recording allowance."})
+			return
+		}
 		if !consumed && !ent.IsAdmin && recUsed >= ent.RecordingLimit {
 			socket.Emit("record_status", RecordStatusEvent{Record: false, RoomName: req.RoomName})
 			socket.Emit("recording_error", RecordingErrorEvent{
@@ -440,6 +444,11 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 			return
 		}
 
+		capacity, err := h.DB.PrepareRecordingCapacity(ctx, session.ID, requesterID, database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs), !consumed && !ent.IsAdmin && recUsed >= ent.BaseRecordingLimit)
+		if err != nil || !capacity {
+			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Recording capacity is currently unavailable. Your recording credit has not been charged."})
+			return
+		}
 		h.publishRoomRecordingState(ctx, req.RoomName, "unknown")
 		egress, err := h.LiveKit.StartAudioEgress(ctx, req.RoomName, func(key string) error { return h.DB.TrackRecordingKey(ctx, session.ID, key) })
 		if err != nil {

@@ -286,6 +286,10 @@ export class InMemoryPrismaMock {
   discountCampaign = jobModel(this.discountCampaignRows, 'id');
   discountOffer = jobModel(this.discountOfferRows, 'campaignId_userId');
   postCallJob = jobModel(this.postCallJobs, 'callId');
+  private readonly creditOrderRows = new Map<string, Record<string, unknown>>();
+  private readonly creditUsageRows = new Map<string, Record<string, unknown>>();
+  creditOrder = jobModel(this.creditOrderRows, 'id');
+  creditUsage = jobModel(this.creditUsageRows, 'callId_userId_kind');
   private readonly recordingUsageRows = new Map<string, Record<string, unknown>>();
   private readonly recordingSegmentRows = new Map<string, Record<string, unknown>>();
   private readonly recordingDeliveryRows = new Map<string, Record<string, unknown>>();
@@ -313,6 +317,8 @@ export class InMemoryPrismaMock {
   async $disconnect(): Promise<void> {}
 
   async $queryRaw(query: TemplateStringsArray): Promise<unknown[]> {
+    if(query.join('').includes('pairtalk_recording_capacity_remaining'))return [{remaining:60}];
+    if(query.join('').includes('pairtalk_reserve_recording_capacity') || query.join('').includes('pairtalk_prepare_recording_capacity'))return [{reserved:true}];
     if (!query.join('').includes('pg_advisory_xact_lock')) throw new Error('Unsupported mock SQL');
     return []; // Mock transactions are serialized, including queue-capacity/deduplication claims.
   }

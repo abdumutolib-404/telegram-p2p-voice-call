@@ -83,7 +83,10 @@ export async function connectDB(): Promise<void> {
     await realPrismaClient.$connect();
     stage = 'schema';
     await Promise.all([
-      realPrismaClient.user.findFirst({ select: { id: true } }),
+      realPrismaClient.user.findFirst({ select: { id: true,creditBilling:true,callCredits:true,recordingCredits:true,storageCredits:true } }),
+      realPrismaClient.creditOrder.findFirst({select:{id:true,termsVersion:true}}),
+      realPrismaClient.creditUsage.findFirst({select:{callId:true}}),
+      realPrismaClient.recordingCapacity.findFirst({select:{callId:true}}),
       realPrismaClient.manualPaymentRequest.findFirst({ select: { id: true } }),
       realPrismaClient.auditLog.findFirst({ select: { id: true } }),
       realPrismaClient.notificationJob.findFirst({ select: { id: true } }),

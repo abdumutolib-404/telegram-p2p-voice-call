@@ -1,43 +1,86 @@
-# Flexible unit purchases — planned
+# Flexible practice credits
 
-Status: product specification, not an active checkout. Current Free/Plus/Pro/Boss subscriptions, prices, counters, and refunds remain unchanged.
+Implemented for new credit purchases. Existing subscription purchases, custom allowances, discount offers and their original refund rules are preserved. Publishing this change does not create infrastructure or upgrade a provider subscription.
 
-## Owner-selected direction
+## Customer offer
 
-- No named plans, fixed packs, or preset bundles for the future flow.
-- Users independently choose call and recording quantities, subject to configurable positive minimums and whole-unit increments.
-- Zero recordings is allowed. Buying extra calls must not require recording or storage purchases.
-- Unused paid call and recording credits do not expire merely because a month passes.
-- Storage is an optional checkbox. When selected, its entitlement quantity equals the selected recording quantity; there is no independent storage-quantity input.
-- Each successfully created recording with storage is preserved for 30 days. Its retention clock begins when created, not when unused credits were purchased.
-- Show unit cost, minimum purchase, line subtotal, and overall total in Stars and clearly explained UZS amounts. Do not invent a fixed Stars exchange rate.
+- Each new Telegram account receives three call credits once, atomically with its unique profile. Reopening or repeating registration does not create another grant. Existing accounts keep their original allowances instead of receiving a duplicate grant.
+- One call credit covers one participant’s practice call, up to 15 minutes. Calls and recordings are independent purchases, from zero to 1,000 each, with at least one credit selected.
+- One recording credit covers an optional mixed recording of a call lasting up to 15 minutes. Existing legacy recording allowances still cover their original longer calls.
+- Optional storage quantity equals the selected recording quantity. Storage credits automatically apply to the next recordings made with recording credits. Each file’s 30-day clock begins at creation.
+- Paid call, recording and storage credits do not expire with a month or a legacy subscription.
+- Without storage, files are temporary delivery copies: eligible for cleanup after every owner has a confirmed Telegram receipt, or after the 24-hour recovery window. Telegram may retain a delivered copy independently. Mixed ownership preserves other owners’ storage, while each user’s access deadline is enforced separately.
+- The landing page, Mini App and bot show separate UZS unit cost references. New credit checkout is in Telegram Stars. Existing supported legacy UZS payment flows remain unchanged.
+- The customer explicitly accepts the versioned credit purchase terms before checkout. An immutable catalog revision, quantities, totals, terms version and acceptance time are saved with the order.
 
-| Item | Unit | Selection |
+## Selected costing assumptions — 15 October 2026
+
+The owner selected a $25 total monthly operating budget and 100 paid participant call redemptions. The initial 50-recording forecast was replaced by three recordings to keep the free provider tier: a 60-minute pool covers three 16-minute reservations, including one safety minute per 15-minute recording. These are forecasts, not observed invoices or a demonstrated load maximum.
+
+| Input | Initial value |
+| --- | --- |
+| Total monthly operating budget | $25 |
+| Forecast paid calls / recordings | 100 / 3 |
+| Monthly recording pool / reservation per credit | 60 / 16 minutes |
+| Participant transport cost reference | $0.0005 / participant minute |
+| Mixed audio recording cost reference | $0.005 / recording minute |
+| Temporary storage and delivery allowance | $0.001 / recording |
+| Optional 30-day storage allowance | $0.000216 / recording |
+| UZS / USD costing reference | 11,963.16 |
+| Net developer proceeds / Star reference | $0.013 |
+| Markup on allocated expenditure | 12% |
+
+Direct forecast call costs are $0.75; direct recording and delivery costs are $0.228. Subtract these from the total budget first, leaving $24.022 in common expenditure, including infrastructure and starter usage. Allocate this remainder equally per forecast paid unit: 100/103 to calls, 3/103 to recordings. This split is an explicit allocation assumption, editable in admin.
+
+`call expenditure = shared budget × call share / paid calls + 15 × participant-minute cost`
+
+`recording expenditure = shared budget × recording share / paid recordings + 15 × recording-minute cost + temporary storage/delivery`
+
+`price = allocated expenditure × 1.12`
+
+Optional retained storage is an additional purchase and is costed separately. At an assumed 128 kbps, a 15-minute file is about 14.4 MB; at $0.015/GB-month this is $0.000216 of Standard storage. Operations, retries and temporary storage are covered by the delivery allowance and common budget; update the inputs if measurements differ.
+
+| Credit | Allocated expenditure (USD) | Price before checkout rounding (UZS reference) |
 | --- | --- | --- |
-| Calls | One participant's qualifying practice session, with a disclosed maximum duration | Independent quantity |
-| Recordings | One successfully delivered recording for a session the buyer joined | Optional quantity |
-| Storage | 30 days of hosting for each selected recording | Checkbox; quantity matches recordings |
+| 15-minute call | $0.240724 | 3,225.40 |
+| 15-minute recording | $0.309222 | 4,143.19 |
+| 30-day storage per recording | $0.000216 | 2.90 |
 
-Credits remain unused until the defined qualifying service succeeds. If recording fails because the service cannot deliver it, restore the recording credit and do not consume storage. A credit is not permanent hosted audio or a guarantee that the business operates forever.
+Amounts are calculated in millionths of a USD, rounded upwards at that precision. The selected 100-call/3-recording forecast produces approximately $28 of revenue before payment rounding. A 12% markup is about a 10.714% revenue margin; actual profitability depends on costs and redemption volumes matching the assumptions.
 
-## Recording without storage
+The entire basket is summed before rounding once to whole UZS reference amounts and whole Stars. A single call is 21 Stars; ten calls are 208 Stars. A single recording is 27 Stars. Stars proceeds are a costing benchmark, not what a customer necessarily pays to obtain Stars.
 
-The intended direction is one-time delivery, followed by server deletion. Delivery must succeed and have a defined retry/recovery window before deletion; initiating a send is not proof of delivery. Telegram delivery may leave a copy in the user's chat or Telegram systems after PairTalk deletes its own object. The exact delivery method, temporary window, failure recovery, and privacy wording still need implementation and approval.
+Admin can edit every cost/forecast input and pause new sales. Saved changes are audited and update new quotes across all interfaces. Existing orders keep their original quote for their 30-minute checkout window; an authorized payment is honoured even when prices or sales availability change before its success notification arrives.
 
-## Rates and limits still to confirm
+## Durable consumption and refunds
 
-Exact launch prices, maximum call/recording durations, minimum positive quantities, purchase increments, and any checkout minimum remain unsettled. Earlier $0.10 examples, 90-day credit expiry, included storage, and independent storage extensions were exploratory scenarios and are superseded. They are not a live price list.
+- Node and Go share the same PostgreSQL reservation/release functions, wallet counters, credit usage records and participant lock order.
+- Existing included allowances and referral bonuses are used before extra call credits. A credit reservation is made within call admission; concurrent attempts cannot spend the same balance.
+- Completion settles a call reservation once. Failed connections, cancelled invitations and calls shorter than five authorized seconds restore it. Reconnects reuse the existing session and reservation.
+- Recording/storage reservations are made once per participant and call. A usable exported file consumes them; terminal failed exports restore them. The post-call worker reconciles missing provider notifications.
+- New credit purchases support a full automatic Stars refund within 48 hours if all purchased quantities remain available and unreserved. Refund initiation removes those quantities transactionally before contacting Telegram. Uncertain confirmation remains pending; retries and background recovery use the same original payment.
+- Credit purchases appear in Mini App purchase history, the admin purchase table and Stars revenue totals. UZS references are not counted as card receipts.
+- Legacy subscription refunds retain their original policy and remain accessible separately through `/refund`.
 
-Recalculate costs using actual call minutes, recorded minutes, object size, retention, delivery, hosting, and net payment proceeds. Record dated inputs before approving a catalog. No old cost estimate should silently become a production price.
+## Provider and launch limits
 
-## Required implementation
+No paid provider tier was selected or upgraded by this change. Current account tiers and actual bills must be checked operationally. Credit failure handling does not create extra LiveKit capacity.
 
-1. Define one versioned catalog and qualifying-use/failure rules.
-2. Add durable purchase and usage records with transactional, replay-safe credit consumption understood by Node and Go.
-3. Preserve legacy subscriptions and historical paid value during migration.
-4. Connect the bot, public calculator, admin controls, and receipts to that same catalog.
-5. Implement successful-delivery tracking, matched storage, expiry/retry cleanup, and replacement credits.
-6. Present readable versioned terms and privacy links, optional PDF, explicit acceptance, and a decline path. General acceptance is separate from recording permission.
-7. Test zero/positive boundaries, independent top-ups, concurrency, failed delivery, retained legacy access, and staging provider behavior.
+Recording sales are capped transactionally against the UTC monthly pool. Existing wallet credits, pending invoice holds, tracked recordings and older recording sessions reduce available stock. Concurrent checkouts cannot buy the same remaining reservation. Expired, unauthorized invoices release their holds; authorized payments keep capacity reserved until settlement. Existing non-expiring recording wallets carry their capacity obligation forward into the next month.
 
-Current sources are [plan.ts](../server/src/services/plan.ts), [planConfiguration.ts](../server/src/services/planConfiguration.ts), [payment handlers](../server/src/bot/handlers/payments.ts), and [Go plans](../gateway/internal/database/plans.go). Subscription counters must not be relabeled as durable purchased-credit balances.
+Both voice backends reserve recording capacity before contacting the media provider. Legacy recordings use the same pool. A failed export returns wallet credits but conservatively retains its provider-capacity reservation because an attempted recording may have consumed provider minutes. Capacity is estimated from this app's records, not read from provider billing. Admin must reserve minutes for other or untracked project usage through the external-usage input. Keep that reservation conservative; the safety buffer is not a guarantee about the provider's accounting. No recording stock leaves call-only checkout available.
+
+The earlier free-launch operating recommendation remains 50–80 fully active starters, with three 15-minute calls each, and an initial target of ten simultaneous two-person calls. These are planning recommendations, not enforced admission caps or a demonstrated load-test maximum. At full redemption, 80 starters consume 3,600 participant minutes before other usage. Free mixed-recording minutes are a project-wide pool, not a per-user allowance.
+
+Reference sources researched on 15 October 2026:
+
+- [Railway](https://railway.com/pricing): Hobby $5/month including $5 resource use; Pro $20 including $20. One shared workspace minimum, not a fee per backend/database/Redis service. The selected $25 budget already covers planned common infrastructure costs.
+- [LiveKit pricing](https://livekit.com/pricing) and [quotas](https://docs.livekit.io/deploy/admin/quotas-and-limits/): Build includes 5,000 participant minutes and 60 composite recording minutes with hard caps. Ship starts at $50/month; its audio-only composite and participant overage references inform the editable direct-cost inputs. Included usage must not be billed again as an additional fixed expense.
+- [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/): existing frontends use Workers Static Assets. Static delivery is free; dynamic Worker allowances are shared at account level. Paid Workers are optional and were not enabled.
+- [R2 Standard](https://developers.cloudflare.com/r2/pricing/): 10 GB-month, 1M Class A and 10M Class B operations are included at account level; additional Standard storage is $0.015/GB-month. Free allowances can lower actual costs; non-expiring credits also create future delivery obligations.
+- [Haiku pricing](https://platform.claude.com/docs/en/about-claude/pricing): AI/API expenditure belongs in the common budget when actually incurred. Existing question curation uses Gemini/heuristics; this change does not add Haiku, transcription, an AI voice agent or a per-call AI fee.
+- [CBU USD reference](https://cbu.uz/en/arkhiv-kursov-valyut/json/USD/) and [Telegram Stars developer rewards](https://telegram.org/tos/bot-developers#6-2-4-rewards-for-stars).
+
+## Verification
+
+Run the backend and frontend suites and builds. `scripts/check-credit-pricing.cjs` accepts only the dedicated loopback PostgreSQL test database, exercises real transactions with synthetic provider acknowledgements, and removes its fixtures. Go integration tests cover the same shared wallet contract. Provider payment/media acknowledgements in these checks are synthetic, not evidence of a live purchase or recording.

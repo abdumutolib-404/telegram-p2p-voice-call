@@ -15,6 +15,11 @@ import (
 )
 
 type User struct {
+	CreditBilling            bool
+	CallCredits              int
+	RecordingCredits         int
+	StorageCredits           int
+	CreditCallActive         bool
 	ID                       string
 	TelegramID               int64
 	Alias                    string
@@ -84,6 +89,8 @@ var DefaultPlans = map[string]PlanConfig{
 }
 
 type Entitlement struct {
+	BaseCallLimit      int
+	BaseRecordingLimit int
 	Plan               string
 	CallLimit          int
 	MaxDurationMinutes int
@@ -166,7 +173,24 @@ func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement 
 		source = "CUSTOM_PLAN"
 	}
 
+	creditOnly := user != nil && user.CreditBilling && planKey == "FREE" && !isAdmin && (user.CustomPlanName == nil || *user.CustomPlanName == "")
+	if creditOnly {
+		dailyLimit = 0
+		recordingLimit = 0
+		maxDurationMinutes = 15
+		retentionDays = 30
+	}
+	baseCallLimit, baseRecordingLimit := dailyLimit, recordingLimit
+	if user != nil {
+		dailyLimit += user.CallCredits
+		recordingLimit += user.RecordingCredits
+	}
+	if creditOnly || (user != nil && user.CreditCallActive) {
+		maxDurationMinutes = 15
+		overrideSource = "ADMIN_OVERRIDE"
+	}
 	return Entitlement{
+		BaseCallLimit: baseCallLimit, BaseRecordingLimit: baseRecordingLimit,
 		Plan:               planKey,
 		CallLimit:          dailyLimit,
 		MaxDurationMinutes: maxDurationMinutes,
@@ -217,7 +241,8 @@ const userSelectColumns = `
 	plan, "warningCount", "isBanned", "isPermanentlyBanned", "bannedUntil",
 	"dailyCallsUsed", "lastCallDate", "dailyLimit", "maxDuration",
 	"recordingLimitOverride", "retentionOverride", "customPlanName",
-	"subscriptionStatus", "subscriptionExpiresAt", "subscriptionStartsAt", "subscriptionDurationDays"
+	"subscriptionStatus", "subscriptionExpiresAt", "subscriptionStartsAt", "subscriptionDurationDays",
+ "creditBilling", "callCredits", "recordingCredits", "storageCredits", "creditCallActive"
 `
 
 func scanUser(row pgx.Row) (*User, error) {
@@ -261,6 +286,7 @@ func scanUser(row pgx.Row) (*User, error) {
 		&subscriptionExpiresAt,
 		&subscriptionStartsAt,
 		&subscriptionDurationDays,
+		&u.CreditBilling, &u.CallCredits, &u.RecordingCredits, &u.StorageCredits, &u.CreditCallActive,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -504,6 +530,16 @@ func (db *DB) CancelCallSession(ctx context.Context, id string) (bool, error) {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
+	var a, b string
+	if err := tx.QueryRow(ctx, `SELECT "userAId","userBId" FROM "CallSession" WHERE id=$1`, id).Scan(&a, &b); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if _, err := lockParticipants(ctx, tx, a, b); err != nil {
+		return false, err
+	}
 	query := `
 		UPDATE "CallSession"
 		SET status = 'CANCELLED', "endedAt" = NOW(), duration = 0
@@ -687,10 +723,17 @@ func (db *DB) GetUserCallsUsedThisPeriod(ctx context.Context, userID string, use
 }
 
 func callsUsedThisPeriod(ctx context.Context, runner queryRunner, userID string, targetUser *User) (int, error) {
+	if targetUser.CreditBilling && GetEffectiveEntitlement(targetUser, nil).BaseCallLimit == 0 {
+		return 0, nil
+	}
 	currentMonth := time.Now().UTC().Format("2006-01")
 
 	if targetUser.SubscriptionExpiresAt == nil && targetUser.LastCallDate != nil && strings.HasPrefix(*targetUser.LastCallDate, currentMonth) {
-		return int(math.Max(0, float64(targetUser.DailyCallsUsed))), nil
+		used := int(math.Max(0, float64(targetUser.DailyCallsUsed)))
+		if targetUser.CallCredits > 0 && used > GetEffectiveEntitlement(targetUser, nil).BaseCallLimit {
+			used = GetEffectiveEntitlement(targetUser, nil).BaseCallLimit
+		}
+		return used, nil
 	}
 
 	now := time.Now().UTC()
@@ -713,9 +756,13 @@ func callsUsedThisPeriod(ctx context.Context, runner queryRunner, userID string,
 		  AND status = 'COMPLETED'
 		  AND duration >= 5
 		  AND "createdAt" >= $2
+ AND NOT EXISTS (SELECT 1 FROM "CreditUsage" c WHERE c."callId"="CallSession".id AND c."userId"=$1 AND c.kind='CALL' AND c.status='CONSUMED')
 	`
 	var count int
 	err := runner.QueryRow(ctx, query, userID, periodStart).Scan(&count)
+	if targetUser.CallCredits > 0 && count > GetEffectiveEntitlement(targetUser, nil).BaseCallLimit {
+		count = GetEffectiveEntitlement(targetUser, nil).BaseCallLimit
+	}
 	return count, err
 }
 
@@ -729,10 +776,16 @@ func (db *DB) GetUserRecordingsUsedThisPeriod(ctx context.Context, userID string
 		}
 	}
 
+	if targetUser.CreditBilling && GetEffectiveEntitlement(targetUser, nil).BaseRecordingLimit == 0 {
+		return 0, nil
+	}
 	periodStart := recordingPeriodStart(targetUser)
-	query := `SELECT COUNT(*) FROM "RecordingUsage" WHERE "userId"=$1 AND "consumedAt">=$2`
+	query := `SELECT COUNT(*) FROM "RecordingUsage" r WHERE "userId"=$1 AND "consumedAt">=$2 AND NOT EXISTS(SELECT 1 FROM "CreditUsage" c WHERE c."callId"=r."callId" AND c."userId"=r."userId" AND c.kind='RECORDING' AND c.status IN ('RESERVED','CONSUMED'))`
 	var count int
 	err = db.Pool.QueryRow(ctx, query, userID, periodStart).Scan(&count)
+	if targetUser.RecordingCredits > 0 && count > GetEffectiveEntitlement(targetUser, nil).BaseRecordingLimit {
+		count = GetEffectiveEntitlement(targetUser, nil).BaseRecordingLimit
+	}
 	return count, err
 }
 

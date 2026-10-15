@@ -6,7 +6,7 @@ import { practiceUrl } from "./SiteLayout";
 // Dated tutoring benchmark, not a live quote or a Stars exchange rate.
 const tutorUsdPerHour = 17;
 const usdToUzs = 11963.16;
-const example = { calls: 10, minutes: 30, days: 30 };
+const example = { calls: 10, minutes: 15, days: 30 };
 const tutorHours = example.calls * example.minutes / 60;
 const uzsEstimate = (usd: number) => `≈ ${(Math.round(usd * usdToUzs / 1000) * 1000).toLocaleString("en-US")} UZS`;
 
@@ -73,15 +73,15 @@ export function PracticeComparison({ pricing, loading }: { pricing: PublicPricin
   const tutorRows: ComparisonRow[] = [
     {
       label: "Try before paying",
-      ours: free
+      ours: pricing?.credits ? <Benefit title="Start with free practice calls">Three one-time starter calls, up to 15 minutes each. No card needed.</Benefit> : free
         ? <Benefit title="Start with free practice calls">{free.unlimitedCalls ? "Unlimited" : free.calls} free calls per {planPeriod(free)}, up to {free.maxCallMinutes} minutes each. No card needed.</Benefit>
         : <a href="/pricing">{unavailable}</a>,
       other: <Benefit title="The first trial is paid">Preply charges for the initial trial lesson before a subscription.</Benefit>,
     },
     {
-      label: "10 sessions × 30 min",
+      label: "10 sessions × 15 min",
       cost: true,
-      ours: plan
+      ours: pricing?.credits ? <Price note="10 independent call credits · no subscription · recordings optional">{Math.ceil(pricing.credits.rates.CALL.uzs*10).toLocaleString('en-US')} UZS</Price> : plan
         ? <Price note={`${plan.name} · full ${planPeriod(plan)} price · ${plan.unlimitedCalls ? "unlimited" : plan.calls} included calls`}>
             {formatPlanPrice(plan, "UZS")}<span className="practice-comparison__alternate">or {formatPlanPrice(plan, "XTR")}</span>
           </Price>

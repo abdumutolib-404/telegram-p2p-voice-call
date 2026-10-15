@@ -36,7 +36,7 @@ func TestIntegrationRoomStateRequiresActiveParticipants(t *testing.T) {
 	defer db.Close()
 	a, b, outsider, room := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 	for i, id := range []string{a, b} {
-		if _, err = db.Pool.Exec(ctx, `INSERT INTO "User" (id,"telegramId",alias,"updatedAt",onboarded,"termsAcceptedVersion","termsAcceptedAt","termsDocumentSha256") VALUES ($1,$2,$1,NOW(),TRUE,$3,NOW(),$4)`, id, time.Now().UnixMicro()+int64(i), auth.TermsVersion, auth.TermsDocumentSHA256); err != nil {
+		if _, err = db.Pool.Exec(ctx, `INSERT INTO "User" ("creditBilling","callCredits",id,"telegramId",alias,"updatedAt",onboarded,"termsAcceptedVersion","termsAcceptedAt","termsDocumentSha256") VALUES (false,0,$1,$2,$1,NOW(),TRUE,$3,NOW(),$4)`, id, time.Now().UnixMicro()+int64(i), auth.TermsVersion, auth.TermsDocumentSHA256); err != nil {
 			t.Fatal(err)
 		}
 	}

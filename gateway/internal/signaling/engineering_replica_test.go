@@ -46,7 +46,7 @@ func TestIntegrationRemoteMatchAndTerminalRoomCleanup(t *testing.T) {
 		}
 	}()
 	for i, id := range ids {
-		_, err = db.Pool.Exec(ctx, `INSERT INTO "User" (id,"telegramId",alias,"updatedAt",onboarded,"termsAcceptedVersion","termsAcceptedAt","termsDocumentSha256",band) VALUES ($1,$2,$1,NOW(),TRUE,$3,NOW(),$4,6.5)`, id, time.Now().UnixMicro()+int64(i), auth.TermsVersion, auth.TermsDocumentSHA256)
+		_, err = db.Pool.Exec(ctx, `INSERT INTO "User" ("creditBilling","callCredits",id,"telegramId",alias,"updatedAt",onboarded,"termsAcceptedVersion","termsAcceptedAt","termsDocumentSha256",band) VALUES (false,0,$1,$2,$1,NOW(),TRUE,$3,NOW(),$4,6.5)`, id, time.Now().UnixMicro()+int64(i), auth.TermsVersion, auth.TermsDocumentSHA256)
 		if err != nil {
 			t.Fatal(err)
 		}

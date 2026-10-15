@@ -118,7 +118,8 @@ export async function getAdminAnalytics(): Promise<AdminAnalyticsData> {
   }
 
   // 1. Telegram Stars Accounting
-  const starsTransactions = await prisma.starsTransaction.findMany();
+  const [legacyStars,creditOrders]=await Promise.all([prisma.starsTransaction.findMany(),prisma.creditOrder.findMany({where:{status:{in:['PAID','REFUND_PENDING','REFUNDED']}}})]);
+  const starsTransactions=[...legacyStars,...creditOrders.map(order=>({status:order.status,starsAmount:order.starsAmount,createdAt:order.paidAt??order.createdAt}))];
   const paidStarsTxs = starsTransactions.filter((t) => t.status === 'PAID');
   const refundedStarsTxs = starsTransactions.filter((t) => t.status === 'REFUNDED');
 

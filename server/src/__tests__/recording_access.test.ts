@@ -18,7 +18,7 @@ const fixture = vi.hoisted(() => ({
   },
 }));
 vi.mock('../config/env', () => ({ env: fixture.env }));
-vi.mock('../config/database', () => ({ prisma: { callSession: { findUnique: fixture.findUnique } } }));
+vi.mock('../config/database', () => ({ prisma: { callSession: { findUnique: fixture.findUnique },recordingSegment:{findUnique:vi.fn().mockResolvedValue(null)} } }));
 vi.mock('../utils/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../config/livekit', () => ({ generateLiveKitToken: vi.fn() }));
 vi.mock('../services/plan', () => ({

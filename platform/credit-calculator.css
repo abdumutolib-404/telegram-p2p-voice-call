@@ -1,0 +1,134 @@
+.credit-shop {
+  color: inherit;
+  max-width: 900px;
+  margin-inline: auto;
+}
+.credit-shop__intro {
+  margin-bottom: 24px;
+}
+.credit-shop__intro h2 {
+  font-size: clamp(26px, 5vw, 40px);
+  letter-spacing: -0.04em;
+  margin: 8px 0 12px;
+}
+.credit-shop__intro p,
+.credit-shop article p,
+.credit-shop__note {
+  line-height: 1.65;
+  opacity: 0.78;
+}
+.credit-shop__eyebrow {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.credit-shop__rates,
+.credit-shop__quantities {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.credit-shop__rates article {
+  padding: 22px;
+  border: 1px solid currentColor;
+  border-color: color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, currentColor 3%, transparent);
+}
+.credit-shop h3 {
+  margin: 0 0 16px;
+  font-size: 17px;
+}
+.credit-shop__rates strong {
+  font-size: clamp(21px, 4vw, 30px);
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.credit-shop__rates small {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.credit-shop__rates p {
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+.credit-shop__quantities label {
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.credit-shop input[type="number"] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  min-height: 48px;
+}
+.credit-shop__storage {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.credit-shop input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  accent-color: #37b68c;
+}
+.credit-shop__note {
+  font-size: 12px;
+  margin: 14px 0;
+}
+.credit-shop__total {
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  padding-top: 22px;
+  margin-top: 24px;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.credit-shop__total strong {
+  font-size: 30px;
+  letter-spacing: -0.03em;
+}
+.credit-shop__buy {
+  width: 100%;
+  min-height: 50px;
+  padding: 14px 20px;
+  border: 0;
+  border-radius: 14px;
+  background: #247d60;
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.credit-shop__buy:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.credit-shop :focus-visible {
+  outline: 3px solid #31b889;
+  outline-offset: 4px;
+}
+@media (max-width: 540px) {
+  .credit-shop__rates {
+    grid-template-columns: 1fr;
+  }
+  .credit-shop__rates article {
+    padding: 18px;
+  }
+  .credit-shop__quantities {
+    gap: 12px;
+  }
+}

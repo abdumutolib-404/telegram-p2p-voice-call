@@ -17,6 +17,7 @@ function PracticeBoard() {
   return <div className="card card--float prompt-card" role="group" aria-label="Example practice prompts"><div className="seg seg--full" role="group" aria-label="IELTS Speaking part">{prompts.map((_,i)=><button key={i} type="button" aria-pressed={part===i} onClick={()=>setPart(i)}>Part {i+1}</button>)}</div><div className="stack" aria-live="polite"><p className="small accent prompt-kind">{prompts[part][0]}</p><p className="prompt-card__q">{prompts[part][1]}</p><p className="prompt-card__hint">{prompts[part][2]}</p></div></div>;
 }
 function FreeTicket({ data }: { data: PublicPricing | null }) {
+  if(data?.credits)return <div className="ticket"><div className="ticket__price"><strong>3 free calls</strong><span className="muted">one starter gift · no card needed</span></div><ul className="checks"><li><Check className="i"/>Up to 15 minutes per call</li><li><Check className="i"/>Level-based matching and IELTS prompts</li><li><Check className="i"/>Buy calls and recordings separately</li><li><Check className="i"/>Paid credits do not expire</li></ul></div>;
   const plan = data?.plans.find(plan=>plan.id==="FREE");
   return <div className="ticket"><div className="ticket__price"><strong>Free</strong><span className="muted">no card needed</span></div><ul className="checks">{plan?<><li><Check className="i" />{plan.unlimitedCalls?"Unlimited calls":`${plan.calls} calls`} per {planPeriod(plan)}</li><li><Check className="i" />Up to {plan.maxCallMinutes} minutes per call</li></>:<li><Check className="i" />See current allowances on the plans page</li>}<li><Check className="i" />Partner matching and in-call prompts</li></ul><p className="small muted ticket-note">Allowances and prices are confirmed in Telegram before purchase.</p></div>;
 }
@@ -123,8 +124,8 @@ export function LandingPage({ initialPricing = null }: { initialPricing?: Public
       <div className="wrap split">
         <div className="stack-lg">
           <h2>Your first calls are free.</h2>
-          <p className="body-l muted measure">Try peer practice on the free plan. Choose a paid plan in Telegram when you want more calls or longer sessions.</p>
-          <div className="row"><a className="btn btn--primary btn--lg" href={practiceUrl}>Start with a free call</a><a className="link" href="/pricing">Compare plans</a></div>
+          <p className="body-l muted measure">Start with three free practice calls. Add call or recording credits when you need them, with no monthly subscription.</p>
+          <div className="row"><a className="btn btn--primary btn--lg" href={practiceUrl}>Start with a free call</a><a className="link" href="/pricing">See credit prices</a></div>
         </div>
         <FreeTicket data={pricing} /></div></section>
 

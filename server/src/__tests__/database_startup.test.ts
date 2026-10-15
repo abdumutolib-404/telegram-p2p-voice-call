@@ -4,6 +4,9 @@ const db = vi.hoisted(() => ({
   $connect: vi.fn(),
   $disconnect: vi.fn(),
   user: { findFirst: vi.fn() },
+  creditOrder:{findFirst:vi.fn()},
+  creditUsage:{findFirst:vi.fn()},
+  recordingCapacity:{findFirst:vi.fn()},
   manualPaymentRequest: { findFirst: vi.fn() },
   auditLog: { findFirst: vi.fn() },
   notificationJob: { findFirst: vi.fn() },
@@ -20,7 +23,7 @@ describe('Persistent database startup diagnostics', () => {
     vi.stubEnv('DATABASE_URL', 'postgresql://synthetic:synthetic-password@db.invalid/test');
     db.$connect.mockResolvedValue(undefined);
     db.$disconnect.mockResolvedValue(undefined);
-    for (const model of [db.user, db.manualPaymentRequest, db.auditLog, db.notificationJob, db.postCallJob]) {
+    for (const model of [db.recordingCapacity,db.creditOrder,db.creditUsage,db.user, db.manualPaymentRequest, db.auditLog, db.notificationJob, db.postCallJob]) {
       model.findFirst.mockResolvedValue(null);
     }
     output = [];
@@ -39,6 +42,8 @@ describe('Persistent database startup diagnostics', () => {
     const { connectDB } = await import('../config/database');
     await expect(connectDB()).resolves.toBeUndefined();
     expect(db.notificationJob.findFirst).toHaveBeenCalled();
+    expect(db.creditOrder.findFirst).toHaveBeenCalledWith({select:{id:true,termsVersion:true}});
+    expect(db.creditUsage.findFirst).toHaveBeenCalled();
     expect(db.$disconnect).not.toHaveBeenCalled();
     expect(output).toEqual([]);
   });

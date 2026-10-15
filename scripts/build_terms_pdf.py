@@ -48,7 +48,7 @@ terms, privacy = sections("/terms"), sections("/privacy")
 assert len(terms) == 6 and len(privacy) == 5, "Published policy format changed; review the exporter."
 # Verify that the public wording still matches the implemented refund rule.
 refund = terms['payments'][1][1]
-refund_rule = 'The current bot refund policy allows a request within 48 hours of purchase or when less than 10% of the purchased allowance has been used.'
+refund_rule = 'A full credit purchase refund can be requested within 48 hours of payment when the complete purchased quantities remain available and unreserved.'
 assert refund_rule in refund, 'Review the published refund rule before exporting a new agreement.'
 output = ROOT / "output/pdf/pairtalk-terms-of-use.pdf"
 output.parent.mkdir(parents=True, exist_ok=True)

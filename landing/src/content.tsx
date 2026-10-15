@@ -42,11 +42,11 @@ export const faqs = [
   },
   {
     q: "Are calls recorded?",
-    a: "Recording is an optional feature with plan-dependent allowances and retention. Agree with your partner before recording. See the privacy policy for how recordings and call metadata are handled.",
+    a: "Recording credits are optional and separate from calls. Optional storage keeps each recording for 30 days from creation; without it, server copies last only for delivery recovery, up to 24 hours. Agree with your partner before recording. See the privacy policy for how recordings and call metadata are handled.",
   },
   {
     q: "Can I request a refund?",
-    a: "The current bot policy allows a refund request within 48 hours of purchase or when less than 10% of the purchased call allowance has been used. Purchase ownership, purchase state, and account restrictions also apply. Use /refund in the bot or contact support.",
+    a: "Full unused credit purchases can be refunded within 48 hours, provided the complete purchased quantities remain available and unreserved. Legacy subscription purchases retain their original refund rules. Use /refund in the bot or contact support.",
   },
 ];
 export const pages: Record<string, Guide> = {
@@ -578,12 +578,13 @@ export const pages: Record<string, Guide> = {
               end-to-end encryption inaccessible to the media service.
             </p>
             <p>
-              Cloud recording is optional and requires agreement. Under the
-              existing standard policy, Free recordings are retained for 1 day,
-              Plus for 7 days, Pro for 30 days, and Boss for 90 days. Check your
-              current plan and any account-specific retention settings in the
-              app. Expired recordings are scheduled for deletion and cannot be
-              restored after removal.
+              Cloud recording is optional and requires agreement. Credit recordings
+              have optional 30-day storage from creation. Without storage, a server
+              copy is kept only for delivery recovery, up to 24 hours, and may be
+              removed after all owners receive it in Telegram. Legacy Free, Plus,
+              Pro and Boss recording entitlements retain their original retention
+              rules. Check History for the file’s exact availability. Expired
+              recordings are scheduled for deletion and cannot be restored after removal.
             </p>
           </>
         ),
@@ -635,12 +636,13 @@ export const pages: Record<string, Guide> = {
         body: (
           <>
             <p>
-              The current bot refund policy allows a request within 48 hours of
-              purchase or when less than 10% of the purchased call allowance has
-              been used. Accounts sanctioned for policy violations are excluded
-              under that policy. Eligible Telegram Stars refunds use the bot
-              flow; supported card refunds are reviewed and ordinarily settle
-              within 1–3 business days.
+              A full unused credit purchase can be refunded within 48 hours if
+              the complete purchased quantities remain available and unreserved.
+              Use /refund in Telegram. Eligible Stars refunds return the original
+              payment. Existing subscription purchases keep their original
+              48-hour or less-than-10%-used eligibility rules and applicable
+              account restrictions. Supported legacy card refunds are reviewed
+              and ordinarily settle within 1–3 business days.
             </p>
             <p>
               See the <a href="/terms#payments">subscription terms</a> and
@@ -711,20 +713,26 @@ export const pages: Record<string, Guide> = {
       },
       {
         id: "payments",
-        title: "Subscriptions, payments, and refunds",
+        title: "Credits, payments, and legacy subscriptions",
         body: (
           <>
             <p>
-              The service offers Free, Plus, Pro, and Boss plans. Current prices
-              and allowances are shown before purchase. Supported methods
-              include Telegram Stars and regional UZS card payments. Unused paid
-              practice credits expire at the end of the validity period shown
-              for the purchased offer, unless promotional terms state otherwise.
+              New accounts receive three one-time starter calls of up to 15 minutes.
+              Call and recording credits are purchased separately and do not expire.
+              Each credit covers up to 15 minutes. Optional storage matches the selected
+              recording quantity and lasts 30 days from creation. Without storage,
+              server copies are removed after confirmed delivery or within a 24-hour
+              recovery window. Telegram may retain a delivered copy independently.
+              Credit checkout uses Telegram Stars; UZS amounts explain the cost reference.
+              Existing subscription allowances and supported legacy card payments retain
+              their original purchase terms. New credit terms take precedence for credit purchases.
             </p>
             <p>
-              The current bot refund policy allows a request within 48 hours of
-              purchase or when less than 10% of the purchased allowance has been
-              used. Sanctioned accounts are excluded under the policy. Use{" "}
+              A full credit purchase refund can be requested within 48 hours of
+              payment when the complete purchased quantities remain available and
+              unreserved. Calls under five seconds and failed connections return
+              their reserved credit; failed recording exports return recording and
+              storage credits. Existing subscription refunds keep their original rules. Use{" "}
               <code>/refund</code> or contact support. See the{" "}
               <a href="/refund-policy">refund policy</a> for payment-specific
               settlement information.

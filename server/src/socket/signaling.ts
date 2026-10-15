@@ -690,7 +690,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit && activeBonusCalls <= 0) {
             socket.emit('error', {
               code: 'MATCHMAKING_QUOTA_EXCEEDED',
-              message: `You have reached your monthly limit of ${entitlement.callLimit} calls. Invite friends with '👥 Invite Friends' to earn bonus calls or upgrade your plan!`,
+              message: 'Your call allowance has been used. Open Credits in your dashboard to add calls, or earn bonus calls by inviting friends.',
             });
             return;
           }
@@ -731,15 +731,16 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             return;
           }
 
-          const callDurationLimitMinutes = calculateEffectiveCallDuration(user, partner);
-          const callDurationLimitSeconds = callDurationLimitMinutes * 60;
-          const tokenTtlSeconds = Math.min(7200, Math.max(60, callDurationLimitSeconds + 300));
           const roomName = matchResult.roomName;
 
           let transactionSucceeded = false;
           try {
             await admitCall(user.id, partner.id, roomName, 'ACTIVE');
             transactionSucceeded = true;
+            const freshA=await prisma.user.findUniqueOrThrow({where:{id:user.id}}),freshB=await prisma.user.findUniqueOrThrow({where:{id:partner.id}});
+            const callDurationLimitMinutes=calculateEffectiveCallDuration(freshA,freshB);
+            const callDurationLimitSeconds=callDurationLimitMinutes*60;
+            const tokenTtlSeconds=Math.min(7200,Math.max(60,callDurationLimitSeconds+300));
 
             const [tokenUser, tokenPartner] = await Promise.all([
               generateLiveKitToken(roomName, user.id, user.alias, tokenTtlSeconds),
@@ -966,7 +967,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
       try {
         await runSerialized(roomOperationTails, payload.roomName, async () => {
-          const session = await prisma.callSession.findUnique({ where: { roomName: payload.roomName } });
+          const session = await prisma.callSession.findUnique({ where: { roomName: payload.roomName },include:{userA:true,userB:true} });
           if (!session || session.status !== 'ACTIVE' || (session.userAId !== requesterId && session.userBId !== requesterId)) {
             socket.emit('error', { message: 'Unauthorized or inactive call.' });
             return;
@@ -981,6 +982,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const entitlement = getEffectiveEntitlement(user || {});
             const recordingsUsed = await getUserRecordingsUsedThisPeriod(requesterId, user);
             const consumed = await prisma.recordingUsage.findUnique({ where: { callId_userId: { callId: session.id, userId: requesterId } } });
+            if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit && calculateEffectiveCallDuration(session.userA,session.userB)>15) {
+              socket.emit('recording_error',{code:'RECORDING_LIMIT_REACHED',message:'Recording credits cover calls up to 15 minutes. This longer call requires its legacy recording allowance.'});
+              return;
+            }
             if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.recordingLimit) {
               socket.emit('record_status', { record: false, roomName: payload.roomName });
               socket.emit('recording_error', {
@@ -1002,6 +1007,11 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             }
 
             try {
+              const capacity = await prisma.$queryRaw<{reserved:boolean}[]>`SELECT pairtalk_prepare_recording_capacity(${session.id},${requesterId},${calculateEffectiveCallDuration(session.userA,session.userB)}::integer,${!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit}) AS reserved`;
+              if (!capacity[0]?.reserved) {
+                socket.emit('recording_error',{code:'RECORDING_UNAVAILABLE',message:'Recording capacity is currently unavailable. Your recording credit has not been charged.'});
+                return;
+              }
               await publishRoomRecordingState(payload.roomName,'unknown');
               const egress = await startAudioEgress(payload.roomName, key => trackRecordingKey(session.id, key));
               let updated = false;

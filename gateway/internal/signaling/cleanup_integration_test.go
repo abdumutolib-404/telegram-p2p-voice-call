@@ -43,7 +43,7 @@ func TestIntegrationCleanupPreservesRemoteOrUncertainCalls(t *testing.T) {
 		}
 	}()
 	for i, id := range ids {
-		if _, err := db.Pool.Exec(ctx, `INSERT INTO "User" (id,"telegramId",alias,"updatedAt") VALUES ($1,$2,$3,NOW())`, id, time.Now().UnixMicro()+int64(i), "gateway-cleanup-"+id); err != nil {
+		if _, err := db.Pool.Exec(ctx, `INSERT INTO "User" ("creditBilling","callCredits",id,"telegramId",alias,"updatedAt") VALUES (false,0,$1,$2,$3,NOW())`, id, time.Now().UnixMicro()+int64(i), "gateway-cleanup-"+id); err != nil {
 			t.Fatal(err)
 		}
 	}

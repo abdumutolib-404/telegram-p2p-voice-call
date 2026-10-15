@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { loadPlanConfiguration } from '../services/planConfiguration';
 import { planIds, publicPlan, type PublicPricing, isPublicPricing } from '../contracts/pricing';
 import { logger } from '../utils/logger';
+import { readCreditConfiguration } from '../services/creditConfiguration';
 
 let username = (process.env.BOT_USERNAME || 'PairTalkBot').replace(/^@/, '');
 export function setPublicBotUsername(value: string) {
@@ -14,8 +15,11 @@ export function readPublicPricing(): Promise<PublicPricing> {
   if (pending) return pending;
   pending = (async () => {
     const plans = await loadPlanConfiguration();
+    const {catalog:credits}=await readCreditConfiguration();
     const catalog: PublicPricing = { version: 1, revision: crypto.createHash('sha256').update(JSON.stringify(plans)).digest('hex'), checkedAt: new Date().toISOString(), botUsername: username, plans: planIds.filter(id => plans[id].active).map(id => publicPlan(id, plans[id])) };
     if (!isPublicPricing(catalog)) throw new Error('Invalid public price configuration');
+    catalog.credits=credits;
+    catalog.revision=crypto.createHash('sha256').update(JSON.stringify({plans,credits:credits.revision})).digest('hex');
     return catalog;
   })().finally(() => { pending = null; });
   return pending;

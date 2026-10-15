@@ -13,7 +13,8 @@ export async function sendPostCallReviewCard(
   partnerAlias: string,
   durationSeconds: number,
   recordingUrl?: string,
-  retentionDays?: number
+  retentionDays?: number,
+  recordingNotice?: string
 ) {
   const durationMin = Math.floor(durationSeconds / 60);
   const durationSec = durationSeconds % 60;
@@ -21,7 +22,7 @@ export async function sendPostCallReviewCard(
 
   const inlineKb = dashboardKeyboard('history', callSessionId);
 
-  const retentionNotice = recordingUrl && retentionDays
+  const retentionNotice = recordingUrl && recordingNotice ? `\n\n${escapeHtml(recordingNotice)}` : recordingUrl && retentionDays
     ? `\n\n🎙️ <i>Audio saved. Retention: <b>${retentionDays} day${retentionDays > 1 ? 's' : ''}</b> (automatically deleted thereafter).</i>`
     : '';
 

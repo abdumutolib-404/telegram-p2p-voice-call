@@ -1,4 +1,5 @@
 import { loadPlanConfiguration } from '../../services/planConfiguration';
+import { renderCreditOverview } from './credits';
 import { planIds, publicPlan, formatPlanPrice } from '../../contracts/pricing';
 import { Bot, InlineKeyboard } from 'grammy';
 import { MyContext } from '../types';
@@ -149,6 +150,9 @@ export async function renderPlanSelection(ctx: MyContext, tier: 'PLUS' | 'PRO' |
 }
 
 export async function renderPlansOverview(ctx: MyContext) {
+  return renderCreditOverview(ctx);
+}
+export async function renderLegacyPlansOverview(ctx: MyContext) {
   const plans = await loadPlanConfiguration();
   const offers = planIds.filter(id => plans[id].active).map(id => publicPlan(id, plans[id]));
   ctx.session.pendingPaymentPlan = undefined;

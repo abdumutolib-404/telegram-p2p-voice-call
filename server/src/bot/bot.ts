@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { telegramTransport } from './telegramTransport';
 import { setupDiscountHandlers } from './handlers/discounts';
+import { setupCreditHandlers } from './handlers/credits';
 import { TELEGRAM_CLIENT_OPTIONS } from './polling';
 import { Bot, session } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
@@ -341,6 +342,7 @@ export function createBot(token: string): Bot<MyContext> {
   setupMenuHandlers(bot);
   setupDashboardNavigation(bot);
   setupDiscountHandlers(bot);
+  setupCreditHandlers(bot);
   setupPaymentHandlers(bot);
   setupRefundHandlers(bot);
   setupCallbackHandlers(bot);

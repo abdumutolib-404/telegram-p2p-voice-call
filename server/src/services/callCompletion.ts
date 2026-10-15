@@ -83,7 +83,8 @@ export async function completeCallSession(id: string, completion: Completion): P
       } });
     }
     for (const { user, used, entitlement } of allowances) {
-      if (!entitlement.isUnlimited && used >= entitlement.callLimit && await consumeOldestBonusCall(user.id, tx)) continue;
+      if (user.creditCallActive) continue; // Database terminal trigger settles the reserved credit.
+      if (!entitlement.isUnlimited && used >= entitlement.baseCallLimit && await consumeOldestBonusCall(user.id, tx)) continue;
       await tx.user.update({
         where: { id: user.id },
         data: { dailyCallsUsed: used + 1, lastCallDate: completion.endedAt.toISOString().slice(0, 7) },

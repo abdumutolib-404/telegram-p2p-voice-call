@@ -1,3 +1,4 @@
+import { reconcileRecordingCredits } from './credits';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -11,6 +12,7 @@ import { env } from '../config/env';
 import { getAudioEgressInfo } from '../config/livekit';
 import { EgressStatus } from 'livekit-server-sdk';
 import { getEffectiveEntitlement } from './plan';
+import { recordingDeadline } from '../utils/recordingAccess';
 
 async function recordingBuffer(key:string):Promise<{buffer:Buffer;size:number}> {
   if (isS3Configured()) return getS3ObjectBuffer(key);
@@ -49,6 +51,7 @@ export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: (
       await prisma.recordingSegment.updateMany({where:{id:capture.id,status:'RECORDING'},data:{status:'FAILED'}});
     }
   }
+  await reconcileRecordingCredits();
   const ready = await prisma.recordingSegment.findMany({where:{status:'READY',expiresAt:{gt:new Date()},deliveries:{none:{}}},take:20,orderBy:{createdAt:'asc'}});
   for (const segment of ready.filter(item => !item.egressId.startsWith('legacy:'))) await prisma.$transaction(async tx => {
     for (const userId of segment.ownerIds) await tx.recordingDelivery.upsert({where:{segmentId_userId:{segmentId:segment.id,userId}},create:{segmentId:segment.id,userId},update:{}});
@@ -66,7 +69,7 @@ export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: (
     let confirmedMessageId: number | undefined;
     try {
       const [segment,user] = await Promise.all([prisma.recordingSegment.findUnique({where:{id:job.segmentId}}),prisma.user.findUnique({where:{id:job.userId}})]);
-      if (!segment || !user || segment.status!=='READY' || !segment.ownerIds.includes(user.id) || !segment.expiresAt || segment.expiresAt<=new Date()) {
+      if (!segment || !user || segment.status!=='READY' || !segment.ownerIds.includes(user.id) || !segment.expiresAt || recordingDeadline(segment,user.id)<=Date.now()) {
         await prisma.recordingDelivery.updateMany({where:key,data:{status:'EXPIRED',owner:null,leaseUntil:null}}); continue;
       }
       const call = await prisma.callSession.findUnique({where:{id:segment.callId}});
@@ -83,6 +86,12 @@ export async function recoverRecordingDeliveries(bot: Bot<MyContext>, stopped: (
       if (!Number.isSafeInteger(sent.message_id) || sent.message_id <= 0) throw new Error('Delivery acknowledgement is unavailable.');
       confirmedMessageId = sent.message_id;
       await prisma.recordingDelivery.updateMany({where:{...key,status:{in:['SENDING','UNCONFIRMED']}},data:{status:'DONE',telegramMessageId:confirmedMessageId,owner:null,leaseUntil:null,failure:null}});
+      // A temporary file is eligible for deletion only after every owner has a
+      // confirmed receipt. Stored copies and legacy owners keep their deadlines.
+      if((segment.creditOwnerIds?.length??0)===segment.ownerIds.length && (segment.storedOwnerIds?.length??0)===0){
+        const deliveries=await prisma.recordingDelivery.findMany({where:{segmentId:segment.id}});
+        if(segment.ownerIds.every(id=>deliveries.some(item=>item.userId===id&&item.status==='DONE')))await prisma.recordingSegment.update({where:{id:segment.id},data:{expiresAt:new Date()}});
+      }
     } catch (error) {
       const response = error as { error_code?: number; parameters?: { retry_after?: number } } | null;
       const seconds = response?.parameters?.retry_after;

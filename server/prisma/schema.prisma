@@ -52,6 +52,11 @@ model PostCallJob {
 
 model User {
   id                  String                 @id @default(uuid())
+  creditBilling       Boolean                @default(true)
+  callCredits         Int                    @default(3)
+  recordingCredits    Int                    @default(0)
+  storageCredits      Int                    @default(0)
+  creditCallActive    Boolean                @default(false)
   telegramId          BigInt                 @unique
   alias               String                 @unique
   subFC               Float                  @default(6.0)
@@ -101,6 +106,8 @@ model User {
   termsAcceptances     TermsAcceptance[]
   recordingUsage      RecordingUsage[]
   discountOffers      DiscountOffer[]
+  creditOrders        CreditOrder[]
+  creditUsage         CreditUsage[]
 
   @@index([subscriptionExpiresAt])
   @@index([isBanned])
@@ -143,6 +150,8 @@ model CallSession {
   postCallJob        PostCallJob?
   recordingUsage     RecordingUsage[]
   recordingSegments RecordingSegment[]
+  creditUsage        CreditUsage[]
+  recordingCapacity RecordingCapacity[]
 
   @@index([userAId, status, createdAt])
   @@index([userBId, status, createdAt])
@@ -151,6 +160,53 @@ model CallSession {
   @@index([recordingExpiresAt])
   @@index([status, recordingUrl, createdAt])
   @@index([restrictionCleanupPending, id])
+}
+
+model CreditOrder {
+  id                String @id @default(uuid())
+  requestId         String @unique
+  userId            String
+  user              User @relation(fields: [userId], references: [id])
+  calls             Int
+  recordings        Int
+  storage           Int
+  starsAmount       Int
+  uzsAmount         Int
+  catalogRevision   String
+  catalogSnapshot   String
+  termsVersion      String @default("credits-2026-10-15")
+  termsAcceptedAt   DateTime @default(now())
+  status            String @default("PENDING")
+  telegramPaymentId String? @unique
+  preCheckoutId     String? @unique
+  authorizedAt      DateTime?
+  expiresAt         DateTime
+  paidAt            DateTime?
+  refundedAt        DateTime?
+  createdAt         DateTime @default(now())
+  @@index([userId, createdAt])
+}
+
+model RecordingCapacity {
+  callId String
+  month String
+  minutes Int
+  createdAt DateTime @default(now())
+  call CallSession @relation(fields:[callId],references:[id],onDelete:Cascade)
+  @@id([callId,month])
+  @@index([month])
+}
+
+model CreditUsage {
+  callId    String
+  userId    String
+  kind      String
+  status    String @default("RESERVED")
+  createdAt DateTime @default(now())
+  call      CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([callId, userId, kind])
+  @@index([userId, kind, status])
 }
 
 // Consumption survives retention cleanup and owner replacement on a new segment.
@@ -171,6 +227,8 @@ model RecordingSegment {
   objectKey  String @unique
   egressId   String @unique
   ownerIds   String[]
+  creditOwnerIds String[] @default([])
+  storedOwnerIds String[] @default([])
   status     String @default("RECORDING")
   expiresAt  DateTime?
   createdAt  DateTime @default(now())

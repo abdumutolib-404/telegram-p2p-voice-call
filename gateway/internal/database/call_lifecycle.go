@@ -93,6 +93,29 @@ func (db *DB) AdmitCallSession(ctx context.Context, id, roomName, userAID, userB
 	if _, err := tx.Exec(ctx, `INSERT INTO "CallSession" (id,"roomName","userAId","userBId",status,"createdAt") VALUES ($1,$2,$3,$4,'ACTIVE',NOW())`, id, roomName, userAID, userBID); err != nil {
 		return nil, nil, err
 	}
+	for _, userID := range []string{userAID, userBID} {
+		u := users[userID]
+		ent := GetEffectiveEntitlement(u, db.AdminTelegramIDs)
+		used, err := callsUsedThisPeriod(ctx, tx, userID, u)
+		if err != nil {
+			return nil, nil, err
+		}
+		var bonus int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM "ReferralReward" WHERE "userId"=$1 AND status='AVAILABLE'`, userID).Scan(&bonus); err != nil {
+			return nil, nil, err
+		}
+		if !ent.IsAdmin && used >= ent.BaseCallLimit && bonus == 0 {
+			var reserved bool
+			if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_credit($1,$2,'CALL')`, id, userID).Scan(&reserved); err != nil {
+				return nil, nil, err
+			}
+			if !reserved {
+				return nil, nil, errors.New("no call credits remain")
+			}
+			u.CallCredits--
+			u.CreditCallActive = true
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -202,7 +225,10 @@ func (db *DB) completeCallSession(ctx context.Context, id string, duration int, 
 	if charge {
 		for _, userID := range []string{userAID, userBID} {
 			ent := GetEffectiveEntitlement(users[userID], db.AdminTelegramIDs)
-			if !ent.IsAdmin && ent.CallLimit < 999 && usage[userID] >= ent.CallLimit {
+			if users[userID].CreditCallActive {
+				continue
+			}
+			if !ent.IsAdmin && ent.CallLimit < 999 && usage[userID] >= ent.BaseCallLimit {
 				consumed, err := consumeOldestBonusCall(ctx, tx, userID)
 				if err != nil {
 					return false, err

@@ -7,6 +7,8 @@ import { PageHeader } from '../ui/PageHeader';
 import { StatusBadge } from '../ui/StatusBadge';
 import type { PlansResponse, PlanTierConfig } from '../../types';
 import { DiscountCampaigns } from './DiscountCampaigns';
+import { CreditPricingEditor } from './CreditPricingEditor';
+import { CreditOrders } from './CreditOrders';
 const tiers = ['FREE', 'PLUS', 'PRO', 'BOSS'] as const;
 const fields: { key: keyof PlanTierConfig; label: string; min: number; max: number }[] = [
   { key: 'maxDuration', label: 'Minutes per call', min: 1, max: 1440 },
@@ -60,7 +62,7 @@ export function PlanEditor() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Saving failed. Your edits are retained.'); }
     finally { busy.current = false; setSaving(false); }
   };
-  return <><form onSubmit={save}><PageHeader title="Plans and limits" description="Publish the prices and allowances used by the public website, dashboard and Telegram checkout." actions={<div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+  return <><CreditPricingEditor/><CreditOrders/><details><summary>Legacy subscription plans and discount campaigns</summary><form onSubmit={save}><PageHeader title="Legacy plans and limits" description="Maintain existing subscription entitlements and campaigns. New flexible credit pricing is configured above." actions={<div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
     <a className="btn-secondary" href={comparisonUrl} target="_blank" rel="noreferrer">Open public comparison ↗</a>
     <button type="button" className="btn-secondary" disabled={!initial||saving} onClick={()=>setDiscountOpen(true)}>Discount</button>
     {dirty && <button type="button" className="btn-secondary" disabled={saving} onClick={() => { setPlans(structuredClone(initial)); setError(null); }}>Discard edits</button>}
@@ -79,5 +81,5 @@ export function PlanEditor() {
         <label className="field-label"><input type="checkbox" checked={plans[tier].active ?? false} onChange={e => change(tier,'active',e.target.checked)}/> {tier === 'FREE' ? 'Show in comparison' : 'Available for purchase'}</label>
       </section>)}
     </fieldset>}
-  </form><DiscountCampaigns open={discountOpen} onClose={()=>setDiscountOpen(false)} plans={initial}/></>;
+  </form></details><DiscountCampaigns open={discountOpen} onClose={()=>setDiscountOpen(false)} plans={initial}/></>;
 }

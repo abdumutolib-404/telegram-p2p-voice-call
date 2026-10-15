@@ -9,7 +9,7 @@ import { getPlansConfig, updatePlansConfig } from '../services/plan';
 import publicPricing from '../routes/publicPricing';
 import adminRoutes from '../routes/admin';
 import { isPublicPricing, matchesNeeds, pricePerIncludedCall, recommendPlan, publicPlan, type PublicPricing } from '../contracts/pricing';
-import { renderPlansOverview } from '../bot/handlers/payments';
+import { renderLegacyPlansOverview as renderPlansOverview } from '../bot/handlers/payments';
 import type { MyContext } from '../bot/types';
 
 const app = express(); app.use(express.json()); app.use('/api/public', publicPricing); app.use('/api/admin', adminRoutes);
@@ -61,4 +61,23 @@ it('compares complete needs and independently quoted currencies without inventin
   const catalog: PublicPricing = { version: 1, revision: crypto.randomBytes(32).toString('hex'), checkedAt: new Date().toISOString(), botUsername: 'PairTalkBot', plans: [plus] };
   expect(isPublicPricing(catalog)).toBe(true);
   for (const malformed of [{ ...catalog, plans: [plus, plus] }, { ...catalog, plans: [{ ...plus, prices: { XTR: -1, UZS: 0 } }] }, { ...catalog, botUsername: 'bad/link' }, { ...catalog, checkedAt: [catalog.checkedAt] }]) expect(isPublicPricing(malformed)).toBe(false);
+});
+
+it('publishes independent credit prices from audited admin cost inputs to the public catalog and bot', async()=>{
+  const {renderCreditOverview}=await import('../bot/handlers/credits');
+  const {defaultCreditCosts}=await import('../contracts/credits');
+  const token=jwt.sign({role:'admin',telegramId:env.ADMIN_TELEGRAM_IDS[0]},env.JWT_SECRET,{expiresIn:'5m'});
+  try {
+    const saved=await request(app).put('/api/admin/credit-pricing').set('Authorization',`Bearer ${token}`).send({...defaultCreditCosts,monthlyBudgetUsd:30});
+    expect(saved.status).toBe(200);
+    const published=await request(app).get('/api/public/plans');
+    expect(isPublicPricing(published.body)).toBe(true);
+    expect(published.body.credits.revision).toBe(saved.body.catalog.revision);
+    const reply=vi.fn().mockResolvedValue(true);
+    await renderCreditOverview({from:{id:0},reply} as unknown as MyContext);
+    expect(reply.mock.calls[0][0]).toContain(saved.body.catalog.rates.CALL.uzs.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
+    expect(reply.mock.calls[0][0]).toContain('Purchased credits do not expire');
+    expect((await request(app).put('/api/admin/credit-pricing').send(defaultCreditCosts)).status).toBe(401);
+    expect((await request(app).put('/api/admin/credit-pricing').set('Authorization',`Bearer ${token}`).send({...defaultCreditCosts,paidCalls:0})).status).toBe(400);
+  } finally {await prisma.auditLog.deleteMany({where:{action:'CREDIT_COSTS_UPDATE'}});}
 });

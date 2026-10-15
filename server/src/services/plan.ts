@@ -49,6 +49,8 @@ export interface EffectiveEntitlement {
   planName: string;
   planDisplayName: string;
   callLimit: number;
+  baseCallLimit: number;
+  baseRecordingLimit: number;
   dailyLimit: number;
   maxCallDuration: number;
   maxDurationMinutes: number;
@@ -168,6 +170,7 @@ export function getRecordingLimitForPlan(plan: string): number {
 }
 
 export function getEffectiveEntitlement(user: {
+  creditBilling?: boolean; callCredits?: number; recordingCredits?: number; storageCredits?: number; creditCallActive?: boolean;
   plan?: string | null;
   subscriptionStatus?: string | null;
   subscriptionExpiresAt?: Date | string | null;
@@ -236,7 +239,13 @@ export function getEffectiveEntitlement(user: {
     retentionSource = 'ADMIN_OVERRIDE';
   }
 
-  const isUnlimited = dailyLimit >= 999 || isAdmin;
+  const creditOnly = user.creditBilling === true && planKey === 'FREE' && !user.customPlanName && !isAdmin;
+  if (creditOnly) { dailyLimit = 0; recordingLimit = 0; maxDurationMinutes = 15; retentionDays = 30; }
+  const baseCallLimit = dailyLimit, baseRecordingLimit = recordingLimit;
+  dailyLimit += user.callCredits ?? 0;
+  recordingLimit += user.recordingCredits ?? 0;
+  if (user.creditCallActive || creditOnly) { maxDurationMinutes = 15; isCustomDuration = true; }
+  const isUnlimited = baseCallLimit >= 999 || isAdmin;
   const isCustomPlan = !expired && Boolean(user.customPlanName);
   const overrideSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' =
     isCustomLimit || isCustomDuration || isCustomRecordingLimit || retentionSource === 'ADMIN_OVERRIDE'
@@ -253,6 +262,7 @@ export function getEffectiveEntitlement(user: {
     planName: planDisplayName,
     planDisplayName,
     callLimit: dailyLimit,
+    baseCallLimit, baseRecordingLimit,
     dailyLimit,
     maxCallDuration: maxDurationMinutes,
     maxDurationMinutes,
@@ -298,10 +308,11 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any, tra
     const currentMonth = new Date().toISOString().slice(0, 7);
     const targetUser = user || (await database.user.findUnique({ where: { id: userId } }));
     if (!targetUser) return 0;
+    if (targetUser.creditBilling && getEffectiveEntitlement(targetUser).baseCallLimit === 0) return 0;
 
     if (!targetUser.subscriptionExpiresAt && targetUser.lastCallDate && targetUser.lastCallDate.startsWith(currentMonth)) {
       if (typeof targetUser.dailyCallsUsed === 'number') {
-        return Math.max(0, targetUser.dailyCallsUsed);
+        return targetUser.callCredits>0 ? Math.min(Math.max(0,targetUser.dailyCallsUsed),getEffectiveEntitlement(targetUser).baseCallLimit) : Math.max(0, targetUser.dailyCallsUsed);
       }
     }
 
@@ -310,11 +321,12 @@ export async function getUserCallsUsedThisPeriod(userId: string, user?: any, tra
       where: {
         OR: [{ userAId: userId }, { userBId: userId }],
         status: 'COMPLETED',
+        creditUsage: { none: { userId, kind: 'CALL', status: 'CONSUMED' } },
         duration: { gte: 5 },
         createdAt: { gte: periodStart },
       },
     });
-    return count;
+    return targetUser.callCredits>0 ? Math.min(count,getEffectiveEntitlement(targetUser).baseCallLimit) : count;
   } catch (error) {
     if (env.NODE_ENV !== 'test' || transaction) throw error;
     return 0;
@@ -326,7 +338,9 @@ export async function getUserRecordingsUsedThisPeriod(userId: string, user?: any
   try {
     const targetUser = user || (await database.user.findUnique({ where: { id: userId } }));
     if (!targetUser) return 0;
-    return await database.recordingUsage.count({ where: { userId, consumedAt: { gte: allowancePeriodStart(targetUser) } } });
+    if (targetUser.creditBilling && getEffectiveEntitlement(targetUser).baseRecordingLimit === 0) return 0;
+    const count=await database.recordingUsage.count({ where: { userId, consumedAt: { gte: allowancePeriodStart(targetUser) }, call: { creditUsage: { none: { userId, kind:'RECORDING', status:{in:['RESERVED','CONSUMED']} } } } } });
+    return targetUser.recordingCredits>0 ? Math.min(count,getEffectiveEntitlement(targetUser).baseRecordingLimit) : count;
   } catch (error) {
     if (env.NODE_ENV !== 'test' || transaction) throw error;
     return 0;
@@ -537,7 +551,7 @@ export async function generateOrderNumber(prefix: string = 'A'): Promise<string>
 export function calculateEffectiveCallDuration(userA: any, userB: any): number {
   const entA = getEffectiveEntitlement(userA);
   const entB = getEffectiveEntitlement(userB);
-  if (entA.source === 'ADMIN_OVERRIDE' || entB.source === 'ADMIN_OVERRIDE') {
+  if (entA.overrideSource === 'ADMIN_OVERRIDE' || entB.overrideSource === 'ADMIN_OVERRIDE') {
     return Math.min(entA.maxDurationMinutes, entB.maxDurationMinutes);
   }
   return Math.max(entA.maxDurationMinutes, entB.maxDurationMinutes);

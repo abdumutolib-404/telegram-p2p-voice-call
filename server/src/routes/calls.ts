@@ -9,7 +9,7 @@ import { getEffectiveEntitlement, calculateEffectiveCallDuration } from '../serv
 import { createCanonicalError } from '../types/canonical';
 import { isS3Configured, generatePresignedDownloadUrl, checkS3ObjectExists } from '../services/s3Storage';
 import { logger } from '../utils/logger';
-import { isUserSessionRecorder } from '../utils/recordingAccess';
+import { isUserSessionRecorder, recordingDeadline } from '../utils/recordingAccess';
 
 const router = Router();
 const recordingsRoot = path.resolve(env.RECORDINGS_DIR);
@@ -51,11 +51,14 @@ const handleRecordingRetrieval = async (req: AuthenticatedTelegramRequest, res: 
     if (req.query.segment !== undefined) {
       if (typeof req.query.segment!=='string' || req.query.segment.length>128) {res.status(400).json(createCanonicalError('RECORDING_UNAVAILABLE','Invalid recording segment.'));return;}
       const segment = await prisma.recordingSegment.findUnique({where:{id:req.query.segment}});
-      if (!segment || segment.callId!==session.id || !segment.ownerIds.includes(requesterUser.id) || !segment.expiresAt || segment.expiresAt<=new Date() || segment.status!=='READY') {
+      if (!segment || segment.callId!==session.id || !segment.ownerIds.includes(requesterUser.id) || !segment.expiresAt || recordingDeadline(segment,requesterUser.id)<=Date.now() || segment.status!=='READY') {
         res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE','Recording segment unavailable.'));return;
       }
       session.recordingUrl=segment.objectKey;session.recordingExpiresAt=segment.expiresAt;session.recordedByUserId=segment.ownerIds.join(',');
     }
+    let managedDeadline=Infinity;
+    // The legacy no-segment URL must enforce the same owner-specific deadline.
+    if(session.recordingUrl){const managed=await prisma.recordingSegment.findUnique({where:{objectKey:session.recordingUrl}});if(managed)managedDeadline=recordingDeadline(managed,requesterUser.id);if(managedDeadline<=Date.now()){res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE','Recording retention expired.'));return;}}
     if (!session.recordingUrl || (session.recordingExpiresAt && session.recordingExpiresAt<=new Date())) {res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE','Recording not found or expired.'));return;}
     // Match the bot policy, including participant access for legacy null markers.
     if (session.recordedByUserId && !isUserSessionRecorder(session.recordedByUserId, requesterUser.id)) {
@@ -77,13 +80,16 @@ const handleRecordingRetrieval = async (req: AuthenticatedTelegramRequest, res: 
         return;
       }
 
-      const presignedUrl = await generatePresignedDownloadUrl(session.recordingUrl, 3600);
+      const availableUntil=Math.min(session.recordingExpiresAt?.getTime()??Infinity,managedDeadline,(session.endedAt??session.createdAt).getTime()+allowedRetentionDays*86400000);
+      const expiresInSeconds=Math.min(3600,Math.floor((availableUntil-Date.now())/1000));
+      if(expiresInSeconds<1){res.status(404).json(createCanonicalError('RECORDING_UNAVAILABLE','Recording retention expired.'));return;}
+      const presignedUrl = await generatePresignedDownloadUrl(session.recordingUrl, expiresInSeconds);
       if (req.query.format === 'json' || req.headers.accept?.includes('application/json')) {
         res.json({
           url: presignedUrl,
           size: existsInfo.size,
           contentType: existsInfo.contentType || 'audio/mpeg',
-          expiresInSeconds: 3600,
+          expiresInSeconds,
         });
         return;
       }

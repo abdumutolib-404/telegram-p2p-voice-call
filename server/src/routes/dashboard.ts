@@ -17,10 +17,12 @@ import { admitCall, activatePendingCall } from '../services/callAdmission';
 import { notificationQueue } from '../bot/notifications';
 import type { MyContext } from '../bot/types';
 import { scheduleConnectionHandshakeTimer, setRoomDurationLimit } from '../socket/signaling';
-import { isUserSessionRecorder } from '../utils/recordingAccess';
+import { isUserSessionRecorder, recordingDeadline } from '../utils/recordingAccess';
 import { lockRow } from '../utils/transactionLock';
 import { recordingDeliveryStatus } from '../services/recordingDelivery';
 import { activeDiscountOffers } from '../services/discounts';
+import { createCreditOrder, creditReceipt } from '../services/credits';
+import { CREDIT_TERMS_VERSION } from '../contracts/credits';
 
 const router = Router();
 let dashboardBot: Bot<MyContext> | null = null;
@@ -36,6 +38,21 @@ const action = (handler: (req: MemberRequest, res: Response) => Promise<void>) =
   });
 };
 const identifier = z.string().uuid();
+router.get('/credits',action(async(req,res)=>{
+  const user=req.member!;
+  const orders=await prisma.creditOrder.findMany({where:{userId:user.id},orderBy:{createdAt:'desc'},take:20,select:{id:true,calls:true,recordings:true,storage:true,starsAmount:true,uzsAmount:true,status:true,createdAt:true,paidAt:true}});
+  res.json({balance:{calls:user.callCredits,recordings:user.recordingCredits,storage:user.storageCredits},orders});
+}));
+router.post('/credits/checkout',createActionRateLimiter('PAYMENT_INVOICE',req=>(req as MemberRequest).member!.id),action(async(req,res)=>{
+  const input=z.object({requestId:identifier,revision:z.string().regex(/^[a-f0-9]{64}$/),calls:z.number().int().min(0).max(1000),recordings:z.number().int().min(0).max(1000),storage:z.boolean(),termsAccepted:z.literal(true),termsVersion:z.literal(CREDIT_TERMS_VERSION)}).strict().parse(req.body);
+  if (!dashboardBot) throw new ActionError(503,'Telegram checkout is temporarily unavailable.');
+  let order;
+  try { order=await createCreditOrder(req.member!.id,input.requestId,{calls:input.calls,recordings:input.recordings,storage:input.storage},input.revision); }
+  catch(error){throw new ActionError(409,error instanceof Error?error.message:'Checkout is unavailable.');}
+  if (order.status!=='PENDING' || order.expiresAt<=new Date()) throw new ActionError(409,'This checkout is already used or expired. Review your balance before trying again.');
+  const invoiceUrl=await dashboardBot.api.createInvoiceLink('PairTalk practice credits',creditReceipt(order).slice(0,255),`credits:${order.id}`,'','XTR',[{label:'Practice credits',amount:order.starsAmount}]);
+  res.json({orderId:order.id,invoiceUrl,stars:order.starsAmount,uzs:order.uzsAmount});
+}));
 router.get('/discount-offers',action(async(req,res)=>{res.json({offers:await activeDiscountOffers(req.member!),serverNow:new Date()});}));
 async function ownSession(id: string, userId: string) {
   identifier.parse(id);
@@ -43,15 +60,16 @@ async function ownSession(id: string, userId: string) {
   if (!session) throw new ActionError(404, 'Session not found.');
   return session;
 }
-type SummaryRecording = { id: string; callId: string; createdAt: Date; expiresAt: Date | null };
+type SummaryRecording = { id: string; callId: string; createdAt: Date; expiresAt: Date | null; creditOwnerIds?:string[];storedOwnerIds?:string[];status?:string;objectKey?:string };
 async function sessionSummary(session: Awaited<ReturnType<typeof ownSession>>, userId: string, retentionDays: number, savedPartnerIds?: ReadonlySet<string>, availableSegments?: SummaryRecording[]) {
   const partner = session.userAId === userId ? session.userB : session.userA;
   const rating = session.ratings.find(item => item.raterId === userId && !item.reported);
   const expiry = Math.min(session.recordingExpiresAt?.getTime() ?? Infinity, (session.endedAt ?? session.createdAt).getTime() + retentionDays * 86400000);
-  const segments = availableSegments ?? await prisma.recordingSegment.findMany({where:{callId:session.id,status:"READY",ownerIds:{has:userId},expiresAt:{gt:new Date()}},orderBy:{createdAt:"asc"}});
+  const segments = availableSegments ?? await prisma.recordingSegment.findMany({where:{callId:session.id,ownerIds:{has:userId}},orderBy:{createdAt:"asc"}});
   const recipientExpiry=(session.endedAt??session.createdAt).getTime()+retentionDays*86400000;
-  const recordings = recipientExpiry > Date.now() ? segments.map(segment=>({id:segment.id,createdAt:segment.createdAt,expiresAt:new Date(Math.min(segment.expiresAt!.getTime(),recipientExpiry))})) : [];
-  const recordingAvailable = Boolean(session.recordingUrl && expiry > Date.now() && (!session.recordedByUserId || isUserSessionRecorder(session.recordedByUserId, userId)));
+  const recordings = recipientExpiry > Date.now() ? segments.filter(segment=>segment.status==='READY' && recordingDeadline(segment,userId)>Date.now()).map(segment=>({id:segment.id,createdAt:segment.createdAt,expiresAt:new Date(Math.min(recordingDeadline(segment,userId),recipientExpiry))})) : [];
+  const managedLatest=segments.find(segment=>segment.objectKey===session.recordingUrl);
+  const recordingAvailable = Boolean((!managedLatest || (managedLatest.status==='READY' && recordingDeadline(managedLatest,userId)>Date.now())) && session.recordingUrl && expiry > Date.now() && (!session.recordedByUserId || isUserSessionRecorder(session.recordedByUserId, userId)));
   return { id: session.id, partnerAlias: partner.alias, partnerBand: partner.band, status: session.status, duration: session.duration, createdAt: session.createdAt, endedAt: session.endedAt, recordings, rating: rating?.stars ?? null, reported: session.ratings.some(item => item.raterId === userId && item.reported), saved: savedPartnerIds?.has(partner.id) ?? false, recordingAvailable, recordingExpiresAt: recordingAvailable ? new Date(expiry) : null };
 }
 
@@ -62,7 +80,7 @@ router.get('/summary', action(async (req, res) => {
     getUserCallsUsedThisPeriod(user.id, user), getUserRecordingsUsedThisPeriod(user.id, user), getActiveBonusCallsCount(user.id),
     prisma.callSession.findFirst({ where: { status: 'ACTIVE', OR: [{ userAId: user.id }, { userBId: user.id }] }, select: { roomName: true } }),
   ]);
-  res.json({ activeCall: activeCall ? { roomName: activeCall.roomName } : null, user: { userId: user.id, alias: user.alias, band: user.band, subFC: user.subFC, subLR: user.subLR, subGRA: user.subGRA, subP: user.subP, plan: entitlement.plan, planExpiresAt: user.subscriptionExpiresAt, dnd: user.dnd, callsRemaining: Math.max(0, entitlement.callLimit - callsUsed) + bonus, includedCallsRemaining: Math.max(0, entitlement.callLimit - callsUsed), bonusCallsRemaining: bonus, allowancePeriod: getAllowancePeriod(user), totalCallsLimit: entitlement.callLimit, maxCallDuration: entitlement.maxCallDuration, recordingsRemaining: Math.max(0, entitlement.recordingLimit - recordingsUsed), recordingsLimit: entitlement.recordingLimit, recordingRetentionDays: entitlement.retentionDays }, terms: { version: currentTerms.version, acceptedAt: user.termsAcceptedAt, url: currentTerms.termsUrl } });
+  res.json({ activeCall: activeCall ? { roomName: activeCall.roomName } : null, user: { userId: user.id, alias: user.alias, band: user.band, subFC: user.subFC, subLR: user.subLR, subGRA: user.subGRA, subP: user.subP, plan: entitlement.plan, creditOnly:user.creditBilling && entitlement.baseCallLimit===0, creditBalance:{calls:user.callCredits,recordings:user.recordingCredits,storage:user.storageCredits}, planExpiresAt: user.subscriptionExpiresAt, dnd: user.dnd, callsRemaining: Math.max(0, entitlement.callLimit - callsUsed) + bonus, includedCallsRemaining: Math.max(0, entitlement.baseCallLimit - callsUsed), bonusCallsRemaining: bonus, allowancePeriod: getAllowancePeriod(user), totalCallsLimit: entitlement.callLimit, maxCallDuration: entitlement.maxCallDuration, recordingsRemaining: Math.max(0, entitlement.recordingLimit - recordingsUsed), recordingsLimit: entitlement.recordingLimit, recordingRetentionDays: entitlement.retentionDays }, terms: { version: currentTerms.version, acceptedAt: user.termsAcceptedAt, url: currentTerms.termsUrl } });
 }));
 
 const band = z.number().min(0).max(9).refine(value => Number.isInteger(value * 2));
@@ -84,8 +102,8 @@ router.get('/sessions', action(async (req, res) => {
   const savedPartnerIds = new Set(savedRows.map(row => row.partnerId));
   const page = sessions.slice(0, 20);
   const segments = page.length ? await prisma.recordingSegment.findMany({
-    where: { callId: { in: page.map(session => session.id) }, status: 'READY', ownerIds: { has: req.member!.id }, expiresAt: { gt: new Date() } },
-    orderBy: { createdAt: 'asc' }, select: { id: true, callId: true, createdAt: true, expiresAt: true },
+    where: { callId: { in: page.map(session => session.id) }, ownerIds: { has: req.member!.id } },
+    orderBy: { createdAt: 'asc' }, select: { id: true, callId: true, createdAt: true, expiresAt: true,creditOwnerIds:true,storedOwnerIds:true,status:true,objectKey:true },
   }) : [];
   const byCall = new Map<string, SummaryRecording[]>();
   for (const segment of segments) {
@@ -129,7 +147,7 @@ router.post('/sessions/:id/recording-delivery', action(async (req, res) => {
     });
   }
   if (segment) {
-    if (segment.callId !== session.id || segment.status !== 'READY' || !segment.ownerIds.includes(user.id) || !segment.expiresAt || segment.expiresAt <= now) {
+    if (segment.callId !== session.id || segment.status !== 'READY' || !segment.ownerIds.includes(user.id) || !segment.expiresAt || recordingDeadline(segment,user.id) <= Date.now()) {
       throw new ActionError(404, 'This recording is no longer available.');
     }
     if (!dashboardBot) throw new ActionError(503, 'Telegram delivery is temporarily unavailable. Please retry.');

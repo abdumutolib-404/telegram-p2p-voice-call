@@ -65,6 +65,9 @@ export function startStarsRefundRecovery(provider: Provider): () => Promise<void
         if (claimed.count !== 1) continue;
         await completeStarsRefund(purchase.id, provider).catch(error => logger.warn('Stars refund reconciliation deferred', { service: 'payments', transactionId: purchase.id }, error));
       }
+      const {refundCreditOrder}=await import('./credits');
+      const creditRefunds=await prisma.creditOrder.findMany({where:{status:'REFUND_PENDING'},take:20,include:{user:true}});
+      for(const order of creditRefunds){if(stopped)break;await refundCreditOrder(order.id,order.user.telegramId,provider).catch(error=>logger.warn('Credit refund confirmation deferred',{service:'payments',orderId:order.id},error));}
     } catch (error) { logger.warn('Stars refund recovery unavailable', { service: 'payments' }, error); }
   };
   const tick = async () => {

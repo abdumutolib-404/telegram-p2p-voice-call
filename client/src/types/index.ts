@@ -47,6 +47,8 @@ export interface UserMatchData {
   strongSkill: IELTSCriterion;
   plan?: 'FREE' | 'PLUS' | 'PRO' | 'BOSS' | string;
   planExpiresAt?: string | null;
+  creditOnly?: boolean;
+  creditBalance?: {calls:number;recordings:number;storage:number};
   callsRemaining?: number;
   includedCallsRemaining?: number;
   bonusCallsRemaining?: number;
