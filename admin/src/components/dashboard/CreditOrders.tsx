@@ -46,12 +46,12 @@ export function CreditOrders() {
   }, [cursor, attempt]);
   return (
     <section className="glass-panel" style={{ padding: 24, marginBottom: 24 }}>
-      <h2>Credit purchases</h2>
+      <h2>Purchases</h2>
       <p>
         Confirmed Stars payments, pending checkouts and refund confirmations.
         UZS amounts are references and are excluded from card-payment revenue.
       </p>
-      {loading && <p role="status">Loading credit purchases…</p>}
+      {loading && <p role="status">Loading purchases…</p>}
       {error && (
         <p role="alert" className="inline-error">
           {error}
@@ -62,7 +62,7 @@ export function CreditOrders() {
           className="table-container"
           role="region"
           tabIndex={0}
-          aria-label="Credit purchases"
+          aria-label="Purchases"
         >
           <table className="data-table">
             <thead>
@@ -94,7 +94,7 @@ export function CreditOrders() {
               ))}
             </tbody>
           </table>
-          {!orders.length && <p>No credit purchases on this page.</p>}
+          {!orders.length && <p>No purchases on this page.</p>}
         </div>
       )}
       <div style={{ display: "flex", gap: 8, marginTop: 16 }}>

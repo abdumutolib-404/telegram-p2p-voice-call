@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
 import { CreditCalculator } from "../../platform/CreditCalculator";
 import {
-  creditRates,
+  sellingCreditRates,
   defaultCreditCosts,
   quoteCredits,
   type CreditCatalog,
@@ -18,7 +18,7 @@ const catalog: CreditCatalog = {
   markupPercent: 12,
   salesEnabled: true,
   recordingsAvailable: 3,
-  rates: creditRates(defaultCreditCosts),
+  rates: sellingCreditRates(defaultCreditCosts),
   uzsPerUsd: defaultCreditCosts.uzsPerUsd,
   usdPerStar: defaultCreditCosts.usdPerStar,
 };
@@ -48,7 +48,11 @@ it("shows separate UZS rates, optional recordings and the rounded basket total",
     ),
   );
   for (const kind of ["CALL", "RECORDING"] as const)
-    expect(host.textContent).toContain(catalog.rates[kind].uzs.toLocaleString("en-US", {minimumFractionDigits:2,maximumFractionDigits:2}));
+    expect(host.textContent).toContain(catalog.rates[kind].uzs.toLocaleString("en-US", {maximumFractionDigits:2}));
+  expect(host.textContent).toContain("UZS/call");
+  expect(host.textContent).toContain("22 Stars/call");
+  expect(host.textContent).toContain("28 Stars/recording");
+  expect(host.textContent).not.toMatch(/\bcredits?\b/i);
   const quantity =
     host.querySelectorAll<HTMLInputElement>("input[type=number]");
   expect(quantity[0].value).toBe("5");

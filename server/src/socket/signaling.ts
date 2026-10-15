@@ -690,7 +690,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit && activeBonusCalls <= 0) {
             socket.emit('error', {
               code: 'MATCHMAKING_QUOTA_EXCEEDED',
-              message: 'Your call allowance has been used. Open Credits in your dashboard to add calls, or earn bonus calls by inviting friends.',
+              message: 'Your call allowance has been used. Open Pay as you go in your dashboard to add calls, or earn bonus calls by inviting friends.',
             });
             return;
           }
@@ -983,7 +983,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const recordingsUsed = await getUserRecordingsUsedThisPeriod(requesterId, user);
             const consumed = await prisma.recordingUsage.findUnique({ where: { callId_userId: { callId: session.id, userId: requesterId } } });
             if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit && calculateEffectiveCallDuration(session.userA,session.userB)>15) {
-              socket.emit('recording_error',{code:'RECORDING_LIMIT_REACHED',message:'Recording credits cover calls up to 15 minutes. This longer call requires its legacy recording allowance.'});
+              socket.emit('recording_error',{code:'RECORDING_LIMIT_REACHED',message:'Purchased recordings cover calls up to 15 minutes. This longer call requires its legacy recording allowance.'});
               return;
             }
             if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.recordingLimit) {
@@ -1009,7 +1009,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             try {
               const capacity = await prisma.$queryRaw<{reserved:boolean}[]>`SELECT pairtalk_prepare_recording_capacity(${session.id},${requesterId},${calculateEffectiveCallDuration(session.userA,session.userB)}::integer,${!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit}) AS reserved`;
               if (!capacity[0]?.reserved) {
-                socket.emit('recording_error',{code:'RECORDING_UNAVAILABLE',message:'Recording capacity is currently unavailable. Your recording credit has not been charged.'});
+                socket.emit('recording_error',{code:'RECORDING_UNAVAILABLE',message:'Recording capacity is currently unavailable. Your recording has not been charged.'});
                 return;
               }
               await publishRoomRecordingState(payload.roomName,'unknown');

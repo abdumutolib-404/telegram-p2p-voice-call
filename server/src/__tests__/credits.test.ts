@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   creditRates,
+  sellingCreditRates,
   defaultCreditCosts,
   quoteCredits,
   validateCreditCosts,
@@ -42,7 +43,8 @@ describe("independent cost-based credits", () => {
       storage: false,
     });
     expect(a.storage).toBe(3);
-    expect(a.micros - b.micros).toBe(3 * rates.STORAGE.priceMicros);
+    expect(a.uzs).toBe(Math.ceil(rates.RECORDING.uzs * 3 + rates.STORAGE.uzs * 3));
+    expect(a.stars).toBeGreaterThanOrEqual(b.stars);
   });
   it("rounds the basket once rather than multiplying rounded single-credit Stars", () => {
     const one = quoteCredits(catalog, {
@@ -73,6 +75,10 @@ describe("independent cost-based credits", () => {
     expect(() => quoteCredits(catalog, basket)).toThrow(),
   );
   it.each([
+    {callPriceUzs:0},
+    {callPriceStars:22.5},
+    {recordingPriceStars:-1},
+    {storagePriceUzs:0},
     { paidCalls: 0 },
     { paidRecordings: 0 },
     { callSharePercent: 100 },
@@ -93,6 +99,14 @@ describe("independent cost-based credits", () => {
   it("requires the full public credit contract", () => {
     expect(isCreditCatalog({})).toBe(false);
     expect(isCreditCatalog(null)).toBe(false);
+  });
+  it("charges the independently published UZS and Stars prices for every selected unit", () => {
+    const published={...catalog,rates:sellingCreditRates(defaultCreditCosts)};
+    expect(quoteCredits(published,{calls:1,recordings:0,storage:false})).toMatchObject({uzs:3500,stars:22});
+    expect(quoteCredits(published,{calls:0,recordings:1,storage:false})).toMatchObject({uzs:4200,stars:28});
+    expect(quoteCredits(published,{calls:10,recordings:2,storage:false})).toMatchObject({uzs:43400,stars:276});
+    expect(quoteCredits(published,{calls:10,recordings:2,storage:true})).toMatchObject({uzs:43406,stars:277,storage:2});
+    expect(sellingCreditRates({...defaultCreditCosts,monthlyBudgetUsd:30}).CALL.uzs).toBe(3500);
   });
   it("gives a credit account its actual balance without inventing a monthly renewal", () => {
     const ent = getEffectiveEntitlement({

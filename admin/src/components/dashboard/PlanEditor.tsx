@@ -62,7 +62,7 @@ export function PlanEditor() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Saving failed. Your edits are retained.'); }
     finally { busy.current = false; setSaving(false); }
   };
-  return <><CreditPricingEditor/><CreditOrders/><details><summary>Legacy subscription plans and discount campaigns</summary><form onSubmit={save}><PageHeader title="Legacy plans and limits" description="Maintain existing subscription entitlements and campaigns. New flexible credit pricing is configured above." actions={<div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+  return <><CreditPricingEditor/><CreditOrders/><details><summary>Legacy subscription plans and discount campaigns</summary><form onSubmit={save}><PageHeader title="Legacy plans and limits" description="Maintain existing subscription entitlements and campaigns. Flexible call and recording pricing is configured above." actions={<div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
     <a className="btn-secondary" href={comparisonUrl} target="_blank" rel="noreferrer">Open public comparison ↗</a>
     <button type="button" className="btn-secondary" disabled={!initial||saving} onClick={()=>setDiscountOpen(true)}>Discount</button>
     {dirty && <button type="button" className="btn-secondary" disabled={saving} onClick={() => { setPlans(structuredClone(initial)); setError(null); }}>Discard edits</button>}

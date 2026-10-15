@@ -38,6 +38,7 @@ if(process.argv[2]!=='--child'){
       console.log('PASS four simultaneous recording orders produce only three capacity holds; expired unpaid invoices release stock.');
       const requestId=crypto.randomUUID(),basket={calls:2,recordings:1,storage:true};
       const order=await credits.createCreditOrder(buyer.id,requestId,basket,catalog.revision);
+      assert.equal(order.starsAmount,73);assert.equal(order.uzsAmount,11203);
       assert.equal((await credits.createCreditOrder(buyer.id,requestId,basket,catalog.revision)).id,order.id);
       await assert.rejects(credits.createCreditOrder(other.id,requestId,basket,catalog.revision));
       await assert.rejects(credits.createCreditOrder(buyer.id,requestId,{...basket,calls:3},catalog.revision));

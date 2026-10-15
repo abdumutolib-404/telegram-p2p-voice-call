@@ -15,16 +15,16 @@ const basket=()=>({requestId:crypto.randomUUID(),revision:'a'.repeat(64),calls:2
 beforeEach(async()=>{
   vi.clearAllMocks();telegramId=Date.now()+Math.floor(Math.random()*100000);
   const user=await prisma.user.create({data:{telegramId:BigInt(telegramId),alias:crypto.randomUUID(),onboarded:true,termsAcceptedVersion:currentTerms.version,termsDocumentSha256:currentTerms.sha256,termsAcceptedAt:new Date()}});userId=user.id;
-  fixture.create.mockResolvedValue({id:crypto.randomUUID(),status:'PENDING',expiresAt:new Date(Date.now()+60000),calls:2,recordings:1,storage:1,starsAmount:44,uzsAmount:6700});
+  fixture.create.mockResolvedValue({id:crypto.randomUUID(),status:'PENDING',expiresAt:new Date(Date.now()+60000),calls:2,recordings:1,storage:1,starsAmount:73,uzsAmount:11203});
   fixture.invoice.mockResolvedValue('https://t.me/$synthetic-invoice');
   setDashboardBot({api:{createInvoiceLink:fixture.invoice}} as never);
 });
 afterEach(async()=>{setDashboardBot(null);await prisma.user.deleteMany({where:{id:userId}});});
 it('creates a Stars invoice only for the authenticated user and the server quote',async()=>{
   const body=basket();const result=await request(app).post('/api/dashboard/credits/checkout').set('x-telegram-init-data',signed()).send(body);
-  expect(result.status).toBe(200);expect(result.body.stars).toBe(44);expect(result.body.uzs).toBe(6700);
+  expect(result.status).toBe(200);expect(result.body.stars).toBe(73);expect(result.body.uzs).toBe(11203);
   expect(fixture.create).toHaveBeenCalledWith(userId,body.requestId,{calls:2,recordings:1,storage:true},body.revision);
-  expect(fixture.invoice.mock.calls[0].slice(3,6)).toEqual(['','XTR',[{label:'Practice credits',amount:44}]]);
+  expect(fixture.invoice.mock.calls[0].slice(3,6)).toEqual(['','XTR',[{label:'Calls and recordings',amount:73}]]);
 });
 it.each([{termsAccepted:false},{termsVersion:'old-credit-terms'},{starsAmount:1},{userId:'someone-else'}])('rejects forged prices, ownership and missing agreement %#',async patch=>{
   const result=await request(app).post('/api/dashboard/credits/checkout').set('x-telegram-init-data',signed()).send({...basket(),...patch});

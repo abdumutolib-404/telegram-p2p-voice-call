@@ -42,11 +42,11 @@ export const faqs = [
   },
   {
     q: "Are calls recorded?",
-    a: "Recording credits are optional and separate from calls. Optional storage keeps each recording for 30 days from creation; without it, server copies last only for delivery recovery, up to 24 hours. Agree with your partner before recording. See the privacy policy for how recordings and call metadata are handled.",
+    a: "Recordings are optional and separate from calls. Optional storage keeps each recording for 30 days from creation; without it, server copies last only for delivery recovery, up to 24 hours. Agree with your partner before recording. See the privacy policy for how recordings and call metadata are handled.",
   },
   {
     q: "Can I request a refund?",
-    a: "Full unused credit purchases can be refunded within 48 hours, provided the complete purchased quantities remain available and unreserved. Legacy subscription purchases retain their original refund rules. Use /refund in the bot or contact support.",
+    a: "Full unused purchases can be refunded within 48 hours, provided the complete purchased quantities remain available and unreserved. Legacy subscription purchases retain their original refund rules. Use /refund in the bot or contact support.",
   },
 ];
 export const pages: Record<string, Guide> = {
@@ -578,7 +578,7 @@ export const pages: Record<string, Guide> = {
               end-to-end encryption inaccessible to the media service.
             </p>
             <p>
-              Cloud recording is optional and requires agreement. Credit recordings
+              Cloud recording is optional and requires agreement. Purchased recordings
               have optional 30-day storage from creation. Without storage, a server
               copy is kept only for delivery recovery, up to 24 hours, and may be
               removed after all owners receive it in Telegram. Legacy Free, Plus,
@@ -636,7 +636,7 @@ export const pages: Record<string, Guide> = {
         body: (
           <>
             <p>
-              A full unused credit purchase can be refunded within 48 hours if
+              A full unused purchase can be refunded within 48 hours if
               the complete purchased quantities remain available and unreserved.
               Use /refund in Telegram. Eligible Stars refunds return the original
               payment. Existing subscription purchases keep their original
@@ -713,26 +713,27 @@ export const pages: Record<string, Guide> = {
       },
       {
         id: "payments",
-        title: "Credits, payments, and legacy subscriptions",
+        title: "Calls, recordings, payments, and legacy subscriptions",
         body: (
           <>
             <p>
               New accounts receive three one-time starter calls of up to 15 minutes.
-              Call and recording credits are purchased separately and do not expire.
-              Each credit covers up to 15 minutes. Optional storage matches the selected
+              Calls and recordings are purchased separately and do not expire.
+              Each call or recording covers up to 15 minutes. Optional storage matches the selected
               recording quantity and lasts 30 days from creation. Without storage,
               server copies are removed after confirmed delivery or within a 24-hour
               recovery window. Telegram may retain a delivered copy independently.
-              Credit checkout uses Telegram Stars; UZS amounts explain the cost reference.
+              Checkout uses Telegram Stars; UZS amounts explain the cost reference.
               Existing subscription allowances and supported legacy card payments retain
-              their original purchase terms. New credit terms take precedence for credit purchases.
+              their original purchase terms. These pay-as-you-go terms apply to new
+              call and recording purchases.
             </p>
             <p>
-              A full credit purchase refund can be requested within 48 hours of
+              A full purchase refund can be requested within 48 hours of
               payment when the complete purchased quantities remain available and
               unreserved. Calls under five seconds and failed connections return
-              their reserved credit; failed recording exports return recording and
-              storage credits. Existing subscription refunds keep their original rules. Use{" "}
+              their reserved call; failed recording exports return recording and
+              storage add-ons. Existing subscription refunds keep their original rules. Use{" "}
               <code>/refund</code> or contact support. See the{" "}
               <a href="/refund-policy">refund policy</a> for payment-specific
               settlement information.

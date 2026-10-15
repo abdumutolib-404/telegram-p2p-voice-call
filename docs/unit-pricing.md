@@ -1,6 +1,20 @@
-# Flexible practice credits
+# Calls and recordings: prices and balances
 
 Implemented for new credit purchases. Existing subscription purchases, custom allowances, discount offers and their original refund rules are preserved. Publishing this change does not create infrastructure or upgrade a provider subscription.
+
+Customer-facing copy uses calls, recordings and storage, rather than "credits". Internal wallet models and API paths retain their existing names for compatibility.
+
+## Published selling prices
+
+| Service | UZS reference / item | Stars / item |
+| --- | --- | --- |
+| One participant's call, up to 15 minutes | 3,500 | 22 |
+| One mixed recording, up to 15 minutes | 4,200 | 28 |
+| Optional 30-day storage, per recording | 3 | Converted in the basket |
+
+The owner set UZS and Stars prices independently. Ten calls and two recordings cost 43,400 UZS or 276 Stars. Adding storage for both recordings gives 43,406 UZS or 277 Stars: storage converts using the configured UZS/USD and Stars proceeds references, then the basket rounds up once to whole Stars. No extra currency conversion changes the fixed 22/28-Star unit prices.
+
+Admin can edit each selling price separately from the cost assumptions. Historical cost configurations without the selling-price fields inherit the new defaults. Existing order snapshots and authorized payment totals remain unchanged.
 
 ## Customer offer
 
@@ -36,19 +50,19 @@ Direct forecast call costs are $0.75; direct recording and delivery costs are $0
 
 `recording expenditure = shared budget × recording share / paid recordings + 15 × recording-minute cost + temporary storage/delivery`
 
-`price = allocated expenditure × 1.12`
+`cost-based estimate = allocated expenditure × 1.12`
 
 Optional retained storage is an additional purchase and is costed separately. At an assumed 128 kbps, a 15-minute file is about 14.4 MB; at $0.015/GB-month this is $0.000216 of Standard storage. Operations, retries and temporary storage are covered by the delivery allowance and common budget; update the inputs if measurements differ.
 
-| Credit | Allocated expenditure (USD) | Price before checkout rounding (UZS reference) |
+| Service | Allocated expenditure (USD) | Cost + 12% estimate (UZS reference) |
 | --- | --- | --- |
 | 15-minute call | $0.240724 | 3,225.40 |
 | 15-minute recording | $0.309222 | 4,143.19 |
 | 30-day storage per recording | $0.000216 | 2.90 |
 
-Amounts are calculated in millionths of a USD, rounded upwards at that precision. The selected 100-call/3-recording forecast produces approximately $28 of revenue before payment rounding. A 12% markup is about a 10.714% revenue margin; actual profitability depends on costs and redemption volumes matching the assumptions.
+Cost estimates are calculated in millionths of a USD, rounded upwards at that precision. The 12% cost markup is retained as an admin benchmark, separately from the owner's fixed selling prices above. Actual profitability depends on costs, payment proceeds and redemption volumes.
 
-The entire basket is summed before rounding once to whole UZS reference amounts and whole Stars. A single call is 21 Stars; ten calls are 208 Stars. A single recording is 27 Stars. Stars proceeds are a costing benchmark, not what a customer necessarily pays to obtain Stars.
+The entire basket is summed using the published UZS prices and, independently, the published Stars prices. A single call is 22 Stars, ten calls are 220 Stars, and one recording is 28 Stars. A recording with storage is 29 Stars after rounding. Stars proceeds are a costing benchmark, not what a customer necessarily pays to obtain Stars.
 
 Admin can edit every cost/forecast input and pause new sales. Saved changes are audited and update new quotes across all interfaces. Existing orders keep their original quote for their 30-minute checkout window; an authorized payment is honoured even when prices or sales availability change before its success notification arrives.
 

@@ -50,7 +50,7 @@ router.post('/credits/checkout',createActionRateLimiter('PAYMENT_INVOICE',req=>(
   try { order=await createCreditOrder(req.member!.id,input.requestId,{calls:input.calls,recordings:input.recordings,storage:input.storage},input.revision); }
   catch(error){throw new ActionError(409,error instanceof Error?error.message:'Checkout is unavailable.');}
   if (order.status!=='PENDING' || order.expiresAt<=new Date()) throw new ActionError(409,'This checkout is already used or expired. Review your balance before trying again.');
-  const invoiceUrl=await dashboardBot.api.createInvoiceLink('PairTalk practice credits',creditReceipt(order).slice(0,255),`credits:${order.id}`,'','XTR',[{label:'Practice credits',amount:order.starsAmount}]);
+  const invoiceUrl=await dashboardBot.api.createInvoiceLink('PairTalk calls and recordings',creditReceipt(order).slice(0,255),`credits:${order.id}`,'','XTR',[{label:'Calls and recordings',amount:order.starsAmount}]);
   res.json({orderId:order.id,invoiceUrl,stars:order.starsAmount,uzs:order.uzsAmount});
 }));
 router.get('/discount-offers',action(async(req,res)=>{res.json({offers:await activeDiscountOffers(req.member!),serverNow:new Date()});}));

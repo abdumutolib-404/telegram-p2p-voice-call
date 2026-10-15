@@ -3,6 +3,7 @@ import { adminFetch } from "../../api/client";
 import { useUnsavedChanges } from "../../hooks/useAdminTools";
 import {
   creditRates,
+  sellingCreditRates,
   validateCreditCosts,
   type CreditCostInputs,
 } from "../../../../server/src/contracts/credits";
@@ -13,6 +14,11 @@ const fields: {
   step: string;
   min: number;
 }[] = [
+  { key: "callPriceUzs", label: "Selling price (UZS/call)", step: "1", min: 1 },
+  { key: "callPriceStars", label: "Selling price (Stars/call)", step: "1", min: 1 },
+  { key: "recordingPriceUzs", label: "Selling price (UZS/recording)", step: "1", min: 1 },
+  { key: "recordingPriceStars", label: "Selling price (Stars/recording)", step: "1", min: 1 },
+  { key: "storagePriceUzs", label: "30-day storage (UZS/recording)", step: "1", min: 1 },
   {
     key: "recordingAllowanceMinutes",
     label: "Monthly recording capacity (minutes)",
@@ -109,7 +115,7 @@ export function CreditPricingEditor() {
       .catch((e) => {
         if (!controller.signal.aborted)
           setError(
-            e instanceof Error ? e.message : "Credit prices are unavailable.",
+            e instanceof Error ? e.message : "Prices are unavailable.",
           );
       });
     return () => controller.abort();
@@ -117,7 +123,7 @@ export function CreditPricingEditor() {
   let rates: ReturnType<typeof creditRates> | null = null;
   if (costs)
     try {
-      rates = creditRates(costs);
+      rates = sellingCreditRates(costs);
     } catch {
       /* Preview is available only for valid inputs. */
     }
@@ -142,7 +148,7 @@ export function CreditPricingEditor() {
       setCosts(result.costs);
       setSaved(JSON.stringify(result.costs));
       setNotice(
-        "Credit prices saved. New checkouts use these rates; existing purchases keep their credits.",
+        "Prices saved. New checkouts use these rates; existing purchases keep their purchases.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Prices could not be saved.");
@@ -157,17 +163,18 @@ export function CreditPricingEditor() {
       style={{ padding: 24, marginBottom: 24 }}
       aria-labelledby="credit-pricing-title"
     >
-      <h2 id="credit-pricing-title">Credit prices and operating costs</h2>
+      <h2 id="credit-pricing-title">Prices and operating costs</h2>
       <p>
-        One call credit and one recording credit each cover up to 15 minutes.
+        Each call and recording covers up to 15 minutes.
         New accounts receive three starter calls once. Paid balances do not
         expire.
       </p>
       <p>
         The budget includes infrastructure, starter usage, AI and other shared
         expenses. We subtract forecast direct call and recording costs first,
-        then allocate the remaining budget once. The price is allocated
-        expenditure × 1.12. Optional storage is charged separately.
+        then allocate the remaining budget once. The estimate adds 12% to
+        expenditure. Published selling prices are set independently above;
+        changing cost assumptions does not change them. Optional storage is separate.
       </p>
       <p className="field-help">
         Launch assumptions: $25 total operating costs, 100 paid calls and three
@@ -179,8 +186,8 @@ export function CreditPricingEditor() {
       </p>
       <p className="field-help">
         The free recording pool starts at 60 minutes per UTC month. Each
-        15-minute credit reserves 16 minutes, including a safety buffer.
-        Recordings, existing credit balances and pending purchases reduce
+        15-minute recording reserves 16 minutes, including a safety buffer.
+        Recordings, existing purchase balances and pending purchases reduce
         available sales. Reserve minutes here for provider usage outside this
         app; this setting does not upgrade your provider plan.
       </p>
@@ -199,7 +206,7 @@ export function CreditPricingEditor() {
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      {!costs && !error && <p role="status">Loading credit prices…</p>}
+      {!costs && !error && <p role="status">Loading prices…</p>}
       {costs && (
         <form onSubmit={(event) => void save(event)}>
           <fieldset
@@ -250,21 +257,22 @@ export function CreditPricingEditor() {
               }
               disabled={busy}
             />{" "}
-            Accept new credit purchases
+            Accept new purchases
           </label>
           {rates && (
             <div
               className="table-container"
               role="region"
               tabIndex={0}
-              aria-label="Calculated credit prices"
+              aria-label="Calculated prices"
             >
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th scope="col">Credit</th>
+                    <th scope="col">Service</th>
                     <th scope="col">Allocated cost (USD)</th>
-                    <th scope="col">Price with 12% markup (UZS)</th>
+                    <th scope="col">Cost + 12% estimate (UZS)</th>
+                    <th scope="col">Selling price (UZS)</th>
                     <th scope="col">Stars before basket rounding</th>
                   </tr>
                 </thead>
@@ -279,9 +287,10 @@ export function CreditPricingEditor() {
                             : "30-day storage"}
                       </th>
                       <td>{(rates![kind].costMicros / 1e6).toFixed(6)}</td>
+                      <td>{creditRates(costs)[kind].uzs.toLocaleString("en-US", {maximumFractionDigits:2})}</td>
                       <td>
                         {rates![kind].uzs.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
+                          minimumFractionDigits: 0,
                           maximumFractionDigits: 2,
                         })}
                       </td>
@@ -296,14 +305,14 @@ export function CreditPricingEditor() {
             Calls and recordings use the same published catalog across the
             landing page, Mini App and Telegram. Actual invoices round the
             entire selected basket once to whole Stars. UZS figures explain
-            costs; new credit checkout uses Stars.
+            costs; new checkout uses Stars.
           </p>
           <button
             className="btn-primary"
             type="submit"
             disabled={!dirty || busy || !rates}
           >
-            {busy ? "Saving…" : "Save credit prices"}
+            {busy ? "Saving…" : "Save prices"}
           </button>
         </form>
       )}

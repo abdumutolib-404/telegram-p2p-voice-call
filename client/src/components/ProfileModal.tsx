@@ -222,7 +222,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             className="w-full py-2.5 px-4 bg-mint-600 hover:bg-mint-500 text-slate-950 font-sans text-xs font-bold uppercase tracking-wider rounded-xl transition-transform active:scale-98 shadow-md shadow-mint-600/20 flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>Upgrade Plan / Get Credits</span>
+            <span>Get more calls</span>
           </button>
         </div>
 

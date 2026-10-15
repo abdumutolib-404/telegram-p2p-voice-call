@@ -16,6 +16,11 @@ export interface CreditCostInputs {
   salesEnabled: boolean;
   recordingAllowanceMinutes: number;
   recordingExternalUsedMinutes: number;
+  callPriceUzs: number;
+  callPriceStars: number;
+  recordingPriceUzs: number;
+  recordingPriceStars: number;
+  storagePriceUzs: number;
 }
 export const defaultCreditCosts: CreditCostInputs = {
   monthlyBudgetUsd: 25,
@@ -31,6 +36,11 @@ export const defaultCreditCosts: CreditCostInputs = {
   salesEnabled: true,
   recordingAllowanceMinutes: 60,
   recordingExternalUsedMinutes: 0,
+  callPriceUzs: 3500,
+  callPriceStars: 22,
+  recordingPriceUzs: 4200,
+  recordingPriceStars: 28,
+  storagePriceUzs: 3,
 };
 export type CreditKind = "CALL" | "RECORDING" | "STORAGE";
 export interface CreditRate {
@@ -115,6 +125,9 @@ export function validateCreditCosts(value: unknown): CreditCostInputs {
     input.paidRecordings < 1
   )
     throw new Error("Paid usage forecasts must be positive whole numbers.");
+  for (const key of ["callPriceUzs", "callPriceStars", "recordingPriceUzs", "recordingPriceStars", "storagePriceUzs"] as const)
+    if (!Number.isInteger(input[key]) || input[key] < 1)
+      throw new Error("Selling prices must be positive whole numbers.");
   if(!Number.isInteger(input.recordingAllowanceMinutes)||input.recordingAllowanceMinutes<16||!Number.isInteger(input.recordingExternalUsedMinutes))throw new Error('Recording capacity and reserved usage must be whole minutes; capacity must cover at least one 16-minute reservation.');
   if(input.paidRecordings>Math.floor(input.recordingAllowanceMinutes/16))throw new Error('The recording forecast exceeds the configured monthly capacity, including the provider safety buffer.');
   if (
@@ -176,6 +189,17 @@ export function creditRates(
     }),
   ) as Record<CreditKind, CreditRate>;
 }
+// Keep the expenditure estimate separate from the owner's published prices.
+// UZS and Stars prices are independent; storage is converted to Stars only
+// when included in a basket, then the whole payment rounds upwards once.
+export function sellingCreditRates(input: CreditCostInputs): Record<CreditKind, CreditRate> {
+  const estimate = creditRates(input);
+  return {
+    CALL: {...estimate.CALL, uzs: input.callPriceUzs, stars: input.callPriceStars},
+    RECORDING: {...estimate.RECORDING, uzs: input.recordingPriceUzs, stars: input.recordingPriceStars},
+    STORAGE: {...estimate.STORAGE, uzs: input.storagePriceUzs, stars: input.storagePriceUzs / input.uzsPerUsd / input.usdPerStar},
+  };
+}
 export function quoteCredits(
   catalog: Pick<CreditCatalog, "rates" | "uzsPerUsd" | "usdPerStar">,
   basket: CreditBasket,
@@ -193,25 +217,19 @@ export function quoteCredits(
     (basket.storage && basket.recordings === 0)
   )
     throw new Error(
-      "Choose 0–1,000 calls and recordings, with at least one credit. Storage requires recordings.",
+      "Choose 0–1,000 calls and recordings, with at least one selected. Storage requires recordings.",
     );
-  const micros =
-    catalog.rates.CALL.priceMicros * basket.calls +
-    catalog.rates.RECORDING.priceMicros * basket.recordings +
-    (basket.storage
-      ? catalog.rates.STORAGE.priceMicros * basket.recordings
-      : 0);
-  const uzs = Math.ceil((micros / 1_000_000) * catalog.uzsPerUsd);
-  const stars = Math.ceil(micros / 1_000_000 / catalog.usdPerStar);
+  const storage = basket.storage ? basket.recordings : 0;
+  const uzs = Math.ceil(catalog.rates.CALL.uzs * basket.calls + catalog.rates.RECORDING.uzs * basket.recordings + catalog.rates.STORAGE.uzs * storage);
+  const stars = Math.ceil(catalog.rates.CALL.stars * basket.calls + catalog.rates.RECORDING.stars * basket.recordings + catalog.rates.STORAGE.stars * storage);
   if (
-    !Number.isSafeInteger(micros) ||
+    !Number.isSafeInteger(uzs) || !Number.isSafeInteger(stars) ||
     stars < 1 ||
     stars > 1_000_000 ||
     uzs > 2_147_483_647
   )
     throw new Error("This basket exceeds payment limits.");
   return {
-    micros,
     uzs,
     stars,
     storage: basket.storage ? basket.recordings : 0,

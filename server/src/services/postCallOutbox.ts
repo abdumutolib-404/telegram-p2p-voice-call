@@ -52,7 +52,7 @@ export async function recoverPostCallJobs(bot: Bot<MyContext>, callId?: string, 
           const records = hasRecording && retention > 0 && (marker === 'BOTH' || marker === 'ALL' || recorderIds.includes(user.id));
           await sendPostCallReviewCard(bot, user.telegramId.toString(), call.id, partner.alias, call.duration,
             records ? call.recordingUrl! : undefined, records ? retention : undefined,
-            user.creditBilling ? 'Credit recordings are delivered to Telegram. Optional storage lasts 30 days from creation; otherwise temporary copies are removed after confirmed delivery or within 24 hours. Check History for the exact availability.' : undefined);
+            user.creditBilling ? 'Purchased recordings are delivered to Telegram. Optional storage lasts 30 days from creation; otherwise temporary copies are removed after confirmed delivery or within 24 hours. Check History for the exact availability.' : undefined);
         }
       }
       const done = await prisma.postCallJob.updateMany({ where: { callId: job.callId, status: 'PROCESSING', owner }, data: {

@@ -19,14 +19,14 @@ export async function createCreditOrder(
   const { catalog } = await readCreditConfiguration();
   if (!catalog.salesEnabled)
     throw new Error(
-      "Credit sales are paused. Your existing credits remain available.",
+      "Purchases are paused. Your existing purchases remain available.",
     );
   const quote = quoteCredits(catalog, basket);
   return prisma.$transaction(async (tx) => {
     await lockRow(tx, "User", userId);
     const user = await tx.user.findUnique({ where: { id: userId } });
     if (!user || isAccountRestricted(user) || !hasAcceptedCurrentTerms(user))
-      throw new Error("Complete registration before purchasing credits.");
+      throw new Error("Complete registration before purchasing calls or recordings.");
     const existing = await tx.creditOrder.findUnique({ where: { requestId } });
     if (existing) {
       if (
@@ -48,7 +48,7 @@ export async function createCreditOrder(
     if(basket.recordings>0){
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251011)::text`;
       const stock=await tx.$queryRaw<{remaining:number}[]>`SELECT pairtalk_recording_capacity_remaining() AS remaining`;
-      if((stock[0]?.remaining??0)<basket.recordings*16)throw new Error('There is not enough recording capacity for this purchase. Reduce recordings or buy call credits separately.');
+      if((stock[0]?.remaining??0)<basket.recordings*16)throw new Error('There is not enough recording capacity for this purchase. Reduce recordings or buy calls separately.');
     }
     return tx.creditOrder.create({
       data: {
@@ -88,7 +88,7 @@ export async function authorizeCreditOrder(
       throw new Error("This invoice is unavailable for your account.");
     const { catalog } = await readCreditConfiguration();
     if (!catalog.salesEnabled)
-      throw new Error("New credit payments are paused.");
+      throw new Error("New payments are paused.");
     await lockRow(tx, "CreditOrder", id);
     const order = (await tx.creditOrder.findUnique({ where: { id } }))!;
     if(order.recordings>0){
@@ -120,7 +120,7 @@ export async function settleCreditOrder(
 ) {
   return prisma.$transaction(async (tx) => {
     const initial = await tx.creditOrder.findUnique({ where: { id } });
-    if (!initial) throw new Error("Credit order not found.");
+    if (!initial) throw new Error("Purchase not found.");
     await lockRow(tx, "User", initial.userId);
     await lockRow(tx, "CreditOrder", id);
     const [order, user] = await Promise.all([
@@ -135,7 +135,7 @@ export async function settleCreditOrder(
       order.starsAmount !== amount ||
       !order.authorizedAt
     )
-      throw new Error("Payment does not match the authorized credit order.");
+      throw new Error("Payment does not match the authorized purchase.");
     if (order.telegramPaymentId === paymentId)
       return { duplicate: true, order };
     if (
@@ -175,7 +175,7 @@ export async function reserveCredit(
     { reserved: boolean }[]
   >`SELECT pairtalk_reserve_credit(${callId},${userId},${kind}) AS reserved`;
   if (!rows[0]?.reserved)
-    throw new Error(`No ${kind.toLowerCase()} credits remain.`);
+    throw new Error(`No available ${kind.toLowerCase()} balance remains.`);
 }
 export async function reserveRecordingCredit(
   tx: Prisma.TransactionClient,
@@ -192,7 +192,7 @@ export async function reserveRecordingCredit(
   const { calculateEffectiveCallDuration } = await import("./plan");
   if (calculateEffectiveCallDuration(call.userA, call.userB) > CREDIT_MINUTES)
     throw new Error(
-      "Recording credits cover calls up to 15 minutes. This longer call requires its legacy recording allowance.",
+      "Recordings cover calls up to 15 minutes. This longer call requires its legacy recording allowance.",
     );
   await reserveCredit(tx, callId, userId, "RECORDING");
   const user = await tx.user.findUnique({ where: { id: userId } });
@@ -251,7 +251,7 @@ export function creditReceipt(order: {
   starsAmount: number;
   uzsAmount: number;
 }) {
-  return `${order.calls} call credits · ${order.recordings} recording credits${order.storage ? ` · 30-day storage for ${order.storage} recordings` : ""}. Each call/recording covers up to 15 minutes. Paid credits do not expire. ${order.starsAmount} Stars; UZS reference ${order.uzsAmount.toLocaleString("en-US")}.`;
+  return `${order.calls} calls · ${order.recordings} recordings${order.storage ? ` · 30-day storage for ${order.storage} recordings` : ""}. Each call/recording covers up to 15 minutes. Purchased calls and recordings do not expire. ${order.starsAmount} Stars; UZS reference ${order.uzsAmount.toLocaleString("en-US")}.`;
 }
 export async function refundCreditOrder(
   id: string,
@@ -262,7 +262,7 @@ export async function refundCreditOrder(
 ) {
   const order = await prisma.$transaction(async (tx) => {
     const first = await tx.creditOrder.findUnique({ where: { id } });
-    if (!first) throw new Error("Credit purchase not found.");
+    if (!first) throw new Error("Purchase not found.");
     await lockRow(tx, "User", first.userId);
     await lockRow(tx, "CreditOrder", id);
     const [purchase, user] = await Promise.all([
@@ -275,7 +275,7 @@ export async function refundCreditOrder(
       user.telegramId !== telegramId ||
       !purchase.telegramPaymentId
     )
-      throw new Error("Credit purchase not found.");
+      throw new Error("Purchase not found.");
     if (purchase.status === "REFUNDED" || purchase.status === "REFUND_PENDING")
       return purchase;
     if (
@@ -284,7 +284,7 @@ export async function refundCreditOrder(
       Date.now() - purchase.paidAt.getTime() > 48 * 3600000
     )
       throw new Error(
-        "This purchase is outside the 48-hour credit refund period. Contact /paysupport.",
+        "This purchase is outside the 48-hour purchase refund period. Contact /paysupport.",
       );
     const changed = await tx.user.updateMany({
       where: {
@@ -308,7 +308,7 @@ export async function refundCreditOrder(
         action: "CREDIT_REFUND_REQUESTED",
         targetId: id,
         adminId: String(telegramId),
-        reason: "Full unused credit purchase refund",
+        reason: "Full unused purchase refund",
       },
     });
     return tx.creditOrder.update({

@@ -3,7 +3,7 @@ import { prisma } from "../config/database";
 import {
   defaultCreditCosts,
   validateCreditCosts,
-  creditRates,
+  sellingCreditRates,
   type CreditCatalog,
 } from "../contracts/credits";
 
@@ -13,7 +13,14 @@ export async function readCreditConfiguration() {
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
   const costs = validateCreditCosts(
-    latest?.afterState ? JSON.parse(latest.afterState) : defaultCreditCosts,
+    latest?.afterState ? {
+      callPriceUzs: defaultCreditCosts.callPriceUzs,
+      callPriceStars: defaultCreditCosts.callPriceStars,
+      recordingPriceUzs: defaultCreditCosts.recordingPriceUzs,
+      recordingPriceStars: defaultCreditCosts.recordingPriceStars,
+      storagePriceUzs: defaultCreditCosts.storagePriceUzs,
+      ...JSON.parse(latest.afterState),
+    } : defaultCreditCosts,
   );
   const revision = crypto
     .createHash("sha256")
@@ -30,7 +37,7 @@ export async function readCreditConfiguration() {
     markupPercent: 12,
     salesEnabled: costs.salesEnabled,
     recordingsAvailable:Math.min(1000,Math.max(0,Math.floor((capacity[0]?.remaining??0)/16))),
-    rates: creditRates(costs),
+    rates: sellingCreditRates(costs),
     uzsPerUsd: costs.uzsPerUsd,
     usdPerStar: costs.usdPerStar,
   };
@@ -52,7 +59,7 @@ export async function saveCreditConfiguration(value: unknown, adminId: string) {
         adminId,
         beforeState: previous?.afterState ?? JSON.stringify(defaultCreditCosts),
         afterState: JSON.stringify(costs),
-        reason: "Published cost-based credit rates with 12% markup",
+        reason: "Published practice prices and operating cost assumptions",
       },
     });
   });

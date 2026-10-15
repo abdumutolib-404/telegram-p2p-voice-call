@@ -75,7 +75,7 @@ export function PricingPage({
         <section className="wrap page-head">
           <h1>Your practice. Your amount.</h1>
           <p>
-            Start with three free calls, then choose call and recording credits
+            Start with three free calls, then choose call and recordings
             separately. No subscription required.
           </p>
         </section>
@@ -90,13 +90,12 @@ export function PricingPage({
           {error && <p role="alert">{error}</p>}
           <p className="pricing-fineprint">
             Prices checked{" "}
-            {data.credits.checkedAt.slice(0, 16).replace("T", " ")} UTC. These
-            rates use forecast operating costs and a 12% markup; future rate
-            changes apply to new purchases. Existing purchased credits keep
+            {data.credits.checkedAt.slice(0, 16).replace("T", " ")} UTC. Future price
+            changes apply to new purchases. Existing purchases keep
             their service entitlement.
           </p>
           <p className="pricing-fineprint">
-            Full unused credit purchases may be refunded within 48 hours using
+            Full unused purchases may be refunded within 48 hours using
             /refund in Telegram. Existing subscription benefits and their
             original refund terms remain available.{" "}
             <a href="/refund-policy">Refund policy</a> ·{" "}
@@ -311,7 +310,7 @@ export function PricingPage({
           full price by the included call allowance; it is not a separate call
           purchase price. Recordings and storage are included as shown. Unused
           paid allowances expire with the subscription period. Independent
-          lifetime credits are not currently sold.
+          these purchases are not currently sold.
         </p>
         {data && data.plans.length > 0 && (
           <div

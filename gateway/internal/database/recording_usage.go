@@ -80,21 +80,21 @@ func (db *DB) consumeRecording(ctx context.Context, tx pgx.Tx, callID, userID st
 			return err
 		}
 		if CalculateEffectiveCallDuration(ua, ub, db.AdminTelegramIDs) > 15 {
-			return errors.New("recording credits cover calls up to 15 minutes")
+			return errors.New("purchased recordings cover calls up to 15 minutes")
 		}
 		var reserved bool
 		if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_credit($1,$2,'RECORDING')`, callID, userID).Scan(&reserved); err != nil {
 			return err
 		}
 		if !reserved {
-			return errors.New("no recording credits remain")
+			return errors.New("no purchased recordings remain")
 		}
 		if user.StorageCredits > 0 {
 			if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_credit($1,$2,'STORAGE')`, callID, userID).Scan(&reserved); err != nil {
 				return err
 			}
 			if !reserved {
-				return errors.New("storage credit reservation failed")
+				return errors.New("storage reservation failed")
 			}
 		}
 	}
@@ -115,7 +115,7 @@ func (db *DB) consumeRecording(ctx context.Context, tx pgx.Tx, callID, userID st
 		return err
 	}
 	if !capacity {
-		return errors.New("recording capacity is unavailable; your credit was not charged")
+		return errors.New("recording capacity is unavailable; your recording was not charged")
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO "RecordingUsage" ("callId","userId","consumedAt") VALUES ($1,$2,NOW()) ON CONFLICT DO NOTHING`, callID, userID)
 	return err

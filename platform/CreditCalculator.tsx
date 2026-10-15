@@ -10,7 +10,7 @@ export function CreditCalculator({
   catalog,
   onCheckout,
   busy = false,
-  checkoutLabel = "Choose credits in Telegram",
+  checkoutLabel = "Choose calls and recordings in Telegram",
   termsUrl = "/terms#payments",
 }: {
   catalog: CreditCatalog;
@@ -48,7 +48,7 @@ export function CreditCalculator({
   }
   const money = (n: number) =>
     n.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
+      minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     });
   const quantity = (kind: "calls" | "recordings", raw: string) => {
@@ -66,26 +66,28 @@ export function CreditCalculator({
         <span className="credit-shop__eyebrow">Practice on your terms</span>
         <h2>Buy what you’ll use.</h2>
         <p>
-          Calls and recordings are separate. Paid credits do not expire, and
+          Buy calls and recordings separately. Your purchases do not expire, and
           there is no monthly subscription.
         </p>
       </div>
       <div className="credit-shop__rates">
         <article>
-          <h3>Call credit</h3>
+          <h3>Calls</h3>
           <strong>
-            {money(catalog.rates.CALL.uzs)} <small>UZS / credit</small>
+            {money(catalog.rates.CALL.uzs)} <small>UZS/call</small>
           </strong>
+          <p>{money(catalog.rates.CALL.stars)} Stars/call</p>
           <p>
             One participant’s call, up to 15 minutes. Matching and IELTS prompts
             included.
           </p>
         </article>
         <article>
-          <h3>Recording credit</h3>
+          <h3>Recordings</h3>
           <strong>
-            {money(catalog.rates.RECORDING.uzs)} <small>UZS / credit</small>
+            {money(catalog.rates.RECORDING.uzs)} <small>UZS/recording</small>
           </strong>
+          <p>{money(catalog.rates.RECORDING.stars)} Stars/recording</p>
           <p>
             One call recording, up to 15 minutes. Both voices included, with
             both partners’ permission.
@@ -101,7 +103,7 @@ export function CreditCalculator({
       >
         <div className="credit-shop__quantities">
           <label>
-            Call credits
+            Calls
             <input
               type="number"
               min={0}
@@ -114,7 +116,7 @@ export function CreditCalculator({
             />
           </label>
           <label>
-            Recording credits
+            Recordings
             <input
               type="number"
               min={0}
@@ -129,8 +131,8 @@ export function CreditCalculator({
         </div>
         <p className="credit-shop__note" role="status">
           {catalog.recordingsAvailable === 0
-            ? "Recording credits are temporarily sold out. You can still buy call credits."
-            : `${catalog.recordingsAvailable} recording credits available from the current shared capacity. Availability is checked again at checkout.`}
+            ? "Recordings are temporarily sold out. You can still buy calls."
+            : `${catalog.recordingsAvailable} recordings available. Availability is checked again at checkout.`}
           {capacityExceeded && " Reduce recording quantity to continue."}
         </p>
         <label className="credit-shop__storage">
@@ -148,8 +150,9 @@ export function CreditCalculator({
           <span>
             <b>Add 30-day storage</b>
             <br />
-            {money(catalog.rates.STORAGE.uzs)} UZS for each selected recording.
-            Storage credits apply automatically to your next credit recordings.
+            {money(catalog.rates.STORAGE.uzs)} UZS/recording.
+            Storage applies automatically to your next purchased recordings.
+            At Stars checkout, storage is converted and the total rounds up to whole Stars.
           </span>
         </label>
         <p className="credit-shop__note">
@@ -187,11 +190,11 @@ export function CreditCalculator({
             disabled={busy}
           />
           <span>
-            I agree to the credit purchase terms below and the{" "}
+            I agree to the purchase terms below and the{" "}
             <a href={termsUrl} target="_blank" rel="noreferrer">
               payment terms
             </a>
-            , including the 48-hour full unused-credit refund rule.
+            , including the 48-hour full unused-purchase refund rule.
           </span>
         </label>
         <button
@@ -203,13 +206,13 @@ export function CreditCalculator({
             ? "Opening checkout…"
             : catalog.salesEnabled
               ? checkoutLabel
-              : "Credit sales paused"}
+              : "Purchases paused"}
         </button>
         <p className="credit-shop__note">
-          A credit is reserved when a call starts. Failed connections and calls
-          under five seconds return it. A recording credit is charged when a
-          usable audio file is ready; failed exports return it. Reconnecting
-          never uses another call credit.
+          One call is reserved from your balance when it starts. Failed
+          connections and calls under five seconds return it. A recording is
+          charged when a usable audio file is ready; failed exports return it.
+          Reconnecting never uses another purchased call.
         </p>
       </form>
     </div>

@@ -657,14 +657,14 @@ router.post('/plans/discounts',adminAuthMiddleware,async (req:AdminAuthenticated
   catch(error){if(error instanceof ZodError){res.status(400).json({error:'Plan, discount percentage (0.01–100), recipient count (1–10,000) and valid period (1 minute–365 days) are required.'});return;}if(error instanceof DiscountError){res.status(error.status).json({error:error.message});return;}logger.error('Discount campaign creation failed',{service:'admin'},error);res.status(500).json({error:'Could not create the campaign. Retry the same submission to check its result.'});}
 });
 router.get('/credit-pricing',adminAuthMiddleware,async(_req,res)=>{
-  try { res.json(await readCreditConfiguration()); } catch { res.status(503).json({error:'Credit prices are unavailable.'}); }
+  try { res.json(await readCreditConfiguration()); } catch { res.status(503).json({error:'Prices are unavailable.'}); }
 });
 router.get('/credit-orders',adminAuthMiddleware,async(req,res)=>{
   try {
     const cursor=req.query.cursor===undefined?undefined:z.string().uuid().parse(req.query.cursor);
     const orders=await prisma.creditOrder.findMany({orderBy:[{createdAt:'desc'},{id:'desc'}],take:21,...(cursor?{cursor:{id:cursor},skip:1}:{}),select:{id:true,calls:true,recordings:true,storage:true,starsAmount:true,uzsAmount:true,status:true,createdAt:true,paidAt:true,refundedAt:true,user:{select:{alias:true}}}});
     res.json({orders:orders.slice(0,20),nextCursor:orders.length>20?orders[19].id:null});
-  } catch(error){res.status(error instanceof ZodError?400:503).json({error:'Credit purchases are unavailable.'});}
+  } catch(error){res.status(error instanceof ZodError?400:503).json({error:'Purchases are unavailable.'});}
 });
 router.put('/credit-pricing',adminAuthMiddleware,async(req:AdminAuthenticatedRequest,res)=>{
   try { res.json(await saveCreditConfiguration(req.body,String(req.adminUser!.telegramId))); }

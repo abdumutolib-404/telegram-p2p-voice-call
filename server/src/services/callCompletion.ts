@@ -83,7 +83,7 @@ export async function completeCallSession(id: string, completion: Completion): P
       } });
     }
     for (const { user, used, entitlement } of allowances) {
-      if (user.creditCallActive) continue; // Database terminal trigger settles the reserved credit.
+      if (user.creditCallActive) continue; // Database terminal trigger settles the reserved call.
       if (!entitlement.isUnlimited && used >= entitlement.baseCallLimit && await consumeOldestBonusCall(user.id, tx)) continue;
       await tx.user.update({
         where: { id: user.id },

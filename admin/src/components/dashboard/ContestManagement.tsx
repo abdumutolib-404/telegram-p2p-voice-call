@@ -350,7 +350,7 @@ export function ContestManagement() {
             <StatCard
               label="Bonus Balance"
               value={(data?.activeBonusCalls ?? 0).toLocaleString()}
-              subValue="Bonus call credits in circulation"
+              subValue="Bonus calls in circulation"
               icon={<Gift size={18} />}
             />
           </div>

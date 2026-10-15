@@ -19,7 +19,7 @@ export async function renderCreditOverview(
   const { catalog } = await readCreditConfiguration();
   const money = (value: number) =>
     value.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
+      minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     });
   const user = ctx.from
@@ -36,10 +36,10 @@ export async function renderCreditOverview(
   }
   if (ctx.callbackQuery) await ctx.answerCallbackQuery();
   await ctx.reply(
-    `Practice credits\n\nCall · ${money(catalog.rates.CALL.uzs)} UZS per credit\nRecording · ${money(catalog.rates.RECORDING.uzs)} UZS per credit\nOptional 30-day storage · ${money(catalog.rates.STORAGE.uzs)} UZS per recording\n\nOne credit covers up to 15 minutes. Choose any number of calls and recordings separately. Purchased credits do not expire.\n\n${user ? `Your credit balance: ${user.callCredits ?? 0} calls · ${user.recordingCredits ?? 0} recordings · ${user.storageCredits ?? 0} storage credits.\n\n` : ""}New accounts receive three free starter calls once. Existing allowances stay available. UZS amounts are cost references; checkout charges Telegram Stars and rounds the basket once. ${catalog.salesEnabled ? "" : "New credit sales are currently paused."}`,
+    `Calls and recordings\n\n${money(catalog.rates.CALL.uzs)} UZS/call or ${money(catalog.rates.CALL.stars)} Stars/call\n${money(catalog.rates.RECORDING.uzs)} UZS/recording or ${money(catalog.rates.RECORDING.stars)} Stars/recording\nOptional 30-day storage · ${money(catalog.rates.STORAGE.uzs)} UZS/recording\n\nEach call or recording covers up to 15 minutes. Buy calls and recordings separately. Purchased calls and recordings do not expire.\n\n${user ? `Your balance: ${user.callCredits ?? 0} calls · ${user.recordingCredits ?? 0} recordings · ${user.storageCredits ?? 0} storage add-ons.\n\n` : ""}New accounts receive three free starter calls once. Existing allowances stay available. Checkout charges Telegram Stars. Storage is converted to Stars, then the basket rounds up to whole Stars. ${catalog.salesEnabled ? "" : "New purchases are currently paused."}`,
     {
       reply_markup: new InlineKeyboard().webApp(
-        "Choose credits",
+        "Choose calls and recordings",
         url.toString(),
       ),
     },
@@ -68,7 +68,7 @@ export async function renderCreditRefunds(ctx: MyContext) {
       .row();
   keyboard.text("Legacy subscription refunds", "legacy_refunds");
   await ctx.reply(
-    "Credit purchase refunds\n\nA full credit refund is available within 48 hours when the complete purchased quantities are still in your available balance. Credits reserved for a call or recording cannot be refunded. Select a purchase to confirm its refund. For legacy subscription refunds, contact /paysupport.",
+    "Purchase refunds\n\nA full purchase refund is available within 48 hours when the complete purchased quantities are still in your available balance. Calls and recordings already reserved cannot be refunded. Select a purchase to confirm its refund. For legacy subscription refunds, contact /paysupport.",
     { reply_markup: keyboard },
   );
   return true;
@@ -79,7 +79,7 @@ export function setupCreditHandlers(bot: Bot<MyContext>) {
   bot.callbackQuery(/^credit_refund:([a-f0-9-]{36})$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      "Refund this credit purchase? Its full quantities will be removed from your available balance and the original Stars payment returned.",
+      "Refund this purchase? Its full quantities will be removed from your available balance and the original Stars payment returned.",
       {
         reply_markup: new InlineKeyboard().text(
           "Confirm refund",
@@ -106,7 +106,7 @@ export function setupCreditHandlers(bot: Bot<MyContext>) {
     if (!q.invoice_payload.startsWith("credits:")) return next();
     try {
       const match = pattern.exec(q.invoice_payload);
-      if (!match) throw new Error("Invalid credit invoice.");
+      if (!match) throw new Error("Invalid invoice.");
       await authorizeCreditOrder(
         match[1],
         BigInt(ctx.from.id),
@@ -120,7 +120,7 @@ export function setupCreditHandlers(bot: Bot<MyContext>) {
         error_message:
           error instanceof Error
             ? error.message
-            : "Credit checkout is unavailable.",
+            : "Checkout is unavailable.",
       });
     }
   });
@@ -128,7 +128,7 @@ export function setupCreditHandlers(bot: Bot<MyContext>) {
     const p = ctx.message.successful_payment;
     if (!p.invoice_payload.startsWith("credits:")) return next();
     const match = pattern.exec(p.invoice_payload);
-    if (!match) throw new Error("Invalid credit payment.");
+    if (!match) throw new Error("Invalid payment.");
     try {
       const result = await settleCreditOrder(
         match[1],
@@ -139,7 +139,7 @@ export function setupCreditHandlers(bot: Bot<MyContext>) {
       );
       if (!result.duplicate)
         await ctx.reply(
-          `Credits added. ${creditReceipt(result.order)} Use /credits to check your balance or /refund for payment help.`,
+          `Purchase added. ${creditReceipt(result.order)} Use /plans to check your balance or /refund for payment help.`,
         );
     } catch (error) {
       logger.error(

@@ -81,7 +81,7 @@ export function PracticeComparison({ pricing, loading }: { pricing: PublicPricin
     {
       label: "10 sessions × 15 min",
       cost: true,
-      ours: pricing?.credits ? <Price note="10 independent call credits · no subscription · recordings optional">{Math.ceil(pricing.credits.rates.CALL.uzs*10).toLocaleString('en-US')} UZS</Price> : plan
+      ours: pricing?.credits ? <Price note="10 independent calls · no subscription · recordings optional">{Math.ceil(pricing.credits.rates.CALL.uzs*10).toLocaleString('en-US')} UZS</Price> : plan
         ? <Price note={`${plan.name} · full ${planPeriod(plan)} price · ${plan.unlimitedCalls ? "unlimited" : plan.calls} included calls`}>
             {formatPlanPrice(plan, "UZS")}<span className="practice-comparison__alternate">or {formatPlanPrice(plan, "XTR")}</span>
           </Price>

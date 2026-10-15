@@ -1179,7 +1179,7 @@ export class InMemoryPrismaMock {
       this.auditLogs.set(id, row);
       return { ...row };
     },
-    findFirst: async (args?: { where?: { targetId?: string | { in?: string[] }; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc' } }): Promise<AuditLogRow | null> => {
+    findFirst: async (args?: { where?: { targetId?: string | { in?: string[] }; action?: string }; orderBy?: { createdAt?: 'asc' | 'desc';id?:'asc'|'desc' } | Array<{createdAt?:'asc'|'desc';id?:'asc'|'desc'}> }): Promise<AuditLogRow | null> => {
       let list = [...this.auditLogs.values()];
       if (args?.where?.targetId) {
         if (typeof args.where.targetId === 'object' && args.where.targetId && 'in' in args.where.targetId && Array.isArray(args.where.targetId.in)) {
@@ -1190,7 +1190,14 @@ export class InMemoryPrismaMock {
         }
       }
       if (args?.where?.action) list = list.filter((l) => l.action === args.where!.action);
-      if (args?.orderBy?.createdAt === 'desc') list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      const ordering=Array.isArray(args?.orderBy)?args.orderBy:args?.orderBy?[args.orderBy]:[];
+      list.sort((a,b)=>{
+        for(const order of ordering){
+          const compared=order.createdAt?(a.createdAt.getTime()-b.createdAt.getTime())*(order.createdAt==='desc'?-1:1):order.id?a.id.localeCompare(b.id)*(order.id==='desc'?-1:1):0;
+          if(compared)return compared;
+        }
+        return 0;
+      });
       return list[0] ? { ...list[0] } : null;
     },
     findMany: async (args?: {where?:Record<string,unknown>;orderBy?:Record<string,'asc'|'desc'>|Array<Record<string,'asc'|'desc'>>;take?:number;skip?:number}) => jobModel(this.auditLogs as unknown as Map<string,Record<string,unknown>>,'id').findMany(args),

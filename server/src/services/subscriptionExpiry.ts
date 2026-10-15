@@ -139,11 +139,11 @@ export async function notifyQuotaLimitReachedIfExhausted(
 
       if (acquired === 'OK') {
         const creditOnly=dbUser.creditBilling && entitlement.baseCallLimit===0;
-        const inlineKb = new InlineKeyboard().text(creditOnly?'Buy call credits':'⭐ Upgrade Plan', 'show_plans');
+        const inlineKb = new InlineKeyboard().text(creditOnly?'Buy calls':'⭐ Upgrade Plan', 'show_plans');
         await notificationQueue.enqueue(
           bot,
           dbUser.telegramId.toString(),
-          creditOnly ? 'Your call credits have been used. Add call credits to keep practising. Starter calls are a one-time gift; paid credits do not expire.' : `⚠️ <b>Monthly Call Limit Reached</b>\n\n` +
+          creditOnly ? 'Your calls have been used. Add calls to keep practising. Starter calls are a one-time gift; purchased calls and recordings do not expire.' : `⚠️ <b>Monthly Call Limit Reached</b>\n\n` +
             `You have used all <b>${callsUsed} / ${entitlement.callLimit} calls</b> allocated for your <b>${entitlement.plan} Plan</b> this month.\n\n` +
             `Your monthly limit will reset at the start of your next billing cycle.\n` +
             `Want to practice more? Upgrade your plan anytime to unlock more call sessions!`,

@@ -122,7 +122,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
       title: 'Call allowance reached',
       description:
         message ||
-        'You have reached your practice call allowance. Open Credits in your dashboard or the Telegram bot to add more calls. Existing subscription renewals follow their original terms.',
+        'You have reached your practice call allowance. Open Calls and recordings in your dashboard or the Telegram bot to add more calls. Existing subscription renewals follow their original terms.',
       icon: CreditCard,
       iconColor: 'text-mint-400',
     },
@@ -240,7 +240,7 @@ export const LockdownScreen: React.FC<LockdownScreenProps> = ({
             onClick={onOpenPlans}
             className="w-full py-3.5 px-6 mb-4 bg-mint-600 hover:bg-mint-500 text-slate-950 font-sans text-xs font-bold uppercase tracking-wider rounded-2xl transition-transform active:scale-95 shadow-lg shadow-mint-600/30 cursor-pointer"
           >
-            Upgrade Plan & Get Credits
+            Get more calls
           </button>
         )}
 

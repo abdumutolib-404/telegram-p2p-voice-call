@@ -46,7 +46,7 @@ export function CreditBalance({
   return (
     <section
       className="credit-account"
-      aria-label="Your credit balance"
+      aria-label="Your balance"
       style={{
         marginBottom: 24,
         padding: 20,
@@ -59,11 +59,11 @@ export function CreditBalance({
         <p role="alert">{error}</p>
       ) : data ? (
         <p>
-          {data.balance.calls} call credits · {data.balance.recordings}{" "}
-          recording credits · {data.balance.storage} storage credits
+          {data.balance.calls} calls · {data.balance.recordings}{" "}
+          recordings · {data.balance.storage} storage add-ons
         </p>
       ) : (
-        <p role="status">Checking your credits…</p>
+        <p role="status">Checking your balance…</p>
       )}
       <button
         className="secondary-button"
@@ -82,7 +82,7 @@ export function CreditBalance({
               alignItems: "center",
             }}
           >
-            Recent credit purchases
+            Recent purchases
           </summary>
           {data.orders.length ? (
             data.orders.map((order) => (
@@ -104,7 +104,7 @@ export function CreditBalance({
               </p>
             ))
           ) : (
-            <p>No credit purchases yet. Your starter gift is separate.</p>
+            <p>No purchases yet. Your starter gift is separate.</p>
           )}
           <p>
             Use /refund in the bot for payment help. Legacy subscription

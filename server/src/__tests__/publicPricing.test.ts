@@ -75,9 +75,31 @@ it('publishes independent credit prices from audited admin cost inputs to the pu
     expect(published.body.credits.revision).toBe(saved.body.catalog.revision);
     const reply=vi.fn().mockResolvedValue(true);
     await renderCreditOverview({from:{id:0},reply} as unknown as MyContext);
-    expect(reply.mock.calls[0][0]).toContain(saved.body.catalog.rates.CALL.uzs.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
-    expect(reply.mock.calls[0][0]).toContain('Purchased credits do not expire');
+    expect(reply.mock.calls[0][0]).toContain('3,500 UZS/call or 22 Stars/call');
+    expect(reply.mock.calls[0][0]).toContain('4,200 UZS/recording or 28 Stars/recording');
+    expect(reply.mock.calls[0][0]).toContain('Purchased calls and recordings do not expire');
+    expect(reply.mock.calls[0][0]).not.toMatch(/\bcredits?\b/i);
+    const updated=await request(app).put('/api/admin/credit-pricing').set('Authorization',`Bearer ${token}`).send({...defaultCreditCosts,callPriceUzs:3900,callPriceStars:23});
+    expect(updated.status).toBe(200);
+    const repriced=await request(app).get('/api/public/plans');
+    expect(repriced.body.credits.rates.CALL).toMatchObject({uzs:3900,stars:23});
+    expect(repriced.body.credits.revision).not.toBe(saved.body.catalog.revision);
     expect((await request(app).put('/api/admin/credit-pricing').send(defaultCreditCosts)).status).toBe(401);
     expect((await request(app).put('/api/admin/credit-pricing').set('Authorization',`Bearer ${token}`).send({...defaultCreditCosts,paidCalls:0})).status).toBe(400);
   } finally {await prisma.auditLog.deleteMany({where:{action:'CREDIT_COSTS_UPDATE'}});}
+});
+
+it('loads selling prices for older cost settings but rejects damaged cost records', async()=>{
+  const {defaultCreditCosts}=await import('../contracts/credits');
+  const legacy: Record<string,unknown>={...defaultCreditCosts};
+  for(const key of ['callPriceUzs','callPriceStars','recordingPriceUzs','recordingPriceStars','storagePriceUzs'])delete legacy[key];
+  const record=await prisma.auditLog.create({data:{action:'CREDIT_COSTS_UPDATE',targetId:'credit_costs',adminId:'synthetic-owner',afterState:JSON.stringify(legacy)}});
+  try {
+    const response=await request(app).get('/api/public/plans');
+    expect(response.status).toBe(200);
+    expect(response.body.credits.rates.CALL).toMatchObject({uzs:3500,stars:22});
+    await prisma.auditLog.deleteMany({where:{id:record.id}});
+    await prisma.auditLog.create({data:{action:'CREDIT_COSTS_UPDATE',targetId:'credit_costs',adminId:'synthetic-owner',afterState:'{}'}});
+    expect((await request(app).get('/api/public/plans')).status).toBe(503);
+  } finally {await prisma.auditLog.deleteMany({where:{id:record.id}});}
 });

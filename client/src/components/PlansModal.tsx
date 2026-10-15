@@ -118,7 +118,7 @@ export function PlansModal({
         className={inline ? "plans-content" : "dashboard-modal plans-dialog"}
         role={inline ? undefined : "dialog"}
         aria-modal={inline ? undefined : true}
-        aria-label="Practice credits"
+        aria-label="Calls and recordings"
         tabIndex={inline ? undefined : -1}
       >
         {!inline && (
@@ -132,7 +132,7 @@ export function PlansModal({
               <X size={20} aria-hidden="true" />
             </button>
             <div className="plans-heading">
-              <h2>Practice credits</h2>
+              <h2>Calls and recordings</h2>
             </div>
           </>
         )}
@@ -174,9 +174,9 @@ export function PlansModal({
               </p>
             )}
             <p className="credit-shop__note">
-              Existing subscription allowances remain available. Credit
+              Existing subscription allowances remain available. Purchased
               recordings cover calls up to 15 minutes. Use /refund in the bot
-              for a full unused-credit refund within 48 hours.
+              for a full unused-purchase refund within 48 hours.
             </p>
           </>
         )}
@@ -257,7 +257,7 @@ export function PlansModal({
                 the final invoice before paying.
               </p>
               <p>
-                You can request a full refund for a full unused credit purchase
+                You can request a full refund for a full unused purchase
                 within 48 hours. Legacy subscription refunds retain their
                 original eligibility. Purchase state and account restrictions
                 also apply.
