@@ -9,6 +9,7 @@ import { getActiveBonusCallsCount } from '../services/referralService';
 import { logger } from '../utils/logger';
 import { setRequestContextUserId } from '../utils/requestContext';
 import { touchUserActivity } from '../services/userActivity';
+import { isAccountRestricted } from '../services/accountRestriction';
 
 const router = Router();
 const authLimiter = createActionRateLimiter('AUTH_VERIFY', getClientIp);
@@ -78,7 +79,7 @@ router.post('/verify', authLimiter, async (req, res) => {
       return;
     }
 
-    if (dbUser.isBanned && (!dbUser.bannedUntil || new Date(dbUser.bannedUntil) > now)) {
+    if (isAccountRestricted(dbUser, now)) {
       const remainingSeconds = dbUser.bannedUntil
         ? Math.max(0, Math.ceil((new Date(dbUser.bannedUntil).getTime() - now.getTime()) / 1000))
         : null;

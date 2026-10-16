@@ -91,7 +91,7 @@ export const pages: Record<string, Guide> = {
         body: (
           <>
             <p>
-              Set your self-assessed whole-band level from 5 to 9 and your
+              Set your self-assessed speaking scores in half-band steps and your
               preferences for fluency and coherence, lexical resource,
               grammatical range and accuracy, and pronunciation. These settings
               help PairTalk consider your level and complementary strengths when

@@ -2,9 +2,9 @@
 
 > PairTalk connects English learners for one-to-one IELTS speaking practice through a Telegram Mini App. Learners register in the Telegram bot, accept a Terms of Use PDF, and open their dashboard from Telegram to find partners, make voice calls, give ratings, report behavior, and manage account settings.
 
-Reviewed: 2026-10-07. PairTalk is an independent peer practice service; partners are learners, not official IELTS examiners. Matching depends on available partners. Practice preferences and peer feedback are not official test scores.
+Reviewed: 2026-10-16. PairTalk is an independent peer practice service; partners are learners, not official IELTS examiners. Matching depends on available partners. Practice preferences and peer feedback are not official test scores.
 
-Prices and allowances come from the published pricing catalog. Telegram Stars and UZS are separate quoted currencies. The website compares subscriptions; independent lifetime call or recording credits are not currently sold. Do not infer prices from older documents or convert Stars into a fixed dollar amount. Check the pricing page and Telegram invoice before purchase.
+Prices and availability come from the published pricing catalog. Choose 15- or 30-minute calls, optional recordings and optional 30-day retention. Unused purchased quantities do not expire. A 30-minute call or recording uses two 15-minute units. Telegram Stars and UZS are separately quoted checkout totals. Check the live pricing page and invoice; do not infer prices from older documents.
 
 The Markdown pages below are built from the same public content as their HTML versions. Pricing and statistics can include dated build snapshots; use the live pages or public API for the latest available data. Private dashboard, admin, and account APIs require authentication and are not public documentation.
 
@@ -17,7 +17,7 @@ The Markdown pages below are built from the same public content as their HTML ve
 
 ## Pricing and community activity
 
-- [Compare plans](https://pairtalk.online/pricing): Live public comparison of Stars and UZS prices, call allowances, session length, recordings, retention, and plan validity.
+- [Build a practice pack](https://pairtalk.online/pricing): Current Stars and UZS totals for calls, duration, optional recordings and retention, subject to recording capacity.
 - [Pricing explanation](https://pairtalk.online/pricing.md): Readable pricing-page content; any quoted prices are dated snapshots, not a current checkout quote.
 - [Community statistics](https://pairtalk.online/stats): Available aggregate calls, session hours, participating learners, ratings, and update timestamps.
 - [Statistics methodology](https://pairtalk.online/stats.md): Counting definitions, voluntary feedback, privacy exclusions, and snapshot limitations.
@@ -29,7 +29,8 @@ The Markdown pages below are built from the same public content as their HTML ve
 - [Safety guide](https://pairtalk.online/safety.md): Personal information, leaving calls, reporting, payment requests, and recording agreement.
 - [Community guidelines](https://pairtalk.online/community-guidelines.md): Respectful practice, feedback, prohibited conduct, moderation, and appeals.
 - [Privacy policy](https://pairtalk.online/privacy.md): Account and call data, aliases, transport encryption, recordings, retention, and data requests.
-- [Terms of Service](https://pairtalk.online/terms.md): Eligibility, registration agreement, subscriptions, refund conditions, independence, and support. Request the versioned registration PDF with /terms in the bot.
+- [Terms of Service](https://pairtalk.online/terms.md): Eligibility, purchases, registration agreement, legacy subscriptions, independence, and support. Request the versioned registration PDF with /terms in the bot.
+- [Refund policy](https://pairtalk.online/refund-policy.md): Full unused purchase refunds within 48 hours, including reservation checks; legacy purchases retain their original rules.
 
 ## Optional
 

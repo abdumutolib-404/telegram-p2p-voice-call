@@ -917,7 +917,7 @@ export const QuestionManagement: React.FC = () => {
             </div>
           ) : (
             /* Table View */
-            <div className="table-container">
+            <div className="table-container" role="region" tabIndex={0} aria-label="Questions table">
               <table className="table-modern">
                 <thead>
                   <tr>

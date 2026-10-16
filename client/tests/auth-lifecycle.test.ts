@@ -25,6 +25,34 @@ const profile = {
 };
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
+it('opens the dashboard without a second lookup when authentication confirms no active call', async () => {
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ ...profile, hasActiveCall: false })).mockResolvedValueOnce(json({ hasActiveCall: false }));
+  vi.stubGlobal('fetch', fetchMock);
+  await act(async () => root.render(createElement(App)));
+  expect(container.querySelector('.dash__limits')?.textContent).toContain('Your band6.5');
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/calls/active'))).toHaveLength(0);
+});
+
+it.each([undefined, true])('checks for a resumable call when the authentication flag is %s', async hasActiveCall => {
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ ...profile, hasActiveCall })).mockResolvedValueOnce(json({
+    hasActiveCall: true, roomName: 'synthetic-room', livekitToken: 'synthetic-media-token',
+    livekitUrl: 'wss://synthetic.invalid', partnerAlias: 'Synthetic partner', partnerBand: 7,
+    callDurationLimit: 900, maxDurationSeconds: 900, startedAt: Date.now() - 60000, expiresAt: Date.now() + 840000,
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+  await act(async () => root.render(createElement(App)));
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/calls/active'))).toHaveLength(1);
+  expect(container.textContent).toContain('Join voice call');
+});
+
+it.each(['active_call', 'sessionId'])('rechecks an explicit %s link even if authentication found no call', async key => {
+  window.history.replaceState(null, '', `/?${key}=synthetic-call`);
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ ...profile, hasActiveCall: false })).mockResolvedValueOnce(json({ hasActiveCall: false }));
+  vi.stubGlobal('fetch', fetchMock);
+  await act(async () => root.render(createElement(App)));
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes(`/calls/active?${key}=synthetic-call`))).toHaveLength(1);
+});
+
 it('preserves authenticated scores below five, including zero, in account controls',async()=>{
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>json(url.includes('/auth')?{...profile,user:{...profile.user,band:4.5,subFC:0,subLR:3.5,subGRA:4,subP:4.5}}:{hasActiveCall:false})));
   await act(async()=>root.render(createElement(App)));

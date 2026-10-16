@@ -1,0 +1,86 @@
+{
+  "commit": "5937a962f685433fafe6a6debfdb76d4a63ae416",
+  "checkedAt": "2026-10-16T14:01:46.097Z",
+  "conditions": "Sequential local runs; installed dependencies and TypeScript incremental caches warm; Vite rebuilds production assets. Two test workers. Not a clean-install or Docker benchmark.",
+  "unmeasured": [
+    "Clean-install build time",
+    "HMR latency",
+    "Docker build (runtime unavailable)",
+    "Linux race execution (runtime unavailable)"
+  ],
+  "results": [
+    {
+      "name": "backend-build",
+      "durationMs": 22021,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "mini-build",
+      "durationMs": 10999,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "admin-build",
+      "durationMs": 12231,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "landing-build",
+      "durationMs": 9112,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "landing-check",
+      "durationMs": 1501,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "mini-typecheck",
+      "durationMs": 6578,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "admin-typecheck",
+      "durationMs": 8340,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "backend-typecheck",
+      "durationMs": 10553,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "mini-lint",
+      "durationMs": 918,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "admin-lint",
+      "durationMs": 685,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "mini-tests",
+      "durationMs": 31548,
+      "exitCode": 0,
+      "error": null
+    },
+    {
+      "name": "backend-tests",
+      "durationMs": 99335,
+      "exitCode": 0,
+      "error": null
+    }
+  ],
+  "sourceState": "Uncommitted launch-review working tree based on the recorded commit; measurements precede the release commit."
+}

@@ -154,7 +154,7 @@
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
   font-family: inherit;
 }
 
@@ -218,7 +218,7 @@
   color: var(--text-primary);
   outline: none;
   font-family: inherit;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .qm-search-input:focus {
@@ -245,7 +245,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
   font-family: inherit;
 }
 
@@ -293,7 +293,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: 1rem;
-  transition: all 0.18s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
   position: relative;
 }
 
@@ -411,7 +411,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: 1.25rem;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .qm-taskcard:hover {

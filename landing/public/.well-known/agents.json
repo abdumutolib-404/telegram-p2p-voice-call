@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "name": "PairTalk",
   "description": "Independent IELTS speaking practice with other learners. Register and accept the Terms of Use PDF in Telegram, then use the authenticated Mini App dashboard.",
-  "reviewed_at": "2026-10-07",
+  "reviewed_at": "2026-10-16",
   "url": "https://pairtalk.online",
   "endpoints": {
     "web": "https://pairtalk.online",
@@ -20,7 +20,7 @@
   },
   "capabilities": [
     "Partner matching based on practice preferences and availability",
-    "Self-assessed whole-band practice preferences from 5 to 9",
+    "Self-assessed speaking scores in half-band steps",
     "Part 1, 2, and 3 speaking practice prompts",
     "Voice calls using WebRTC transport encryption",
     "Partner aliases, post-call ratings, and reporting",

@@ -1,51 +1,46 @@
 # Operations and release follow-ups
 
-Reviewed 2026-10-05. Local verification is recorded in [Verification](VERIFICATION.md); it is not production approval.
+Reviewed 2026-10-16. Current evidence and limitations are in [Launch readiness](LAUNCH_READINESS_2026-10-16.md); reproducible checks are in [Verification](VERIFICATION.md). Historical local results do not establish a current deployment.
 
-## Required before release
+## Deployment scope and launch gates
 
-- Confirm rotation/revocation of the two GitHub credentials reported exposed during the 2026-10-04 diagnostics. Removing embedded credentials from Git configuration did not revoke them. Never include their values in documentation.
-- Use a separate staging bot, database, Redis, LiveKit project, and private object-storage bucket.
-- Test real Telegram admin OTP, purchases/refunds, two-account calls, microphone denial, reconnect, both voices in playable recordings, download denial, and storage expiry/retry.
-- Back up and rehearse migrations on a restore. Drain active calls and deploy the recording lifecycle migration with Node and Go together.
-- Record the manual verification checklist against the exact release revision; this repository currently has no GitHub verification workflow. Check frontend hosting build results and deployed commit separately. Historical local results are not evidence of a current deployment.
-- Measure actual host/device latency, memory, and call stability before promising throughput.
+- `origin/main` and the existing Railway/Cloudflare services are development, including the Railway environment named `production`. The separately configured `production` Git remote and public-domain deployment are outside default release scope. Do not create replacement services or sites.
+- The owner confirmed on October 16 that both GitHub credentials reported exposed in the October 4 diagnostics were revoked or rotated. The historical gate is closed. Source-pattern scans alone do not prove revocation; never include credential values in documentation.
+- Existing device confirmations cover equal-band matching, 60-second recovery with original timing and both voices, and a single playable Telegram audio delivery. Record any new live admin OTP, payment/refund or channel-permission check against its exact release; synthetic acknowledgements do not verify provider permissions or settle real transactions.
+- Keep calls and provider cleanup drainable across backend changes. The shared recording/credit schema requires compatible Node/Go versions. Existing development migrations were applied for the October 16 release; check the actual deployment rather than rerunning historical destructive rollout instructions.
+- Push through the primary checkout to `origin/main`, verify all three existing frontend builds use that commit, then verify backend deployment, health and migrations. A local preview or branch build is insufficient.
+- No GitHub verification workflow currently runs these application checks. Use the guarded local commands and provider build results. Measure actual device and hosted load before advertising concurrency or fixed wait-time guarantees.
 
-The 2026-10-04 review found unavailable Railway services and missing or mismatched provider account access. Those are dated observations; provider access was not rechecked during documentation cleanup.
+## Current product and billing
+
+Practice packs sell calls and recordings separately, with 15- or 30-minute duration and optional 30-day retention. A 30-minute service spends two 15-minute units. Unused purchased quantities do not expire. The published catalog, server quote and invoice are authoritative; recording sales remain capacity-limited. Legacy subscriptions retain their original entitlements.
+
+New practice-pack refunds require a full unused purchase within 48 hours and all purchased quantities available and unreserved. Refund holds and settlement are idempotent. Legacy subscription refunds retain their original rules. See [the purchase specification](unit-pricing.md) and served policies rather than applying a legacy OR condition to all new purchases.
+
+Starter calls require a one-time channel-membership claim. Campaign claims are unique per user/campaign, capacity and expiry are enforced on the server, and later campaigns can select the same user again. Optional private reminders require consent and observe configured cooldown/quiet hours. Channel membership alone is not promotional-message consent.
 
 ## Recovery work
 
 | State | Operator action |
 | --- | --- |
-| Stars REFUND_PROCESSING / provider ambiguity | Check provider and saved charge state; use existing recovery, avoiding a second manual refund |
-| Notification UNCONFIRMED | Reconcile whether Telegram delivered before requeueing |
-| Recording delivery UNCONFIRMED | Check the existing Telegram conversation/receipt before any resend. Dashboard status checks never requeue uncertain outcomes; late confirmed receipts can settle the original claim. |
-| Recording delivery FAILED | Resolve the known Telegram rejection, then use the explicit History retry action. Ordinary status polling does not retry. |
-| Backlogged PostCallJob | Check leases, retries, database health, and oldest eligible work |
-| Recording deletion failure | Restore storage access/delete permissions; retain keys for retry |
-| Historical orphan object / missing owner metadata | Reconcile storage listings and retained logs; do not infer ownership from absence |
-| Crawler lease loss / interrupted ingestion | Confirm current lease owner and next crawl; do not force overlapping workers |
+| Stars refund processing / ambiguous provider result | Reconcile the saved charge and provider result before any further refund attempt |
+| Notification UNCONFIRMED | Reconcile whether Telegram delivered before requeueing; do not blindly resend |
+| Recording delivery UNCONFIRMED | Check the existing Telegram conversation/receipt. Status reads do not requeue uncertain delivery; a late confirmed receipt can settle the original claim |
+| Recording delivery FAILED | Resolve the known rejection, then use the explicit History retry action |
+| Pending receipt or checkout | Check persisted order ownership, currency, authorization, expiry and reservation state; a pending order grants no balance |
+| Backlogged PostCallJob | Check leases, retries, database health and oldest eligible work |
+| Restricted call cleanup pending | Keep durable cleanup queued; room closure and recording cleanup can retry independently |
+| Recording deletion failure | Restore storage access/delete permission and retain keys for retry |
+| Historical orphan object / missing owner metadata | Reconcile retained ownership evidence; absence of metadata does not prove who owns an object |
+| Crawler lease loss or interruption | Confirm the current lease owner and next cycle; do not start overlapping workers |
+| Bulk announcement interruption | Inspect durable broadcast/cursor/job state; do not restart a fresh broadcast to replay the completed audience |
 
-Queue capacity and completed-job retention need monitoring. Review the privacy footprint of notification payloads, audit logs, and payment proofs. Bulk announcement progress is not durably resumable across every restart. Crawler shutdown drain is not established by the lifecycle tests.
+Monitor queue capacity, oldest work, completed-job retention and the privacy footprint of payloads, audits and proofs. Provider uncertainty must remain visible instead of being reported as successful delivery or deletion.
 
-## Product decisions still open
+## Security and verification
 
-Current subscriptions remain authoritative. Included-usage periods use existing legacy helpers; calendar-month versus full-validity semantics for custom terms still need a single approved policy before a billing redesign.
+The backend runtime image prunes development/test/deployment tools while retaining the Prisma migration CLI. The October 16 review updates the old backend Vitest toolchain to the patched versions already used by the frontends; current dependency audits are recorded in the launch evidence. The webhook regression mock was made constructible for the newer runner without weakening its assertions or changing real signature checks.
 
-The planned [unit purchase system](unit-pricing.md) requires a durable credit ledger, confirmed prices/minimums, matched optional storage, successful-delivery rules, and separate migration/checkout work. Lifetime credits remain unimplemented. Bot registration now records durable PDF terms acceptance; see [Bot and dashboard](BOT_AND_DASHBOARD.md).
+Member authentication and dashboard gates use the same account-restriction predicate as admission/checkout, including future suspension dates with stale flags. The call router was already protected by the main server middleware; an isolated-router bypass candidate was withdrawn after checking the real mount. Do not present that test-fixture omission as a deployed security defect.
 
-Current refund code permits eligibility when purchase age is under 48 hours **or** usage is below 10%; older docs incorrectly said both were required. This is documentation of the current rule, not an approved new policy. Review this and all served customer copy before changing or releasing terms.
-
-## Security fixes and rollout
-
-The 2026-10-07 deployment cleanup updates the runtime proxy dependency and removes development/test packages from the backend image while retaining the Prisma migration CLI. The production-only npm audit passes. The existing backend Vitest 1 toolchain still has five development dependency advisories (two critical, one high, two moderate); upgrading that test runner remains separate work. Do not expose its development/UI server. These tools are excluded by the production image's npm prune step. Frontend deployment dependency audits pass after patched transitive overrides.
-
-The 2026-10-06 remediation adds durable readiness/media authorization, separates room capture from personal recording intent, bounds gateway polling and public question work, fixes crawler response rejection and refund-initiation ownership, strengthens recording keys, and corrects encryption claims.
-
-For migration `202610060001_media_authorization`, stop/drain old Node and Go call-serving processes before applying it, then deploy both updated backends together. Previously ACTIVE sessions are conservatively marked media-authorized because their old tokens already permitted reception. Do not run old permissive token issuers alongside the subscription gate. New sessions remain free on failed joins until the gate opens; this does not depend on webhook delivery. Confirm permission updates, reconnect, room recording notifications, and charged departed sessions with the deployed LiveKit version in staging.
-
-The eight 2026-10-05 findings were fixed locally: room-state authorization, client charge opt-out, stale invoice entitlement, lost recording ownership, lost historical keys, replica OTP replay, request-triggered global IP penalty, and CSV formulas. Regression suites exist in both backends.
-
-The additive migration introduces activeRecorderIds, recordingKeys, and entitlementApplied. Old processes can still clear ownership or misinterpret retained egress IDs, so avoid a mixed-version rollout. Already-lost historical keys/owners require reconciliation; the migration only backfills known metadata.
-
-Runtime credentials, databases, recordings, and active services are excluded from repository cleanup. No production deployment, migration, payment, or account action is performed by maintaining these docs.
+See [October 14 implementation evidence](READINESS_IMPLEMENTATION_2026-10-14.md) for earlier transport and lifecycle work. Historical lost keys/owners still require reconciliation; later migrations cannot reconstruct unknown ownership. Runtime credentials, ignored local artifacts, recordings, databases and active services are excluded from repository cleanup. The editable DOCX remains local pending the owner's requested native rendering; it is not a release deliverable.

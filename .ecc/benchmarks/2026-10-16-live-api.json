@@ -1,0 +1,109 @@
+{
+  "checkedAt": "2026-10-16T13:46:33.998Z",
+  "commit": "5937a962f685433fafe6a6debfdb76d4a63ae416",
+  "conditions": "Five serial anonymous GETs per endpoint, normal network, existing development services. Small observation, no load/capacity claim.",
+  "rows": [
+    {
+      "name": "backend-health",
+      "url": "https://telegram-p2p-voice-call-production-812e.up.railway.app/health",
+      "sampleSize": 5,
+      "p50Ms": 1961.6024000000007,
+      "maxMs": 3040.1791,
+      "samples": [
+        {
+          "ms": 2577.4583000000002,
+          "status": 200,
+          "bytes": 71
+        },
+        {
+          "ms": 3040.1791,
+          "status": 200,
+          "bytes": 71
+        },
+        {
+          "ms": 1961.6024000000007,
+          "status": 200,
+          "bytes": 71
+        },
+        {
+          "ms": 946.3007000000007,
+          "status": 200,
+          "bytes": 71
+        },
+        {
+          "ms": 663.0074999999997,
+          "status": 200,
+          "bytes": 71
+        }
+      ]
+    },
+    {
+      "name": "backend-plans",
+      "url": "https://telegram-p2p-voice-call-production-812e.up.railway.app/api/public/plans",
+      "sampleSize": 5,
+      "p50Ms": 754.9714000000004,
+      "maxMs": 1033.3536000000004,
+      "samples": [
+        {
+          "ms": 843.4081999999999,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 1033.3536000000004,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 630.4567000000006,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 754.9714000000004,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 515.6687999999995,
+          "status": 200,
+          "bytes": 2238
+        }
+      ]
+    },
+    {
+      "name": "landing-plans-proxy",
+      "url": "https://telegram-p2p-voice-call.abdumutolib00.workers.dev/api/public/plans",
+      "sampleSize": 5,
+      "p50Ms": 591.850699999999,
+      "maxMs": 2319.4614999999976,
+      "samples": [
+        {
+          "ms": 1093.491,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 451.60349999999926,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 584.2241000000013,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 2319.4614999999976,
+          "status": 200,
+          "bytes": 2238
+        },
+        {
+          "ms": 591.850699999999,
+          "status": 200,
+          "bytes": 2238
+        }
+      ]
+    }
+  ]
+}

@@ -142,3 +142,23 @@ body .qm-qcard-prompt,body .qm-taskcard-prompt { color: var(--text-primary); fon
 body .qm-stat-label,body .qm-stat-sub { font-size: 12px; text-transform: none; letter-spacing: 0; }
 body .qm-stat-val { color: var(--text-primary); font-size: 28px; }
 html[data-theme='light'] { --gold-text: #5A2E22; --gold-bg: #FFF0E8; --gold-border: #C49E8B; --info-bg: #E2EDF7; --info-border: #ACC9E2; --info-text: #205780; --danger-bg: #FCE9EF; --danger-border: #D598A9; --warning-bg: #FFF6CC; --warning-border: #A48A36; --primary-border: #A0CBB6; --success-border: #A0CBB6; }
+
+/* Keep question controls readable inside the available workspace, including mobile. */
+body .qm-hero-title { flex-wrap: wrap; text-wrap: balance; }
+body .qm-hero-title-group,body .qm-hero-title-group > div { min-width: 0; }
+body .qm-stat-box { min-width: 0; }
+body .qm-stat-val { overflow-wrap: anywhere; }
+body .qm-hero-subtitle,body .qm-qcard-prompt,body .qm-taskcard-prompt { text-wrap: pretty; }
+body .qm-tabs-bar { flex-wrap: wrap; }
+body .qm-tab-pill,body .qm-pill-item { min-width: 44px; min-height: 44px; }
+body .qm-pagination { flex-wrap: wrap; }
+@media(max-width:900px) {
+  body .qm-hero-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  body .qm-stat-val { font-size: clamp(1rem,4vw,1.75rem); }
+  body .qm-controls,body .qm-controls-left,body .qm-controls-right { flex-wrap: wrap; }
+  body .qm-controls-left { flex-basis: 100%; }
+  body .qm-search-box { flex-basis: 100%; min-width: 0; }
+  body .qm-pill-group { flex-wrap: wrap; max-width: 100%; }
+  body .qm-select-styled { max-width: 100%; }
+}
+@media(max-width:600px) { body .qm-cards-grid { grid-template-columns: minmax(0,1fr); } }

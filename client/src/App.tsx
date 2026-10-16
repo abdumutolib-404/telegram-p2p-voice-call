@@ -355,37 +355,40 @@ export const App: React.FC = () => {
           dnd: data.user.dnd ?? false,
         });
 
-        // Check if there is an active call session (e.g. direct call accepted or reconnect)
+        // Authentication already checks active calls. Fetch media credentials only
+        // when needed, while preserving explicit links and older server responses.
         try {
           const currentParams = new URLSearchParams(window.location.search);
-          const activeParams = new URLSearchParams();
-          for (const key of ['active_call', 'sessionId']) {
-            const value = currentParams.get(key);
-            if (value) activeParams.set(key, value);
-          }
-          const activeUrl = `${serverUrl}/api/calls/active${activeParams.size ? '?' + activeParams.toString() : ''}`;
-          const activeRes = await fetch(activeUrl, {
-            signal: controller.signal,
-            headers: { 'x-telegram-init-data': rawInitData },
-          });
-          ensureCurrent();
-          if (activeRes.ok) {
-            const activeData = await activeRes.json();
+          if (data.hasActiveCall !== false || currentParams.has('active_call') || currentParams.has('sessionId')) {
+            const activeParams = new URLSearchParams();
+            for (const key of ['active_call', 'sessionId']) {
+              const value = currentParams.get(key);
+              if (value) activeParams.set(key, value);
+            }
+            const activeUrl = `${serverUrl}/api/calls/active${activeParams.size ? '?' + activeParams.toString() : ''}`;
+            const activeRes = await fetch(activeUrl, {
+              signal: controller.signal,
+              headers: { 'x-telegram-init-data': rawInitData },
+            });
             ensureCurrent();
-            if (activeData.hasActiveCall) {
-              setPendingDirectCall({
-                roomName: activeData.roomName,
-                livekitToken: activeData.livekitToken,
-                livekitUrl: activeData.livekitUrl,
-                partnerAlias: activeData.partnerAlias,
-                partnerBand: activeData.partnerBand,
-                callDurationLimit: activeData.callDurationLimit,
-                maxDurationSeconds: activeData.maxDurationSeconds,
-                startedAt: activeData.startedAt,
-                expiresAt: activeData.expiresAt,
-              });
-              setAppState('ready');
-              return;
+            if (activeRes.ok) {
+              const activeData = await activeRes.json();
+              ensureCurrent();
+              if (activeData.hasActiveCall) {
+                setPendingDirectCall({
+                  roomName: activeData.roomName,
+                  livekitToken: activeData.livekitToken,
+                  livekitUrl: activeData.livekitUrl,
+                  partnerAlias: activeData.partnerAlias,
+                  partnerBand: activeData.partnerBand,
+                  callDurationLimit: activeData.callDurationLimit,
+                  maxDurationSeconds: activeData.maxDurationSeconds,
+                  startedAt: activeData.startedAt,
+                  expiresAt: activeData.expiresAt,
+                });
+                setAppState('ready');
+                return;
+              }
             }
           }
         } catch (activeErr) {

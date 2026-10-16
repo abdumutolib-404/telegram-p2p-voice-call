@@ -4,11 +4,12 @@ import { renderToString } from "react-dom/server";
 import { App } from "./App";
 import { pages, faqs } from "./content";
 import { practiceUrl, supportUrl } from "./components/SiteLayout";
+export { practiceUrl } from "./components/SiteLayout";
 import type { PublicStats } from "./lib/publicStats";
 export { isPublicStats } from "./lib/publicStats";
 export const siteUrl = "https://pairtalk.online";
 // Update after a public content review, never on every build or request.
-export const contentReviewed = "2026-10-07";
+export const contentReviewed = "2026-10-16";
 export const routes = [
   "/",
   "/how-it-works",
@@ -36,7 +37,7 @@ export function metadata(path: string) {
     "/": {
       title: "PairTalk | IELTS Speaking Practice Partners on Telegram",
       description:
-        "Find an IELTS speaking partner on Telegram. Practice Parts 1, 2, and 3 with another learner, explore speaking prompts, and start with a free plan.",
+        "Find an IELTS speaking partner on Telegram. Practice Parts 1, 2, and 3 with another learner, explore prompts, and claim three starter calls after verification.",
     },
     "/stats": {
       title: "PairTalk Community Statistics | Calls, Practice Hours & Ratings",
@@ -46,7 +47,7 @@ export function metadata(path: string) {
     "/pricing": {
       title: "PairTalk Pricing | Compare Stars, UZS, Calls & Recordings",
       description:
-        "Compare current PairTalk plans in Telegram Stars and UZS. Find call allowances, session limits, recordings, retention, and the plan that fits your practice.",
+        "Choose 15- or 30-minute PairTalk calls, optional recordings and 30-day storage. Compare published UZS and Stars totals and buy only the practice you need.",
     },
   };
   return (

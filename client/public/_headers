@@ -1,0 +1,6 @@
+# Public compiled assets only. Member APIs retain their server no-store policy.
+/*
+  X-Robots-Tag: noindex, nofollow
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

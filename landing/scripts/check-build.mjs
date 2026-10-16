@@ -22,6 +22,8 @@ const descriptions = new Set();
 const canonicalUrls = new Set();
 const reviewedDates = new Set();
 for (const [route, html] of documents) {
+  assert(html.includes('<style data-build-styles>'), `Compiled styles missing: ${route}`);
+  assert(!/<link\s+rel="stylesheet"/.test(html), `Render-blocking stylesheet request: ${route}`);
   const document = parse(html);
   const attribute = (node, name) =>
     node?.attrs?.find((value) => value.name === name)?.value;
@@ -181,12 +183,17 @@ for (const [route, html] of documents) {
       );
   }
 }
-for (const file of ["robots.txt", "sitemap.xml", "llms.txt", "llms-full.txt"])
-  assert.deepEqual(
-    await readFile(path.join(out, file)),
-    await readFile(path.join(out, "../public", file)),
-    `Builds must preserve the reviewed ${file} byte for byte`,
+const homeSchema = JSON.parse(documents.get('/').match(/<script type="application\/ld\+json">(.*?)<\/script>/s)[1]);
+const registrationUrl = homeSchema['@graph'].find(node => node['@type'] === 'SoftwareApplication').installUrl;
+assert(/^https:\/\/t\.me\/[A-Za-z0-9_]+\?start=register$/.test(registrationUrl), 'Expected a public Telegram registration URL');
+for (const file of ["robots.txt", "sitemap.xml", "llms.txt", "llms-full.txt"]) {
+  const source = await readFile(path.join(out, "../public", file), 'utf8');
+  assert.equal(
+    await readFile(path.join(out, file), 'utf8'),
+    source.replaceAll('https://t.me/PairTalkBot?start=register', registrationUrl),
+    `Only the configured public registration link may change in ${file}`,
   );
+}
 const sitemap = await readFile(path.join(out, "sitemap.xml"), "utf8");
 const sitemapUrls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(
   (match) => match[1],
@@ -231,7 +238,7 @@ for (const name of ["llms.txt", "llms-full.txt"]) {
   const content = await readFile(path.join(out, name), "utf8");
   assert(content.startsWith("# PairTalk"), `Invalid AI document: ${name}`);
   assert(
-    !/sub-3|under 3 seconds|100% money-back|studio-grade|80\+ countries|\$1\.58|#pricing/i.test(
+    !/sub-3|under 3 seconds|100% money-back|studio-grade|80\+ countries|\$1\.58|#pricing|credits are not currently sold|are not implemented products|within 48 hours of purchase OR/i.test(
       content,
     ),
     `Outdated claim in ${name}`,
@@ -239,7 +246,10 @@ for (const name of ["llms.txt", "llms-full.txt"]) {
   for (const match of content.matchAll(
     /https:\/\/pairtalk\.online([^\s)<>,]*)/g,
   )) {
-    const destination = new URL(`https://pairtalk.online${match[1]}`).pathname;
+    const url = new URL(`https://pairtalk.online${match[1]}`);
+    const destination = url.pathname;
+    if (url.hash && documents.has(destination))
+      assert(documents.get(destination).includes(`id="${url.hash.slice(1)}"`), `Broken AI document fragment: ${match[0]}`);
     // These dynamic URLs are served by the Worker and validated in public API tests.
     if (destination === "/" || documents.has(destination) || ["/api/public/plans", "/api/public/stats"].includes(destination)) continue;
     assert(
@@ -251,6 +261,7 @@ for (const name of ["llms.txt", "llms-full.txt"]) {
 const discovery = JSON.parse(
   await readFile(path.join(out, ".well-known/agents.json"), "utf8"),
 );
+assert.equal(discovery.endpoints.telegram_bot, registrationUrl, 'Discovery bot must match the deployed page');
 assert.equal(
   discovery.reviewed_at,
   [...reviewedDates][0],

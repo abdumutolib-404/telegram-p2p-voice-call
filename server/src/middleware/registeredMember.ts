@@ -4,6 +4,7 @@ import { prisma } from '../config/database';
 import { hasAcceptedCurrentTerms } from '../services/terms';
 import type { AuthenticatedTelegramRequest } from './initDataLockdown';
 import { touchUserActivity } from '../services/userActivity';
+import { isAccountRestricted } from '../services/accountRestriction';
 
 export interface MemberRequest extends AuthenticatedTelegramRequest { member?: User }
 export async function requireRegisteredMember(req: MemberRequest, res: Response, next: NextFunction): Promise<void> {
@@ -12,7 +13,7 @@ export async function requireRegisteredMember(req: MemberRequest, res: Response,
     const user = req.telegramUser ? await prisma.user.findUnique({ where: { telegramId: req.telegramUser.id } }) : null;
     if (!user?.onboarded) { res.status(403).json({ code: 'registration_required', error: 'Finish registration with /start in the Telegram bot.' }); return; }
     if (!hasAcceptedCurrentTerms(user)) { res.status(403).json({ code: 'terms_required', error: 'Read and accept the current Terms of Use with /start in the Telegram bot.' }); return; }
-    if (user.isPermanentlyBanned || (user.isBanned && (!user.bannedUntil || user.bannedUntil > new Date()))) {
+    if (isAccountRestricted(user)) {
       res.status(403).json({ code: user.isPermanentlyBanned ? 'banned' : 'suspended', error: 'This account is restricted.', bannedUntil: user.bannedUntil }); return;
     }
     await touchUserActivity(user);

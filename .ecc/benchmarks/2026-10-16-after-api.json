@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "phase": "after",
+  "commit": "5937a962f685433fafe6a6debfdb76d4a63ae416",
+  "checkedAt": "2026-10-16T14:49:09.321Z",
+  "conditions": {
+    "server": "Actual Express routes and auth middleware",
+    "database": "Owned PostgreSQL at loopback 55432",
+    "redis": "Owned protocol/Lua-compatible miniredis at loopback 56379",
+    "fixtures": "20 signed synthetic accounts, 20 completed calls per account",
+    "requestsPerCase": 100,
+    "rateLimits": "Enabled; ten accounts share each case within their normal limits"
+  },
+  "limitations": [
+    "No real Telegram/provider traffic or voice-media load.",
+    "Local latency and ten concurrent HTTP requests do not prove Railway, Redis-production or voice capacity.",
+    "Synthetic accounts share partner history; populated response sizes are reported."
+  ],
+  "errors": [],
+  "rows": [
+    {
+      "route": "/api/public/plans",
+      "concurrency": 1,
+      "requests": 100,
+      "p50Ms": 16.49680000000035,
+      "p95Ms": 17.98129999999992,
+      "p99Ms": 20.16449999999986,
+      "responseBytes": 2236,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/public/plans",
+      "concurrency": 10,
+      "requests": 100,
+      "p50Ms": 10.471399999999448,
+      "p95Ms": 20.597099999999955,
+      "p99Ms": 22.013199999999415,
+      "responseBytes": 2236,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/sessions",
+      "concurrency": 1,
+      "requests": 100,
+      "p50Ms": 16.53740000000016,
+      "p95Ms": 31.456900000000132,
+      "p99Ms": 38.8082000000004,
+      "responseBytes": 6786,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/sessions",
+      "concurrency": 10,
+      "requests": 100,
+      "p50Ms": 65.00810000000001,
+      "p95Ms": 135.70619999999963,
+      "p99Ms": 143.0528000000004,
+      "responseBytes": 9212,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/summary",
+      "concurrency": 1,
+      "requests": 100,
+      "p50Ms": 16.545900000000074,
+      "p95Ms": 18.461599999999635,
+      "p99Ms": 29.733799999999974,
+      "responseBytes": 773,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/summary",
+      "concurrency": 10,
+      "requests": 100,
+      "p50Ms": 32.94800000000032,
+      "p95Ms": 55.84720000000016,
+      "p99Ms": 61.72530000000006,
+      "responseBytes": 773,
+      "statusCounts": {
+        "200": 100
+      }
+    }
+  ],
+  "sourceState": "Uncommitted launch-review working tree based on the recorded commit; measurements precede the release commit.",
+  "rawTimings": "Per-request timings retained in ignored local output; shared cases retain counts, status distribution, sizes and percentiles."
+}

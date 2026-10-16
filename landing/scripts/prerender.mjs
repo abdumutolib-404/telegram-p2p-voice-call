@@ -10,12 +10,17 @@ import {
   isPublicPricing,
   siteUrl,
   contentReviewed,
+  practiceUrl,
 } from "../dist-ssr/entry-server.js";
 import { publicMarkdown } from "./public-markdown.mjs";
+import { inlineBuildStyles } from "../../scripts/inline-build-styles.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(root, "dist");
-const template = await readFile(path.join(out, "index.html"), "utf8");
+const template = await inlineBuildStyles(await readFile(path.join(out, "index.html"), "utf8"), out);
+// Public pages already contain their content at build time. Include the small
+// compiled stylesheet so the first paint does not wait for another round trip.
+// Only Vite's local fingerprinted CSS is eligible; never inline fetched content.
 const escape = (value) =>
   value
     .replaceAll("&", "&amp;")
@@ -136,7 +141,12 @@ for (const route of [...routes, "/404"]) {
       }),
     );
 }
-// Curated crawler documents live in public/; builds copy them without rewriting policies.
+// Keep curated documents intact except for the deployment's public bot link.
+for (const file of ['llms.txt', 'llms-full.txt', '.well-known/agents.json']) {
+  const source = await readFile(path.join(root, 'public', file), 'utf8');
+  await writeFile(path.join(out, file), source.replaceAll('https://t.me/PairTalkBot?start=register', practiceUrl));
+}
+// Curated crawler documents live in public/; builds never rewrite policies.
 const ssr = path.resolve(root, "dist-ssr");
 if (path.dirname(ssr) !== root || path.basename(ssr) !== "dist-ssr")
   throw new Error("Unexpected build cleanup path");

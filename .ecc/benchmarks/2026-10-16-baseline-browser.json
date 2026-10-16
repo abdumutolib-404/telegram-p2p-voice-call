@@ -1,0 +1,1685 @@
+{
+  "schemaVersion": 2,
+  "phase": "baseline",
+  "commit": "5937a962f685433fafe6a6debfdb76d4a63ae416",
+  "checkedAt": "2026-10-16T13:45:59.480Z",
+  "conditions": {
+    "build": "Local production output",
+    "browser": "155.0.8059.82",
+    "viewport": "390x844 DPR1",
+    "cache": "Disabled; fresh context each run",
+    "deliveryModel": "Server delays each response 150ms, then shares 200,000 compressed bytes/s across responses; not browser network emulation",
+    "verifiedControlTtfbMs": 166.20000000298023,
+    "latencyMs": 150,
+    "downloadBytesPerSecond": 200000,
+    "cpuSlowdown": 4,
+    "api": "Synthetic 40ms loopback responses plus delivery model; no real Telegram, payment, media or signed member credential"
+  },
+  "limitations": [
+    "Observed lab interactions are not field INP. Null interaction duration means no event exceeded the browser 16ms observation threshold.",
+    "Delivery model does not simulate DNS/TLS/radio conditions or real provider/CDN/backend latency.",
+    "This browser benchmark does not measure actual backend latency or media capacity."
+  ],
+  "summary": [
+    {
+      "surface": "landing",
+      "route": "/",
+      "runs": 5,
+      "lcp": 2476,
+      "cls": 0.000021479302982343684,
+      "fcp": 2476,
+      "ttfb": 171.70000000298023,
+      "blockingMs": 518,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 145817,
+      "requestCount": 7,
+      "maxObservedInteractionMs": 208
+    },
+    {
+      "surface": "landing",
+      "route": "/pricing",
+      "runs": 5,
+      "lcp": 2096,
+      "cls": 0.02403880192270257,
+      "fcp": 2096,
+      "ttfb": 166.29999999701977,
+      "blockingMs": 474,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 142443,
+      "requestCount": 6,
+      "maxObservedInteractionMs": null
+    },
+    {
+      "surface": "client",
+      "route": "/",
+      "runs": 5,
+      "lcp": 2792,
+      "cls": 0,
+      "fcp": 2156,
+      "ttfb": 168.3999999910593,
+      "blockingMs": 166,
+      "initialJsBytes": 108704,
+      "pageEncodedBytes": 163031,
+      "requestCount": 12,
+      "maxObservedInteractionMs": 152
+    },
+    {
+      "surface": "admin",
+      "route": "/",
+      "runs": 5,
+      "lcp": 1852,
+      "cls": 0,
+      "fcp": 1624,
+      "ttfb": 167.79999999701977,
+      "blockingMs": 284,
+      "initialJsBytes": 68654,
+      "pageEncodedBytes": 103655,
+      "requestCount": 7,
+      "maxObservedInteractionMs": 64
+    }
+  ],
+  "rows": [
+    {
+      "surface": "landing",
+      "route": "/",
+      "run": 0,
+      "lcp": 2348,
+      "cls": 0.000021479302982343684,
+      "blockingMs": 484,
+      "events": [
+        {
+          "duration": 208,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 208,
+          "type": "pointerup"
+        },
+        {
+          "duration": 208,
+          "type": "click"
+        }
+      ],
+      "fcp": 2348,
+      "ttfb": 175,
+      "serverResponseMs": 160.70000000298023,
+      "domReady": 2329.2999999970198,
+      "load": 2343.6000000089407,
+      "documentBytes": 7316,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/public/stats",
+          "initiator": "fetch",
+          "encodedBytes": 2,
+          "decodedBytes": 2,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 208,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 145817,
+      "requestCount": 7
+    },
+    {
+      "surface": "landing",
+      "route": "/",
+      "run": 1,
+      "lcp": 2480,
+      "cls": 0.000021479302982343684,
+      "blockingMs": 518,
+      "events": [
+        {
+          "duration": 136,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 136,
+          "type": "pointerup"
+        },
+        {
+          "duration": 136,
+          "type": "click"
+        }
+      ],
+      "fcp": 2480,
+      "ttfb": 176.5,
+      "serverResponseMs": 168.40000000596046,
+      "domReady": 2646,
+      "load": 2654.7000000029802,
+      "documentBytes": 7316,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/public/stats",
+          "initiator": "fetch",
+          "encodedBytes": 2,
+          "decodedBytes": 2,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 136,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 145817,
+      "requestCount": 7
+    },
+    {
+      "surface": "landing",
+      "route": "/",
+      "run": 2,
+      "lcp": 2636,
+      "cls": 0.000021479302982343684,
+      "blockingMs": 566,
+      "events": [
+        {
+          "duration": 144,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 144,
+          "type": "pointerup"
+        },
+        {
+          "duration": 144,
+          "type": "click"
+        }
+      ],
+      "fcp": 2636,
+      "ttfb": 171.70000000298023,
+      "serverResponseMs": 163.59999999403954,
+      "domReady": 2754.9000000059605,
+      "load": 2768.2000000029802,
+      "documentBytes": 7316,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/public/stats",
+          "initiator": "fetch",
+          "encodedBytes": 2,
+          "decodedBytes": 2,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 144,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 145817,
+      "requestCount": 7
+    },
+    {
+      "surface": "landing",
+      "route": "/",
+      "run": 3,
+      "lcp": 2476,
+      "cls": 0.000021479302982343684,
+      "blockingMs": 324,
+      "events": [
+        {
+          "duration": 152,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 152,
+          "type": "pointerup"
+        },
+        {
+          "duration": 152,
+          "type": "click"
+        }
+      ],
+      "fcp": 2476,
+      "ttfb": 163.90000000596046,
+      "serverResponseMs": 155.6000000089407,
+      "domReady": 3065.0999999940395,
+      "load": 3079.7999999970198,
+      "documentBytes": 7316,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/public/stats",
+          "initiator": "fetch",
+          "encodedBytes": 2,
+          "decodedBytes": 2,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 152,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 145817,
+      "requestCount": 7
+    },
+    {
+      "surface": "landing",
+      "route": "/",
+      "run": 4,
+      "lcp": 2420,
+      "cls": 0.000021479302982343684,
+      "blockingMs": 609,
+      "events": [
+        {
+          "duration": 152,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 152,
+          "type": "pointerup"
+        },
+        {
+          "duration": 152,
+          "type": "click"
+        }
+      ],
+      "fcp": 2420,
+      "ttfb": 168.5,
+      "serverResponseMs": 161.40000000596046,
+      "domReady": 2600.7999999970198,
+      "load": 2615.5999999940395,
+      "documentBytes": 7316,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/public/stats",
+          "initiator": "fetch",
+          "encodedBytes": 2,
+          "decodedBytes": 2,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 152,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 145817,
+      "requestCount": 7
+    },
+    {
+      "surface": "landing",
+      "route": "/pricing",
+      "run": 0,
+      "lcp": 1984,
+      "cls": 0.02403880192270257,
+      "blockingMs": 333,
+      "events": [],
+      "fcp": 1984,
+      "ttfb": 168.90000000596046,
+      "serverResponseMs": 161,
+      "domReady": 2101.6000000089407,
+      "load": 2121.300000011921,
+      "documentBytes": 3944,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": null,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 142443,
+      "requestCount": 6
+    },
+    {
+      "surface": "landing",
+      "route": "/pricing",
+      "run": 1,
+      "lcp": 2128,
+      "cls": 0.02403880192270257,
+      "blockingMs": 474,
+      "events": [],
+      "fcp": 2128,
+      "ttfb": 161.20000000298023,
+      "serverResponseMs": 155.40000000596046,
+      "domReady": 2253.8999999910593,
+      "load": 2301.7999999970198,
+      "documentBytes": 3944,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": null,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 142443,
+      "requestCount": 6
+    },
+    {
+      "surface": "landing",
+      "route": "/pricing",
+      "run": 2,
+      "lcp": 2152,
+      "cls": 0.02403880192270257,
+      "blockingMs": 458,
+      "events": [],
+      "fcp": 2152,
+      "ttfb": 166.29999999701977,
+      "serverResponseMs": 158.79999999701977,
+      "domReady": 2316.7000000029802,
+      "load": 2361.5999999940395,
+      "documentBytes": 3944,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": null,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 142443,
+      "requestCount": 6
+    },
+    {
+      "surface": "landing",
+      "route": "/pricing",
+      "run": 3,
+      "lcp": 2072,
+      "cls": 0.02403880192270257,
+      "blockingMs": 617,
+      "events": [],
+      "fcp": 2072,
+      "ttfb": 169.59999999403954,
+      "serverResponseMs": 161.59999999403954,
+      "domReady": 2284.7000000029802,
+      "load": 2322.2999999970198,
+      "documentBytes": 3944,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": null,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 142443,
+      "requestCount": 6
+    },
+    {
+      "surface": "landing",
+      "route": "/pricing",
+      "run": 4,
+      "lcp": 2096,
+      "cls": 0.02403880192270257,
+      "blockingMs": 519,
+      "events": [],
+      "fcp": 2096,
+      "ttfb": 162.20000000298023,
+      "serverResponseMs": 154.70000000298023,
+      "domReady": 2315.7999999970198,
+      "load": 2346.5,
+      "documentBytes": 3944,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-DqH8Hm2q.js",
+          "initiator": "script",
+          "encodedBytes": 94098,
+          "decodedBytes": 312068,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-D_3UTIP2.css",
+          "initiator": "link",
+          "encodedBytes": 14753,
+          "decodedBytes": 56083,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/public/plans",
+          "initiator": "fetch",
+          "encodedBytes": 1108,
+          "decodedBytes": 1108,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 3704,
+          "decodedBytes": 3704,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": null,
+      "initialJsBytes": 94098,
+      "pageEncodedBytes": 142443,
+      "requestCount": 6
+    },
+    {
+      "surface": "client",
+      "route": "/",
+      "run": 0,
+      "lcp": 3036,
+      "cls": 0,
+      "blockingMs": 285,
+      "events": [
+        {
+          "duration": 152,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 152,
+          "type": "pointerup"
+        },
+        {
+          "duration": 152,
+          "type": "click"
+        }
+      ],
+      "fcp": 2368,
+      "ttfb": 164.6000000089407,
+      "serverResponseMs": 157.90000000596046,
+      "domReady": 1992.7999999970198,
+      "load": 1996.5,
+      "documentBytes": 620,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-By-qt23q.js",
+          "initiator": "script",
+          "encodedBytes": 108704,
+          "decodedBytes": 355489,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-40VIuaVy.css",
+          "initiator": "link",
+          "encodedBytes": 28113,
+          "decodedBytes": 129072,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/auth/verify",
+          "initiator": "fetch",
+          "encodedBytes": 296,
+          "decodedBytes": 296,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.svg",
+          "initiator": "other",
+          "encodedBytes": 325,
+          "decodedBytes": 325,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/calls/active",
+          "initiator": "fetch",
+          "encodedBytes": 23,
+          "decodedBytes": 23,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/dashboard/discount-offers",
+          "initiator": "fetch",
+          "encodedBytes": 52,
+          "decodedBytes": 52,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 152,
+      "initialJsBytes": 108704,
+      "pageEncodedBytes": 163031,
+      "requestCount": 12
+    },
+    {
+      "surface": "client",
+      "route": "/",
+      "run": 1,
+      "lcp": 2792,
+      "cls": 0,
+      "blockingMs": 166,
+      "events": [
+        {
+          "duration": 136,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 136,
+          "type": "pointerup"
+        },
+        {
+          "duration": 136,
+          "type": "click"
+        }
+      ],
+      "fcp": 2156,
+      "ttfb": 172.70000000298023,
+      "serverResponseMs": 168.30000001192093,
+      "domReady": 1927.2000000029802,
+      "load": 1927.7000000029802,
+      "documentBytes": 620,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-By-qt23q.js",
+          "initiator": "script",
+          "encodedBytes": 108704,
+          "decodedBytes": 355489,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-40VIuaVy.css",
+          "initiator": "link",
+          "encodedBytes": 28113,
+          "decodedBytes": 129072,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/auth/verify",
+          "initiator": "fetch",
+          "encodedBytes": 296,
+          "decodedBytes": 296,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.svg",
+          "initiator": "other",
+          "encodedBytes": 325,
+          "decodedBytes": 325,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/calls/active",
+          "initiator": "fetch",
+          "encodedBytes": 23,
+          "decodedBytes": 23,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/dashboard/discount-offers",
+          "initiator": "fetch",
+          "encodedBytes": 52,
+          "decodedBytes": 52,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 136,
+      "initialJsBytes": 108704,
+      "pageEncodedBytes": 163031,
+      "requestCount": 12
+    },
+    {
+      "surface": "client",
+      "route": "/",
+      "run": 2,
+      "lcp": 2672,
+      "cls": 0,
+      "blockingMs": 160,
+      "events": [
+        {
+          "duration": 136,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 136,
+          "type": "pointerup"
+        },
+        {
+          "duration": 136,
+          "type": "click"
+        }
+      ],
+      "fcp": 2152,
+      "ttfb": 168.3999999910593,
+      "serverResponseMs": 161.09999999403954,
+      "domReady": 1920.699999988079,
+      "load": 1921.199999988079,
+      "documentBytes": 620,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-By-qt23q.js",
+          "initiator": "script",
+          "encodedBytes": 108704,
+          "decodedBytes": 355489,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-40VIuaVy.css",
+          "initiator": "link",
+          "encodedBytes": 28113,
+          "decodedBytes": 129072,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/auth/verify",
+          "initiator": "fetch",
+          "encodedBytes": 296,
+          "decodedBytes": 296,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.svg",
+          "initiator": "other",
+          "encodedBytes": 325,
+          "decodedBytes": 325,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/calls/active",
+          "initiator": "fetch",
+          "encodedBytes": 23,
+          "decodedBytes": 23,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/dashboard/discount-offers",
+          "initiator": "fetch",
+          "encodedBytes": 52,
+          "decodedBytes": 52,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 136,
+      "initialJsBytes": 108704,
+      "pageEncodedBytes": 163031,
+      "requestCount": 12
+    },
+    {
+      "surface": "client",
+      "route": "/",
+      "run": 3,
+      "lcp": 2964,
+      "cls": 0,
+      "blockingMs": 213,
+      "events": [
+        {
+          "duration": 136,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 136,
+          "type": "pointerup"
+        },
+        {
+          "duration": 136,
+          "type": "click"
+        }
+      ],
+      "fcp": 2300,
+      "ttfb": 163.19999998807907,
+      "serverResponseMs": 156,
+      "domReady": 1922.2999999970198,
+      "load": 1925.7999999970198,
+      "documentBytes": 620,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-By-qt23q.js",
+          "initiator": "script",
+          "encodedBytes": 108704,
+          "decodedBytes": 355489,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-40VIuaVy.css",
+          "initiator": "link",
+          "encodedBytes": 28113,
+          "decodedBytes": 129072,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/auth/verify",
+          "initiator": "fetch",
+          "encodedBytes": 296,
+          "decodedBytes": 296,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.svg",
+          "initiator": "other",
+          "encodedBytes": 325,
+          "decodedBytes": 325,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/calls/active",
+          "initiator": "fetch",
+          "encodedBytes": 23,
+          "decodedBytes": 23,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/dashboard/discount-offers",
+          "initiator": "fetch",
+          "encodedBytes": 52,
+          "decodedBytes": 52,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 136,
+      "initialJsBytes": 108704,
+      "pageEncodedBytes": 163031,
+      "requestCount": 12
+    },
+    {
+      "surface": "client",
+      "route": "/",
+      "run": 4,
+      "lcp": 2508,
+      "cls": 0,
+      "blockingMs": 0,
+      "events": [
+        {
+          "duration": 136,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 136,
+          "type": "pointerup"
+        },
+        {
+          "duration": 136,
+          "type": "click"
+        }
+      ],
+      "fcp": 1908,
+      "ttfb": 170.70000000298023,
+      "serverResponseMs": 166,
+      "domReady": 1841.6000000089407,
+      "load": 1842,
+      "documentBytes": 620,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-By-qt23q.js",
+          "initiator": "script",
+          "encodedBytes": 108704,
+          "decodedBytes": 355489,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-40VIuaVy.css",
+          "initiator": "link",
+          "encodedBytes": 28113,
+          "decodedBytes": 129072,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/api/auth/verify",
+          "initiator": "fetch",
+          "encodedBytes": 296,
+          "decodedBytes": 296,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.svg",
+          "initiator": "other",
+          "encodedBytes": 325,
+          "decodedBytes": 325,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/calls/active",
+          "initiator": "fetch",
+          "encodedBytes": 23,
+          "decodedBytes": 23,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/api/dashboard/discount-offers",
+          "initiator": "fetch",
+          "encodedBytes": 52,
+          "decodedBytes": 52,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/socket.io/",
+          "initiator": "xmlhttprequest",
+          "encodedBytes": 31,
+          "decodedBytes": 31,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 136,
+      "initialJsBytes": 108704,
+      "pageEncodedBytes": 163031,
+      "requestCount": 12
+    },
+    {
+      "surface": "admin",
+      "route": "/",
+      "run": 0,
+      "lcp": 1844,
+      "cls": 0,
+      "blockingMs": 300,
+      "events": [
+        {
+          "duration": 64,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 64,
+          "type": "pointerup"
+        },
+        {
+          "duration": 64,
+          "type": "click"
+        }
+      ],
+      "fcp": 1592,
+      "ttfb": 159,
+      "serverResponseMs": 154.40000000596046,
+      "domReady": 1405.5999999940395,
+      "load": 1408,
+      "documentBytes": 500,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-dhQ2NuOD.js",
+          "initiator": "script",
+          "encodedBytes": 64543,
+          "decodedBytes": 204717,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/jsx-runtime-CQZ1b92y.js",
+          "initiator": "other",
+          "encodedBytes": 4111,
+          "decodedBytes": 10349,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-P5yRPHAm.css",
+          "initiator": "link",
+          "encodedBytes": 9665,
+          "decodedBytes": 31116,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/favicon.png",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 64,
+      "initialJsBytes": 68654,
+      "pageEncodedBytes": 103655,
+      "requestCount": 8
+    },
+    {
+      "surface": "admin",
+      "route": "/",
+      "run": 1,
+      "lcp": 1940,
+      "cls": 0,
+      "blockingMs": 312,
+      "events": [
+        {
+          "duration": 64,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 64,
+          "type": "pointerup"
+        },
+        {
+          "duration": 64,
+          "type": "click"
+        }
+      ],
+      "fcp": 1624,
+      "ttfb": 170.5,
+      "serverResponseMs": 166.1000000089407,
+      "domReady": 1411.3999999910593,
+      "load": 1413.7000000029802,
+      "documentBytes": 500,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-dhQ2NuOD.js",
+          "initiator": "script",
+          "encodedBytes": 64543,
+          "decodedBytes": 204717,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/jsx-runtime-CQZ1b92y.js",
+          "initiator": "other",
+          "encodedBytes": 4111,
+          "decodedBytes": 10349,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-P5yRPHAm.css",
+          "initiator": "link",
+          "encodedBytes": 9665,
+          "decodedBytes": 31116,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 64,
+      "initialJsBytes": 68654,
+      "pageEncodedBytes": 103655,
+      "requestCount": 7
+    },
+    {
+      "surface": "admin",
+      "route": "/",
+      "run": 2,
+      "lcp": 1836,
+      "cls": 0,
+      "blockingMs": 280,
+      "events": [
+        {
+          "duration": 64,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 64,
+          "type": "pointerup"
+        },
+        {
+          "duration": 64,
+          "type": "click"
+        }
+      ],
+      "fcp": 1604,
+      "ttfb": 168.29999999701977,
+      "serverResponseMs": 161.59999999403954,
+      "domReady": 1441.9000000059605,
+      "load": 1442.5,
+      "documentBytes": 500,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-dhQ2NuOD.js",
+          "initiator": "script",
+          "encodedBytes": 64543,
+          "decodedBytes": 204717,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/jsx-runtime-CQZ1b92y.js",
+          "initiator": "other",
+          "encodedBytes": 4111,
+          "decodedBytes": 10349,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-P5yRPHAm.css",
+          "initiator": "link",
+          "encodedBytes": 9665,
+          "decodedBytes": 31116,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 64,
+      "initialJsBytes": 68654,
+      "pageEncodedBytes": 103655,
+      "requestCount": 7
+    },
+    {
+      "surface": "admin",
+      "route": "/",
+      "run": 3,
+      "lcp": 1864,
+      "cls": 0,
+      "blockingMs": 261,
+      "events": [
+        {
+          "duration": 48,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 48,
+          "type": "pointerup"
+        },
+        {
+          "duration": 48,
+          "type": "click"
+        }
+      ],
+      "fcp": 1680,
+      "ttfb": 164.30000001192093,
+      "serverResponseMs": 156.6000000089407,
+      "domReady": 1457.1000000089407,
+      "load": 1457.6000000089407,
+      "documentBytes": 500,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-dhQ2NuOD.js",
+          "initiator": "script",
+          "encodedBytes": 64543,
+          "decodedBytes": 204717,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/jsx-runtime-CQZ1b92y.js",
+          "initiator": "other",
+          "encodedBytes": 4111,
+          "decodedBytes": 10349,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-P5yRPHAm.css",
+          "initiator": "link",
+          "encodedBytes": 9665,
+          "decodedBytes": 31116,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 48,
+      "initialJsBytes": 68654,
+      "pageEncodedBytes": 103655,
+      "requestCount": 7
+    },
+    {
+      "surface": "admin",
+      "route": "/",
+      "run": 4,
+      "lcp": 1852,
+      "cls": 0,
+      "blockingMs": 284,
+      "events": [
+        {
+          "duration": 48,
+          "type": "pointerdown"
+        },
+        {
+          "duration": 48,
+          "type": "pointerup"
+        },
+        {
+          "duration": 48,
+          "type": "click"
+        }
+      ],
+      "fcp": 1636,
+      "ttfb": 167.79999999701977,
+      "serverResponseMs": 161.5,
+      "domReady": 1415.9000000059605,
+      "load": 1416.5999999940395,
+      "documentBytes": 500,
+      "resources": [
+        {
+          "path": "/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+          "initiator": "link",
+          "encodedBytes": 24836,
+          "decodedBytes": 24836,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/js/telegram-web-app.js",
+          "initiator": "script",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/assets/index-dhQ2NuOD.js",
+          "initiator": "script",
+          "encodedBytes": 64543,
+          "decodedBytes": 204717,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/jsx-runtime-CQZ1b92y.js",
+          "initiator": "other",
+          "encodedBytes": 4111,
+          "decodedBytes": 10349,
+          "blocking": "non-blocking"
+        },
+        {
+          "path": "/assets/index-P5yRPHAm.css",
+          "initiator": "link",
+          "encodedBytes": 9665,
+          "decodedBytes": 31116,
+          "blocking": "blocking"
+        },
+        {
+          "path": "/favicon.ico",
+          "initiator": "other",
+          "encodedBytes": 0,
+          "decodedBytes": 0,
+          "blocking": "non-blocking"
+        }
+      ],
+      "maxObservedInteractionMs": 48,
+      "initialJsBytes": 68654,
+      "pageEncodedBytes": 103655,
+      "requestCount": 7
+    }
+  ]
+}

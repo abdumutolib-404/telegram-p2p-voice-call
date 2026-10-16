@@ -9,10 +9,13 @@ import { getAllowancePeriod } from '../services/plan';
 import calls from '../routes/calls';
 import dashboard from '../routes/dashboard';
 import auth from '../routes/auth';
+import { generateLiveKitToken } from '../config/livekit';
+import { initDataLockdownMiddleware } from '../middleware/initDataLockdown';
+import { requireRegisteredMember } from '../middleware/registeredMember';
 
 vi.mock('../config/livekit', () => ({ generateLiveKitToken: vi.fn().mockResolvedValue('synthetic-voice-token') }));
 vi.mock('../socket/signaling', () => ({ scheduleConnectionHandshakeTimer: vi.fn(), setRoomDurationLimit: vi.fn() }));
-const app = express(); app.use(express.json()); app.use('/calls', calls); app.use('/dashboard', dashboard); app.use('/auth', auth);
+const app = express(); app.use(express.json()); app.use('/calls', initDataLockdownMiddleware, requireRegisteredMember, calls); app.use('/dashboard', dashboard); app.use('/auth', auth);
 const users: string[] = [], sessions: string[] = [];
 async function member(data = {}) {
   const user = await prisma.user.create({ data: { telegramId: BigInt('0x' + crypto.randomBytes(6).toString('hex')), alias: 'Synthetic readiness fixture',
@@ -62,6 +65,36 @@ it('does not invent a speaking start before the media gate opens', async () => {
   const call = await prisma.callSession.create({ data: { roomName: crypto.randomUUID(), userAId: a.id, userBId: b.id, status: 'ACTIVE' } }); sessions.push(call.id);
   const response = await request(app).get('/calls/active').set('x-telegram-init-data', signed(a.telegramId));
   expect(response.body).toMatchObject({ hasActiveCall: true, callDurationLimit: 900, startedAt: null, expiresAt: null });
+});
+
+it.each([
+  ['permanent ban', { isPermanentlyBanned: true }, 'banned'],
+  ['indefinite suspension', { isBanned: true, bannedUntil: null }, 'suspended'],
+  ['dated suspension', { isBanned: true, bannedUntil: new Date(Date.now() + 600000) }, 'suspended'],
+  ['dated suspension with a stale flag', { isBanned: false, bannedUntil: new Date(Date.now() + 600000) }, 'suspended'],
+  ['unfinished registration', { onboarded: false }, 'registration_required'],
+  ['outdated terms', { termsAcceptedVersion: 'synthetic-old-version' }, 'terms_required'],
+])('does not issue fresh resume credentials after %s even while call cleanup is pending', async (_label, restriction, code) => {
+  const [a, b] = await Promise.all([member(restriction), member()]);
+  const call = await prisma.callSession.create({ data: { roomName: crypto.randomUUID(), userAId: a.id, userBId: b.id, status: 'ACTIVE', mediaAuthorizedAt: new Date() } });
+  sessions.push(call.id);
+  vi.mocked(generateLiveKitToken).mockClear();
+  const response = await request(app).get('/calls/active').set('x-telegram-init-data', signed(a.telegramId));
+  expect(response.status).toBe(403);
+  expect(response.body.code).toBe(code);
+  expect(generateLiveKitToken).not.toHaveBeenCalled();
+  const launch = await request(app).post('/auth/verify').set('x-telegram-init-data', signed(a.telegramId)).send({});
+  expect(launch.status).toBe(403);
+  expect(launch.body.code).toBe(code);
+});
+
+it('permits resume after a temporary suspension expires', async () => {
+  const [a, b] = await Promise.all([member({ isBanned: true, bannedUntil: new Date(Date.now() - 60000) }), member()]);
+  const call = await prisma.callSession.create({ data: { roomName: crypto.randomUUID(), userAId: a.id, userBId: b.id, status: 'ACTIVE' } });
+  sessions.push(call.id);
+  const response = await request(app).get('/calls/active').set('x-telegram-init-data', signed(a.telegramId));
+  expect(response.status).toBe(200);
+  expect(response.body.hasActiveCall).toBe(true);
 });
 
 it('reports only the current participant active session and confirms when it becomes terminal', async () => {

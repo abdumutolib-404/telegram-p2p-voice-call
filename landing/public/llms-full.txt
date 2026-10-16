@@ -2,7 +2,7 @@
 
 > PairTalk is an independent service for English learners to practice IELTS speaking with another learner in a Telegram Mini App. This reference describes the implemented platform and links to its public explanations. It is not an official IELTS assessment, a checkout quote, or a replacement for the registration agreement.
 
-Reviewed: 2026-10-07.
+Reviewed: 2026-10-16.
 Public website: https://pairtalk.online/
 Documentation index: https://pairtalk.online/llms.txt
 Registration: https://t.me/PairTalkBot?start=register
@@ -17,12 +17,12 @@ Prices and community figures are dynamic. Their live pages and public APIs are t
 ## What PairTalk provides
 
 - One-to-one voice practice with another available English learner.
-- Self-assessed whole-band practice preferences from 5 to 9 and speaking-skill preferences.
+- Self-assessed speaking scores in half-band steps and speaking-skill preferences.
 - Partner matching influenced by level, preferences, and availability.
 - Speaking prompts and a way to rehearse Part 1 questions, Part 2 long turns, and Part 3 discussions.
 - Partner aliases, post-call ratings and reports, saved partners, call history, and account settings in the authenticated dashboard.
 - Optional recordings subject to agreement, available allowance, and the account's retention settings.
-- A public comparison of published subscription offers and a public aggregate statistics page.
+- A public practice-pack builder and an aggregate statistics page.
 
 Partners are peers, not promised teachers or official examiners. Preferences, peer ratings, and session feedback do not certify an IELTS band. PairTalk does not guarantee a matching time, a particular partner, or an examination result. It is not affiliated with or endorsed by IELTS, Cambridge, the British Council, or IDP.
 
@@ -52,17 +52,17 @@ Source: [IELTS speaking guide](https://pairtalk.online/ielts-speaking.md).
 
 ## Pricing, allowances, recordings, and retention
 
-The implemented model uses configurable subscription offers, including Free, Plus, Pro, and Boss. An administrator publishes current prices and allowances. The landing comparison, dashboard plan chooser, and Telegram checkout read the same published configuration.
+Learners choose a practice pack: calls, a 15- or 30-minute duration, optional recordings, and optional 30-day storage for those recordings. Calls and recordings are priced separately. Unused purchased quantities do not expire. Legacy Free, Plus, Pro and Boss subscriptions retain their original entitlements.
 
-The catalog describes prices in Telegram Stars (XTR) and UZS, included calls, maximum minutes per call, recordings, retention days, and subscription validity. Only active published offers should be presented as available. Account-specific rewards or allowances can differ from public offers and are shown in the authenticated dashboard.
+The public catalog supplies current Telegram Stars (XTR) and UZS prices and availability to the website and checkout. Each 30-minute call or recording uses two 15-minute units and doubles the corresponding service price. Recordings cannot exceed calls in a pack. Optional storage covers every selected recording. The invoice and server-confirmed quote are authoritative.
 
-The comparison can recommend an available plan for desired calls, session length, recordings, and retention. It selects the least expensive matching plan in the chosen currency. Recording retention is irrelevant when zero recordings are needed.
+Recording sales are limited by configured available recording capacity; availability can change before checkout. Campaign offers can have limited capacity and expiry. A user can claim a campaign offer once; later campaigns can select them again. Private promotional messages require the applicable opt-in preference.
 
-Average cost per included call is bundle price divided by the included call allowance. It is a comparison estimate, not a separately sold call or a price calculated from actual usage. Stars and UZS are independently quoted amounts; there is no fixed conversion to USD or between payment channels.
+Join @pairtalk and verify membership in the Mini App to claim three one-time 15-minute starter calls. Two units can cover one 30-minute call. Repeated claim requests do not add gifts. Joining the channel does not subscribe a user to private promotional messages.
 
-Free allowances use a calendar month; paid allowances use the published subscription period. Unused paid allowances expire according to the subscription terms. Permanent unused credits, individual recording-credit purchases, and optional per-credit retention purchases were discussed as ideas and are not implemented products.
+Stars and UZS are separate checkout amounts. Stars pricing uses the configured server policy and rounding; do not promise a fixed cash conversion or reuse an old invoice total for another pack.
 
-Recordings are optional and require separate partner agreement. The current account's recording allowance and retention determine availability. Retention is a duration for recorded audio, not an unlimited storage entitlement. Expired recordings are scheduled for deletion. Do not promise permanent preservation, immediate deletion after one delivery, or a particular retention period without checking the current allowance and policy.
+Recordings require partner agreement. Optional storage keeps a purchased recording for 30 days from creation. Without storage, server copies are for delivery recovery for up to 24 hours and may be removed after all owners receive them in Telegram. Legacy recording entitlements keep their existing retention rules. History shows exact availability. Expired recordings are scheduled for deletion; storage is not permanent preservation.
 
 Sources: [live pricing](https://pairtalk.online/pricing), [pricing explanation](https://pairtalk.online/pricing.md), [privacy](https://pairtalk.online/privacy.md).
 Public pricing JSON: https://pairtalk.online/api/public/plans
@@ -70,9 +70,9 @@ Catalog freshness fields: revision and checkedAt.
 
 ## Refund requests
 
-The implemented bot rule permits a request within 48 hours of purchase OR when less than 10% of the purchased call allowance has been used. Purchase ownership, transaction or purchase state, and account restrictions also apply. This is not an unconditional money-back guarantee. Use /refund in the bot or contact billing support. The registration PDF and published terms explain the policy; the transaction flow determines eligibility for a specific purchase.
+Full unused practice-pack purchases can be refunded within 48 hours only while all purchased quantities remain available and unreserved. Legacy subscription purchases retain their original refund rules. Ownership, payment state and account restrictions also apply. Use /refund in the bot or billing support. The registration PDF and published refund policy explain the rules; eligibility is checked for the specific purchase.
 
-Sources: [subscription terms](https://pairtalk.online/terms#payments), [refund policy](https://pairtalk.online/privacy#refunds), [pricing explanation](https://pairtalk.online/pricing.md).
+Sources: [purchase terms](https://pairtalk.online/terms#payments), [refund policy](https://pairtalk.online/refund-policy), [pricing explanation](https://pairtalk.online/pricing.md).
 
 ## Public statistics and interpretation
 
@@ -109,5 +109,6 @@ Sources: [safety](https://pairtalk.online/safety.md), [community guidelines](htt
 - https://pairtalk.online/community-guidelines.md
 - https://pairtalk.online/privacy.md
 - https://pairtalk.online/terms.md
+- https://pairtalk.online/refund-policy.md
 
 HTML equivalents use the same paths without .md; the overview is at /. The sitemap lists canonical HTML pages. The llms files describe public information and do not grant access to private APIs or alter crawler permissions.

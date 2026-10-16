@@ -23,11 +23,11 @@ vi.mock('livekit-server-sdk', async () => {
   const actual = await vi.importActual<typeof import('livekit-server-sdk')>('livekit-server-sdk');
   return {
     ...actual,
-    WebhookReceiver: vi.fn().mockImplementation(() => ({
+    WebhookReceiver: vi.fn().mockImplementation(function () { return {
       receive: vi.fn().mockImplementation(async (body: string) => {
         return typeof body === 'string' ? JSON.parse(body) : body;
       }),
-    })),
+    }; }),
   };
 });
 

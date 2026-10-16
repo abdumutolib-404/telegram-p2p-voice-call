@@ -10,7 +10,7 @@ The obsolete top-level `test/` harness has been retired. Its bot, database and s
 
 ```text
 node scripts/verify.cjs build
-node scripts/verify.cjs unit --maxWorkers=2 --minWorkers=1
+node scripts/verify.cjs unit --maxWorkers=2
 ```
 
 For dedicated local persistence, `node scripts/start-isolated-services.cjs` creates PostgreSQL/Redis on loopback 55432/56379 and prints the private runtime-file directory and owned container names. Keep that file outside the checkout; do not print its contents. Do not start duplicate services if those ports belong to an existing run.
@@ -22,6 +22,7 @@ node scripts/isolated-command.cjs <private-runtime.json> integration
 node scripts/gateway-check.cjs <private-runtime.json> test ./... -count=1
 node scripts/gateway-check.cjs <private-runtime.json> vet ./...
 node scripts/check-postgres-readiness.cjs <private-runtime.json>
+node scripts/check-call-resume.cjs <private-runtime.json>
 ```
 
 For Go race checks, run the gateway test command with -race in a supported Linux environment. Remove only the exact owned disposable containers when finished; do not remove application volumes or use global Docker cleanup.

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "phase": "baseline",
+  "commit": "5937a962f685433fafe6a6debfdb76d4a63ae416",
+  "checkedAt": "2026-10-16T13:42:16.765Z",
+  "conditions": {
+    "server": "Actual Express routes and auth middleware",
+    "database": "Owned PostgreSQL at loopback 55432",
+    "redis": "Owned protocol/Lua-compatible miniredis at loopback 56379",
+    "fixtures": "20 signed synthetic accounts, 20 completed calls per account",
+    "requestsPerCase": 100,
+    "rateLimits": "Enabled; ten accounts share each case within their normal limits"
+  },
+  "limitations": [
+    "No real Telegram/provider traffic or voice-media load.",
+    "Local latency and ten concurrent HTTP requests do not prove Railway, Redis-production or voice capacity.",
+    "Synthetic accounts share partner history; populated response sizes are reported."
+  ],
+  "errors": [],
+  "rows": [
+    {
+      "route": "/api/public/plans",
+      "concurrency": 1,
+      "requests": 100,
+      "p50Ms": 16.092000000000553,
+      "p95Ms": 17.882399999998597,
+      "p99Ms": 23.28490000000238,
+      "responseBytes": 2236,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/public/plans",
+      "concurrency": 10,
+      "requests": 100,
+      "p50Ms": 12.297500000000582,
+      "p95Ms": 21.136399999999412,
+      "p99Ms": 23.771200000002864,
+      "responseBytes": 2236,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/sessions",
+      "concurrency": 1,
+      "requests": 100,
+      "p50Ms": 16.985999999997148,
+      "p95Ms": 30.294700000002194,
+      "p99Ms": 31.57760000000053,
+      "responseBytes": 6786,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/sessions",
+      "concurrency": 10,
+      "requests": 100,
+      "p50Ms": 63.59979999999996,
+      "p95Ms": 170.90880000000107,
+      "p99Ms": 193.4473999999973,
+      "responseBytes": 9212,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/summary",
+      "concurrency": 1,
+      "requests": 100,
+      "p50Ms": 16.162799999998242,
+      "p95Ms": 18.86149999999907,
+      "p99Ms": 20.376000000000204,
+      "responseBytes": 773,
+      "statusCounts": {
+        "200": 100
+      }
+    },
+    {
+      "route": "/api/dashboard/summary",
+      "concurrency": 10,
+      "requests": 100,
+      "p50Ms": 29.204799999999523,
+      "p95Ms": 48.48029999999926,
+      "p99Ms": 51.352200000001176,
+      "responseBytes": 773,
+      "statusCounts": {
+        "200": 100
+      }
+    }
+  ],
+  "rawTimings": "Per-request timings retained in ignored local output; shared cases retain counts, status distribution, sizes and percentiles."
+}
