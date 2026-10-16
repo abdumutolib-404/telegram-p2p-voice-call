@@ -123,6 +123,7 @@ class InMemoryRedisMock {
 
       const candidateCount = Number(args[2]) || keys.length;
       const selfBand = Number(args[3]?.match(/^match_queue:([^:]+):/)?.[1]);
+      this.kv.set(`match_duration:${selfId}`,{value:String(Number(args[5])||15),expiresAt:Date.now()+Number(args[4])*1000});
       for (const bucketKey of keys.slice(0,candidateCount)) {
         const set = this.sets.get(bucketKey);
         if (!set) continue;
@@ -147,6 +148,9 @@ class InMemoryRedisMock {
           }
 
           const candidateBand = Number(pointer.match(/^match_queue:([^:]+):/)?.[1]);
+          const durationEntry=this.kv.get(`match_duration:${candidate}`);
+          const candidateMinutes=durationEntry&&(durationEntry.expiresAt===undefined||durationEntry.expiresAt>Date.now())?Number(durationEntry.value):15;
+          if(candidateMinutes!==(Number(args[5])||15))continue;
           if (Number.isFinite(selfBand) && (!Number.isFinite(candidateBand) || Math.abs(candidateBand-selfBand)>1)) continue;
           set.delete(candidate);
           if (set.size === 0) this.sets.delete(bucketKey);

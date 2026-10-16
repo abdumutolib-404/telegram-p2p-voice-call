@@ -4,11 +4,12 @@ import { lockRow } from "../utils/transactionLock";
 import {
   quoteCredits,
   type CreditBasket,
-  CREDIT_MINUTES,
 } from "../contracts/credits";
 import { readCreditConfiguration } from "./creditConfiguration";
 import { isAccountRestricted } from "./accountRestriction";
 import { hasAcceptedCurrentTerms } from "./terms";
+import { practiceOrderDescription } from './practiceCheckout';
+import { lockOrderCampaign, finishPackClaim, assertClaimAuthorization } from './packOfferInventory';
 
 export async function createCreditOrder(
   userId: string,
@@ -89,8 +90,10 @@ export async function authorizeCreditOrder(
     const { catalog } = await readCreditConfiguration();
     if (!catalog.salesEnabled)
       throw new Error("New payments are paused.");
+    await lockOrderCampaign(tx,initial);
     await lockRow(tx, "CreditOrder", id);
     const order = (await tx.creditOrder.findUnique({ where: { id } }))!;
+    await assertClaimAuthorization(tx,order);
     if(order.recordings>0){
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251011)::text`;
       const stock=await tx.$queryRaw<{remaining:number}[]>`SELECT pairtalk_recording_capacity_remaining() AS remaining`;
@@ -98,6 +101,7 @@ export async function authorizeCreditOrder(
     }
     if (
       order.status !== "PENDING" ||
+      (order.checkoutCurrency && order.checkoutCurrency !== 'XTR') ||
       order.expiresAt <= new Date() ||
       order.starsAmount !== amount ||
       (order.preCheckoutId && order.preCheckoutId !== checkoutId)
@@ -122,6 +126,7 @@ export async function settleCreditOrder(
     const initial = await tx.creditOrder.findUnique({ where: { id } });
     if (!initial) throw new Error("Purchase not found.");
     await lockRow(tx, "User", initial.userId);
+    await lockOrderCampaign(tx,initial);
     await lockRow(tx, "CreditOrder", id);
     const [order, user] = await Promise.all([
       tx.creditOrder.findUnique({ where: { id } }),
@@ -132,6 +137,7 @@ export async function settleCreditOrder(
       !user ||
       user.telegramId !== telegramId ||
       currency !== "XTR" ||
+      (order.checkoutCurrency && order.checkoutCurrency !== 'XTR') ||
       order.starsAmount !== amount ||
       !order.authorizedAt
     )
@@ -162,6 +168,7 @@ export async function settleCreditOrder(
         storageCredits: { increment: order.storage },
       },
     });
+    await finishPackClaim(tx,order);
     return { duplicate: false, order: paid };
   });
 }
@@ -187,16 +194,15 @@ export async function reserveRecordingCredit(
     include: { userA: true, userB: true },
   });
   if (!call) throw new Error("Call is unavailable.");
-  // A credit recording covers the full call, up to fifteen minutes. Existing
-  // longer subscription recordings continue through their original allowance.
-  const { calculateEffectiveCallDuration } = await import("./plan");
-  if (calculateEffectiveCallDuration(call.userA, call.userB) > CREDIT_MINUTES)
+  const { sessionCallMinutes } = await import("./plan");
+  const minutes=sessionCallMinutes(call),quantity=Math.ceil(minutes/15);
+  if (minutes > 30)
     throw new Error(
-      "Recordings cover calls up to 15 minutes. This longer call requires its legacy recording allowance.",
+      "Purchased recordings cover calls up to 30 minutes. This longer call requires its legacy recording allowance.",
     );
   await reserveCredit(tx, callId, userId, "RECORDING");
   const user = await tx.user.findUnique({ where: { id: userId } });
-  if (user && user.storageCredits > 0)
+  if (user && user.storageCredits >= quantity)
     await reserveCredit(tx, callId, userId, "STORAGE");
 }
 // Run after provider recovery as well as webhooks. A usable downloaded file is a
@@ -250,7 +256,9 @@ export function creditReceipt(order: {
   storage: number;
   starsAmount: number;
   uzsAmount: number;
+  packSnapshot?: string | null;
 }) {
+  if (order.packSnapshot) return `${practiceOrderDescription({...order,packSnapshot:order.packSnapshot})}. Purchases do not expire. ${order.starsAmount} Stars or ${order.uzsAmount.toLocaleString('en-US')} UZS.`;
   return `${order.calls} calls · ${order.recordings} recordings${order.storage ? ` · 30-day storage for ${order.storage} recordings` : ""}. Each call/recording covers up to 15 minutes. Purchased calls and recordings do not expire. ${order.starsAmount} Stars; UZS reference ${order.uzsAmount.toLocaleString("en-US")}.`;
 }
 export async function refundCreditOrder(

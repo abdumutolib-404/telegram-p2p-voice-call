@@ -50,8 +50,8 @@ it("shows separate UZS rates, optional recordings and the rounded basket total",
   for (const kind of ["CALL", "RECORDING"] as const)
     expect(host.textContent).toContain(catalog.rates[kind].uzs.toLocaleString("en-US", {maximumFractionDigits:2}));
   expect(host.textContent).toContain("UZS/call");
-  expect(host.textContent).toContain("22 Stars/call");
-  expect(host.textContent).toContain("28 Stars/recording");
+  expect(host.textContent).toContain("18 Stars/call");
+  expect(host.textContent).toContain("21 Stars/recording");
   expect(host.textContent).not.toMatch(/\bcredits?\b/i);
   const quantity =
     host.querySelectorAll<HTMLInputElement>("input[type=number]");

@@ -39,7 +39,9 @@ import { logger, getRecentErrors } from '../utils/logger';
 import { setRequestContextUserId } from '../utils/requestContext';
 import adminTelemetryRouter from './adminTelemetry';
 import adminIeltsRouter from './adminIelts';
-import { createDiscountCampaign, listDiscountCampaigns, DiscountError } from '../services/discounts';
+import adminNotificationsRouter from './adminNotifications';
+import { listDiscountCampaigns } from '../services/discounts';
+import { createPackCampaign, listPackCampaigns, publicPackCampaign, recoverCampaignMessage, retryCampaignPublication, checkOfferChannel } from '../services/packCampaigns';
 import { ZodError, z } from 'zod';
 import { readCreditConfiguration, saveCreditConfiguration } from '../services/creditConfiguration';
 
@@ -51,6 +53,7 @@ const otpVerifyLimiter = createActionRateLimiter('ADMIN_OTP', getClientIp);
 router.use('/telemetry', adminAuthMiddleware, adminTelemetryRouter);
 // Mount IELTS Sub-Router (Protected under /api/admin/ielts/*)
 router.use('/ielts', adminAuthMiddleware, adminIeltsRouter);
+router.use('/notifications', adminNotificationsRouter);
 
 export interface AdminOtpMessageRef {
   chatId: string;
@@ -653,8 +656,25 @@ router.get('/plans/discounts',adminAuthMiddleware,async (_req,res)=>{
   catch(error){logger.error('Discount campaign list failed',{service:'admin'},error);res.status(500).json({error:'Discount campaigns are unavailable.'});}
 });
 router.post('/plans/discounts',adminAuthMiddleware,async (req:AdminAuthenticatedRequest,res)=>{
-  try { const campaign=await createDiscountCampaign(req.body,req.adminUser!.telegramId);res.status(201).json({id:campaign.id,recipientCount:campaign.recipientCount,starsPrice:campaign.starsPrice,uzsPrice:campaign.uzsPrice,expiresAt:campaign.expiresAt}); }
-  catch(error){if(error instanceof ZodError){res.status(400).json({error:'Plan, discount percentage (0.01–100), recipient count (1–10,000) and valid period (1 minute–365 days) are required.'});return;}if(error instanceof DiscountError){res.status(error.status).json({error:error.message});return;}logger.error('Discount campaign creation failed',{service:'admin'},error);res.status(500).json({error:'Could not create the campaign. Retry the same submission to check its result.'});}
+  res.status(410).json({error:'Personal discount campaigns are retired. Create a public channel pack offer in Plans.'});
+});
+router.get('/pack-offers',adminAuthMiddleware,async(_req,res)=>{
+  try{res.json({campaigns:await listPackCampaigns(undefined,true),serverNow:new Date()});}catch{res.status(503).json({error:'Channel campaigns are unavailable.'});}
+});
+router.get('/pack-offers/channel',adminAuthMiddleware,async(_req,res)=>{
+  try{if(!adminBotInstance)throw new Error('Bot is unavailable.');res.json(await checkOfferChannel(adminBotInstance));}catch(error){res.status(503).json({error:error instanceof Error?error.message:'Channel verification failed.'});}
+});
+router.post('/pack-offers',adminAuthMiddleware,async(req:AdminAuthenticatedRequest,res)=>{
+  try{if(!adminBotInstance){res.status(503).json({error:'Channel bot is temporarily unavailable.'});return;}const campaign=await createPackCampaign(req.body,String(req.adminUser!.telegramId),adminBotInstance);res.status(201).json({...publicPackCampaign(campaign),messageState:campaign.messageState});}
+  catch(error){res.status(error instanceof ZodError?400:409).json({error:error instanceof ZodError?'Complete the pack, discount, participant count and valid period (up to 47 hours).':error instanceof Error?error.message:'Campaign creation could not be confirmed. Retry the same submission.'});}
+});
+router.post('/pack-offers/:id/recover',adminAuthMiddleware,async(req:AdminAuthenticatedRequest,res)=>{
+  try{const id=z.string().uuid().parse(req.params.id),input=z.object({messageId:z.number().int().positive()}).strict().parse(req.body);const campaign=await recoverCampaignMessage(id,input.messageId,String(req.adminUser!.telegramId));res.json({success:true,messageState:campaign.messageState});}
+  catch(error){res.status(error instanceof ZodError?400:409).json({error:error instanceof Error?error.message:'Message recovery is unavailable.'});}
+});
+router.post('/pack-offers/:id/retry',adminAuthMiddleware,async(req:AdminAuthenticatedRequest,res)=>{
+  try{const id=z.string().uuid().parse(req.params.id);await retryCampaignPublication(id,String(req.adminUser!.telegramId));res.json({success:true});}
+  catch(error){res.status(error instanceof ZodError?400:409).json({error:error instanceof Error?error.message:'Publication retry is unavailable.'});}
 });
 router.get('/credit-pricing',adminAuthMiddleware,async(_req,res)=>{
   try { res.json(await readCreditConfiguration()); } catch { res.status(503).json({error:'Prices are unavailable.'}); }
@@ -883,7 +903,7 @@ router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req: Adm
       note,
     });
 
-    if (adminBotInstance && result.user) {
+    if (adminBotInstance && result.user && !result.request.creditOrderId) {
       const plans = getPlansConfig();
       const tier = (result.user.plan.toUpperCase() as keyof typeof plans) in plans
         ? (result.user.plan.toUpperCase() as keyof typeof plans)
@@ -904,7 +924,7 @@ router.post('/payments/manual/:id/approve', adminAuthMiddleware, async (req: Adm
 
     res.json({
       success: true,
-      message: 'Payment approved and plan activated.',
+      message: result.request.creditOrderId ? 'Payment approved and purchase added.' : 'Payment approved and plan activated.',
       request: {
         ...result.request,
         telegramId: result.request.telegramId ? result.request.telegramId.toString() : '',

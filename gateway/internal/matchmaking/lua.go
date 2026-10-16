@@ -7,6 +7,10 @@ local candidate_count = tonumber(ARGV[3])
 local queue_ttl = tonumber(ARGV[5])
 local max_scans = 50
 local self_band = tonumber(string.match(ARGV[4], '^match_queue:([^:]+):'))
+local self_minutes = tonumber(ARGV[6]) or 15
+-- Preserve the newcomer's preference even when this join immediately matches.
+-- Failed admission can restore either participant without another queue join.
+redis.call('SET', 'match_duration:' .. self_id, self_minutes, 'EX', queue_ttl)
 local skipped = {}
 local function restore_skipped()
   for _, item in ipairs(skipped) do redis.call('SADD', item[1], item[2]) end
@@ -22,7 +26,8 @@ for i = 1, candidate_count do
       local pointer_key = user_prefix .. candidate
       local pointer = redis.call('GET', pointer_key)
       local band = pointer and tonumber(string.match(pointer, '^match_queue:([^:]+):'))
-      if pointer and band and self_band and math.abs(band-self_band) <= 1.0 then
+      local partner_minutes = tonumber(redis.call('GET', 'match_duration:' .. candidate)) or 15
+      if pointer and band and self_band and math.abs(band-self_band) <= 1.0 and partner_minutes == self_minutes then
         -- Atomically claim candidate and delete pointers
         redis.call('DEL', pointer_key)
         redis.call('DEL', user_prefix .. self_id)

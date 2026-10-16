@@ -170,7 +170,7 @@ export function getRecordingLimitForPlan(plan: string): number {
 }
 
 export function getEffectiveEntitlement(user: {
-  creditBilling?: boolean; callCredits?: number; recordingCredits?: number; storageCredits?: number; creditCallActive?: boolean;
+  creditBilling?: boolean; callCredits?: number; recordingCredits?: number; storageCredits?: number; creditCallActive?: boolean; activeCallCreditUnits?:number; preferredCallMinutes?:number;
   plan?: string | null;
   subscriptionStatus?: string | null;
   subscriptionExpiresAt?: Date | string | null;
@@ -240,11 +240,13 @@ export function getEffectiveEntitlement(user: {
   }
 
   const creditOnly = user.creditBilling === true && planKey === 'FREE' && !user.customPlanName && !isAdmin;
-  if (creditOnly) { dailyLimit = 0; recordingLimit = 0; maxDurationMinutes = 15; retentionDays = 30; }
+  const walletMinutes=user.creditCallActive?(user.activeCallCreditUnits===2?30:15):(user.preferredCallMinutes===30?30:15);
+  const walletDuration=isCustomDuration&&maxDurationMinutes<defaultTier.maxDuration?Math.min(walletMinutes,maxDurationMinutes):walletMinutes;
+  if (creditOnly) { dailyLimit = 0; recordingLimit = 0; maxDurationMinutes = walletDuration; retentionDays = 30; }
   const baseCallLimit = dailyLimit, baseRecordingLimit = recordingLimit;
   dailyLimit += user.callCredits ?? 0;
   recordingLimit += user.recordingCredits ?? 0;
-  if (user.creditCallActive || creditOnly) { maxDurationMinutes = 15; isCustomDuration = true; }
+  if (user.creditCallActive || creditOnly) { maxDurationMinutes=walletDuration; isCustomDuration = true; }
   const isUnlimited = baseCallLimit >= 999 || isAdmin;
   const isCustomPlan = !expired && Boolean(user.customPlanName);
   const overrideSource: 'PLAN_DEFAULT' | 'ADMIN_OVERRIDE' =
@@ -557,6 +559,11 @@ export function calculateEffectiveCallDuration(userA: any, userB: any): number {
   return Math.max(entA.maxDurationMinutes, entB.maxDurationMinutes);
 }
 
+/** Session admission freezes this value; reconnect/configuration changes do not reset it. */
+export function sessionCallMinutes(session:{allowedMinutes?:number|null;userA:any;userB:any}):number {
+  return session.allowedMinutes ?? calculateEffectiveCallDuration(session.userA,session.userB);
+}
+
 /**
  * Backward compatibility helper for plan strings: returns max(limitA, limitB)
  */
@@ -644,6 +651,8 @@ export async function approveManualPaymentRequest(params: {
   if (!req || req.status !== 'PENDING') {
     throw new Error('Payment request not found or already processed.');
   }
+
+  if (req.creditOrderId) return (await import('./practiceCheckout')).approvePracticePayment(req.id,params.adminId,params.note);
 
   const tier = (req.plan.toUpperCase() as keyof SystemPlansConfig) in plansConfig
     ? (req.plan.toUpperCase() as keyof SystemPlansConfig)
@@ -757,6 +766,7 @@ export async function rejectManualPaymentRequest(params: {
     }
 
     if(req.discountOfferId) await tx.discountOffer.updateMany({where:{id:req.discountOfferId,status:'SUBMITTED',claimedPaymentId:req.id},data:{status:'AVAILABLE',checkoutCurrency:null,checkoutOrder:null,authorizedAt:null,claimedPaymentId:null}});
+    if(req.creditOrderId) await (await import('./practiceCheckout')).cancelPracticeOrder(tx,req.creditOrderId);
 
     await tx.auditLog.create({
       data: {
@@ -782,6 +792,7 @@ export async function rejectManualPaymentRequest(params: {
 export async function requestManualPaymentRefund(requestId: string, telegramId: bigint, cardNumber: string) {
   const initial = await prisma.manualPaymentRequest.findUnique({ where: { id: requestId } });
   if (!initial || initial.telegramId !== telegramId) throw new Error('Payment request not found.');
+  if(initial.creditOrderId)return (await import('./practiceCheckout')).requestPracticeRefund(requestId,telegramId,cardNumber);
   return prisma.$transaction(async tx => {
     await lockRow(tx, 'User', initial.userId);
     const current = await tx.manualPaymentRequest.findUnique({ where: { id: requestId } });
@@ -814,6 +825,7 @@ export async function refundManualPaymentRequest(params: {
     throw new Error('Payment request not found or already refunded.');
   }
 
+  if(req.creditOrderId)return (await import('./practiceCheckout')).reviewPracticeRefund(req.id,params.adminId,'CONFIRM',params.note||'Manual transfer confirmed',params.refundProof.trim());
   const result = await prisma.$transaction(async (tx) => {
     await lockRow(tx, 'User', req.userId);
     const current = await tx.manualPaymentRequest.findUnique({ where: { id: req.id } });
@@ -886,6 +898,8 @@ export async function rejectManualPaymentRefund(params: {
   if (!req || req.status !== 'REFUND_PENDING') {
     throw new Error('Payment request not found.');
   }
+
+  if(req.creditOrderId)return (await import('./practiceCheckout')).reviewPracticeRefund(req.id,params.adminId,'REJECT',reasonText);
 
   const result = await prisma.$transaction(async (tx) => {
     const changed = await tx.manualPaymentRequest.updateMany({

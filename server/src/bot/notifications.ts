@@ -5,6 +5,8 @@ import crypto from 'node:crypto';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
 import type { Prisma } from '@prisma/client';
+import type { ReminderCategory, ReminderContext } from '../contracts/notifications';
+import { notificationDeliveryDecision } from '../services/notificationPolicy';
 
 type SendMessageOptions = Parameters<Bot<MyContext>['api']['sendMessage']>[2];
 type SendMessageSignal = Parameters<Bot<MyContext>['api']['sendMessage']>[3];
@@ -14,20 +16,24 @@ const notificationNamespace = crypto.createHash('sha256').update(env.BOT_TOKEN).
 /** Must run inside the business transaction when delivery depends on a committed award. */
 export async function persistNotification(
   tx: Prisma.TransactionClient, telegramId: string, text: string,
-  options?: SendMessageOptions, urgent = false, dedupeKey?: string, expiresAt?: Date
+  options?: SendMessageOptions, urgent = false, dedupeKey?: string, expiresAt?: Date,
+  reminder?:{category:ReminderCategory;context:ReminderContext}
 ): Promise<boolean> {
   const optionsJson = options ? JSON.stringify(options) : null;
-  if (text.length > 8192 || (optionsJson?.length ?? 0) > 16384 || (dedupeKey?.length ?? 0) > 256) {
+  const contextJson=reminder?JSON.stringify(reminder.context):null;
+  if (text.length > 8192 || (optionsJson?.length ?? 0) > 16384 || (dedupeKey?.length ?? 0) > 256 || (contextJson?.length??0)>4096) {
     throw new Error('Notification exceeds supported size.');
   }
   // PostgreSQL returns void; Prisma cannot deserialize it without an explicit supported cast.
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${notificationNamespace},0))::text`;
   // Deduplicate all outcomes, including uncertain delivery: replay must never resend those jobs.
   if (dedupeKey && await tx.notificationJob.findFirst({ where: { namespace: notificationNamespace, dedupeKey } })) return false;
-  if (await tx.notificationJob.count({ where: { namespace: notificationNamespace, status: { in: ['QUEUED', 'SENDING'] } } }) >= 1000) {
+  // Optional/bulk backlog must never prevent an atomic paid purchase receipt
+  // or a mandatory account notice from being committed.
+  if (!urgent && await tx.notificationJob.count({ where: { namespace: notificationNamespace, status: { in: ['QUEUED', 'CHECKING', 'SENDING'] } } }) >= 1000) {
     throw new Error('Notification queue is full.');
   }
-  await tx.notificationJob.create({ data: { namespace: notificationNamespace, telegramId, text, optionsJson, urgent, dedupeKey, expiresAt: expiresAt ?? null } });
+  await tx.notificationJob.create({ data: { namespace: notificationNamespace, telegramId, text, optionsJson, urgent, dedupeKey, expiresAt: expiresAt ?? null,category:reminder?.category??'TRANSACTIONAL',contextJson } });
   return true;
 }
 
@@ -57,23 +63,39 @@ export class NotificationQueue {
   }
 
   private async drainPersistent(bot: Bot<MyContext>) {
-    await prisma.notificationJob.updateMany({where:{namespace:this.namespace,status:'SENDING',leasedAt:{lt:new Date(Date.now()-120000)}},data:{status:'UNCONFIRMED',failure:'Delivery outcome uncertain after worker interruption; review before sending again.'}});
+    await prisma.notificationJob.updateMany({where:{namespace:this.namespace,status:'CHECKING',leasedAt:{lt:new Date(Date.now()-120000)}},data:{status:'QUEUED',owner:null,leasedAt:null,nextAttemptAt:new Date(),failure:'Eligibility check interrupted before sending; safe to retry.'}});
+    await prisma.notificationJob.updateMany({where:{namespace:this.namespace,status:'SENDING',leasedAt:{lt:new Date(Date.now()-120000)}},data:{status:'UNCONFIRMED',owner:null,failure:'Delivery outcome uncertain after worker interruption; review before sending again.'}});
     while (!this.stopped) {
       await prisma.notificationJob.updateMany({where:{namespace:this.namespace,status:'QUEUED',expiresAt:{lte:new Date()}},data:{status:'EXPIRED',failure:'Offer expired before notification delivery.'}});
       const job = await prisma.notificationJob.findFirst({where:{namespace:this.namespace,status:'QUEUED',nextAttemptAt:{lte:new Date()}},orderBy:[{urgent:'desc'},{createdAt:'asc'}]});
       if (!job) return;
-      const claim = await prisma.notificationJob.updateMany({where:{id:job.id,status:'QUEUED',OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]},data:{status:'SENDING',leasedAt:new Date()}});
+      if(job.dedupeKey?.startsWith('discount-offer:')){
+        await prisma.notificationJob.updateMany({where:{id:job.id,status:'QUEUED'},data:{status:'EXPIRED',failure:'Personal offer promotions retired; offers are posted in the channel.'}});
+        continue;
+      }
+      const owner=crypto.randomUUID();
+      const claim = await prisma.notificationJob.updateMany({where:{id:job.id,status:'QUEUED',OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]},data:{status:'CHECKING',owner,leasedAt:new Date()}});
       if (claim.count !== 1) continue;
       this.controller = new AbortController();
+      let attempted=false;
       try {
+        const decision=await notificationDeliveryDecision(job);
+        if(decision.action!=='SEND'){
+          await prisma.notificationJob.updateMany({where:{id:job.id,owner,status:'CHECKING'},data:decision.action==='SKIP'?{status:'EXPIRED',owner:null,failure:decision.reason}:{status:'QUEUED',owner:null,leasedAt:null,nextAttemptAt:decision.until,failure:decision.reason}});
+          continue;
+        }
+        const ready=await prisma.notificationJob.updateMany({where:{id:job.id,owner,status:'CHECKING'},data:{status:'SENDING',leasedAt:new Date()}});
+        if(ready.count!==1)continue;
         // grammY types the legacy AbortSignal shim; Node's signal implements the same cancellation contract.
+        attempted=true;
         await bot.api.sendMessage(job.telegramId,job.text,job.optionsJson?JSON.parse(job.optionsJson):undefined,this.controller.signal as unknown as SendMessageSignal);
-        await prisma.notificationJob.update({where:{id:job.id},data:{status:'SENT',failure:null}});
+        await prisma.notificationJob.updateMany({where:{id:job.id,owner,status:'SENDING'},data:{status:'SENT',owner:null,failure:null}});
       } catch(error: any) {
+        if(!attempted){await prisma.notificationJob.updateMany({where:{id:job.id,owner},data:{status:'QUEUED',owner:null,leasedAt:null,nextAttemptAt:new Date(Date.now()+30000),failure:'Eligibility check unavailable. No Telegram request was sent.'}});continue;}
         const seconds=error?.parameters?.retry_after;
         const retry=error?.error_code===429 && Number.isInteger(seconds) && seconds>0 && seconds<=30 && job.retries<1 && !this.stopped;
         const permanent=[400,401,403].includes(error?.error_code);
-        await prisma.notificationJob.update({where:{id:job.id},data:{status:retry?'QUEUED':permanent?'FAILED':'UNCONFIRMED',retries:retry?job.retries+1:job.retries,nextAttemptAt:new Date(Date.now()+(retry?seconds*1000:0)),failure:retry?'Telegram rate limit; bounded retry scheduled.':permanent?'Telegram rejected delivery.':'Delivery outcome uncertain; no automatic resend.'}});
+        await prisma.notificationJob.updateMany({where:{id:job.id,owner,status:'SENDING'},data:{status:retry?'QUEUED':permanent?'FAILED':'UNCONFIRMED',owner:null,retries:retry?job.retries+1:job.retries,nextAttemptAt:new Date(Date.now()+(retry?seconds*1000:0)),failure:retry?'Telegram rate limit; bounded retry scheduled.':permanent?'Telegram rejected delivery.':'Delivery outcome uncertain; no automatic resend.'}});
         logger.warn('Notification delivery deferred or rejected',{service:'bot',event:'notification_delivery',jobId:job.id,retry,permanent});
       } finally { this.controller = null; }
     }

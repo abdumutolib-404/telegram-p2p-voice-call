@@ -25,7 +25,7 @@ if(process.argv[2]!=='--child'){
   (async()=>{
     try{
       await connectDB();
-      for(const [i,id]of ids.entries())await prisma.user.create({data:{id,telegramId:BigInt(Date.now())+BigInt(i),alias:`credit-check-${id}`,onboarded:true,termsAcceptedVersion:currentTerms.version,termsDocumentSha256:currentTerms.sha256,termsAcceptedAt:new Date()}});
+      for(const [i,id]of ids.entries())await prisma.user.create({data:{id,telegramId:BigInt(Date.now())+BigInt(i),alias:`credit-check-${id}`,onboarded:true,callCredits:3,starterGiftGrantedAt:new Date(),termsAcceptedVersion:currentTerms.version,termsDocumentSha256:currentTerms.sha256,termsAcceptedAt:new Date()}});
       assert.equal((await user(ids[0])).callCredits,3);
       const {catalog}=await readCreditConfiguration(),buyer=await user(ids[0]),other=await user(ids[2]);
       const stock=()=>prisma.$queryRaw`SELECT pairtalk_recording_capacity_remaining() AS remaining`;
@@ -38,7 +38,7 @@ if(process.argv[2]!=='--child'){
       console.log('PASS four simultaneous recording orders produce only three capacity holds; expired unpaid invoices release stock.');
       const requestId=crypto.randomUUID(),basket={calls:2,recordings:1,storage:true};
       const order=await credits.createCreditOrder(buyer.id,requestId,basket,catalog.revision);
-      assert.equal(order.starsAmount,73);assert.equal(order.uzsAmount,11203);
+      assert.equal(order.starsAmount,58);assert.equal(order.uzsAmount,11203);
       assert.equal((await credits.createCreditOrder(buyer.id,requestId,basket,catalog.revision)).id,order.id);
       await assert.rejects(credits.createCreditOrder(other.id,requestId,basket,catalog.revision));
       await assert.rejects(credits.createCreditOrder(buyer.id,requestId,{...basket,calls:3},catalog.revision));

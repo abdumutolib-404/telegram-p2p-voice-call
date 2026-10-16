@@ -15,6 +15,9 @@ model NotificationJob {
   telegramId    String
   text          String
   optionsJson   String?
+  category      String @default("TRANSACTIONAL")
+  contextJson   String?
+  owner         String?
   status        String   @default("QUEUED")
   urgent        Boolean  @default(false)
   retries       Int      @default(0)
@@ -26,6 +29,7 @@ model NotificationJob {
   updatedAt     DateTime @updatedAt
 
   @@index([namespace, status, nextAttemptAt])
+  @@index([category, createdAt])
   @@unique([namespace, dedupeKey])
 }
 
@@ -53,10 +57,24 @@ model PostCallJob {
 model User {
   id                  String                 @id @default(uuid())
   creditBilling       Boolean                @default(true)
-  callCredits         Int                    @default(3)
+  callCredits         Int                    @default(0)
+  starterGiftGrantedAt DateTime?
+  notifyInactivity    Boolean @default(false)
+  notifyCheckout      Boolean @default(false)
+  notifyPeak          Boolean @default(false)
+  notifyChannel       Boolean @default(false)
+  quietHours          Boolean @default(true)
+  quietStart          Int @default(22)
+  quietEnd            Int @default(8)
+  lastActiveAt        DateTime @default(now())
+  nextReminderAt      DateTime @default(now())
+  lastReminderAttemptAt DateTime?
+  lastReminderJobId   String?
   recordingCredits    Int                    @default(0)
   storageCredits      Int                    @default(0)
   creditCallActive    Boolean                @default(false)
+  activeCallCreditUnits Int                  @default(0)
+  preferredCallMinutes Int                   @default(15)
   telegramId          BigInt                 @unique
   alias               String                 @unique
   subFC               Float                  @default(6.0)
@@ -108,9 +126,15 @@ model User {
   discountOffers      DiscountOffer[]
   creditOrders        CreditOrder[]
   creditUsage         CreditUsage[]
+  packClaims          PackClaim[]
 
   @@index([subscriptionExpiresAt])
   @@index([isBanned])
+  @@index([lastActiveAt])
+  @@index([notifyInactivity, nextReminderAt, id])
+  @@index([notifyCheckout, nextReminderAt])
+  @@index([notifyPeak, nextReminderAt, id])
+  @@index([notifyChannel, nextReminderAt, id])
 }
 
 model TermsAcceptance {
@@ -123,6 +147,24 @@ model TermsAcceptance {
   source         String   @default("TELEGRAM_BOT")
 
   @@unique([userId, version, documentSha256])
+}
+
+model NotificationBroadcast {
+  id            String @id @default(uuid())
+  requestId     String @unique
+  adminId       String
+  messageId     Int?
+  kind          String @default("CHANNEL")
+  text          String?
+  topicRevision String?
+  cursor        String?
+  completed     Boolean @default(false)
+  expiresAt     DateTime
+  leaseUntil    DateTime?
+  owner         String?
+  nextAttemptAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  @@index([completed,nextAttemptAt])
 }
 
 model CallSession {
@@ -143,6 +185,7 @@ model CallSession {
   restrictionCleanupPending Boolean @default(false)
   recordingKeys     String[]     @default([])
   duration           Int          @default(0) // call duration in seconds
+  allowedMinutes     Int?
   createdAt          DateTime     @default(now())
   endedAt            DateTime?
 
@@ -174,6 +217,11 @@ model CreditOrder {
   uzsAmount         Int
   catalogRevision   String
   catalogSnapshot   String
+  packSnapshot      String?
+  checkoutCurrency  String?
+  manualPayment     ManualPaymentRequest?
+  packClaimId       String?
+  packClaim         PackClaim? @relation(fields:[packClaimId],references:[id])
   termsVersion      String @default("credits-2026-10-15")
   termsAcceptedAt   DateTime @default(now())
   status            String @default("PENDING")
@@ -197,10 +245,53 @@ model RecordingCapacity {
   @@index([month])
 }
 
+model PackCampaign {
+  id                String @id @default(uuid())
+  requestId         String @unique
+  adminId           String
+  packSnapshot      String
+  catalogSnapshot   String
+  percent           Float
+  maximumClaims     Int
+  claimedCount      Int @default(0)
+  validMinutes      Int
+  status            String @default("DRAFT")
+  expiresAt         DateTime
+  messageState      String @default("QUEUED")
+  telegramMessageId Int?
+  telegramMessageAt DateTime?
+  revision          Int @default(0)
+  syncedRevision    Int @default(-1)
+  leaseUntil        DateTime?
+  owner             String?
+  nextAttemptAt     DateTime @default(now())
+  failure           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  claims            PackClaim[]
+  @@index([messageState,nextAttemptAt])
+  @@index([status,expiresAt])
+}
+
+model PackClaim {
+  id            String @id @default(uuid())
+  campaignId    String
+  campaign      PackCampaign @relation(fields:[campaignId],references:[id])
+  userId        String
+  user          User @relation(fields:[userId],references:[id])
+  status        String @default("HELD")
+  activeOrderId String?
+  claimedAt     DateTime?
+  createdAt     DateTime @default(now())
+  orders        CreditOrder[]
+  @@unique([campaignId,userId])
+}
+
 model CreditUsage {
   callId    String
   userId    String
   kind      String
+  quantity  Int @default(1)
   status    String @default("RESERVED")
   createdAt DateTime @default(now())
   call      CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
@@ -323,6 +414,8 @@ model ManualPaymentRequest {
   alias            String
   plan             String    // "PLUS", "PRO", "BOSS"
   uzsAmount        Int
+  creditOrderId    String? @unique
+  creditOrder      CreditOrder? @relation(fields: [creditOrderId], references: [id])
   discountOfferId  String?
   entitlementStartsAt DateTime?
   entitlementExpiresAt DateTime?

@@ -1,3 +1,4 @@
+import {createDiscountCampaign} from './fixtures/legacyDiscount';
 import { beforeEach,afterEach,expect,it,vi } from 'vitest';
 import crypto from 'node:crypto';
 import express from 'express';
@@ -7,12 +8,10 @@ import { prisma } from '../config/database';
 import { env } from '../config/env';
 import { currentTerms } from '../services/terms';
 import { getPlansConfig,updatePlansConfig,approveManualPaymentRequest,rejectManualPaymentRequest,getEffectiveEntitlement,calculateEffectiveCallDuration,revokePlanOnRefund,refundManualPaymentRequest } from '../services/plan';
-import { createDiscountCampaign,activeDiscountOffers,recoverDiscountNotices,viewDiscountOffer,beginDiscountCheckout,authorizeDiscountStars,settleDiscountStars,claimFreeDiscount,submitDiscountReceipt } from '../services/discounts';
+import { activeDiscountOffers,viewDiscountOffer,beginDiscountCheckout,authorizeDiscountStars,settleDiscountStars,claimFreeDiscount,submitDiscountReceipt } from '../services/discounts';
 import { discountCampaignInput,discountedPrice } from '../contracts/discounts';
 import adminRoutes from '../routes/admin';
 import dashboardRoutes from '../routes/dashboard';
-import { NotificationQueue } from '../bot/notifications';
-import { startDiscountNoticeWorker } from '../services/discounts';
 
 const baseline=structuredClone(getPlansConfig());
 const app=express();app.use(express.json());app.use('/admin',adminRoutes);app.use('/dashboard',dashboardRoutes);
@@ -35,44 +34,10 @@ it.each([{}, {plan:'FREE'}, {percent:0}, {percent:101}, {recipientCount:0}, {rec
   const base={requestId:crypto.randomUUID(),plan:'PLUS',percent:20,recipientCount:1,validMinutes:60};
   expect(discountCampaignInput.safeParse(Object.keys(input).length?{...base,...input}:{}).success).toBe(false);
 });
-it('selects exactly X distinct eligible users and permits selection in later campaigns',async()=>{
-  const members=await Promise.all(Array.from({length:5},()=>member()));await member({isBanned:true});await member({onboarded:false});await member({termsDocumentSha256:'invalid'});await member({plan:'BOSS',subscriptionStatus:'ACTIVE',subscriptionExpiresAt:new Date(Date.now()+86400000)});
-  const first=await campaign(20,3),offers=await prisma.discountOffer.findMany({where:{campaignId:first.id}});
-  expect(offers).toHaveLength(3);expect(new Set(offers.map(o=>o.userId)).size).toBe(3);expect(offers.every(o=>members.some(u=>u.id===o.userId))).toBe(true);
-  const second=await campaign(20,5);expect(await prisma.discountOffer.count({where:{campaignId:second.id}})).toBe(5);
-});
-it('replays the same admin submission without creating a second campaign or random draw',async()=>{
-  await member();const input={requestId:crypto.randomUUID(),plan:'PLUS',percent:20,recipientCount:1,validMinutes:60};
-  const result=await Promise.all([createDiscountCampaign(input,'12345678'),createDiscountCampaign(input,'12345678')]);
-  expect(result[0].id).toBe(result[1].id);expect(await prisma.discountOffer.count()).toBe(1);
-  await expect(createDiscountCampaign({...input,percent:30},'12345678')).rejects.toThrow('submission ID');
-});
-it('refuses insufficient recipients or inactive plans without leaving partial campaigns',async()=>{
-  await member();await expect(campaign(20,2)).rejects.toThrow('Only 1 eligible');expect(await prisma.discountCampaign.count()).toBe(0);
-  updatePlansConfig({PLUS:{...getPlansConfig().PLUS,active:false}});await expect(campaign()).rejects.toThrow('available paid plan');
-});
-it('queues exactly one personal message per selected user and keeps its expiry',async()=>{
-  const {c,offer}=await fixture();await Promise.all([recoverDiscountNotices(),recoverDiscountNotices()]);await recoverDiscountNotices();
-  const jobs=await prisma.notificationJob.findMany();expect(jobs).toHaveLength(1);expect(jobs[0].text).toContain('20% discount offer');expect(jobs[0].text).toContain('80 Stars');expect(jobs[0].text).toContain('8,000 UZS');expect(jobs[0].expiresAt).toEqual(c.expiresAt);expect(jobs[0].optionsJson).toContain(`discount:${offer.id}`);
-});
-it('waits for notification capacity without redrawing recipients or duplicating notices',async()=>{
-  const {offer}=await fixture();const spy=vi.spyOn(prisma.notificationJob,'count').mockResolvedValueOnce(1000);
-  await recoverDiscountNotices();expect(await prisma.notificationJob.findMany()).toHaveLength(0);expect((await prisma.discountOffer.findUnique({where:{id:offer.id}}))?.noticeQueuedAt).toBeNull();
-  spy.mockRestore();await recoverDiscountNotices();await recoverDiscountNotices();expect(await prisma.notificationJob.count()).toBe(1);
-});
-it('stops campaign recovery cleanly and does not restart its timer',async()=>{
-  await fixture();const stop=startDiscountNoticeWorker();await vi.advanceTimersByTimeAsync(1000);expect(await prisma.notificationJob.count()).toBe(1);await stop();
-  await campaign();await vi.advanceTimersByTimeAsync(10000);expect(await prisma.notificationJob.count()).toBe(1);
-});
 it('never queues an expired offer and removes it from the dashboard at the deadline',async()=>{
   const {user,offer}=await fixture();expect(await activeDiscountOffers(user)).toHaveLength(1);
-  await vi.advanceTimersByTimeAsync(3600000);expect(await activeDiscountOffers(user)).toHaveLength(0);await recoverDiscountNotices();expect(await prisma.notificationJob.count()).toBe(0);
+  await vi.advanceTimersByTimeAsync(3600000);expect(await activeDiscountOffers(user)).toHaveLength(0);expect(await prisma.notificationJob.count()).toBe(0);
   await expect(viewDiscountOffer(offer.id,user.telegramId)).rejects.toThrow('expired');await expect(beginDiscountCheckout(offer.id,user.telegramId,'XTR')).rejects.toThrow('expired');
-});
-it('does not send an offer notification that expires while it waits in the queue',async()=>{
-  await fixture();await recoverDiscountNotices();await vi.advanceTimersByTimeAsync(3600000);
-  const bot={api:{sendMessage:vi.fn().mockResolvedValue({message_id:1})}};await (new NotificationQueue() as any).drainPersistent(bot);
-  expect(bot.api.sendMessage).not.toHaveBeenCalled();expect(await prisma.notificationJob.count({where:{status:'EXPIRED'}})).toBe(1);
 });
 it('binds offers to their recipient and excludes foreign accounts from dashboard results',async()=>{
   const {user,offer}=await fixture(),other=await member();expect(await activeDiscountOffers(other)).toHaveLength(0);
@@ -153,11 +118,10 @@ it('allows retry after a rejected card receipt but never accepts an expired new 
   const second=await beginDiscountCheckout(offer.id,user.telegramId,'UZS');expect(second.order).not.toBe(first.order);
   await vi.advanceTimersByTimeAsync(3600000);await expect(submitDiscountReceipt(offer.id,user.telegramId,'{}')).rejects.toThrow('expired');expect(await prisma.manualPaymentRequest.count()).toBe(1);
 });
-it('requires admin authentication and creates the campaign through the Plans API',async()=>{
+it('requires admin authentication and retires personal campaigns without creating recipients',async()=>{
   await member();const body={requestId:crypto.randomUUID(),plan:'PLUS',percent:20,recipientCount:1,validMinutes:60};
   expect((await request(app).post('/admin/plans/discounts').send(body)).status).toBe(401);
   const token=jwt.sign({telegramId:'12345678',role:'admin'},env.JWT_SECRET,{algorithm:'HS256'});
-  expect((await request(app).post('/admin/plans/discounts').set('Authorization',`Bearer ${token}`).send({...body,percent:101})).status).toBe(400);
-  const response=await request(app).post('/admin/plans/discounts').set('Authorization',`Bearer ${token}`).send(body);expect(response.status).toBe(201);expect(response.body.starsPrice).toBe(80);
-  const list=await request(app).get('/admin/plans/discounts').set('Authorization',`Bearer ${token}`);expect(list.body.campaigns).toHaveLength(1);
+  const response=await request(app).post('/admin/plans/discounts').set('Authorization',`Bearer ${token}`).send(body);expect(response.status).toBe(410);
+  expect(await prisma.discountCampaign.count()).toBe(0);expect(await prisma.discountOffer.count()).toBe(0);expect(await prisma.notificationJob.count()).toBe(0);
 });

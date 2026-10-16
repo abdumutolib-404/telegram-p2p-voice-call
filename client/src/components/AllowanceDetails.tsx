@@ -13,10 +13,10 @@ export function AllowanceDetails({ userData, compact = false }: { userData: User
   const period = userData.allowancePeriod;
   const start = period ? utcDate(period.startsAt) : null;
   const end = period ? utcDate(period.endsAt) : null;
-  if(userData.creditOnly)return <div className={`allowance-details${compact?' allowance-details--compact':''}`}><p>{userData.creditBalance?.calls??0} calls · {userData.creditBalance?.recordings??0} recordings · {userData.creditBalance?.storage??0} storage add-ons.</p><p>Purchased calls and recordings do not expire. Three starter calls are granted once; they do not renew monthly. Each call or recording covers up to 15 minutes.</p></div>;
+  if(userData.creditOnly)return <div className={`allowance-details${compact?' allowance-details--compact':''}`}><p>{userData.creditBalance?.calls??0} call units · {userData.creditBalance?.recordings??0} recording units · {userData.creditBalance?.storage??0} retention units.</p><p>Purchased calls and recordings do not expire. Each balance unit covers 15 minutes; a 30-minute call, recording or retention add-on uses two. Join @pairtalk and verify membership to claim three starter call units once.</p></div>;
   if (!period || !start || !end) return null;
   return <div className={`allowance-details${compact ? ' allowance-details--compact' : ''}`}>
-    {userData.creditBalance&&<p>Extra purchases: {userData.creditBalance.calls} calls · {userData.creditBalance.recordings} recordings · {userData.creditBalance.storage} storage. Purchased calls and recordings do not expire and are used after existing allowances and bonuses.</p>}
+    {userData.creditBalance&&<p>Extra purchases: {userData.creditBalance.calls} call units · {userData.creditBalance.recordings} recording units · {userData.creditBalance.storage} retention units. Each unit covers 15 minutes; a 30-minute service uses two. Purchased balances do not expire. Existing allowances retain their limits; a 30-minute wallet call uses two units before any 15-minute bonus.</p>}
     <p>{period.kind === 'calendar_month'
       ? <>Included {compact ? 'allowance resets' : 'calls and recordings reset'} on {end} at 00:00 UTC.</>
       : compact ? <>Allowance ends {end} at {utcTime(period.endsAt)} UTC.</>

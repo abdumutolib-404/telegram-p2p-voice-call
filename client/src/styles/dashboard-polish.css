@@ -93,3 +93,24 @@
 .report-details textarea { resize: vertical; min-height: 110px; line-height: 1.5; }
 .report-details-help { display: flex; gap: 12px; justify-content: space-between; line-height: 1.5; margin: 8px 0 22px; }
 .report-details-help > span:last-child { white-space: nowrap; }
+.ready-screen .practice-duration { display:grid; gap:10px; width:min(100%,320px); margin:0 auto 28px; color:var(--text-2); font-size:14px; }
+.ready-screen .practice-duration select { width:100%; min-height:48px; padding:12px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--text); font:inherit; }
+.ready-screen .practice-duration select:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+.starter-gift { padding:22px; border:1px solid var(--border); border-radius:16px; background:var(--accent-wash); margin:0 0 28px; text-align:left; }
+.starter-gift h2 { font-size:21px; margin:0 0 12px; }
+.starter-gift p,.starter-gift details { font-size:14px; line-height:1.65; }
+.starter-gift__actions { display:flex; gap:12px; flex-wrap:wrap; margin-block:18px; }
+.starter-gift__actions a { display:inline-flex; align-items:center; text-decoration:none; }
+.starter-gift summary { padding-block:12px; min-height:44px; cursor:pointer; }
+.notification-settings fieldset { border: 0; padding: 0; margin: 20px 0; display: grid; gap: 18px; }
+.notification-settings__choice { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.notification-settings__choice input { width: 20px; height: 20px; flex: 0 0 20px; margin-top: 2px; accent-color: var(--accent, #33c5a1); }
+.notification-settings__choice span { display: grid; gap: 4px; }
+.notification-settings__choice small { color: var(--text-2); line-height: 1.5; }
+.notification-settings .credit-shop__note { color: var(--text-2); opacity: 1; }
+.notification-settings__hours { display: flex; gap: 16px; flex-wrap: wrap; }
+.notification-settings__hours label { display: grid; gap: 6px; }
+.notification-settings__hours select { padding: 10px 14px; border-radius: 10px; background: var(--card); color: var(--text); border: 1px solid var(--border); }
+.policy-summary { max-width: 780px; margin: 0 auto; padding: 24px 20px 48px; display: grid; gap: 20px; }
+.policy-summary > p, .policy-summary article p { line-height: 1.7; }
+.policy-summary .dashboard-card { margin: 0; }

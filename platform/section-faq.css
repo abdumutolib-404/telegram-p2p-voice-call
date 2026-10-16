@@ -1,0 +1,9 @@
+.section-faq { margin-block: 40px; color: inherit; }
+.section-faq h2 { margin: 0 0 20px; font-size: clamp(21px, 3vw, 28px); letter-spacing: -.035em; }
+.section-faq__items { border-top: 1px solid var(--border, var(--app-border, currentColor)); }
+.section-faq details { border-bottom: 1px solid var(--border, var(--app-border, currentColor)); }
+.section-faq summary { cursor: pointer; min-height: 52px; padding: 16px 24px 16px 0; line-height: 1.5; font-weight: 600; }
+.section-faq summary:focus-visible { outline: 2px solid var(--accent, var(--app-accent, currentColor)); outline-offset: 4px; border-radius: 4px; }
+.section-faq__answer { max-width: 68ch; padding: 0 0 20px; line-height: 1.75; color: var(--text-2, var(--app-text-secondary, inherit)); }
+.section-faq__answer p { margin: 0; }
+.section-faq__answer a { color: inherit; text-underline-offset: 3px; }

@@ -1,5 +1,7 @@
 # Terms of service — repository draft
 
+Historical engineering draft. The current release policy is [version 2026-10-16](policies/2026-10-16/terms.md), generated from the public source with the versioned PDF. Use that document for current purchase and account rules.
+
 Status: documentation draft reviewed 2026-10-05. It replaces obsolete implementation claims in this checkout, not approved customer terms. The public landing maintains its own content; publication and legal review are separate work.
 
 ## Service and accounts

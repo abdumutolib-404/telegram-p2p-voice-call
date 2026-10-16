@@ -8,7 +8,7 @@ import { publishGatewayCommand } from '../config/redis';
 import { initDataLockdownMiddleware } from '../middleware/initDataLockdown';
 import { requireRegisteredMember, type MemberRequest } from '../middleware/registeredMember';
 import { createActionRateLimiter } from '../middleware/rateLimit';
-import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod, calculateEffectiveCallDuration, getAllowancePeriod } from '../services/plan';
+import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, getUserRecordingsUsedThisPeriod, sessionCallMinutes, getAllowancePeriod } from '../services/plan';
 import { getActiveBonusCallsCount, getReferralStats, getContestStatus } from '../services/referralService';
 import { hasAcceptedCurrentTerms, currentTerms } from '../services/terms';
 import { saveCallQualityRating } from '../services/callFeedback';
@@ -21,8 +21,14 @@ import { isUserSessionRecorder, recordingDeadline } from '../utils/recordingAcce
 import { lockRow } from '../utils/transactionLock';
 import { recordingDeliveryStatus } from '../services/recordingDelivery';
 import { activeDiscountOffers } from '../services/discounts';
-import { createCreditOrder, creditReceipt } from '../services/credits';
+import { creditReceipt } from '../services/credits';
 import { CREDIT_TERMS_VERSION } from '../contracts/credits';
+import { createPracticeOrder, practiceOrderDescription, cancelPendingPracticeCheckout, resumePracticeCheckout } from '../services/practiceCheckout';
+import { listPackCampaigns, publicPackCampaign } from '../services/packCampaigns';
+import { heldPackSlots } from '../services/packOfferInventory';
+import { claimStarterGift } from '../services/starterGift';
+import { saveNotificationPreferences } from '../services/optionalNotifications';
+import { userNotificationPreferences } from '../services/notificationPolicy';
 
 const router = Router();
 let dashboardBot: Bot<MyContext> | null = null;
@@ -40,20 +46,67 @@ const action = (handler: (req: MemberRequest, res: Response) => Promise<void>) =
 const identifier = z.string().uuid();
 router.get('/credits',action(async(req,res)=>{
   const user=req.member!;
-  const orders=await prisma.creditOrder.findMany({where:{userId:user.id},orderBy:{createdAt:'desc'},take:20,select:{id:true,calls:true,recordings:true,storage:true,starsAmount:true,uzsAmount:true,status:true,createdAt:true,paidAt:true}});
+  const orders=await prisma.creditOrder.findMany({where:{userId:user.id},orderBy:{createdAt:'desc'},take:20,select:{id:true,calls:true,recordings:true,storage:true,packSnapshot:true,checkoutCurrency:true,expiresAt:true,authorizedAt:true,starsAmount:true,uzsAmount:true,status:true,createdAt:true,paidAt:true}});
   res.json({balance:{calls:user.callCredits,recordings:user.recordingCredits,storage:user.storageCredits},orders});
 }));
+router.get('/starter-gift',action(async(req,res)=>{res.json({claimed:Boolean(req.member!.starterGiftGrantedAt),calls:3,channelUrl:'https://t.me/pairtalk'});}));
+router.post('/starter-gift',action(async(req,res)=>{
+  z.object({}).strict().parse(req.body);
+  if(!dashboardBot)throw new ActionError(503,'Membership checks are temporarily unavailable.');
+  try{res.json(await claimStarterGift(req.member!.id,dashboardBot));}catch(error){throw new ActionError(409,error instanceof Error?error.message:'Membership could not be checked.');}
+}));
+router.get('/notifications',action(async(req,res)=>{res.json({preferences:userNotificationPreferences(req.member!),timeZone:'Asia/Tashkent',cooldownHours:24});}));
+router.patch('/notifications',action(async(req,res)=>{res.json({preferences:await saveNotificationPreferences(req.member!.id,req.body),timeZone:'Asia/Tashkent',cooldownHours:24});}));
 router.post('/credits/checkout',createActionRateLimiter('PAYMENT_INVOICE',req=>(req as MemberRequest).member!.id),action(async(req,res)=>{
-  const input=z.object({requestId:identifier,revision:z.string().regex(/^[a-f0-9]{64}$/),calls:z.number().int().min(0).max(1000),recordings:z.number().int().min(0).max(1000),storage:z.boolean(),termsAccepted:z.literal(true),termsVersion:z.literal(CREDIT_TERMS_VERSION)}).strict().parse(req.body);
+  const input=z.object({requestId:identifier,revision:z.string().regex(/^[a-f0-9]{64}$/),calls:z.number().int().min(1).refine(Number.isSafeInteger),recordings:z.number().int().min(0).refine(Number.isSafeInteger),storage:z.boolean(),termsAccepted:z.literal(true),termsVersion:z.literal(CREDIT_TERMS_VERSION)}).strict().refine(data=>data.recordings<=data.calls&&(!data.storage||data.recordings>0)).parse(req.body);
   if (!dashboardBot) throw new ActionError(503,'Telegram checkout is temporarily unavailable.');
   let order;
-  try { order=await createCreditOrder(req.member!.id,input.requestId,{calls:input.calls,recordings:input.recordings,storage:input.storage},input.revision); }
+  try { order=await createPracticeOrder(req.member!.id,input.requestId,{calls:input.calls,recordings:input.recordings,retention:input.storage,minutes:15},input.revision,'XTR'); }
   catch(error){throw new ActionError(409,error instanceof Error?error.message:'Checkout is unavailable.');}
   if (order.status!=='PENDING' || order.expiresAt<=new Date()) throw new ActionError(409,'This checkout is already used or expired. Review your balance before trying again.');
-  const invoiceUrl=await dashboardBot.api.createInvoiceLink('PairTalk calls and recordings',creditReceipt(order).slice(0,255),`credits:${order.id}`,'','XTR',[{label:'Calls and recordings',amount:order.starsAmount}]);
+  let invoiceUrl:string;
+  try{invoiceUrl=await dashboardBot.api.createInvoiceLink('PairTalk calls and recordings',creditReceipt(order).slice(0,255),`credits:${order.id}`,'','XTR',[{label:'Calls and recordings',amount:order.starsAmount}]);}
+  catch{throw new ActionError(503,'Telegram could not prepare this invoice. No payment was requested. Retry this checkout or cancel it from your balance.');}
+  res.json({orderId:order.id,invoiceUrl,stars:order.starsAmount,uzs:order.uzsAmount});
+}));
+router.post('/practice/checkout',createActionRateLimiter('PAYMENT_INVOICE',req=>(req as MemberRequest).member!.id),action(async(req,res)=>{
+  const count=z.number().int().nonnegative().refine(Number.isSafeInteger);
+  const input=z.object({requestId:identifier,revision:z.string().regex(/^[a-f0-9]{64}$/),calls:count.min(1),recordings:count,retention:z.boolean(),minutes:z.union([z.literal(15),z.literal(30)]),currency:z.enum(['XTR','UZS']),campaignId:identifier.optional(),termsAccepted:z.literal(true),termsVersion:z.literal(CREDIT_TERMS_VERSION)}).strict().refine(data=>data.recordings<=data.calls&&(!data.retention||data.recordings>0)).parse(req.body);
+  if (!dashboardBot) throw new ActionError(503,'Telegram checkout is temporarily unavailable.');
+  let order;
+  try { order=await createPracticeOrder(req.member!.id,input.requestId,{calls:input.calls,recordings:input.recordings,retention:input.retention,minutes:input.minutes},input.revision,input.currency,input.campaignId); }
+  catch(error){throw new ActionError(409,error instanceof Error?error.message:'Checkout is unavailable.');}
+  if(order.status==='PAID'&&order.starsAmount===0&&order.packClaimId){res.json({orderId:order.id,claimed:true,stars:0,uzs:0});return;}
+  if (order.status!=='PENDING' || order.expiresAt<=new Date()) throw new ActionError(409,'This checkout is already used or expired. Review your balance before trying again.');
+  if (input.currency==='UZS') {
+    // The durable job was committed with the order before the app may close.
+    void notificationQueue.recover(dashboardBot).catch(()=>undefined);
+    const job=await prisma.notificationJob.findFirst({where:{dedupeKey:`pack-checkout:${order.id}`,telegramId:req.member!.telegramId.toString()},orderBy:{createdAt:'desc'}});
+    const delivery=job&&['QUEUED','CHECKING','SENDING'].includes(job.status)?'QUEUED':job?.status??'UNCONFIRMED';
+    res.json({orderId:order.id,delivery,stars:order.starsAmount,uzs:order.uzsAmount});
+    return;
+  }
+  let invoiceUrl:string;
+  try{invoiceUrl=await dashboardBot.api.createInvoiceLink('PairTalk practice pack',practiceOrderDescription(order).slice(0,255),`credits:${order.id}`,'','XTR',[{label:'Practice pack',amount:order.starsAmount}]);}
+  catch{throw new ActionError(503,'Telegram could not prepare this invoice. No payment was requested. Retry this checkout or cancel it from your balance.');}
   res.json({orderId:order.id,invoiceUrl,stars:order.starsAmount,uzs:order.uzsAmount});
 }));
 router.get('/discount-offers',action(async(req,res)=>{res.json({offers:await activeDiscountOffers(req.member!),serverNow:new Date()});}));
+router.get('/pack-offers',action(async(req,res)=>{res.json({offers:await listPackCampaigns(req.member!.id),serverNow:new Date()});}));
+router.post('/practice/orders/:id/cancel',action(async(req,res)=>{
+  try{res.json(await cancelPendingPracticeCheckout(req.member!.id,identifier.parse(req.params.id)));}
+  catch(error){throw new ActionError(409,error instanceof Error?error.message:'Cancellation could not be confirmed.');}
+}));
+router.get('/practice/orders/:id',action(async(req,res)=>{
+  try{res.json(await resumePracticeCheckout(req.member!.id,identifier.parse(req.params.id)));}
+  catch(error){throw new ActionError(409,error instanceof Error?error.message:'Checkout could not be resumed.');}
+}));
+router.get('/pack-offers/:id',action(async(req,res)=>{
+  const id=identifier.parse(req.params.id),campaign=await prisma.packCampaign.findUnique({where:{id}});
+  if(!campaign||campaign.status==='DRAFT')throw new ActionError(404,'This offer is not available.');
+  const claim=await prisma.packClaim.findUnique({where:{campaignId_userId:{campaignId:id,userId:req.member!.id}}});
+  res.json({offer:publicPackCampaign(campaign,await heldPackSlots(prisma,id),claim?.status),serverNow:new Date()});
+}));
 async function ownSession(id: string, userId: string) {
   identifier.parse(id);
   const session = await prisma.callSession.findFirst({ where: { id, OR: [{ userAId: userId }, { userBId: userId }] }, include: { userA: true, userB: true, ratings: true } });
@@ -80,15 +133,19 @@ router.get('/summary', action(async (req, res) => {
     getUserCallsUsedThisPeriod(user.id, user), getUserRecordingsUsedThisPeriod(user.id, user), getActiveBonusCallsCount(user.id),
     prisma.callSession.findFirst({ where: { status: 'ACTIVE', OR: [{ userAId: user.id }, { userBId: user.id }] }, select: { roomName: true } }),
   ]);
-  res.json({ activeCall: activeCall ? { roomName: activeCall.roomName } : null, user: { userId: user.id, alias: user.alias, band: user.band, subFC: user.subFC, subLR: user.subLR, subGRA: user.subGRA, subP: user.subP, plan: entitlement.plan, creditOnly:user.creditBilling && entitlement.baseCallLimit===0, creditBalance:{calls:user.callCredits,recordings:user.recordingCredits,storage:user.storageCredits}, planExpiresAt: user.subscriptionExpiresAt, dnd: user.dnd, callsRemaining: Math.max(0, entitlement.callLimit - callsUsed) + bonus, includedCallsRemaining: Math.max(0, entitlement.baseCallLimit - callsUsed), bonusCallsRemaining: bonus, allowancePeriod: getAllowancePeriod(user), totalCallsLimit: entitlement.callLimit, maxCallDuration: entitlement.maxCallDuration, recordingsRemaining: Math.max(0, entitlement.recordingLimit - recordingsUsed), recordingsLimit: entitlement.recordingLimit, recordingRetentionDays: entitlement.retentionDays }, terms: { version: currentTerms.version, acceptedAt: user.termsAcceptedAt, url: currentTerms.termsUrl } });
+  res.json({ activeCall: activeCall ? { roomName: activeCall.roomName } : null, user: { userId: user.id, alias: user.alias, band: user.band, subFC: user.subFC, subLR: user.subLR, subGRA: user.subGRA, subP: user.subP, plan: entitlement.plan, creditOnly:user.creditBilling && entitlement.baseCallLimit===0, preferredCallMinutes:user.preferredCallMinutes, starterGiftClaimed:Boolean(user.starterGiftGrantedAt), creditBalance:{calls:user.callCredits,recordings:user.recordingCredits,storage:user.storageCredits}, planExpiresAt: user.subscriptionExpiresAt, dnd: user.dnd, callsRemaining: Math.max(0, entitlement.callLimit - callsUsed) + bonus, includedCallsRemaining: Math.max(0, entitlement.baseCallLimit - callsUsed), bonusCallsRemaining: bonus, allowancePeriod: getAllowancePeriod(user), totalCallsLimit: entitlement.callLimit, maxCallDuration: entitlement.maxCallDuration, recordingsRemaining: Math.max(0, entitlement.recordingLimit - recordingsUsed), recordingsLimit: entitlement.recordingLimit, recordingRetentionDays: entitlement.retentionDays }, terms: { version: currentTerms.version, acceptedAt: user.termsAcceptedAt, url: currentTerms.termsUrl } });
 }));
 
 const band = z.number().min(0).max(9).refine(value => Number.isInteger(value * 2));
-const preferences = z.object({ dnd: z.boolean().optional(), subFC: band.optional(), subLR: band.optional(), subGRA: band.optional(), subP: band.optional() }).strict().refine(data => Object.keys(data).length > 0).refine(data => [data.subFC, data.subLR, data.subGRA, data.subP].every(value => value === undefined) || [data.subFC, data.subLR, data.subGRA, data.subP].every(value => value !== undefined));
+const preferences = z.object({ dnd: z.boolean().optional(),preferredCallMinutes:z.union([z.literal(15),z.literal(30)]).optional(), subFC: band.optional(), subLR: band.optional(), subGRA: band.optional(), subP: band.optional() }).strict().refine(data => Object.keys(data).length > 0).refine(data => [data.subFC, data.subLR, data.subGRA, data.subP].every(value => value === undefined) || [data.subFC, data.subLR, data.subGRA, data.subP].every(value => value !== undefined));
 router.patch('/account', action(async (req, res) => {
   const data = preferences.parse(req.body);
   const overall = data.subFC === undefined ? undefined : Math.round((data.subFC + data.subLR! + data.subGRA! + data.subP!) / 4 * 2) / 2;
-  await prisma.user.update({ where: { id: req.member!.id }, data: { ...data, ...(overall === undefined ? {} : { band: overall }) } });
+  await prisma.$transaction(async tx=>{
+    await lockRow(tx,'User',req.member!.id);
+    if(data.preferredCallMinutes!==undefined&&await tx.callSession.findFirst({where:{status:{in:['ACTIVE','PENDING']},OR:[{userAId:req.member!.id},{userBId:req.member!.id}]}}))throw new ActionError(409,'Finish your current call or invitation before changing duration.');
+    await tx.user.update({ where: { id: req.member!.id }, data: { ...data, ...(overall === undefined ? {} : { band: overall }) } });
+  });
   res.json({ success: true });
 }));
 
@@ -230,7 +287,7 @@ router.post('/invitations', action(async (req, res) => {
   catch { throw new ActionError(409, 'A participant is unavailable, already in a call, or has no calls remaining.'); }
   const url = new URL(env.MINI_APP_URL); url.searchParams.set('view', 'partners');
   try {
-    await notificationQueue.enqueue(dashboardBot, partner.telegramId.toString(), `${user.alias} invited you to a speaking call. Open your dashboard to accept or decline. The invitation lasts 60 seconds.`, { reply_markup: new InlineKeyboard().webApp('Open invitation', url.toString()) }, true, `invite:${session.id}`);
+    await notificationQueue.enqueue(dashboardBot, partner.telegramId.toString(), `${user.alias} invited you to a ${session.allowedMinutes}-minute speaking call. This reserves ${Math.ceil((session.allowedMinutes??15)/15)} call units if your included allowance is exhausted. Open your dashboard to accept or decline. The invitation lasts 60 seconds.`, { reply_markup: new InlineKeyboard().webApp('Open invitation', url.toString()) }, true, `invite:${session.id}`);
   } catch (error) { await prisma.callSession.updateMany({ where: { id: session.id, status: 'PENDING' }, data: { status: 'CANCELLED', endedAt: new Date() } }); throw error; }
   res.status(201).json({ success: true, id: session.id });
 }));
@@ -251,7 +308,7 @@ router.post('/invitations/:id/:decision', action(async (req, res) => {
   try { claimed = await activatePendingCall(session.id); }
   catch { throw new ActionError(409, 'A participant is unavailable or has no calls remaining.'); }
   if (!claimed.count) throw new ActionError(409, 'This invitation was already processed.');
-  const seconds = calculateEffectiveCallDuration(session.userA, session.userB) * 60;
+  const seconds = sessionCallMinutes(session) * 60;
   setRoomDurationLimit(session.roomName, seconds);
   scheduleConnectionHandshakeTimer(session.roomName, 90, dashboardBot);
   await publishGatewayCommand({ command: 'SCHEDULE_HANDSHAKE_TIMER', roomName: session.roomName, durationSeconds: seconds });

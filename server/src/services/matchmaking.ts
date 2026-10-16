@@ -12,6 +12,7 @@ export interface UserSkills {
 export type SkillCode = 'FC' | 'LR' | 'GRA' | 'P';
 
 export interface MatchOptions {
+  readonly minutes?: 15 | 30;
   readonly plan?: string;
   readonly warningCount?: number;
 }
@@ -37,6 +38,10 @@ local candidate_count = tonumber(ARGV[3])
 local queue_ttl = tonumber(ARGV[5])
 local max_scans = 50
 local self_band = tonumber(string.match(ARGV[4], '^match_queue:([^:]+):'))
+local self_minutes = tonumber(ARGV[6]) or 15
+-- Preserve the newcomer's preference even when this join immediately matches.
+-- Failed admission can restore either participant without another queue join.
+redis.call('SET', 'match_duration:' .. self_id, self_minutes, 'EX', queue_ttl)
 local skipped = {}
 local function restore_skipped()
   for _, item in ipairs(skipped) do redis.call('SADD', item[1], item[2]) end
@@ -52,7 +57,8 @@ for i = 1, candidate_count do
       local pointer_key = user_prefix .. candidate
       local pointer = redis.call('GET', pointer_key)
       local band = pointer and tonumber(string.match(pointer, '^match_queue:([^:]+):'))
-      if pointer and band and self_band and math.abs(band-self_band) <= 1.0 then
+      local partner_minutes = tonumber(redis.call('GET', 'match_duration:' .. candidate)) or 15
+      if pointer and band and self_band and math.abs(band-self_band) <= 1.0 and partner_minutes == self_minutes then
         -- Atomically claim candidate and delete pointers
         redis.call('DEL', pointer_key)
         redis.call('DEL', user_prefix .. self_id)
@@ -232,7 +238,8 @@ export class MatchmakingService {
           userId,
           String(uniqueCandidateBuckets.length),
           ownBucketKey,
-          String(QUEUE_TTL_SECONDS)
+          String(QUEUE_TTL_SECONDS),
+          String(options?.minutes===30?30:15)
         )) as [string, string] | null;
 
         let claimedPartner: string | undefined;
@@ -297,6 +304,7 @@ export class MatchmakingService {
           ...saddOperations,
           ...expireOperations,
           this.redis.set(`${USER_QUEUE_PREFIX}${userId}`, bucketKey, 'EX', QUEUE_TTL_SECONDS),
+          this.redis.expire(`match_duration:${userId}`,QUEUE_TTL_SECONDS),
         ]);
       } catch (error: unknown) {
         logger.error('Matchmaking queue restore failed', {
@@ -313,7 +321,9 @@ export class MatchmakingService {
     this.validateUserId(userId);
     return this.withUserLock(userId, async () => {
       try {
-        return await this.cancelQueueUnlocked(userId);
+        const cancelled=await this.cancelQueueUnlocked(userId);
+        await this.redis.del(`match_duration:${userId}`);
+        return cancelled;
       } catch (error: unknown) {
         logger.error('Matchmaking cancel failed', {
           service: 'matchmaking',

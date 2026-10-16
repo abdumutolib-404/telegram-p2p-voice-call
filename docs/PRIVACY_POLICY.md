@@ -1,5 +1,7 @@
 # Privacy and recording — repository draft
 
+Historical engineering draft. The current release policy is [version 2026-10-16](policies/2026-10-16/privacy.md), generated from the public source with the versioned PDF. Use it for current data, notification and retention wording.
+
 Status: implementation-aligned draft reviewed 2026-10-05. This Markdown is not loaded by the public landing and does not change published policy or create a compliance certification. Approve the final operator identity, contact details, retention schedules, and customer wording before publication.
 
 ## Data handled by the application

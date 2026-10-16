@@ -230,7 +230,7 @@ func (h *Hub) checkAutoReconnect(socket *ClientSocket) {
 		return
 	}
 
-	durationLimitMinutes := database.CalculateEffectiveCallDuration(selfUser, partnerUser, h.AdminTelegramIDs)
+	durationLimitMinutes := activeCall.LimitMinutes(h.AdminTelegramIDs)
 	durationLimitSeconds := durationLimitMinutes * 60
 	elapsedSeconds := int(time.Since(activeCall.DurationAnchor()).Seconds())
 	remainingSeconds := durationLimitSeconds - elapsedSeconds

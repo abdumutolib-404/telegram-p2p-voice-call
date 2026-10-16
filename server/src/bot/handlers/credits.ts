@@ -11,10 +11,12 @@ import {
 } from "../../services/credits";
 import { logger } from "../../utils/logger";
 import type { CreditBasket } from "../../contracts/credits";
+import type { PracticePack } from '../../contracts/practicePacks';
+import { practiceOrderDescription } from '../../services/practiceCheckout';
 
 export async function renderCreditOverview(
   ctx: MyContext,
-  basket?: CreditBasket,
+  basket?: CreditBasket | PracticePack,
 ) {
   const { catalog } = await readCreditConfiguration();
   const money = (value: number) =>
@@ -32,11 +34,12 @@ export async function renderCreditOverview(
   if (basket) {
     url.searchParams.set("creditCalls", String(basket.calls));
     url.searchParams.set("creditRecordings", String(basket.recordings));
-    url.searchParams.set("creditStorage", basket.storage ? "1" : "0");
+    url.searchParams.set("creditStorage", ('retention' in basket ? basket.retention : basket.storage) ? "1" : "0");
+    if ('minutes' in basket) url.searchParams.set('practiceMinutes',String(basket.minutes));
   }
   if (ctx.callbackQuery) await ctx.answerCallbackQuery();
   await ctx.reply(
-    `Calls and recordings\n\n${money(catalog.rates.CALL.uzs)} UZS/call or ${money(catalog.rates.CALL.stars)} Stars/call\n${money(catalog.rates.RECORDING.uzs)} UZS/recording or ${money(catalog.rates.RECORDING.stars)} Stars/recording\nOptional 30-day storage · ${money(catalog.rates.STORAGE.uzs)} UZS/recording\n\nEach call or recording covers up to 15 minutes. Buy calls and recordings separately. Purchased calls and recordings do not expire.\n\n${user ? `Your balance: ${user.callCredits ?? 0} calls · ${user.recordingCredits ?? 0} recordings · ${user.storageCredits ?? 0} storage add-ons.\n\n` : ""}New accounts receive three free starter calls once. Existing allowances stay available. Checkout charges Telegram Stars. Storage is converted to Stars, then the basket rounds up to whole Stars. ${catalog.salesEnabled ? "" : "New purchases are currently paused."}`,
+    `Calls and recordings\n\n${money(catalog.rates.CALL.uzs)} UZS/call or ${money(catalog.rates.CALL.stars)} Stars/call\n${money(catalog.rates.RECORDING.uzs)} UZS/recording or ${money(catalog.rates.RECORDING.stars)} Stars/recording\nOptional 30-day retention · ${money(catalog.rates.STORAGE.uzs)} UZS/recording\n\nThese are 15-minute rates. Choose 30 minutes for exactly twice each service price and two balance units. Recordings cannot exceed calls in a pack; retention covers every selected recording. Purchased calls and recordings do not expire.\n\n${user ? `Your balance in 15-minute units: ${user.callCredits ?? 0} calls · ${user.recordingCredits ?? 0} recordings · ${user.storageCredits ?? 0} retention add-ons.\n\n` : ""}Join @pairtalk and check membership in the Mini App to claim three starter call units once. Existing allowances stay available. Checkout shows separate Stars and UZS totals. Stars uses Telegram's official invoice; UZS sends private payment instructions for receipt review. Stars purchase costs vary by store, region and local tax. ${catalog.salesEnabled ? "" : "New purchases are currently paused."}`,
     {
       reply_markup: new InlineKeyboard().webApp(
         "Choose calls and recordings",
@@ -53,17 +56,18 @@ export async function renderCreditRefunds(ctx: MyContext) {
     : null;
   if (!user) return false;
   const orders = await prisma.creditOrder.findMany({
-    where: { userId: user.id, status: { in: ["PAID", "REFUND_PENDING"] } },
+    where: { userId: user.id,starsAmount:{gt:0}, status: { in: ["PAID", "REFUND_PENDING"] } },
     orderBy: { createdAt: "desc" },
     take: 10,
+    include:{manualPayment:true},
   });
   if (!orders.length) return false;
   const keyboard = new InlineKeyboard();
   for (const order of orders)
     keyboard
       .text(
-        `${order.starsAmount} Stars · ${order.id.slice(0, 8)}`,
-        `credit_refund:${order.id}`,
+        `${order.checkoutCurrency==='UZS'?`${order.uzsAmount.toLocaleString('en-US')} UZS`:`${order.starsAmount} Stars`} · ${order.id.slice(0, 8)}`,
+        order.manualPayment?`submit_uzs_refund:${order.manualPayment.id}`:`credit_refund:${order.id}`,
       )
       .row();
   keyboard.text("Legacy subscription refunds", "legacy_refunds");

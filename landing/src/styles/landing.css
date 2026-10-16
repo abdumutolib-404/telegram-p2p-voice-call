@@ -12,8 +12,8 @@
   border-radius: var(--r-lg);
   background: var(--card);
 }
-.practice-comparison { width: 100%; min-width: 720px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: .9375rem; }
-.practice-comparison__label-column { width: 22%; }
+.practice-comparison { width: 100%; min-width: 880px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: .9375rem; }
+.practice-comparison__label-column { width: 18%; }
 .practice-comparison th, .practice-comparison td { text-align: left; vertical-align: top; padding: var(--s-5); border-bottom: 1px solid var(--border); }
 .practice-comparison thead th { font-size: 1.125rem; font-weight: 600; background: var(--card); }
 .practice-comparison thead th:first-child { font-size: .875rem; color: var(--text-2); }
@@ -38,7 +38,7 @@
 .practice-comparison__sources p { margin-block: var(--s-3); }
 .practice-comparison__sources a { color: var(--accent-text); text-underline-offset: 3px; }
 @media (max-width: 920px) {
-  .practice-comparison { min-width: 720px; }
+  .practice-comparison { min-width: 880px; }
   .practice-comparison__label-column { width: 136px; }
   .practice-comparison th, .practice-comparison td { padding: var(--s-4); }
   .practice-comparison tr > :first-child { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--border); }

@@ -48,7 +48,8 @@ func (db *DB) consumeRecording(ctx context.Context, tx pgx.Tx, callID, userID st
 		return errors.New("recording is unavailable for this account")
 	}
 	var participant bool
-	if err := tx.QueryRow(ctx, `SELECT status='ACTIVE' AND ($2="userAId" OR $2="userBId") FROM "CallSession" WHERE id=$1`, callID, userID).Scan(&participant); err != nil {
+	var allowedMinutes *int
+	if err := tx.QueryRow(ctx, `SELECT status='ACTIVE' AND ($2="userAId" OR $2="userBId"),"allowedMinutes" FROM "CallSession" WHERE id=$1`, callID, userID).Scan(&participant, &allowedMinutes); err != nil {
 		return err
 	}
 	if !participant {
@@ -79,8 +80,12 @@ func (db *DB) consumeRecording(ctx context.Context, tx pgx.Tx, callID, userID st
 		if err != nil {
 			return err
 		}
-		if CalculateEffectiveCallDuration(ua, ub, db.AdminTelegramIDs) > 15 {
-			return errors.New("purchased recordings cover calls up to 15 minutes")
+		minutes := CalculateEffectiveCallDuration(ua, ub, db.AdminTelegramIDs)
+		if allowedMinutes != nil {
+			minutes = *allowedMinutes
+		}
+		if minutes > 30 {
+			return errors.New("purchased recordings cover calls up to 30 minutes")
 		}
 		var reserved bool
 		if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_credit($1,$2,'RECORDING')`, callID, userID).Scan(&reserved); err != nil {
@@ -89,7 +94,7 @@ func (db *DB) consumeRecording(ctx context.Context, tx pgx.Tx, callID, userID st
 		if !reserved {
 			return errors.New("no purchased recordings remain")
 		}
-		if user.StorageCredits > 0 {
+		if user.StorageCredits >= (minutes+14)/15 {
 			if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_credit($1,$2,'STORAGE')`, callID, userID).Scan(&reserved); err != nil {
 				return err
 			}
@@ -111,7 +116,11 @@ func (db *DB) consumeRecording(ctx context.Context, tx pgx.Tx, callID, userID st
 		return err
 	}
 	var capacity bool
-	if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_recording_capacity($1,$2)`, callID, CalculateEffectiveCallDuration(aUser, bUser, db.AdminTelegramIDs)).Scan(&capacity); err != nil {
+	minutes := CalculateEffectiveCallDuration(aUser, bUser, db.AdminTelegramIDs)
+	if allowedMinutes != nil {
+		minutes = *allowedMinutes
+	}
+	if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_recording_capacity($1,$2)`, callID, minutes).Scan(&capacity); err != nil {
 		return err
 	}
 	if !capacity {

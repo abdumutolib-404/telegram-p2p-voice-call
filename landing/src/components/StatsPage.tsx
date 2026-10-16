@@ -1,4 +1,5 @@
 import { usePublicStats } from "../lib/publicStats";
+import { SectionFaq } from '../../../platform/SectionFaq';
 const number = (n: number) =>
   new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(n);
 export function StatsSummary({
@@ -266,6 +267,11 @@ export function StatsPage() {
             above.
           </p>
         </section>
+        <SectionFaq title="Reading these numbers" questions={[
+          {question:'Do these statistics guarantee an instant match?',answer:'No. These are aggregate activity figures. Matching still needs an available learner near your self-assessed level with the same selected duration.'},
+          {question:'Are individual calls or recordings public?',answer:'No. Public statistics show aggregate counts. Account identifiers, private feedback, payment details and audio are not published here.'},
+          {question:'What if the figures are unavailable or old?',answer:'Check the timestamp shown with the data. A cached snapshot can lag behind current activity; an unavailable data source is shown as unavailable.'},
+        ]}/>
       </div>
     </>
   );

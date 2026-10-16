@@ -1,4 +1,5 @@
 // Shared, credential-free pricing arithmetic. Amounts are millionths of a USD.
+import {baseServiceStars, validatePracticePrices} from './practicePacks';
 export const CREDIT_MINUTES = 15;
 export const CREDIT_MARKUP_PERCENT = 12;
 export const CREDIT_TERMS_VERSION = "credits-2026-10-15";
@@ -21,6 +22,8 @@ export interface CreditCostInputs {
   recordingPriceUzs: number;
   recordingPriceStars: number;
   storagePriceUzs: number;
+  starReferenceUzs: number;
+  starMarkupPercent: number;
 }
 export const defaultCreditCosts: CreditCostInputs = {
   monthlyBudgetUsd: 25,
@@ -41,6 +44,8 @@ export const defaultCreditCosts: CreditCostInputs = {
   recordingPriceUzs: 4200,
   recordingPriceStars: 28,
   storagePriceUzs: 3,
+  starReferenceUzs: 255,
+  starMarkupPercent: 25,
 };
 export type CreditKind = "CALL" | "RECORDING" | "STORAGE";
 export interface CreditRate {
@@ -63,6 +68,8 @@ export interface CreditCatalog {
   rates: Record<CreditKind, CreditRate>;
   uzsPerUsd: number;
   usdPerStar: number;
+  starReferenceUzs?: number;
+  starMarkupPercent?: number;
 }
 export interface CreditBasket {
   calls: number;
@@ -128,6 +135,7 @@ export function validateCreditCosts(value: unknown): CreditCostInputs {
   for (const key of ["callPriceUzs", "callPriceStars", "recordingPriceUzs", "recordingPriceStars", "storagePriceUzs"] as const)
     if (!Number.isInteger(input[key]) || input[key] < 1)
       throw new Error("Selling prices must be positive whole numbers.");
+  validatePracticePrices({callUzs:input.callPriceUzs,recordingUzs:input.recordingPriceUzs,retentionUzs:input.storagePriceUzs,starUzs:input.starReferenceUzs,starMarkupPercent:input.starMarkupPercent});
   if(!Number.isInteger(input.recordingAllowanceMinutes)||input.recordingAllowanceMinutes<16||!Number.isInteger(input.recordingExternalUsedMinutes))throw new Error('Recording capacity and reserved usage must be whole minutes; capacity must cover at least one 16-minute reservation.');
   if(input.paidRecordings>Math.floor(input.recordingAllowanceMinutes/16))throw new Error('The recording forecast exceeds the configured monthly capacity, including the provider safety buffer.');
   if (
@@ -194,10 +202,11 @@ export function creditRates(
 // when included in a basket, then the whole payment rounds upwards once.
 export function sellingCreditRates(input: CreditCostInputs): Record<CreditKind, CreditRate> {
   const estimate = creditRates(input);
+  const prices={callUzs:input.callPriceUzs,recordingUzs:input.recordingPriceUzs,retentionUzs:input.storagePriceUzs,starUzs:input.starReferenceUzs,starMarkupPercent:input.starMarkupPercent};
   return {
-    CALL: {...estimate.CALL, uzs: input.callPriceUzs, stars: input.callPriceStars},
-    RECORDING: {...estimate.RECORDING, uzs: input.recordingPriceUzs, stars: input.recordingPriceStars},
-    STORAGE: {...estimate.STORAGE, uzs: input.storagePriceUzs, stars: input.storagePriceUzs / input.uzsPerUsd / input.usdPerStar},
+    CALL: {...estimate.CALL, uzs: input.callPriceUzs, stars: baseServiceStars(input.callPriceUzs,prices)},
+    RECORDING: {...estimate.RECORDING, uzs: input.recordingPriceUzs, stars: baseServiceStars(input.recordingPriceUzs,prices)},
+    STORAGE: {...estimate.STORAGE, uzs: input.storagePriceUzs, stars: input.storagePriceUzs / input.starReferenceUzs * (1 + input.starMarkupPercent / 100)},
   };
 }
 export function quoteCredits(

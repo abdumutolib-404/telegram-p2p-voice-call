@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { telegramTransport } from './telegramTransport';
 import { setupDiscountHandlers } from './handlers/discounts';
 import { setupCreditHandlers } from './handlers/credits';
+import { setupNotificationPreferenceHandlers } from './handlers/notificationPreferences';
 import { TELEGRAM_CLIENT_OPTIONS } from './polling';
 import { Bot, session } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
@@ -190,9 +191,10 @@ export function createBot(token: string): Bot<MyContext> {
 
     // Determine exemptions: Only whitelisted administrators are rate-limit exempt
     const isAdmin = env.ADMIN_TELEGRAM_IDS.includes(String(fromId));
-    const isRateLimitExempt = isAdmin;
+    const stoppingNotifications=/^\/stop_notifications(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text)||callbackData==='notifications_stop'||callbackData==='mute_surge_alerts';
+    const isRateLimitExempt = isAdmin||stoppingNotifications;
     const isBanExempt =
-      text.startsWith('/start') || text.startsWith('/terms') || text.startsWith('/refund') || text.startsWith('/paysupport') || callbackData.startsWith('terms_') ||
+      stoppingNotifications||text.startsWith('/notifications')||text.startsWith('/start') || text.startsWith('/terms') || text.startsWith('/refund') || text.startsWith('/paysupport') || callbackData.startsWith('terms_') ||
       text.startsWith('/appeal') ||
       text === '💬 Support' ||
       callbackData === 'submit_appeal' ||
@@ -336,6 +338,13 @@ export function createBot(token: string): Bot<MyContext> {
     }
     return next();
   });
+  bot.use(async(ctx,next)=>{
+    if(ctx.from&&!ctx.preCheckoutQuery&&!ctx.message?.successful_payment){
+      await prisma.user.updateMany({where:{telegramId:BigInt(ctx.from.id),lastActiveAt:{lt:new Date(Date.now()-60000)}},data:{lastActiveAt:new Date()}}).catch(()=>undefined);
+    }
+    return next();
+  });
+  setupNotificationPreferenceHandlers(bot);
   setupStartCommand(bot);
   setupTermsHandlers(bot);
   setupAdminCommand(bot);

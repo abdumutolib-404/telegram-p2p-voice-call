@@ -347,6 +347,8 @@ export const App: React.FC = () => {
           allowancePeriod: data.user.allowancePeriod,
           totalCallsLimit: data.user.totalCallsLimit,
           maxCallDuration: data.user.maxCallDuration,
+          preferredCallMinutes:data.user.preferredCallMinutes,
+          starterGiftClaimed:data.user.starterGiftClaimed,
           recordingsRemaining: data.user.recordingsRemaining,
           recordingsLimit: data.user.recordingsLimit,
           recordingRetentionDays: data.user.recordingRetentionDays,
@@ -673,6 +675,9 @@ export const App: React.FC = () => {
         navigation={navigation}
         shortcuts={shortcuts}
         userData={userData}
+        initData={initData}
+        onGiftClaimed={()=>void initAuth()}
+        onDurationChange={async minutes=>{await dashboardRequest(initData,'/account',{method:'PATCH',body:JSON.stringify({preferredCallMinutes:minutes})});setUserData(previous=>({...previous,preferredCallMinutes:minutes,...(previous.creditOnly?{maxCallDuration:minutes}:{})}));}}
         onStart={
           pendingDirectCall ? handleJoinDirectCall : handleStartSearching
         }

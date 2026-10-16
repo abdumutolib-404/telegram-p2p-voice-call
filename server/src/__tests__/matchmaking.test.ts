@@ -21,6 +21,23 @@ describe('MatchmakingService - O(1) Redis Bucket Queue', () => {
     expect(matchmakingService.getBandKey(7.5)).toBe('7.5');
   });
 
+  it('keeps 15 and 30-minute preferences separate without stranding either group',async()=>{
+    const skills={subFC:7,subLR:7,subGRA:7,subP:7};
+    expect((await matchmakingService.joinQueue('short',7.5,skills,{minutes:15})).matched).toBe(false);
+    expect((await matchmakingService.joinQueue('long',7.5,skills,{minutes:30})).matched).toBe(false);
+    expect((await matchmakingService.joinQueue('long-two',7.5,skills,{minutes:30})).partnerId).toBe('long');
+    expect((await matchmakingService.joinQueue('short-two',7.5,skills)).partnerId).toBe('short');
+  });
+
+  it('restores an immediately matched 30-minute newcomer without matching a 15-minute peer', async () => {
+    const skills={subFC:7,subLR:7,subGRA:7,subP:7};
+    await matchmakingService.joinQueue('waiting-long',7.5,skills,{minutes:30});
+    expect((await matchmakingService.joinQueue('immediate-long',7.5,skills,{minutes:30})).matched).toBe(true);
+    await matchmakingService.restoreQueue('immediate-long',matchmakingService.getBucketKey(7.5,'FC','P'));
+    expect((await matchmakingService.joinQueue('short-after-restore',7.5,skills,{minutes:15})).matched).toBe(false);
+    expect((await matchmakingService.joinQueue('long-after-restore',7.5,skills,{minutes:30})).partnerId).toBe('immediate-long');
+  });
+
   it('queues user A when no partner is present', async () => {
     const userA = {
       userId: 'user_a_123',

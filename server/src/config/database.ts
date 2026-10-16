@@ -83,13 +83,16 @@ export async function connectDB(): Promise<void> {
     await realPrismaClient.$connect();
     stage = 'schema';
     await Promise.all([
-      realPrismaClient.user.findFirst({ select: { id: true,creditBilling:true,callCredits:true,recordingCredits:true,storageCredits:true } }),
-      realPrismaClient.creditOrder.findFirst({select:{id:true,termsVersion:true}}),
-      realPrismaClient.creditUsage.findFirst({select:{callId:true}}),
+      realPrismaClient.user.findFirst({ select: { id: true,creditBilling:true,callCredits:true,recordingCredits:true,storageCredits:true,preferredCallMinutes:true,activeCallCreditUnits:true,starterGiftGrantedAt:true } }),
+      realPrismaClient.creditOrder.findFirst({select:{id:true,termsVersion:true,packSnapshot:true,checkoutCurrency:true,packClaimId:true}}),
+      realPrismaClient.creditUsage.findFirst({select:{callId:true,quantity:true}}),
+      realPrismaClient.packCampaign.findFirst({select:{id:true}}),
+      realPrismaClient.packClaim.findFirst({select:{id:true}}),
       realPrismaClient.recordingCapacity.findFirst({select:{callId:true}}),
       realPrismaClient.manualPaymentRequest.findFirst({ select: { id: true } }),
       realPrismaClient.auditLog.findFirst({ select: { id: true } }),
-      realPrismaClient.notificationJob.findFirst({ select: { id: true } }),
+      realPrismaClient.notificationJob.findFirst({ select: { id: true,category:true,contextJson:true,owner:true } }),
+      realPrismaClient.notificationBroadcast.findFirst({select:{id:true,kind:true,topicRevision:true,messageId:true}}),
       realPrismaClient.postCallJob.findFirst({ select: { callId: true } }),
     ]);
     logger.info('PostgreSQL Prisma client connected.', {

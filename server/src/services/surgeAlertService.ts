@@ -1,265 +1,67 @@
-import { Bot, InlineKeyboard } from 'grammy';
+import type { Bot } from 'grammy';
+import type { MyContext } from '../bot/types';
 import { prisma } from '../config/database';
 import { getRedis, isRedisReady } from '../config/redis';
-import { env } from '../config/env';
-import { notificationQueue } from '../bot/notifications';
-import { logger } from '../utils/logger';
 import { DistributedLeaderLock } from './leaderLock';
-import type { MyContext } from '../bot/types';
+import { logger } from '../utils/logger';
+import { currentTerms } from './terms';
+import { practiceActivity } from './practiceActivity';
+import { queueOptionalNotification } from './optionalNotifications';
 
-export const SURGE_CONFIG = {
-  GLOBAL_COOLDOWN_SECONDS: 4 * 3600, // 4 hours between global broadcasts
-  USER_COOLDOWN_SECONDS: 48 * 3600, // 48 hours per student
-  MIN_ABSOLUTE_QUORUM: 12, // Minimum concurrent callers/searchers to qualify as surge
-  DAU_PERCENTAGE_THRESHOLD: 0.1, // 10% of 7-day active users
-  MAX_RECIPIENTS_PER_CYCLE: 75, // Cap recipients per surge to avoid queue stampede
-};
-
+export const SURGE_CONFIG={GLOBAL_COOLDOWN_SECONDS:4*3600,USER_COOLDOWN_SECONDS:48*3600,MIN_ABSOLUTE_QUORUM:12,DAU_PERCENTAGE_THRESHOLD:.1,MAX_RECIPIENTS_PER_CYCLE:75};
 export class SurgeAlertService {
-  private readonly globalCooldownKey = 'pairtalk:surge_alert:global_last_sent';
-  private readonly userCooldownPrefix = 'pairtalk:surge_alert:user:';
-  private leaderLock: DistributedLeaderLock | null = null;
-  private intervalTimer: NodeJS.Timeout | null = null;
-
-  public async getActiveConcurrentCount(): Promise<{ callersCount: number; queuedCount: number; totalCount: number }> {
-    try {
-      const activeCalls = await prisma.callSession.count({
-        where: { status: 'ACTIVE' },
-      });
-      const callersCount = activeCalls * 2;
-
-      let queuedCount = 0;
-      if (isRedisReady()) {
-        const redis = getRedis();
-        const keys = await redis.keys('match_queue:*');
-        const bucketKeys = keys.filter(
-          (k) => !k.includes('priority') && !k.includes('global') && !k.includes('band:')
-        );
-        for (const bk of bucketKeys) {
-          const count = await redis.scard(bk);
-          queuedCount += count;
-        }
-      }
-
-      return {
-        callersCount,
-        queuedCount,
-        totalCount: callersCount + queuedCount,
-      };
-    } catch (err) {
-      logger.warn('Failed to calculate concurrent active count', {
-        service: 'surgeAlert',
-      }, err);
-      return { callersCount: 0, queuedCount: 0, totalCount: 0 };
-    }
+  private readonly globalCooldownKey='pairtalk:surge_alert:global_last_sent';
+  private readonly userCooldownPrefix='pairtalk:surge_alert:user:';
+  private leaderLock:DistributedLeaderLock|null=null;
+  private intervalTimer:NodeJS.Timeout|null=null;
+  private initialTimer:NodeJS.Timeout|null=null;
+  private active:Promise<void>|null=null;
+  private stopped=false;
+  async getActiveConcurrentCount() {
+    try{const activity=await practiceActivity();return activity?{callersCount:activity.callersCount,queuedCount:activity.queuedCount,totalCount:activity.totalCount}:{callersCount:0,queuedCount:0,totalCount:0};}
+    catch{return {callersCount:0,queuedCount:0,totalCount:0};}
   }
-
-  public async checkAndTriggerSurgeAlert(
-    botInstance?: Bot<MyContext> | null,
-    now = new Date()
-  ): Promise<{ triggered: boolean; reason?: string; recipientsCount?: number }> {
-    if (!botInstance) {
-      return { triggered: false, reason: 'Bot instance unavailable' };
+  async checkAndTriggerSurgeAlert(botInstance?:Bot<MyContext>|null,now=new Date()):Promise<{triggered:boolean;reason?:string;recipientsCount?:number}> {
+    if(!botInstance)return {triggered:false,reason:'Bot instance unavailable'};
+    if(!isRedisReady())return {triggered:false,reason:'Redis not ready'};
+    const redis=getRedis();
+    if(await redis.get(this.globalCooldownKey))return {triggered:false,reason:'Global surge cooldown active'};
+    const activity=await practiceActivity(now);
+    if(!activity||activity.totalCount<activity.threshold)return {triggered:false,reason:`Activity (${activity?.totalCount??0}) below surge threshold (${activity?.threshold??12})`};
+    const candidates=await prisma.user.findMany({where:{notifyPeak:true,onboarded:true,isBanned:false,isPermanentlyBanned:false,dnd:false,termsAcceptedVersion:currentTerms.version,termsDocumentSha256:currentTerms.sha256,nextReminderAt:{lte:now}},orderBy:[{nextReminderAt:'asc'},{id:'asc'}],take:250,select:{id:true}});
+    let queued=0;
+    const period=Math.floor(now.getTime()/(SURGE_CONFIG.GLOBAL_COOLDOWN_SECONDS*1000));
+    for(const user of candidates){
+      if(await redis.get(this.userCooldownPrefix+user.id))continue;
+      const created=await queueOptionalNotification(user.id,{kind:'PEAK',sampledAt:now.toISOString(),threshold:activity.threshold},'More learners are practising now. Open PairTalk to search near your level. Matching depends on compatible partners being available.',`reminder:PEAK:${period}:${user.id}`,new Date(now.getTime()+15*60000),now);
+      if(created){queued++;await redis.set(this.userCooldownPrefix+user.id,now.toISOString(),'EX',SURGE_CONFIG.USER_COOLDOWN_SECONDS);}
+      if(queued>=SURGE_CONFIG.MAX_RECIPIENTS_PER_CYCLE)break;
     }
-
-    if (!isRedisReady()) {
-      return { triggered: false, reason: 'Redis not ready' };
-    }
-
-    const redis = getRedis();
-
-    // 2. Global Cooldown Check
-    try {
-      const lastSent = await redis.get(this.globalCooldownKey);
-      if (lastSent) {
-        return { triggered: false, reason: 'Global surge cooldown active' };
-      }
-    } catch {
-      // ignore
-    }
-
-    // 3. Check Active Concurrent Activity & Surge Threshold
-    const { callersCount, queuedCount, totalCount } = await this.getActiveConcurrentCount();
-
-    // Calculate 7-day active user count (DAU proxy)
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600_000);
-    const dauCount = await prisma.user.count({
-      where: {
-        updatedAt: { gte: sevenDaysAgo },
-        isBanned: false,
-        isPermanentlyBanned: false,
-      },
-    });
-
-    const dynamicThreshold = Math.max(
-      SURGE_CONFIG.MIN_ABSOLUTE_QUORUM,
-      Math.floor(dauCount * SURGE_CONFIG.DAU_PERCENTAGE_THRESHOLD)
-    );
-
-    if (totalCount < dynamicThreshold) {
-      return {
-        triggered: false,
-        reason: `Activity (${totalCount}) below surge threshold (${dynamicThreshold})`,
-      };
-    }
-
-    // 4. Candidate Retrieval & Anti-Spam Filtering
-    const candidateUsers = await prisma.user.findMany({
-      where: {
-        isBanned: false,
-        isPermanentlyBanned: false,
-        dnd: false,
-      },
-      select: {
-        id: true,
-        telegramId: true,
-        dailyLimit: true,
-        dailyCallsUsed: true,
-        band: true,
-        alias: true,
-      },
-      take: 250,
-    });
-
-    // Find currently active sessions to exclude users in calls
-    const activeSessions = await prisma.callSession.findMany({
-      where: { status: 'ACTIVE' },
-      select: { userAId: true, userBId: true },
-    });
-    const activeUserIds = new Set<string>();
-    for (const s of activeSessions) {
-      activeUserIds.add(s.userAId);
-      activeUserIds.add(s.userBId);
-    }
-
-    const eligibleRecipients: { id: string; telegramId: string; band: number }[] = [];
-
-    for (const candidate of candidateUsers) {
-      // Must have daily calls remaining
-      if (candidate.dailyCallsUsed >= candidate.dailyLimit) continue;
-      // Exclude if currently in call
-      if (activeUserIds.has(candidate.id)) continue;
-
-      // Exclude if currently in matchmaking queue
-      const inQueue = await redis.get(`user_queue:${candidate.id}`);
-      if (inQueue) continue;
-
-      // Check per-user 48h cooldown
-      const userCooldown = await redis.get(`${this.userCooldownPrefix}${candidate.id}`);
-      if (userCooldown) continue;
-
-      eligibleRecipients.push({
-        id: candidate.id,
-        telegramId: candidate.telegramId.toString(),
-        band: candidate.band,
-      });
-
-      if (eligibleRecipients.length >= SURGE_CONFIG.MAX_RECIPIENTS_PER_CYCLE) {
-        break;
-      }
-    }
-
-    if (eligibleRecipients.length === 0) {
-      return { triggered: false, reason: 'No eligible candidates passing cooldown & quota filters' };
-    }
-
-    // 5. Compose Notification Card & Rate-Paced Dispatch
-    const miniAppUrl = env.MINI_APP_URL || 'https://t.me/PairTalkBot/call';
-    const inlineKb = new InlineKeyboard()
-      .webApp('🎙️ Match Now (Web App)', miniAppUrl)
-      .row()
-      .text('🔕 Mute Peak Alerts', 'mute_surge_alerts');
-
-    const messageText =
-      `🔥 <b>Peak Practice Surge: ${totalCount} IELTS Learners Online!</b>\n\n` +
-      `⚡ <b>Practice activity is higher right now.</b> Matching depends on available partners and speaking levels.\n` +
-      `👥 <b>Find a partner</b>: Open your dashboard to search at your speaking level.\n\n` +
-      `<i>Jump in for a quick 15-minute speaking session before the queue cools down!</i>`;
-
-    for (const recipient of eligibleRecipients) {
-      await notificationQueue.enqueue(botInstance, recipient.telegramId, messageText, {
-        parse_mode: 'HTML',
-        reply_markup: inlineKb,
-      });
-
-      // Record per-user cooldown (48 hours)
-      await redis.set(
-        `${this.userCooldownPrefix}${recipient.id}`,
-        now.toISOString(),
-        'EX',
-        SURGE_CONFIG.USER_COOLDOWN_SECONDS
-      ).catch(() => undefined);
-    }
-
-    // Record global cooldown (6 hours)
-    await redis.set(
-      this.globalCooldownKey,
-      now.toISOString(),
-      'EX',
-      SURGE_CONFIG.GLOBAL_COOLDOWN_SECONDS
-    ).catch(() => undefined);
-
-    logger.info('Peak-hour surge alert broadcast completed', {
-      service: 'surgeAlert',
-      event: 'surge_broadcast_completed',
-      totalActive: totalCount,
-      threshold: dynamicThreshold,
-      recipientsCount: eligibleRecipients.length,
-    });
-
-    return {
-      triggered: true,
-      recipientsCount: eligibleRecipients.length,
+    if(!queued)return {triggered:false,reason:'No opted-in, available recipients with compatible queue activity'};
+    await redis.set(this.globalCooldownKey,now.toISOString(),'EX',SURGE_CONFIG.GLOBAL_COOLDOWN_SECONDS);
+    logger.info('Optional peak activity reminders queued',{service:'surgeAlert',recipientsCount:queued,totalActive:activity.totalCount});
+    return {triggered:true,recipientsCount:queued};
+  }
+  startScheduler(supplier:()=>Bot<MyContext>|null,intervalMs=10*60000) {
+    if(this.intervalTimer)return;
+    this.stopped=false;
+    this.leaderLock=new DistributedLeaderLock({lockKey:'pairtalk:surge:scheduler:lock',ttlMs:25000,heartbeatIntervalMs:8000});
+    const trigger=()=>{
+      if(this.stopped||this.active)return;
+      this.active=(async()=>{
+        const lock=this.leaderLock;
+        if(!lock||!await lock.acquire())return;
+        try{await this.checkAndTriggerSurgeAlert(supplier());}
+        catch{logger.warn('Peak activity scheduling unavailable',{service:'surgeAlert'});}
+        finally{await lock.release();}
+      })().finally(()=>{this.active=null;});
+      void this.active.catch(()=>logger.warn('Peak scheduler lease unavailable',{service:'surgeAlert'}));
     };
+    this.initialTimer=setTimeout(trigger,120000);this.intervalTimer=setInterval(trigger,intervalMs);
   }
-
-  public startScheduler(getBot: () => Bot<MyContext> | null, intervalMs = 10 * 60 * 1000): void {
-    if (this.intervalTimer) return;
-
-    this.leaderLock = new DistributedLeaderLock({
-      lockKey: 'pairtalk:surge:scheduler:lock',
-      ttlMs: 25000,
-      heartbeatIntervalMs: 8000,
-    });
-
-    logger.info('Initializing Peak-Hour Surge Alert Scheduler', {
-      service: 'surgeAlert',
-      intervalMinutes: Math.round(intervalMs / 60000),
-    });
-
-    const runCheck = async () => {
-      try {
-        if (!this.leaderLock) return;
-        const isLeader = await this.leaderLock.acquire();
-        if (!isLeader) return;
-
-        const bot = getBot();
-        if (!bot) return;
-
-        await this.checkAndTriggerSurgeAlert(bot);
-      } catch (err) {
-        logger.error('Error during scheduled surge alert cycle', {
-          service: 'surgeAlert',
-        }, err);
-      }
-    };
-
-    // Initial check after 2 minutes of uptime
-    setTimeout(() => {
-      void runCheck();
-    }, 120_000);
-
-    this.intervalTimer = setInterval(() => {
-      void runCheck();
-    }, intervalMs);
-  }
-
-  public stopScheduler(): void {
-    if (this.intervalTimer) {
-      clearInterval(this.intervalTimer);
-      this.intervalTimer = null;
-    }
+  async stopScheduler() {
+    this.stopped=true;if(this.intervalTimer)clearInterval(this.intervalTimer);if(this.initialTimer)clearTimeout(this.initialTimer);
+    this.intervalTimer=null;this.initialTimer=null;await this.active;await this.leaderLock?.release();this.leaderLock=null;
   }
 }
-
-export const surgeAlertService = new SurgeAlertService();
+export const surgeAlertService=new SurgeAlertService();

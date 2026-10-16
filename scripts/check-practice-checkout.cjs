@@ -1,0 +1,104 @@
+// Real PostgreSQL transactions with synthetic payment acknowledgements only.
+// The allowlist prevents this runner from touching an owned hosted database.
+const assert=require('node:assert/strict'),fs=require('node:fs'),crypto=require('node:crypto'),{spawnSync}=require('node:child_process');
+function verify(value){const u=new URL(value);if(u.protocol!=='postgresql:'||u.hostname!=='127.0.0.1'||u.port!=='55432'||u.pathname!=='/pairtalk_check')throw new Error('Use the dedicated loopback verification database.');}
+if(process.argv[2]!=='--child'){
+  const bindings=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));verify(bindings.DATABASE_URL);
+  const env=require('./safe-environment.cjs')({DATABASE_URL:bindings.DATABASE_URL,NODE_ENV:'development',MANUAL_PAYMENT_CARD_HOLDER:'Synthetic verification payee',MANUAL_PAYMENT_INSTRUCTIONS:'Synthetic payment instructions. Never transfer real money.'});
+  const result=spawnSync(process.execPath,[__filename,'--child'],{env,encoding:'utf8',windowsHide:true,maxBuffer:8*1024*1024});
+  let output=(result.stdout||'')+(result.stderr||'');for(const key of ['DATABASE_URL','BOT_TOKEN','JWT_SECRET','MASTER_PASSWORD','LIVEKIT_API_SECRET'])if(env[key])output=output.split(env[key]).join('[REDACTED]');
+  process.stdout.write(output);process.exitCode=result.status??1;
+}else{
+  verify(process.env.DATABASE_URL);
+  const {prisma,connectDB,disconnectDB}=require('../server/dist/config/database');
+  const {disconnectRedis}=require('../server/dist/config/redis');
+  const {currentTerms}=require('../server/dist/services/terms');
+  const {readCreditConfiguration}=require('../server/dist/services/creditConfiguration');
+  const pack=require('../server/dist/services/practiceCheckout'),credits=require('../server/dist/services/credits');
+  const {admitCall}=require('../server/dist/services/callAdmission'),{completeCallSession}=require('../server/dist/services/callCompletion'),{commitRecordingStart}=require('../server/dist/services/recordingLifecycle'),{sessionCallMinutes}=require('../server/dist/services/plan');
+  const ids=[crypto.randomUUID(),crypto.randomUUID()],orderIds=[];
+  const user=id=>prisma.user.findUniqueOrThrow({where:{id}});
+  (async()=>{try{
+    await connectDB();
+    for(const [i,id]of ids.entries())await prisma.user.create({data:{id,telegramId:BigInt(Date.now())+BigInt(i),alias:`pack-check-${id}`,onboarded:true,termsAcceptedVersion:currentTerms.version,termsDocumentSha256:currentTerms.sha256,termsAcceptedAt:new Date(),callCredits:0}});
+    const buyer=await user(ids[0]),other=await user(ids[1]),{packs}=await readCreditConfiguration();
+    const selection={calls:2,recordings:1,retention:true,minutes:30};
+    const requestId=crypto.randomUUID();
+    const races=await Promise.all(Array.from({length:8},()=>pack.createPracticeOrder(buyer.id,requestId,selection,packs.revision,'UZS')));
+    assert.equal(new Set(races.map(o=>o.id)).size,1);const order=races[0];orderIds.push(order.id);
+    assert.equal(order.calls,4);assert.equal(order.recordings,2);assert.equal(order.storage,2);assert.equal(order.uzsAmount,22406);assert.equal(order.starsAmount,115);
+    const manual=await prisma.manualPaymentRequest.findUniqueOrThrow({where:{creditOrderId:order.id}});
+    assert.equal(await prisma.notificationJob.count({where:{dedupeKey:`pack-checkout:${order.id}`}}),1);
+    assert.equal((await user(buyer.id)).callCredits,0);
+    await assert.rejects(pack.createPracticeOrder(other.id,requestId,selection,packs.revision,'UZS'));
+    await assert.rejects(pack.createPracticeOrder(buyer.id,requestId,selection,packs.revision,'XTR'));
+    await assert.rejects(credits.authorizeCreditOrder(order.id,buyer.telegramId,order.starsAmount,'XTR','wrong-currency'));
+    await assert.rejects(pack.approvePracticePayment(manual.id,'synthetic-admin'));
+    await assert.rejects(pack.attachPracticePaymentProof(manual.id,other.telegramId,'{"fileId":"fixture"}'));
+    console.log('PASS eight repeated checkouts create one order, one manual request and one durable DM; ownership/currency/proof guards reject invalid payment.');
+    await pack.attachPracticePaymentProof(manual.id,buyer.telegramId,'{"fileId":"synthetic-validated-receipt"}');
+    await assert.rejects(pack.cancelPendingPracticeCheckout(buyer.id,order.id),/awaiting confirmation/);
+    const callbacks=[];require('../server/dist/bot/handlers/payments').setupPaymentHandlers({callbackQuery:(pattern,handler)=>callbacks.push({pattern,handler}),on:()=>{},command:()=>{},api:{}});
+    const cancel=callbacks.find(item=>item.pattern instanceof RegExp&&item.pattern.test(`cancel_manual_pay:${manual.id}`));let cancelAnswer;
+    await cancel.handler({match:[`cancel_manual_pay:${manual.id}`,manual.id],from:{id:Number(buyer.telegramId)},answerCallbackQuery:async answer=>{cancelAnswer=answer;}});
+    assert.equal(cancelAnswer.show_alert,true);assert.equal((await prisma.manualPaymentRequest.findUniqueOrThrow({where:{id:manual.id}})).status,'PENDING');
+    await assert.rejects(pack.attachPracticePaymentProof(manual.id,buyer.telegramId,'{"fileId":"second"}'));
+    const approvals=await Promise.allSettled(Array.from({length:8},()=>pack.approvePracticePayment(manual.id,'synthetic-admin')));
+    assert.equal(approvals.filter(r=>r.status==='fulfilled').length,1);
+    assert.equal((await user(buyer.id)).callCredits,4);assert.equal((await user(buyer.id)).recordingCredits,2);assert.equal((await user(buyer.id)).storageCredits,2);
+    await assert.rejects(credits.settleCreditOrder(order.id,buyer.telegramId,order.starsAmount,'XTR','synthetic-cross-currency'));
+    console.log('PASS eight simultaneous admin approvals fulfill a 30-minute pack once, and Stars cannot fulfill the same manual purchase.');
+    await Promise.all(Array.from({length:5},()=>pack.requestPracticeRefund(manual.id,buyer.telegramId,'8600 0000 0000 0000')));
+    assert.equal((await user(buyer.id)).callCredits,0);assert.equal((await user(buyer.id)).recordingCredits,0);
+    const decisions=await Promise.allSettled(Array.from({length:4},()=>pack.reviewPracticeRefund(manual.id,'synthetic-admin','REJECT','Synthetic rejection')));
+    assert.equal(decisions.filter(r=>r.status==='fulfilled').length,1);assert.equal((await user(buyer.id)).callCredits,4);
+    await pack.requestPracticeRefund(manual.id,buyer.telegramId,'8600 0000 0000 0000');
+    await pack.reviewPracticeRefund(manual.id,'synthetic-admin','CONFIRM','Synthetic transfer confirmed','synthetic-validated-transfer-proof');
+    assert.equal((await user(buyer.id)).callCredits,0);assert.equal((await prisma.creditOrder.findUniqueOrThrow({where:{id:order.id}})).status,'REFUNDED');
+    console.log('PASS refund requests reserve wallet quantities once, rejection restores them once, and confirmation does not debit twice.');
+    const expired=await pack.createPracticeOrder(buyer.id,crypto.randomUUID(),{calls:1,recordings:0,retention:false,minutes:15},packs.revision,'UZS');orderIds.push(expired.id);
+    await prisma.creditOrder.update({where:{id:expired.id},data:{expiresAt:new Date(Date.now()-1000)}});
+    const expiredManual=await prisma.manualPaymentRequest.findUniqueOrThrow({where:{creditOrderId:expired.id}});
+    await assert.rejects(pack.attachPracticePaymentProof(expiredManual.id,buyer.telegramId,'{"fileId":"late"}'));
+    const fresh=await pack.createPracticeOrder(buyer.id,crypto.randomUUID(),{calls:1001,recordings:0,retention:false,minutes:15},packs.revision,'UZS');orderIds.push(fresh.id);
+    assert.equal(fresh.calls,1001);assert.equal((await prisma.manualPaymentRequest.findUniqueOrThrow({where:{id:expiredManual.id}})).status,'REJECTED');
+    console.log('PASS expired receipt submissions are rejected, stale unpaid requests are retired, and purchases above 1000 calls work.');
+    // Release the synthetic unpaid hold before checking duration accounting.
+    await prisma.manualPaymentRequest.updateMany({where:{creditOrderId:fresh.id},data:{status:'REJECTED'}});await prisma.creditOrder.update({where:{id:fresh.id},data:{status:'CANCELLED'}});
+    await prisma.user.updateMany({where:{id:{in:ids}},data:{callCredits:4,preferredCallMinutes:30}});
+    await prisma.user.update({where:{id:buyer.id},data:{recordingCredits:2,storageCredits:1}});
+    const failed=await admitCall(buyer.id,other.id,'pack-duration-'+crypto.randomUUID(),'ACTIVE');
+    assert.equal(failed.allowedMinutes,30);assert.equal((await user(buyer.id)).callCredits,2);assert.equal((await user(buyer.id)).activeCallCreditUnits,2);
+    await completeCallSession(failed.id,{duration:0,endedAt:new Date()});await completeCallSession(failed.id,{duration:0,endedAt:new Date()});
+    assert.equal((await user(buyer.id)).callCredits,4);assert.equal((await user(buyer.id)).activeCallCreditUnits,0);
+    const recorded=await admitCall(buyer.id,other.id,'pack-duration-'+crypto.randomUUID(),'ACTIVE');
+    await prisma.user.updateMany({where:{id:{in:ids}},data:{preferredCallMinutes:15,maxDuration:5}});
+    const current=await prisma.callSession.findUniqueOrThrow({where:{id:recorded.id},include:{userA:true,userB:true}});assert.equal(sessionCallMinutes(current),30);
+    await prisma.callSession.update({where:{id:recorded.id},data:{mediaAuthorizedAt:new Date(Date.now()-1810000)}});
+    assert.equal((await prisma.$queryRaw`SELECT pairtalk_prepare_recording_capacity(${recorded.id},${buyer.id},30,true) AS reserved`)[0].reserved,true);
+    assert.equal(await commitRecordingStart(recorded.id,buyer.id,null,{egressId:'synthetic-pack-'+recorded.id,relativeUrl:'recordings/'+recorded.id+'.mp3'}),true);
+    assert.equal((await user(buyer.id)).recordingCredits,0);assert.equal((await user(buyer.id)).storageCredits,1);
+    const segment=await prisma.recordingSegment.findFirstOrThrow({where:{callId:recorded.id}});assert.deepEqual(segment.storedOwnerIds,[]);
+    await prisma.recordingSegment.update({where:{id:segment.id},data:{status:'FAILED'}});
+    await completeCallSession(recorded.id,{duration:1810,endedAt:new Date()});
+    assert.equal((await prisma.callSession.findUniqueOrThrow({where:{id:recorded.id}})).duration,1800);
+    await credits.reconcileRecordingCredits();await credits.reconcileRecordingCredits();
+    assert.equal((await user(buyer.id)).recordingCredits,2);assert.equal((await user(buyer.id)).callCredits,2);
+    console.log('PASS Node reserves/restores two 30-minute units once, preserves the admitted timer after profile changes, and returns two failed recording units without spending an insufficient retention balance.');
+    await prisma.user.update({where:{id:buyer.id},data:{callCredits:2147483646}});
+    const last=await pack.createPracticeOrder(buyer.id,crypto.randomUUID(),{calls:1,recordings:0,retention:false,minutes:15},packs.revision,'XTR');orderIds.push(last.id);
+    await assert.rejects(pack.createPracticeOrder(buyer.id,crypto.randomUUID(),{calls:1,recordings:0,retention:false,minutes:15},packs.revision,'XTR'),/wallet range/);
+    await pack.cancelPendingPracticeCheckout(buyer.id,last.id);
+    const pendingRefund=await pack.createPracticeOrder(buyer.id,crypto.randomUUID(),{calls:1,recordings:0,retention:false,minutes:15},packs.revision,'XTR');orderIds.push(pendingRefund.id);
+    await prisma.creditOrder.update({where:{id:pendingRefund.id},data:{status:'REFUND_PENDING'}});
+    await assert.rejects(pack.createPracticeOrder(buyer.id,crypto.randomUUID(),{calls:1,recordings:0,retention:false,minutes:15},packs.revision,'XTR'),/wallet range/);
+    console.log('PASS pending purchases and reversible refund holds preserve integer headroom before another payment can be accepted.');
+  }finally{
+    await prisma.callSession.deleteMany({where:{userAId:{in:ids}}});
+    await prisma.notificationJob.deleteMany({where:{dedupeKey:{in:orderIds.flatMap(id=>[`pack-checkout:${id}`,`pack-receipt:${id}`])}}});
+    await prisma.auditLog.deleteMany({where:{targetId:{in:orderIds}}});
+    await prisma.manualPaymentRequest.deleteMany({where:{userId:{in:ids}}});
+    await prisma.creditOrder.deleteMany({where:{userId:{in:ids}}});
+    await prisma.user.deleteMany({where:{id:{in:ids}}});await disconnectDB();await disconnectRedis();
+  }})().catch(error=>{console.error(error.message);process.exitCode=1;});
+}

@@ -22,6 +22,49 @@ func queueTestClient(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 	return client, server
 }
 
+func TestQueueMatchesTheSelectedDuration(t *testing.T) {
+	client, _ := queueTestClient(t)
+	engine := NewEngine(client)
+	ctx := context.Background()
+	skills := UserSkills{SubFC: 7, SubLR: 7, SubGRA: 7, SubP: 7}
+	for _, entry := range []struct {
+		id      string
+		minutes int
+		matched bool
+		partner string
+	}{{"fifteen", 15, false, ""}, {"thirty", 30, false, ""}, {"another-thirty", 30, true, "thirty"}, {"default-fifteen", 0, true, "fifteen"}} {
+		result, err := engine.JoinQueue(ctx, entry.id, 7.5, skills, MatchOptions{Minutes: entry.minutes})
+		if err != nil || result.Matched != entry.matched || result.PartnerID != entry.partner {
+			t.Fatalf("duration compatibility for %s: %+v %v", entry.id, result, err)
+		}
+	}
+}
+
+func TestQueueRestoresImmediatelyMatchedDuration(t *testing.T) {
+	client, _ := queueTestClient(t)
+	engine, ctx := NewEngine(client), context.Background()
+	skills := UserSkills{SubFC: 7, SubLR: 7, SubGRA: 7, SubP: 7}
+	if _, err := engine.JoinQueue(ctx, "waiting-long", 7.5, skills, MatchOptions{Minutes: 30}); err != nil {
+		t.Fatal(err)
+	}
+	matched, err := engine.JoinQueue(ctx, "immediate-long", 7.5, skills, MatchOptions{Minutes: 30})
+	if err != nil || !matched.Matched {
+		t.Fatalf("initial match: %+v %v", matched, err)
+	}
+	bucket, _ := engine.GetBucketKey(7.5, SkillFC, SkillP)
+	if err := engine.RestoreQueue(ctx, "immediate-long", bucket, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	short, err := engine.JoinQueue(ctx, "short-after-restore", 7.5, skills, MatchOptions{Minutes: 15})
+	if err != nil || short.Matched {
+		t.Fatalf("restored 30-minute user matched short peer: %+v %v", short, err)
+	}
+	long, err := engine.JoinQueue(ctx, "long-after-restore", 7.5, skills, MatchOptions{Minutes: 30})
+	if err != nil || !long.Matched || long.PartnerID != "immediate-long" {
+		t.Fatalf("restored user lost duration: %+v %v", long, err)
+	}
+}
+
 // Hold both completed claim commands before the Go callers can proceed. The
 // old implementation then registers two unmatched users; the atomic script
 // must have registered the first before the second claim executes.

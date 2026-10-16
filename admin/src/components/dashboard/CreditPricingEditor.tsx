@@ -15,10 +15,10 @@ const fields: {
   min: number;
 }[] = [
   { key: "callPriceUzs", label: "Selling price (UZS/call)", step: "1", min: 1 },
-  { key: "callPriceStars", label: "Selling price (Stars/call)", step: "1", min: 1 },
   { key: "recordingPriceUzs", label: "Selling price (UZS/recording)", step: "1", min: 1 },
-  { key: "recordingPriceStars", label: "Selling price (Stars/recording)", step: "1", min: 1 },
   { key: "storagePriceUzs", label: "30-day storage (UZS/recording)", step: "1", min: 1 },
+  { key: "starReferenceUzs", label: "UZS per Star reference", step: "1", min: 1 },
+  { key: "starMarkupPercent", label: "Stars markup (%)", step: "0.01", min: 0 },
   {
     key: "recordingAllowanceMinutes",
     label: "Monthly recording capacity (minutes)",
@@ -173,8 +173,7 @@ export function CreditPricingEditor() {
         The budget includes infrastructure, starter usage, AI and other shared
         expenses. We subtract forecast direct call and recording costs first,
         then allocate the remaining budget once. The estimate adds 12% to
-        expenditure. Published selling prices are set independently above;
-        changing cost assumptions does not change them. Optional storage is separate.
+        expenditure. UZS selling prices are set above. Stars are calculated as UZS divided by the per-Star reference, with the chosen markup, rounded up per 15-minute service. A 30-minute service doubles that rounded rate. Optional retention is separate.
       </p>
       <p className="field-help">
         Launch assumptions: $25 total operating costs, 100 paid calls and three
@@ -228,7 +227,7 @@ export function CreditPricingEditor() {
                   type="number"
                   required
                   min={field.min}
-                  max={field.key === "callSharePercent" ? 99.999999 : 1000000}
+                  max={field.key === "callSharePercent" ? 99.999999 : field.key === "starMarkupPercent" ? 100 : 1000000}
                   step={field.step}
                   value={Number.isNaN(costs[field.key]) ? "" : costs[field.key]}
                   onChange={(event) => {

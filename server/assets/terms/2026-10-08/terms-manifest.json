@@ -1,0 +1,8 @@
+{
+  "version": "2026-10-08",
+  "filename": "pairtalk-terms-of-use.pdf",
+  "sha256": "d5c0aa8e201b26687c1db5330322871ac21ba00f240dc2bd647e3d6465eeda63",
+  "source": "landing/src/content.tsx",
+  "termsUrl": "https://pairtalk.online/terms",
+  "privacyUrl": "https://pairtalk.online/privacy"
+}

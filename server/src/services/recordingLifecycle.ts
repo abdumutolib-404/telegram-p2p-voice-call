@@ -13,8 +13,8 @@ async function consumeRecording(tx: Prisma.TransactionClient, callId: string, us
   if (!entitlement.isAdmin && await getUserRecordingsUsedThisPeriod(userId, user, tx) >= entitlement.baseRecordingLimit) await (await import('./credits')).reserveRecordingCredit(tx,callId,userId);
   const call=await tx.callSession.findUnique({where:{id:callId},include:{userA:true,userB:true}});
   if(!call)throw new Error('Call is unavailable.');
-  const {calculateEffectiveCallDuration}=await import('./plan');
-  const minutes=calculateEffectiveCallDuration(call.userA,call.userB);
+  const {sessionCallMinutes}=await import('./plan');
+  const minutes=sessionCallMinutes(call);
   const capacity=await tx.$queryRaw<{reserved:boolean}[]>`SELECT pairtalk_reserve_recording_capacity(${callId},${minutes}::integer) AS reserved`;
   if(!capacity[0]?.reserved)throw new Error('Recording capacity is currently unavailable. Your recording has not been charged.');
   await tx.recordingUsage.create({ data: { callId, userId } });

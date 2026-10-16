@@ -9,6 +9,7 @@ import type { PlansResponse, PlanTierConfig } from '../../types';
 import { DiscountCampaigns } from './DiscountCampaigns';
 import { CreditPricingEditor } from './CreditPricingEditor';
 import { CreditOrders } from './CreditOrders';
+import { NotificationControls } from './NotificationControls';
 const tiers = ['FREE', 'PLUS', 'PRO', 'BOSS'] as const;
 const fields: { key: keyof PlanTierConfig; label: string; min: number; max: number }[] = [
   { key: 'maxDuration', label: 'Minutes per call', min: 1, max: 1440 },
@@ -62,9 +63,8 @@ export function PlanEditor() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Saving failed. Your edits are retained.'); }
     finally { busy.current = false; setSaving(false); }
   };
-  return <><CreditPricingEditor/><CreditOrders/><details><summary>Legacy subscription plans and discount campaigns</summary><form onSubmit={save}><PageHeader title="Legacy plans and limits" description="Maintain existing subscription entitlements and campaigns. Flexible call and recording pricing is configured above." actions={<div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+  return <><CreditPricingEditor/><CreditOrders/><NotificationControls/><PageHeader title="Channel offers" description="Publish a discounted practice pack to @pairtalk. Each person can claim it once." actions={<button type="button" className="btn-primary" onClick={()=>setDiscountOpen(true)}>Discount</button>}/><details><summary>Legacy subscription plans</summary><form onSubmit={save}><PageHeader title="Legacy plans and limits" description="Maintain existing subscription entitlements. Flexible call and recording pricing is configured above." actions={<div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
     <a className="btn-secondary" href={comparisonUrl} target="_blank" rel="noreferrer">Open public comparison ↗</a>
-    <button type="button" className="btn-secondary" disabled={!initial||saving} onClick={()=>setDiscountOpen(true)}>Discount</button>
     {dirty && <button type="button" className="btn-secondary" disabled={saving} onClick={() => { setPlans(structuredClone(initial)); setError(null); }}>Discard edits</button>}
     <button type="submit" className="btn-primary" disabled={!plans || !dirty || saving}>{saving ? 'Saving…' : 'Save plans'}</button></div>}/>
     {loading && <p role="status">Loading server plans…</p>}{error && <p role="alert" className="inline-error">{error}{!plans && <button type="button" className="btn-secondary" onClick={() => void load()}>Retry</button>}</p>}

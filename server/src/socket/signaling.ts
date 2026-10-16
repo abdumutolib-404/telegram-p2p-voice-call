@@ -10,7 +10,8 @@ import { Server, Socket } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import { Bot } from 'grammy';
 import { matchmakingService, determineWeakAndStrongSkills } from '../services/matchmaking';
-import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration } from '../services/plan';
+import { getPaidUserProfile, formatPriceDisplay, getPlansConfig, getEffectiveEntitlement, getUserRecordingsUsedThisPeriod, getUserCallsUsedThisPeriod, sessionCallMinutes } from '../services/plan';
+import { touchUserActivity } from '../services/userActivity';
 import { getActiveBonusCallsCount } from '../services/referralService';
 import { checkRateLimit } from '../services/rateLimitMatrix';
 import { generateLiveKitToken, enableCallSubscriptions, startAudioEgress, stopAudioEgress, deleteLiveKitRoom, areCallParticipantsPresent, countCallParticipants, type EgressResult } from '../config/livekit';
@@ -204,7 +205,7 @@ export function scheduleConnectionHandshakeTimer(
             if (!authorized?.mediaAuthorizedAt) return;
             roomStartedAt.set(roomName,authorized.mediaAuthorizedAt.getTime());
             const elapsed = Math.floor((Date.now() - authorized.mediaAuthorizedAt.getTime()) / 1000);
-            const remaining = Math.max(0, calculateEffectiveCallDuration(currentSession.userA, currentSession.userB) * 60 - elapsed);
+            const remaining = Math.max(0, sessionCallMinutes(currentSession) * 60 - elapsed);
             scheduleAuthoritativeSessionTeardown(roomName, remaining, effectiveBot ?? undefined, effectiveIo ?? undefined);
             if (remaining <= 0) return;
             await enableCallSubscriptions(roomName,[currentSession.userAId,currentSession.userBId]);
@@ -543,7 +544,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const selfUser = isUserA ? activeCall.userA : activeCall.userB;
             const partnerUser = isUserA ? activeCall.userB : activeCall.userA;
             if (isAccountRestricted(selfUser) || isAccountRestricted(partnerUser)) return;
-            const callDurationLimitMinutes = calculateEffectiveCallDuration(selfUser, partnerUser);
+            const callDurationLimitMinutes = sessionCallMinutes(activeCall);
             const callDurationLimitSeconds = callDurationLimitMinutes * 60;
             const startedAt = roomStartedAt.get(activeCall.roomName);
             const startTime = startedAt ?? (activeCall.mediaAuthorizedAt ?? activeCall.createdAt).getTime();
@@ -668,7 +669,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             include: { userA: true, userB: true },
           });
           if (activeCall) {
-            const maxDurationMinutes = calculateEffectiveCallDuration(activeCall.userA, activeCall.userB);
+            const maxDurationMinutes = sessionCallMinutes(activeCall);
             const maxDurationMs = maxDurationMinutes * 60 * 1000 + 60 * 1000;
             const elapsedMs = Date.now() - (activeCall.mediaAuthorizedAt ?? activeCall.createdAt).getTime();
             if (elapsedMs > maxDurationMs) {
@@ -685,12 +686,16 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           // Check monthly call quota before queue entry using Effective Entitlements
           const entitlement = getEffectiveEntitlement(user);
+          await touchUserActivity(user);
           const callsUsed = await getUserCallsUsedThisPeriod(user.id, user);
           const activeBonusCalls = await getActiveBonusCallsCount(user.id);
+          if(!entitlement.isAdmin&&(callsUsed>=entitlement.baseCallLimit||(user.preferredCallMinutes===30&&entitlement.maxDurationMinutes<30))&&(activeBonusCalls<=0||user.preferredCallMinutes===30)&&user.callCredits<(user.preferredCallMinutes===30?2:1)){
+            socket.emit('error',{code:'MATCHMAKING_QUOTA_EXCEEDED',message:'This duration needs more available call units. Choose 15 minutes or add calls in Plans.'});return;
+          }
           if (!entitlement.isAdmin && callsUsed >= entitlement.callLimit && activeBonusCalls <= 0) {
             socket.emit('error', {
               code: 'MATCHMAKING_QUOTA_EXCEEDED',
-              message: 'Your call allowance has been used. Open Pay as you go in your dashboard to add calls, or earn bonus calls by inviting friends.',
+              message: 'Your call allowance has been used. Open Plans in your dashboard to add calls, or earn bonus calls by inviting friends.',
             });
             return;
           }
@@ -707,6 +712,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             {
               plan: user.plan,
               warningCount: user.warningCount,
+              minutes: user.preferredCallMinutes===30?30:15,
             }
           );
 
@@ -735,10 +741,10 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
 
           let transactionSucceeded = false;
           try {
-            await admitCall(user.id, partner.id, roomName, 'ACTIVE');
+            const admittedSession=await admitCall(user.id, partner.id, roomName, 'ACTIVE');
             transactionSucceeded = true;
             const freshA=await prisma.user.findUniqueOrThrow({where:{id:user.id}}),freshB=await prisma.user.findUniqueOrThrow({where:{id:partner.id}});
-            const callDurationLimitMinutes=calculateEffectiveCallDuration(freshA,freshB);
+            const callDurationLimitMinutes=sessionCallMinutes({...admittedSession,userA:freshA,userB:freshB});
             const callDurationLimitSeconds=callDurationLimitMinutes*60;
             const tokenTtlSeconds=Math.min(7200,Math.max(60,callDurationLimitSeconds+300));
 
@@ -901,7 +907,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             include: { userA: true, userB: true },
           });
           if (session?.userA && session?.userB) {
-            durationLimitSeconds = calculateEffectiveCallDuration(session.userA, session.userB) * 60;
+            durationLimitSeconds = sessionCallMinutes(session) * 60;
           } else {
             durationLimitSeconds = 15 * 60;
           }
@@ -982,8 +988,8 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             const entitlement = getEffectiveEntitlement(user || {});
             const recordingsUsed = await getUserRecordingsUsedThisPeriod(requesterId, user);
             const consumed = await prisma.recordingUsage.findUnique({ where: { callId_userId: { callId: session.id, userId: requesterId } } });
-            if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit && calculateEffectiveCallDuration(session.userA,session.userB)>15) {
-              socket.emit('recording_error',{code:'RECORDING_LIMIT_REACHED',message:'Purchased recordings cover calls up to 15 minutes. This longer call requires its legacy recording allowance.'});
+            if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit && sessionCallMinutes(session)>30) {
+              socket.emit('recording_error',{code:'RECORDING_LIMIT_REACHED',message:'Purchased recordings cover calls up to 30 minutes. This longer call requires its legacy recording allowance.'});
               return;
             }
             if (!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.recordingLimit) {
@@ -1007,7 +1013,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
             }
 
             try {
-              const capacity = await prisma.$queryRaw<{reserved:boolean}[]>`SELECT pairtalk_prepare_recording_capacity(${session.id},${requesterId},${calculateEffectiveCallDuration(session.userA,session.userB)}::integer,${!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit}) AS reserved`;
+              const capacity = await prisma.$queryRaw<{reserved:boolean}[]>`SELECT pairtalk_prepare_recording_capacity(${session.id},${requesterId},${sessionCallMinutes(session)}::integer,${!consumed && !entitlement.isAdmin && recordingsUsed >= entitlement.baseRecordingLimit}) AS reserved`;
               if (!capacity[0]?.reserved) {
                 socket.emit('recording_error',{code:'RECORDING_UNAVAILABLE',message:'Recording capacity is currently unavailable. Your recording has not been charged.'});
                 return;
@@ -1301,7 +1307,7 @@ export function setupSocketSignaling(io: Server, bot?: Bot<MyContext>): void {
           continue;
         }
 
-        const callDurationLimitMinutes = calculateEffectiveCallDuration(session.userA, session.userB);
+        const callDurationLimitMinutes = sessionCallMinutes(session);
         const callDurationLimitSeconds = callDurationLimitMinutes * 60;
         const elapsedSeconds = Math.floor((now - (session.mediaAuthorizedAt ?? session.createdAt).getTime()) / 1000);
         const remainingSeconds = Math.max(1, callDurationLimitSeconds - elapsedSeconds);
@@ -1400,7 +1406,7 @@ export async function sweepZombieSessions(io?: Server, bot?: Bot<MyContext>): Pr
 
     for (const session of activeSessions) {
       try {
-        const maxDurationMinutes = calculateEffectiveCallDuration(session.userA, session.userB);
+        const maxDurationMinutes = sessionCallMinutes(session);
         const maxDurationMs = maxDurationMinutes * 60 * 1000;
         const elapsedMs = now - (session.mediaAuthorizedAt ?? session.createdAt).getTime();
         const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));

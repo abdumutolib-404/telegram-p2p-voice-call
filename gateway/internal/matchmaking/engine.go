@@ -32,6 +32,7 @@ type UserSkills struct {
 }
 
 type MatchOptions struct {
+	Minutes      int    `json:"minutes,omitempty"`
 	Plan         string `json:"plan,omitempty"`
 	WarningCount int    `json:"warningCount,omitempty"`
 }
@@ -203,7 +204,11 @@ func (e *Engine) JoinQueue(ctx context.Context, userID string, band float64, ski
 		claimKeys := append([]string{}, uniqueCandidateBuckets...)
 		claimKeys = append(claimKeys, poolsToRegister...)
 		claimKeys = append(claimKeys, UserQueuePrefix+userID)
-		claimArgs := []interface{}{UserQueuePrefix, userID, len(uniqueCandidateBuckets), ownBucketKey, QueueTTLSeconds}
+		minutes := 15
+		if options.Minutes == 30 {
+			minutes = 30
+		}
+		claimArgs := []interface{}{UserQueuePrefix, userID, len(uniqueCandidateBuckets), ownBucketKey, QueueTTLSeconds, minutes}
 		claimRes, err := e.rdb.Eval(
 			lockCtx,
 			MatchQueueMultiClaimScript,
@@ -292,6 +297,7 @@ func (e *Engine) RestoreQueue(ctx context.Context, userID, bucketKey string, ban
 			pipe.Expire(lockCtx, pool, QueueTTLSeconds*2*time.Second)
 		}
 		pipe.Set(lockCtx, fmt.Sprintf("%s%s", UserQueuePrefix, userID), bucketKey, QueueTTLSeconds*time.Second)
+		pipe.Expire(lockCtx, "match_duration:"+userID, QueueTTLSeconds*time.Second)
 
 		_, err := pipe.Exec(lockCtx)
 		return err
@@ -322,6 +328,7 @@ func (e *Engine) CancelQueue(ctx context.Context, userID string) (bool, error) {
 		pipe.SRem(lockCtx, e.GetPriorityPoolKey("BOSS"), userID)
 		pipe.SRem(lockCtx, e.GetPriorityPoolKey("PRO"), userID)
 		pipe.SRem(lockCtx, e.GetPriorityPoolKey("PLUS"), userID)
+		pipe.Del(lockCtx, "match_duration:"+userID)
 
 		_, _ = pipe.Exec(lockCtx)
 

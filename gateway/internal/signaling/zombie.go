@@ -60,7 +60,7 @@ func (h *Hub) SweepZombieSessions(ctx context.Context) (int, error) {
 			continue
 		}
 
-		maxDurationMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
+		maxDurationMinutes := session.LimitMinutes(h.AdminTelegramIDs)
 		maxDurationSeconds := maxDurationMinutes * 60
 		elapsedSeconds := int(now.Sub(session.DurationAnchor()).Seconds())
 

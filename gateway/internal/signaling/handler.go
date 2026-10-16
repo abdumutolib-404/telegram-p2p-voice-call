@@ -113,6 +113,10 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		return
 	}
 	ent := database.GetEffectiveEntitlement(user, h.AdminTelegramIDs)
+	if err := h.DB.TouchUserActivity(ctx, user.ID); err != nil {
+		socket.Emit("error", SocketErrorEvent{Message: "Unable to update practice activity. Please retry."})
+		return
+	}
 	stage = "usage_lookup"
 	callsUsed, err := h.DB.GetUserCallsUsedThisPeriod(ctx, user.ID, user)
 	if err != nil {
@@ -130,8 +134,16 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		stage, outcome = "eligibility", "quota_exceeded"
 		socket.Emit("error", SocketErrorEvent{
 			Code:    "MATCHMAKING_QUOTA_EXCEEDED",
-			Message: "Your call allowance has been used. Open Pay as you go in your dashboard to add calls, or earn bonus calls by inviting friends.",
+			Message: "Your call allowance has been used. Open Plans in your dashboard to add calls, or earn bonus calls by inviting friends.",
 		})
+		return
+	}
+	units := 1
+	if user.PreferredCallMinutes == 30 {
+		units = 2
+	}
+	if !ent.IsAdmin && (callsUsed >= ent.BaseCallLimit || (user.PreferredCallMinutes == 30 && ent.MaxDurationMinutes < 30)) && (bonusCalls <= 0 || user.PreferredCallMinutes == 30) && user.CallCredits < units {
+		socket.Emit("error", SocketErrorEvent{Code: "MATCHMAKING_QUOTA_EXCEEDED", Message: "This duration needs more available call units. Choose 15 minutes or add calls in Plans."})
 		return
 	}
 
@@ -158,6 +170,7 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 			SubP:   user.SubP,
 		},
 		matchmaking.MatchOptions{
+			Minutes:      user.PreferredCallMinutes,
 			Plan:         ent.Plan,
 			WarningCount: user.WarningCount,
 		},
@@ -213,7 +226,13 @@ func (h *Hub) handleJoinQueue(socket *ClientSocket) {
 		}
 		return
 	}
-	durationLimitMinutes := database.CalculateEffectiveCallDuration(user, partner, h.AdminTelegramIDs)
+	admittedSession, err := h.DB.GetCallSessionByRoomName(ctx, roomName)
+	if err != nil || admittedSession == nil {
+		_, _ = h.DB.CancelCallSession(ctx, sessionID)
+		socket.Emit("error", SocketErrorEvent{Message: "The session could not be loaded. Please search again."})
+		return
+	}
+	durationLimitMinutes := admittedSession.LimitMinutes(h.AdminTelegramIDs)
 	durationLimitSeconds := durationLimitMinutes * 60
 	tokenTTL := durationLimitSeconds + 300
 	if tokenTTL < 60 {
@@ -343,7 +362,7 @@ func (h *Hub) handlePeerReady(socket *ClientSocket, payload []byte) {
 	h.ClearConnectionHandshakeTimer(req.RoomName)
 	durationLimit := h.GetRoomDurationLimit(req.RoomName)
 	if durationLimit <= 0 {
-		durationLimit = database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
+		durationLimit = session.LimitMinutes(h.AdminTelegramIDs) * 60
 		h.SetRoomDurationLimit(req.RoomName, durationLimit)
 	}
 	remaining := durationLimit - int(time.Since(session.DurationAnchor()).Seconds())
@@ -418,8 +437,8 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Unable to check recording allowance."})
 			return
 		}
-		if !consumed && !ent.IsAdmin && recUsed >= ent.BaseRecordingLimit && database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) > 15 {
-			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_LIMIT_REACHED", Message: "Recordings cover calls up to 15 minutes. This longer call requires its legacy recording allowance."})
+		if !consumed && !ent.IsAdmin && recUsed >= ent.BaseRecordingLimit && session.LimitMinutes(h.AdminTelegramIDs) > 30 {
+			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_LIMIT_REACHED", Message: "Recordings cover calls up to 30 minutes. This longer call requires its legacy recording allowance."})
 			return
 		}
 		if !consumed && !ent.IsAdmin && recUsed >= ent.RecordingLimit {
@@ -444,7 +463,7 @@ func (h *Hub) handleToggleRecord(socket *ClientSocket, payload []byte) {
 			return
 		}
 
-		capacity, err := h.DB.PrepareRecordingCapacity(ctx, session.ID, requesterID, database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs), !consumed && !ent.IsAdmin && recUsed >= ent.BaseRecordingLimit)
+		capacity, err := h.DB.PrepareRecordingCapacity(ctx, session.ID, requesterID, session.LimitMinutes(h.AdminTelegramIDs), !consumed && !ent.IsAdmin && recUsed >= ent.BaseRecordingLimit)
 		if err != nil || !capacity {
 			socket.Emit("recording_error", RecordingErrorEvent{Code: "RECORDING_UNAVAILABLE", Message: "Recording capacity is currently unavailable. Your recording has not been charged."})
 			return
@@ -562,7 +581,7 @@ func (h *Hub) handleFinishCall(socket *ClientSocket, payload []byte) {
 		durationSeconds = 1
 	}
 	if session.UserA != nil && session.UserB != nil {
-		limitMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
+		limitMinutes := session.LimitMinutes(h.AdminTelegramIDs)
 		limitSeconds := limitMinutes * 60
 		if durationSeconds > limitSeconds {
 			durationSeconds = limitSeconds
@@ -844,7 +863,7 @@ func (h *Hub) handleDisconnect(socket *ClientSocket) {
 			durationSeconds = 0
 		}
 		if current.UserA != nil && current.UserB != nil {
-			limitMinutes := database.CalculateEffectiveCallDuration(current.UserA, current.UserB, h.AdminTelegramIDs)
+			limitMinutes := current.LimitMinutes(h.AdminTelegramIDs)
 			limitSeconds := limitMinutes * 60
 			if durationSeconds > limitSeconds {
 				durationSeconds = limitSeconds

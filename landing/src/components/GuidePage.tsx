@@ -1,6 +1,8 @@
 import { ArrowUpRight } from "lucide-react";
 import { faqs, type Guide } from "../content";
 import { practiceUrl } from "./SiteLayout";
+import { SectionFaq } from '../../../platform/SectionFaq';
+import { pricingQuestions, privacyQuestions, safetyQuestions, practiceQuestions } from '../../../platform/practiceQuestions';
 export function GuidePage({ page, path }: { page: Guide; path: string }) {
   return (
     <>
@@ -37,6 +39,9 @@ export function GuidePage({ page, path }: { page: Guide; path: string }) {
               {s.body}
             </section>
           ))}
+          {path==='/ielts-speaking'&&<SectionFaq title="Practice questions" questions={practiceQuestions}/>}
+          {['/terms','/privacy','/refund-policy','/community-guidelines'].includes(path)&&<SectionFaq title="Common questions" questions={path==='/privacy'?privacyQuestions:path==='/community-guidelines'?safetyQuestions:pricingQuestions.slice(-2)}/>}
+          {['/terms','/privacy','/refund-policy','/community-guidelines'].includes(path)&&<p><a href="/policies/pairtalk-policies-2026-10-16.pdf" download>Download all policies as PDF</a></p>}
           <div className="article-related">
             <h2>Keep exploring</h2>
             <a href="/how-it-works">How PairTalk works</a>

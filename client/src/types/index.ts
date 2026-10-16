@@ -48,6 +48,8 @@ export interface UserMatchData {
   plan?: 'FREE' | 'PLUS' | 'PRO' | 'BOSS' | string;
   planExpiresAt?: string | null;
   creditOnly?: boolean;
+  preferredCallMinutes?:15|30;
+  starterGiftClaimed?:boolean;
   creditBalance?: {calls:number;recordings:number;storage:number};
   callsRemaining?: number;
   includedCallsRemaining?: number;

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { prisma } from "../config/database";
+import type {PracticeCatalog} from '../contracts/practicePacks';
 import {
   defaultCreditCosts,
   validateCreditCosts,
@@ -19,6 +20,8 @@ export async function readCreditConfiguration() {
       recordingPriceUzs: defaultCreditCosts.recordingPriceUzs,
       recordingPriceStars: defaultCreditCosts.recordingPriceStars,
       storagePriceUzs: defaultCreditCosts.storagePriceUzs,
+      starReferenceUzs: defaultCreditCosts.starReferenceUzs,
+      starMarkupPercent: defaultCreditCosts.starMarkupPercent,
       ...JSON.parse(latest.afterState),
     } : defaultCreditCosts,
   );
@@ -40,8 +43,16 @@ export async function readCreditConfiguration() {
     rates: sellingCreditRates(costs),
     uzsPerUsd: costs.uzsPerUsd,
     usdPerStar: costs.usdPerStar,
+    starReferenceUzs: costs.starReferenceUzs,
+    starMarkupPercent: costs.starMarkupPercent,
   };
-  return { costs, catalog };
+  const packs:PracticeCatalog={
+    version:2,revision,checkedAt:catalog.checkedAt,
+    prices:{callUzs:costs.callPriceUzs,recordingUzs:costs.recordingPriceUzs,retentionUzs:costs.storagePriceUzs,starUzs:costs.starReferenceUzs,starMarkupPercent:costs.starMarkupPercent},
+    durations:[15,30],retentionDays:30,starterCalls:3,salesEnabled:costs.salesEnabled,
+    recordingMinutesAvailable:Math.max(0,capacity[0]?.remaining??0),
+  };
+  return { costs, catalog, packs };
 }
 export async function saveCreditConfiguration(value: unknown, adminId: string) {
   const costs = validateCreditCosts(value);

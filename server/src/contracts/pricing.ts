@@ -1,6 +1,7 @@
 // Public contract shared by the server, landing, client and admin builds.
 // Keep this module free of server configuration, credentials and framework imports.
 import { isCreditCatalog, type CreditCatalog } from './credits';
+import { isPracticeCatalog, type PracticeCatalog } from './practicePacks';
 export const planIds = ['FREE', 'PLUS', 'PRO', 'BOSS'] as const;
 export type PlanId = typeof planIds[number];
 export type PricingCurrency = 'XTR' | 'UZS';
@@ -17,6 +18,7 @@ export interface PublicPlan {
 export interface PublicPricing {
   version: 1; revision: string; checkedAt: string; botUsername: string; plans: PublicPlan[];
   credits?: CreditCatalog;
+  packs?: PracticeCatalog;
 }
 export function publicPlan(id: PlanId, source: PlanSource): PublicPlan {
   return { id, name: source.name, description: source.description, calls: source.dailyLimit,
@@ -29,6 +31,7 @@ export function isPublicPricing(value: unknown): value is PublicPricing {
   if (!value || typeof value !== 'object') return false;
   const data = value as PublicPricing;
   if (data.credits !== undefined && !isCreditCatalog(data.credits)) return false;
+  if (data.packs !== undefined && !isPracticeCatalog(data.packs)) return false;
   if (data.version !== 1 || typeof data.revision !== 'string' || !/^[a-f0-9]{64}$/.test(data.revision) || typeof data.checkedAt !== 'string' || !Number.isFinite(Date.parse(data.checkedAt)) || typeof data.botUsername !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(data.botUsername) || !Array.isArray(data.plans) || data.plans.length > 4) return false;
   const seen = new Set<string>();
   return data.plans.every(plan => {

@@ -56,6 +56,8 @@ func (db *DB) AdmitCallSession(ctx context.Context, id, roomName, userAID, userB
 	if _, err := tx.Exec(ctx, `UPDATE "CallSession" SET status='CANCELLED',"endedAt"=NOW(),duration=0 WHERE status='PENDING' AND "createdAt"<=NOW()-INTERVAL '60 seconds' AND ("userAId" IN ($1,$2) OR "userBId" IN ($1,$2))`, userAID, userBID); err != nil {
 		return nil, nil, err
 	}
+	walletUsers := make(map[string]bool)
+	durationUsers := make(map[string]*User)
 	for _, userID := range []string{userAID, userBID} {
 		u := users[userID]
 		var registered bool
@@ -89,22 +91,33 @@ func (db *DB) AdmitCallSession(ctx context.Context, id, roomName, userAID, userB
 				return nil, nil, errors.New("participant call allowance has been reached")
 			}
 		}
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO "CallSession" (id,"roomName","userAId","userBId",status,"createdAt") VALUES ($1,$2,$3,$4,'ACTIVE',NOW())`, id, roomName, userAID, userBID); err != nil {
-		return nil, nil, err
-	}
-	for _, userID := range []string{userAID, userBID} {
-		u := users[userID]
-		ent := GetEffectiveEntitlement(u, db.AdminTelegramIDs)
-		used, err := callsUsedThisPeriod(ctx, tx, userID, u)
-		if err != nil {
-			return nil, nil, err
-		}
 		var bonus int
 		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM "ReferralReward" WHERE "userId"=$1 AND status='AVAILABLE'`, userID).Scan(&bonus); err != nil {
 			return nil, nil, err
 		}
-		if !ent.IsAdmin && used >= ent.BaseCallLimit && bonus == 0 {
+		wantsThirty := u.PreferredCallMinutes == 30
+		walletUsers[userID] = !ent.IsAdmin && (used >= ent.BaseCallLimit || (wantsThirty && ent.MaxDurationMinutes < 30)) && (bonus == 0 || wantsThirty)
+		profile := *u
+		if walletUsers[userID] {
+			profile.CreditCallActive = true
+			profile.ActiveCallCreditUnits = 1
+			if u.PreferredCallMinutes == 30 {
+				profile.ActiveCallCreditUnits = 2
+			}
+		}
+		if !ent.IsAdmin && used >= ent.BaseCallLimit && bonus > 0 && !wantsThirty {
+			profile.CreditCallActive = true
+			profile.ActiveCallCreditUnits = 1
+		}
+		durationUsers[userID] = &profile
+	}
+	allowedMinutes := CalculateEffectiveCallDuration(durationUsers[userAID], durationUsers[userBID], db.AdminTelegramIDs)
+	if _, err := tx.Exec(ctx, `INSERT INTO "CallSession" (id,"roomName","userAId","userBId",status,"createdAt","allowedMinutes") VALUES ($1,$2,$3,$4,'ACTIVE',NOW(),$5)`, id, roomName, userAID, userBID, allowedMinutes); err != nil {
+		return nil, nil, err
+	}
+	for _, userID := range []string{userAID, userBID} {
+		u := users[userID]
+		if walletUsers[userID] {
 			var reserved bool
 			if err := tx.QueryRow(ctx, `SELECT pairtalk_reserve_credit($1,$2,'CALL')`, id, userID).Scan(&reserved); err != nil {
 				return nil, nil, err
@@ -112,14 +125,21 @@ func (db *DB) AdmitCallSession(ctx context.Context, id, roomName, userAID, userB
 			if !reserved {
 				return nil, nil, errors.New("no call credits remain")
 			}
-			u.CallCredits--
+			units := (allowedMinutes + 14) / 15
+			u.CallCredits -= units
 			u.CreditCallActive = true
+			u.ActiveCallCreditUnits = units
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
 	return users[userAID], users[userBID], nil
+}
+
+func (db *DB) TouchUserActivity(ctx context.Context, userID string) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE "User" SET "lastActiveAt"=NOW() WHERE id=$1 AND "lastActiveAt"<NOW()-INTERVAL '1 minute'`, userID)
+	return err
 }
 
 type CompletionEffects struct {
@@ -162,7 +182,8 @@ func (db *DB) completeCallSession(ctx context.Context, id string, duration int, 
 	var owners *string
 	var hasRecording bool
 	var mediaStart *time.Time
-	if err := tx.QueryRow(ctx, `SELECT status,"mediaAuthorizedAt","recordedByUserId",("recordingUrl" IS NOT NULL OR cardinality("recordingKeys")>0) FROM "CallSession" WHERE id=$1 FOR UPDATE`, id).Scan(&status, &mediaStart, &owners, &hasRecording); err != nil {
+	var allowedMinutes *int
+	if err := tx.QueryRow(ctx, `SELECT status,"mediaAuthorizedAt","recordedByUserId",("recordingUrl" IS NOT NULL OR cardinality("recordingKeys")>0),"allowedMinutes" FROM "CallSession" WHERE id=$1 FOR UPDATE`, id).Scan(&status, &mediaStart, &owners, &hasRecording, &allowedMinutes); err != nil {
 		return false, err
 	}
 	if status != "ACTIVE" {
@@ -179,7 +200,11 @@ func (db *DB) completeCallSession(ctx context.Context, id string, duration int, 
 	if duration < 0 {
 		duration = 0
 	}
-	if limit := CalculateEffectiveCallDuration(users[userAID], users[userBID], db.AdminTelegramIDs) * 60; duration > limit {
+	sessionLimit := CalculateEffectiveCallDuration(users[userAID], users[userBID], db.AdminTelegramIDs)
+	if allowedMinutes != nil {
+		sessionLimit = *allowedMinutes
+	}
+	if limit := sessionLimit * 60; duration > limit {
 		duration = limit
 	}
 	charge = duration >= 5

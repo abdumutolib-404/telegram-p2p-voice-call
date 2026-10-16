@@ -29,7 +29,9 @@ Reviewed against the working tree on 2026-10-05. These files describe the reposi
 - [Safety guide](SAFETY_GUIDE.md)
 - [Privacy repository draft](PRIVACY_POLICY.md)
 - [Terms repository draft](TERMS_OF_SERVICE.md)
-- [Flexible unit purchases — planned](unit-pricing.md)
+- [Flexible practice packs and balances](unit-pricing.md)
+- [Public channel offers](DISCOUNT_OFFERS.md)
+- [Current versioned policies](policies/2026-10-16/terms.md), [privacy](policies/2026-10-16/privacy.md), [community guidelines](policies/2026-10-16/community-guidelines.md) and [refunds](policies/2026-10-16/refund-policy.md)
 
 The public website renders its own content from `landing/src/content.tsx`; it does not load these Markdown documents. Policy drafts and product proposals do not change deployed terms or current entitlements.
 

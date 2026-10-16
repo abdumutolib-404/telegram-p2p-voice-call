@@ -20,6 +20,8 @@ type User struct {
 	RecordingCredits         int
 	StorageCredits           int
 	CreditCallActive         bool
+	ActiveCallCreditUnits    int
+	PreferredCallMinutes     int
 	ID                       string
 	TelegramID               int64
 	Alias                    string
@@ -61,6 +63,7 @@ type CallSession struct {
 	ActiveRecorderIDs  *string
 	MediaAuthorizedAt  *time.Time
 	RecordingExpiresAt *time.Time
+	AllowedMinutes     *int
 	UserA              *User
 	UserB              *User
 }
@@ -70,6 +73,13 @@ func (s *CallSession) DurationAnchor() time.Time {
 		return *s.MediaAuthorizedAt
 	}
 	return s.CreatedAt
+}
+
+func (s *CallSession) LimitMinutes(adminTelegramIDs []string) int {
+	if s.AllowedMinutes != nil {
+		return *s.AllowedMinutes
+	}
+	return CalculateEffectiveCallDuration(s.UserA, s.UserB, adminTelegramIDs)
 }
 
 type PlanConfig struct {
@@ -174,10 +184,23 @@ func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement 
 	}
 
 	creditOnly := user != nil && user.CreditBilling && planKey == "FREE" && !isAdmin && (user.CustomPlanName == nil || *user.CustomPlanName == "")
+	walletDuration := 15
+	if user != nil {
+		if user.CreditCallActive {
+			if user.ActiveCallCreditUnits == 2 {
+				walletDuration = 30
+			}
+		} else if user.PreferredCallMinutes == 30 {
+			walletDuration = 30
+		}
+	}
+	if isCustomDuration && maxDurationMinutes < defaultTier.MaxDuration && maxDurationMinutes < walletDuration {
+		walletDuration = maxDurationMinutes
+	}
 	if creditOnly {
 		dailyLimit = 0
 		recordingLimit = 0
-		maxDurationMinutes = 15
+		maxDurationMinutes = walletDuration
 		retentionDays = 30
 	}
 	baseCallLimit, baseRecordingLimit := dailyLimit, recordingLimit
@@ -186,7 +209,7 @@ func GetEffectiveEntitlement(user *User, adminTelegramIDs []string) Entitlement 
 		recordingLimit += user.RecordingCredits
 	}
 	if creditOnly || (user != nil && user.CreditCallActive) {
-		maxDurationMinutes = 15
+		maxDurationMinutes = walletDuration
 		overrideSource = "ADMIN_OVERRIDE"
 	}
 	return Entitlement{
@@ -242,7 +265,7 @@ const userSelectColumns = `
 	"dailyCallsUsed", "lastCallDate", "dailyLimit", "maxDuration",
 	"recordingLimitOverride", "retentionOverride", "customPlanName",
 	"subscriptionStatus", "subscriptionExpiresAt", "subscriptionStartsAt", "subscriptionDurationDays",
- "creditBilling", "callCredits", "recordingCredits", "storageCredits", "creditCallActive"
+ "creditBilling", "callCredits", "recordingCredits", "storageCredits", "creditCallActive", "activeCallCreditUnits", "preferredCallMinutes"
 `
 
 func scanUser(row pgx.Row) (*User, error) {
@@ -287,6 +310,7 @@ func scanUser(row pgx.Row) (*User, error) {
 		&subscriptionStartsAt,
 		&subscriptionDurationDays,
 		&u.CreditBilling, &u.CallCredits, &u.RecordingCredits, &u.StorageCredits, &u.CreditCallActive,
+		&u.ActiveCallCreditUnits, &u.PreferredCallMinutes,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -356,7 +380,7 @@ func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSes
 	query := `
 		SELECT
 			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
-			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt"
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt", cs."allowedMinutes"
 		FROM "CallSession" cs
 		WHERE cs.status = 'ACTIVE' AND (cs."userAId" = $1 OR cs."userBId" = $1)
 		ORDER BY cs."createdAt" DESC
@@ -389,7 +413,7 @@ func (db *DB) GetActiveCallForUser(ctx context.Context, userID string) (*CallSes
 		&recordedByUserID,
 		&recordingExpiresAt,
 		&activeRecorderIDs,
-		&mediaAuthorizedAt,
+		&mediaAuthorizedAt, &s.AllowedMinutes,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -443,7 +467,7 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 	query := `
 		SELECT
 			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
-			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt"
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt", cs."allowedMinutes"
 		FROM "CallSession" cs
 		WHERE cs."roomName" = $1
 		LIMIT 1
@@ -475,7 +499,7 @@ func (db *DB) GetCallSessionByRoomName(ctx context.Context, roomName string) (*C
 		&recordedByUserID,
 		&recordingExpiresAt,
 		&activeRecorderIDs,
-		&mediaAuthorizedAt,
+		&mediaAuthorizedAt, &s.AllowedMinutes,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -793,7 +817,7 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 	query := `
 		SELECT
 			cs.id, cs."roomName", cs.status, cs."userAId", cs."userBId", cs."createdAt",
-			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt"
+			cs."endedAt", cs.duration, cs."egressId", cs."recordingUrl", cs."recordedByUserId", cs."recordingExpiresAt", cs."activeRecorderIds", cs."mediaAuthorizedAt", cs."allowedMinutes"
 		FROM "CallSession" cs
 		WHERE cs.status = 'ACTIVE'
 	`
@@ -831,7 +855,7 @@ func (db *DB) GetActiveSessionsForReconciliation(ctx context.Context) ([]*CallSe
 			&recordedByUserID,
 			&recordingExpiresAt,
 			&activeRecorderIDs,
-			&mediaAuthorizedAt,
+			&mediaAuthorizedAt, &s.AllowedMinutes,
 		); err != nil {
 			return nil, err
 		}

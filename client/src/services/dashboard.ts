@@ -7,6 +7,11 @@ export const publicSiteUrl = (() => {
 })();
 export function redirectToLanding(): void { window.location.replace(publicSiteUrl); }
 
+export function channelOfferStartId(): string | null {
+  const start = window.Telegram?.WebApp?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('tgWebAppStartParam') || '';
+  return /^offer_([a-f0-9-]{36})$/.exec(start)?.[1] ?? null;
+}
+
 export class DashboardError extends Error {
   status: number;
   code?: string;

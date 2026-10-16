@@ -3,6 +3,7 @@ import type { NextFunction, Response } from 'express';
 import { prisma } from '../config/database';
 import { hasAcceptedCurrentTerms } from '../services/terms';
 import type { AuthenticatedTelegramRequest } from './initDataLockdown';
+import { touchUserActivity } from '../services/userActivity';
 
 export interface MemberRequest extends AuthenticatedTelegramRequest { member?: User }
 export async function requireRegisteredMember(req: MemberRequest, res: Response, next: NextFunction): Promise<void> {
@@ -14,6 +15,7 @@ export async function requireRegisteredMember(req: MemberRequest, res: Response,
     if (user.isPermanentlyBanned || (user.isBanned && (!user.bannedUntil || user.bannedUntil > new Date()))) {
       res.status(403).json({ code: user.isPermanentlyBanned ? 'banned' : 'suspended', error: 'This account is restricted.', bannedUntil: user.bannedUntil }); return;
     }
+    await touchUserActivity(user);
     req.member = user;
     next();
   } catch (error) { next(error); }

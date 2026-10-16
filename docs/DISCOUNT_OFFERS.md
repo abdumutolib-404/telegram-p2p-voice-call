@@ -1,46 +1,35 @@
-# Exclusive discount campaigns
+# Public practice-pack offers
 
-In the admin panel, open **Plans and limits → Discount**. All four fields are required:
+Updated 16 October 2026. New offers are public channel packs. Random recipient selection and private promotional offer messages are retired. Historical invoices and completed purchases retain their original settlement and refund rules.
 
-- **Plan:** an active Plus, Pro or Boss plan with positive published prices.
-- **Discount (%):** 0.01–100%, with up to two decimal places.
-- **Number of users:** 1–10,000 eligible recipients. If fewer are available, creation fails without a partial campaign.
-- **Limited offer:** a positive period in minutes, hours or days, up to 365 days. The claim deadline begins when the campaign is created; it is separate from the plan's subscription validity.
+## Administrator workflow
 
-The preview uses saved plan prices. Creating a discount does not change public prices or publish any unsaved plan edits. The server stores the campaign's prices, plan configuration, quoted subscription validity and absolute UTC deadline. A repeated submission with the same request ID returns the same campaign rather than drawing recipients again. After successful creation the form requires **New campaign** before another execution.
+Open **Plans → Discount** and enter calls, recordings, retention included/excluded, duration (15 or 30 minutes), discount percentage, participant count and valid period. Every input is required. Recordings cannot exceed calls; retention covers every recording. Discounts range from 0.01% to 100%. Validity ranges from one minute to 47 hours so ordinary cleanup fits Telegram's 48-hour message-deletion window.
 
-## Recipients and messages
+The preview uses the saved catalog. The server freezes the pack, catalog revision, prices, discount and deadline. Repeating a submission with the same request ID returns the same campaign. The bot publishes one post in **@pairtalk**, channel `-1004318847810`, with original/discounted totals, remaining/max places and a **Claim offer** Mini App link. No randomizer or offer DM runs.
 
-The server uses a cryptographic random sample without replacement. A database constraint permits one offer per user per campaign. Later campaigns can select that user again when eligible.
+`discounted total = ceil(original pack total × (100 − discount %) / 100)`
 
-Eligibility follows existing purchase rules: completed registration/current consent, no suspension, no active subscription at the same or higher tier, and no pending card request or unexpired offer payment authorization. Selection is checked again when claiming. An expired unanswered Stars authorization cannot block future campaigns indefinitely.
+Apply that formula separately to the UZS and Stars totals. A 20% discount means paying 80%. A 100% offer grants its pack without a payment invoice. [Pricing and balances](unit-pricing.md) explains the original pack calculation.
 
-Each selected offer schedules one personal Telegram message with the plan, discount, original/reduced Stars and UZS prices, expiry and **Claim Offer** button. Delivery uses the existing durable notification queue, a unique offer deduplication key and a deadline. Queue pressure delays scheduling without redrawing recipients. Expired queued notices are skipped. Uncertain send outcomes are not blindly replayed. Creation confirms selection/scheduling, not guaranteed provider delivery.
+## Inventory and payment
 
-The same personal offer appears on dashboard Practice, Account and Upgrade with both prices, subscription validity and a countdown based on server time. Claimed offers disappear on refresh; expired offers disappear locally at the deadline. Existing Telegram messages remain readable, but their expired buttons and invoices cannot begin a purchase. Forwarding a message does not transfer ownership.
+One persistent claim is allowed per campaign and Telegram account. Later campaigns may be claimed separately. Repeated taps resume the current checkout. Unpaid orders temporarily hold inventory for at most 30 minutes or until campaign expiry. User and campaign locks serialize allocation; pending and already-authorized payments count against available places. Settlement consumes the place and grants the pack once. Refunds never reopen a completed campaign claim.
 
-## Prices and claiming
+Stars uses the official Telegram invoice. UZS instructions are durably queued to the private bot chat; the Mini App closes after that acknowledgement. A receipt submitted in time requires administrator approval before a balance is granted. An authorized payment remains fulfillable after expiry. Currency switching requires cancellation of an unpaid order; submitted receipts and authorized payments cannot be cancelled through that path.
 
-Each price is calculated independently:
+The post shows paid remaining count plus temporary reservations. After purchases, the reconciler updates counts. At sellout/expiry, new claims stop in the database first, then the bot removes buttons and deletes the post. An old or uneditable post cannot bypass server eligibility. A prolonged outage or revoked permission can require manual cleanup.
 
-`discounted price = ceil(original price × (100 − discount percentage) / 100)`
+## Delivery recovery
 
-For 20% off: **100 Stars → 80 Stars**, and **10,000 UZS → 8,000 UZS**. Whole units round up; for example, 79 Stars at 20% off costs 64 Stars. No currency conversion is used. A 100% offer activates the plan once without an invoice or card transfer.
+Campaign publication uses persistent leases and revision reconciliation. An ambiguous send acknowledgement becomes **UNCONFIRMED**, without an automatic repost. Use **Link existing post** with the existing message ID to recover; activation requires a confirmed edit. Explicitly rejected publication can be retried. Never manually repost an uncertain campaign before resolving its original message.
 
-Stars checkout binds the stored amount and order to the recipient. Only one distinct pre-checkout query can authorize an offer. Repeated clicks reuse an unsubmitted order, and changing payment methods invalidates the older invoice. Authorization after expiry is rejected. A payment authorized before the deadline can settle afterward. The confirmed charge and entitlement are committed together; duplicate updates do not activate twice. A distinct unexpected or incompatible settled charge enters the existing refund workflow rather than granting again.
+**Check channel connection** verifies bot channel capability without publishing a test post. Reliable starter-gift membership checks require the bot to be a channel administrator. The once-only three-unit starter gift is a separate membership-gated flow; public campaign checkout does not independently require channel membership.
 
-UZS uses the existing card-transfer/receipt-review workflow. The amount on the instructions, stored request and admin notification is the campaign's discounted UZS price. A receipt must be submitted before expiry. The request and offer reservation are committed together. Administrators may review an in-time request after expiry, using the original subscription validity. Duplicate approval cannot consume the offer twice. Rejection or cancellation releases an unused offer while its original deadline still applies. A completed claim stays consumed even after a refund.
+## Verification and rollout
 
-Discount activation does not introduce special recording/retention overrides or a different mixed-plan call restriction. Standard plan defaults still apply, alongside the quoted subscription validity.
+The October 16 migrations add pack/order snapshots, campaign/claim uniqueness and retire unsent historical offer DMs while preserving authorized purchases. Existing development main triggers deploy the backend and three frontends; no additional site or service is required.
 
-A newer 100% grant is entitlement evidence even though it has no payment transaction. Refunding an older same-tier Stars or card purchase preserves that grant. Refunding the discounted paid purchase itself still applies normal revocation rules and leaves its offer consumed.
+`scripts/check-channel-offers.cjs` accepts only the dedicated loopback verification database. It checks concurrent publication, overselling, repeated claims, free grants, authorized late settlement, uncertain-send recovery, message cleanup, UZS approval races and starter membership grants. Provider responses are synthetic; these checks do not publish to real users or establish live bot permissions.
 
-## Deployment and verification
-
-Migration `202610140001_discount_offers` adds campaign/recipient tables, optional payment links and notification expiry. It is additive: existing purchases, plans and notices remain compatible. Deploy the backend and admin/client builds through the existing `origin/main` development triggers; no additional service or site is needed. The dedicated notification-scheduling worker drains on shutdown independently of call recovery.
-
-Verification covers pricing, mandatory inputs, random selection, campaign replay, ownership, notification deduplication/expiry, repeated and concurrent claims, Stars authorization/settlement/refunds, card receipts/approval/cancellation, later campaigns and worker shutdown. The separate owned PostgreSQL probe exercises real transactions and locks with synthetic recipients/payments. Browser verification uses actual admin/dashboard components with blocked external requests, including short mobile layouts, both themes and submission retry. No campaign, charge or promotional message is executed against real users as part of these tests.
-
-Telegram Stars API behavior was checked against the [official payment documentation](https://core.telegram.org/bots/payments-stars). Deployment revisions and final verification counts are retained separately in the ignored local verification output.
-
-Final local verification on October 14: **87 backend files / 915 tests**, **19 client files / 121 tests**, backend production build, client/admin lint and production builds, and **30 browser checks** passed. The backend's 48 focused discount/order checks are included in the full suite. Actual PostgreSQL passed campaign replay/deduplication, concurrent Stars authorization and settlement, duplicate/extra receipts, concurrent 100% claims, discounted UZS submission/approval, expiry, original subscription validity and preservation of newer free grants across older refunds. All ten migrations are applied to the owned verification database with no schema drift. Synthetic fixtures were cleaned and that local database was stopped afterward. The admin linter retains its existing Fast Refresh export warning; it reports no new lint errors.
+Telegram constraints: [getChatMember](https://core.telegram.org/bots/api#getchatmember), [deleteMessage](https://core.telegram.org/bots/api#deletemessage), [Mini App direct links](https://core.telegram.org/bots/webapps#direct-link-mini-apps).

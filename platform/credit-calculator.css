@@ -1,13 +1,13 @@
 .credit-shop {
   color: inherit;
-  max-width: 900px;
+  max-width: 100%;
   margin-inline: auto;
 }
 .credit-shop__intro {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 .credit-shop__intro h2 {
-  font-size: clamp(26px, 5vw, 40px);
+  font-size: clamp(24px, 4vw, 32px);
   letter-spacing: -0.04em;
   margin: 8px 0 12px;
 }
@@ -30,10 +30,10 @@
   margin-bottom: 24px;
 }
 .credit-shop__rates article {
-  padding: 22px;
+  padding: 20px;
   border: 1px solid currentColor;
   border-color: color-mix(in srgb, currentColor 16%, transparent);
-  border-radius: 20px;
+  border-radius: 14px;
   background: color-mix(in srgb, currentColor 3%, transparent);
 }
 .credit-shop h3 {
@@ -60,7 +60,7 @@
   font-size: 14px;
   font-weight: 600;
 }
-.credit-shop input[type="number"] {
+.credit-shop input[type="number"], .practice-duration select {
   box-sizing: border-box;
   width: 100%;
   padding: 14px;
@@ -71,6 +71,34 @@
   font: inherit;
   min-height: 48px;
 }
+.practice-duration { display:grid; gap:10px; font-size:14px; font-weight:600; margin-bottom:24px; }
+.practice-duration select { background:var(--bg, #111b1d); }
+.practice-lines { margin:0 0 12px; display:grid; gap:10px; }
+.practice-lines div { display:flex; justify-content:space-between; gap:16px; }
+.practice-lines dd { margin:0; text-align:right; white-space:nowrap; }
+.practice-price-explanation { margin-top:24px; font-size:13px; line-height:1.65; }
+.practice-price-explanation summary { cursor:pointer; padding-block:12px; }
+.practice-checkout { color:var(--app-text, #edf3ef); background:var(--app-elevated, #162326); border:1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius:20px; width:min(520px, calc(100% - 32px)); padding:28px; max-height:calc(100dvh - 32px); overflow-y:auto; box-sizing:border-box; }
+.practice-checkout::backdrop { background:rgb(0 0 0 / 60%); }
+.practice-checkout h2 { font-size:26px; letter-spacing:-.03em; margin:12px 32px 18px 0; }
+.practice-checkout p { line-height:1.65; }
+.practice-checkout a { color:inherit; text-decoration:underline; }
+.practice-checkout__close { position:absolute; top:12px; right:12px; width:44px; height:44px; background:transparent; border:0; font:28px/1 inherit; color:inherit; cursor:pointer; }
+.practice-checkout__totals { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding-block:20px; border-block:1px solid color-mix(in srgb, currentColor 18%, transparent); }
+.practice-checkout__totals div { display:grid; gap:8px; min-width:0; }
+.practice-checkout__totals strong { font-size:26px; overflow-wrap:anywhere; }
+.practice-checkout__actions { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:24px; }
+.practice-checkout__actions button { min-height:50px; white-space:normal; }
+.practice-checkout :focus-visible { outline:3px solid #31b889; outline-offset:3px; }
+.channel-offers { margin-bottom:32px; }
+.channel-offers>p { font-size:14px; line-height:1.65; color:var(--text-2); }
+.channel-offers h2 { font-size:22px; margin-bottom:12px; }
+.channel-offers__list { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); }
+.channel-offers article { border:1px solid var(--border); border-radius:14px; background:var(--accent-wash); padding:20px; }
+.channel-offers article h3 { font-size:18px; margin:0 0 14px; }
+.channel-offers article p { font-size:14px; line-height:1.6; }
+.channel-offers s { color:var(--text-2); margin-right:8px; }
+@media(max-width:400px) { .practice-checkout { padding:20px; } .practice-checkout__actions { grid-template-columns:1fr; } .practice-lines div { flex-wrap:wrap; gap:4px; } }
 .credit-shop__storage {
   display: flex;
   gap: 12px;

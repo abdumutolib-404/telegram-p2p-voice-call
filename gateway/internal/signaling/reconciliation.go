@@ -19,7 +19,7 @@ func (h *Hub) ReconcileActiveSessions(ctx context.Context) (int, error) {
 			continue
 		}
 
-		limitMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
+		limitMinutes := session.LimitMinutes(h.AdminTelegramIDs)
 		limitSeconds := limitMinutes * 60
 		elapsedSeconds := int(time.Since(session.DurationAnchor()).Seconds())
 		remainingSeconds := limitSeconds - elapsedSeconds

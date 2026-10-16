@@ -93,6 +93,9 @@
 .defs dd { color: var(--text-2); }
 
 /* FAQ groups */
+.practice-pricing-head { padding-bottom: 24px; }
+.practice-pricing-head .btn { margin-top: 24px; }
+.practice-pricing-body { padding-top: 32px; max-width: 1000px; scroll-margin-top: 96px; }
 .faq-group { margin-bottom: var(--s-7); }
 .faq-group > h2 { font-size: var(--fs-h3); margin-bottom: var(--s-4); }
 

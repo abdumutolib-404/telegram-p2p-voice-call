@@ -8,6 +8,11 @@ type CreditAccount = {
     recordings: number;
     storage: number;
     starsAmount: number;
+    uzsAmount:number;
+    checkoutCurrency?:'XTR'|'UZS'|null;
+    expiresAt?:string;
+    authorizedAt?:string|null;
+    packSnapshot?:string|null;
     status: string;
     createdAt: string;
   }[];
@@ -15,9 +20,11 @@ type CreditAccount = {
 export function CreditBalance({
   initData,
   revision,
+  onResume,
 }: {
   initData: string;
   revision: number;
+  onResume?:(orderId:string)=>void;
 }) {
   const [data, setData] = useState<CreditAccount | null>(null),
     [error, setError] = useState(""),
@@ -61,6 +68,7 @@ export function CreditBalance({
         <p>
           {data.balance.calls} calls · {data.balance.recordings}{" "}
           recordings · {data.balance.storage} storage add-ons
+          <br/><small>Balances are in 15-minute units. A 30-minute call, recording or retention add-on uses two.</small>
         </p>
       ) : (
         <p role="status">Checking your balance…</p>
@@ -88,19 +96,19 @@ export function CreditBalance({
             data.orders.map((order) => (
               <p key={order.id} style={{ fontSize: 13, lineHeight: 1.7 }}>
                 {new Date(order.createdAt).toLocaleDateString()} · {order.calls}{" "}
-                calls · {order.recordings} recordings · {order.starsAmount}{" "}
-                Stars ·{" "}
+                call units · {order.recordings} recording units · {order.checkoutCurrency==='UZS'?`${order.uzsAmount.toLocaleString('en-US')} UZS`:`${order.starsAmount} Stars`} ·{" "}
                 {order.status === "PAID"
                   ? "Paid"
                   : order.status === "REFUNDED"
                     ? "Refunded"
                     : order.status === "REFUND_PENDING"
                       ? "Refund confirmation pending"
-                      : "Awaiting payment"}
+                      : order.status==='CANCELLED'?'Cancelled':order.status==='EXPIRED'||(order.expiresAt&&Date.parse(order.expiresAt)<=Date.now())?'Expired':'Awaiting payment'}
                 <br />
                 <span style={{ overflowWrap: "anywhere" }}>
                   Order {order.id.slice(0, 8)}
                 </span>
+                {onResume&&order.packSnapshot&&order.status==='PENDING'&&!order.authorizedAt&&order.expiresAt&&Date.parse(order.expiresAt)>Date.now()&&<button type="button" className="text-button" onClick={()=>onResume(order.id)}>Resume checkout</button>}
               </p>
             ))
           ) : (

@@ -6,7 +6,7 @@ import {env} from '../config/env';
 import {prisma} from '../config/database';
 import {currentTerms} from '../services/terms';
 const fixture=vi.hoisted(()=>({create:vi.fn(),invoice:vi.fn()}));
-vi.mock('../services/credits',async original=>({...await original<typeof import('../services/credits')>(),createCreditOrder:fixture.create}));
+vi.mock('../services/practiceCheckout',async original=>({...await original<typeof import('../services/practiceCheckout')>(),createPracticeOrder:fixture.create}));
 import dashboard,{setDashboardBot} from '../routes/dashboard';
 const app=express();app.use(express.json());app.use('/api/dashboard',dashboard);
 let telegramId:number,userId:string;
@@ -23,10 +23,10 @@ afterEach(async()=>{setDashboardBot(null);await prisma.user.deleteMany({where:{i
 it('creates a Stars invoice only for the authenticated user and the server quote',async()=>{
   const body=basket();const result=await request(app).post('/api/dashboard/credits/checkout').set('x-telegram-init-data',signed()).send(body);
   expect(result.status).toBe(200);expect(result.body.stars).toBe(73);expect(result.body.uzs).toBe(11203);
-  expect(fixture.create).toHaveBeenCalledWith(userId,body.requestId,{calls:2,recordings:1,storage:true},body.revision);
+  expect(fixture.create).toHaveBeenCalledWith(userId,body.requestId,{calls:2,recordings:1,retention:true,minutes:15},body.revision,'XTR');
   expect(fixture.invoice.mock.calls[0].slice(3,6)).toEqual(['','XTR',[{label:'Calls and recordings',amount:73}]]);
 });
-it.each([{termsAccepted:false},{termsVersion:'old-credit-terms'},{starsAmount:1},{userId:'someone-else'}])('rejects forged prices, ownership and missing agreement %#',async patch=>{
+it.each([{termsAccepted:false},{termsVersion:'old-credit-terms'},{starsAmount:1},{userId:'someone-else'},{calls:0},{recordings:3}])('rejects forged prices, ownership, invalid pack counts and missing agreement %#',async patch=>{
   const result=await request(app).post('/api/dashboard/credits/checkout').set('x-telegram-init-data',signed()).send({...basket(),...patch});
   expect(result.status).toBe(400);expect(fixture.create).not.toHaveBeenCalled();expect(fixture.invoice).not.toHaveBeenCalled();
 });

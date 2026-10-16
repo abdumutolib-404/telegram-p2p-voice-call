@@ -102,10 +102,10 @@ describe("independent cost-based credits", () => {
   });
   it("charges the independently published UZS and Stars prices for every selected unit", () => {
     const published={...catalog,rates:sellingCreditRates(defaultCreditCosts)};
-    expect(quoteCredits(published,{calls:1,recordings:0,storage:false})).toMatchObject({uzs:3500,stars:22});
-    expect(quoteCredits(published,{calls:0,recordings:1,storage:false})).toMatchObject({uzs:4200,stars:28});
-    expect(quoteCredits(published,{calls:10,recordings:2,storage:false})).toMatchObject({uzs:43400,stars:276});
-    expect(quoteCredits(published,{calls:10,recordings:2,storage:true})).toMatchObject({uzs:43406,stars:277,storage:2});
+    expect(quoteCredits(published,{calls:1,recordings:0,storage:false})).toMatchObject({uzs:3500,stars:18});
+    expect(quoteCredits(published,{calls:0,recordings:1,storage:false})).toMatchObject({uzs:4200,stars:21});
+    expect(quoteCredits(published,{calls:10,recordings:2,storage:false})).toMatchObject({uzs:43400,stars:222});
+    expect(quoteCredits(published,{calls:10,recordings:2,storage:true})).toMatchObject({uzs:43406,stars:223,storage:2});
     expect(sellingCreditRates({...defaultCreditCosts,monthlyBudgetUsd:30}).CALL.uzs).toBe(3500);
   });
   it("gives a credit account its actual balance without inventing a monthly renewal", () => {

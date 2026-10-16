@@ -1,6 +1,6 @@
 # Calls and recordings: prices and balances
 
-Implemented for new credit purchases. Existing subscription purchases, custom allowances, discount offers and their original refund rules are preserved. Publishing this change does not create infrastructure or upgrade a provider subscription.
+Updated 16 October 2026 for flexible practice packs. Existing subscription purchases, custom allowances and historical discount purchases retain their original settlement and refund rules. No provider subscription is upgraded by this change.
 
 Customer-facing copy uses calls, recordings and storage, rather than "credits". Internal wallet models and API paths retain their existing names for compatibility.
 
@@ -8,23 +8,25 @@ Customer-facing copy uses calls, recordings and storage, rather than "credits". 
 
 | Service | UZS reference / item | Stars / item |
 | --- | --- | --- |
-| One participant's call, up to 15 minutes | 3,500 | 22 |
-| One mixed recording, up to 15 minutes | 4,200 | 28 |
+| One participant's call, up to 15 minutes | 3,500 | 18 |
+| One mixed recording, up to 15 minutes | 4,200 | 21 |
 | Optional 30-day storage, per recording | 3 | Converted in the basket |
 
-The owner set UZS and Stars prices independently. Ten calls and two recordings cost 43,400 UZS or 276 Stars. Adding storage for both recordings gives 43,406 UZS or 277 Stars: storage converts using the configured UZS/USD and Stars proceeds references, then the basket rounds up once to whole Stars. No extra currency conversion changes the fixed 22/28-Star unit prices.
+For each 15-minute call or recording, `Stars = ceil(UZS / starUzs × 1.25)`. The initial editable `starUzs` reference is 255 UZS, from the owner's 100 Stars = 25,500 UZS purchase reference. A 30-minute service costs exactly twice its rounded 15-minute price: 7,000 UZS / 36 Stars per call and 8,400 UZS / 42 Stars per recording. Local taxes, store prices and purchase methods affect the cost of obtaining Stars.
 
-Admin can edit each selling price separately from the cost assumptions. Historical cost configurations without the selling-price fields inherit the new defaults. Existing order snapshots and authorized payment totals remain unchanged.
+Ten 15-minute calls and two recordings cost 43,400 UZS or 222 Stars. Adding retention to both costs 43,406 UZS or 223 Stars. Retention converts using the same 255 UZS reference and markup, with one final round-up for the entire retention line. Campaign discounts apply separately to complete original UZS and Stars pack totals.
+
+Admin can edit service prices and the Stars reference separately from expenditure forecasts. Historical saved configurations inherit the new conversion defaults. Existing order snapshots and authorized payment totals remain unchanged.
 
 ## Customer offer
 
-- Each new Telegram account receives three call credits once, atomically with its unique profile. Reopening or repeating registration does not create another grant. Existing accounts keep their original allowances instead of receiving a duplicate grant.
-- One call credit covers one participant’s practice call, up to 15 minutes. Calls and recordings are independent purchases, from zero to 1,000 each, with at least one credit selected.
-- One recording credit covers an optional mixed recording of a call lasting up to 15 minutes. Existing legacy recording allowances still cover their original longer calls.
+- New accounts start at zero, then may claim three call units once after a server check of @pairtalk membership. Reopening, concurrent claims or leaving/rejoining do not grant again. Existing accounts retain balances and are marked already granted.
+- Balances use 15-minute units. Select 15 or 30 minutes; the latter reserves two units. Packs require at least one call, recordings cannot exceed calls, and there is no arbitrary quantity ceiling. Safe financial and integer bounds still apply.
+- One recording unit covers up to 15 minutes; a 30-minute recording uses two. Existing legacy allowances retain their original limits. Recording needs both partners' agreement.
 - Optional storage quantity equals the selected recording quantity. Storage credits automatically apply to the next recordings made with recording credits. Each file’s 30-day clock begins at creation.
 - Paid call, recording and storage credits do not expire with a month or a legacy subscription.
 - Without storage, files are temporary delivery copies: eligible for cleanup after every owner has a confirmed Telegram receipt, or after the 24-hour recovery window. Telegram may retain a delivered copy independently. Mixed ownership preserves other owners’ storage, while each user’s access deadline is enforced separately.
-- The landing page, Mini App and bot show separate UZS unit cost references. New credit checkout is in Telegram Stars. Existing supported legacy UZS payment flows remain unchanged.
+- The landing, Mini App and bot show separate UZS and Stars totals. Stars uses the official invoice. The owner-selected UZS flow queues private instructions, closes the Mini App and requires verified administrator receipt approval; no pending payment grants balance.
 - The customer explicitly accepts the versioned credit purchase terms before checkout. An immutable catalog revision, quantities, totals, terms version and acceptance time are saved with the order.
 
 ## Selected costing assumptions — 15 October 2026
@@ -62,14 +64,14 @@ Optional retained storage is an additional purchase and is costed separately. At
 
 Cost estimates are calculated in millionths of a USD, rounded upwards at that precision. The 12% cost markup is retained as an admin benchmark, separately from the owner's fixed selling prices above. Actual profitability depends on costs, payment proceeds and redemption volumes.
 
-The entire basket is summed using the published UZS prices and, independently, the published Stars prices. A single call is 22 Stars, ten calls are 220 Stars, and one recording is 28 Stars. A recording with storage is 29 Stars after rounding. Stars proceeds are a costing benchmark, not what a customer necessarily pays to obtain Stars.
+The expenditure allocation is a costing benchmark, separate from selling prices. Current default service Stars are derived from the editable 255 UZS reference: one call is 18 Stars, ten calls are 180 Stars, and one recording is 21 Stars. Stars developer proceeds do not equal the customer's store purchase price.
 
 Admin can edit every cost/forecast input and pause new sales. Saved changes are audited and update new quotes across all interfaces. Existing orders keep their original quote for their 30-minute checkout window; an authorized payment is honoured even when prices or sales availability change before its success notification arrives.
 
 ## Durable consumption and refunds
 
 - Node and Go share the same PostgreSQL reservation/release functions, wallet counters, credit usage records and participant lock order.
-- Existing included allowances and referral bonuses are used before extra call credits. A credit reservation is made within call admission; concurrent attempts cannot spend the same balance.
+- Existing included allowances retain their limits. A selected 30-minute wallet call reserves two units before any 15-minute bonus; 15-minute calls can use the applicable included/bonus allowance. Reservations occur inside locked admission, so concurrent attempts cannot spend the same balance.
 - Completion settles a call reservation once. Failed connections, cancelled invitations and calls shorter than five authorized seconds restore it. Reconnects reuse the existing session and reservation.
 - Recording/storage reservations are made once per participant and call. A usable exported file consumes them; terminal failed exports restore them. The post-call worker reconciles missing provider notifications.
 - New credit purchases support a full automatic Stars refund within 48 hours if all purchased quantities remain available and unreserved. Refund initiation removes those quantities transactionally before contacting Telegram. Uncertain confirmation remains pending; retries and background recovery use the same original payment.

@@ -42,7 +42,8 @@ import { initializeOrderSequence } from './services/plan';
 import { surgeAlertService } from './services/surgeAlertService';
 import { startEventSubscriber, EventSubscriberHandle } from './services/eventSubscriber';
 import { startPostCallWorker } from './services/postCallOutbox';
-import { startDiscountNoticeWorker } from './services/discounts';
+import { startPackChannelWorker } from './services/packChannel';
+import { startOptionalNotificationScheduler } from './services/optionalNotifications';
 import { scannerShieldMiddleware } from './middleware/scannerShield';
 import { requestIdMiddleware } from './middleware/requestId';
 import { logger } from './utils/logger';
@@ -470,7 +471,8 @@ let stopManualCrawlerWorker: (() => Promise<void>) | null = null;
 let stopPostCallWorker: (() => Promise<void>) | null = null;
 let stopNotificationWorker: (() => Promise<void>) | null = null;
 let stopRestrictionWorker: (() => Promise<void>) | null = null;
-let stopDiscountWorker: (() => Promise<void>) | null = null;
+let stopPackChannelWorker: (() => Promise<void>) | null = null;
+let stopOptionalNotifications: (() => Promise<void>) | null = null;
 
 let stopPolling: (() => Promise<void>) | null = null;
 const stopWorkers: Array<() => void> = [];
@@ -494,6 +496,8 @@ function startBotWithRetry(botInstance: Bot<MyContext>): () => Promise<void> {
         { command: 'plans', description: 'Payments and allowances' },
         { command: 'refund', description: 'Request a payment refund' },
         { command: 'paysupport', description: 'Billing help' },
+        { command: 'notifications', description: 'Manage optional reminders' },
+        { command: 'stop_notifications', description: 'Stop optional reminders' },
         { command: 'appeal', description: 'Request review of a permanent ban' },
       ]);
       await botInstance.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Open dashboard', web_app: { url: env.MINI_APP_URL } } });
@@ -547,7 +551,8 @@ async function bootstrap(): Promise<void> {
     // Start bot polling under distributed leader election only after Redis and DB are ready
     if (bot) {
       stopNotificationWorker = notificationQueue.startWorker(() => bot);
-      stopDiscountWorker = startDiscountNoticeWorker();
+      stopPackChannelWorker = startPackChannelWorker(() => bot);
+      stopOptionalNotifications = startOptionalNotificationScheduler();
       stopPolling = startBotWithRetry(bot);
       stopRefundRecovery = startStarsRefundRecovery(bot.api);
     }
@@ -598,12 +603,13 @@ async function bootstrap(): Promise<void> {
     }, error);
     stopPlanRefresh?.(); await stopRefundRecovery?.();
     await stopPostCallWorker?.();
-    await stopDiscountWorker?.();
+    await stopPackChannelWorker?.();
+    await stopOptionalNotifications?.();
     await stopRestrictionWorker?.();
     await stopManualCrawlerWorker?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();
-    surgeAlertService.stopScheduler();
+    await surgeAlertService.stopScheduler();
     await stopPolling?.().catch(() => undefined);
     await eventSubscriberHandle?.stop().catch(() => undefined);
     io.close();
@@ -650,13 +656,14 @@ const gracefulShutdown = async (signal: string) => {
   try {
     stopPlanRefresh?.();
     await stopPostCallWorker?.();
-    await stopDiscountWorker?.();
+    await stopPackChannelWorker?.();
+    await stopOptionalNotifications?.();
     await stopRestrictionWorker?.();
     await stopManualCrawlerWorker?.();
     await stopRefundRecovery?.();
     await stopNotificationWorker?.().catch(() => undefined);
     for (const stop of stopWorkers) stop();
-    surgeAlertService.stopScheduler();
+    await surgeAlertService.stopScheduler();
     await stopPolling?.();
     closeExternalConnections();
     if (eventSubscriberHandle) {

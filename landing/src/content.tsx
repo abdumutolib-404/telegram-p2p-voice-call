@@ -18,7 +18,7 @@ export const faqs = [
   },
   {
     q: "Can I start for free?",
-    a: "Yes. The free plan includes a limited practice allowance. Compare currently published plans on the pricing page, including Stars and UZS prices, calls, recordings, and retention. Telegram checkout confirms the exact charge before payment.",
+    a: "Yes. Join @pairtalk and verify membership in the Mini App to claim three one-time 15-minute call units. Two units can cover one 30-minute call. Add calls, recordings and optional retention separately when you need more; check Pricing for the published totals.",
   },
   {
     q: "Will my partner see my Telegram details?",
@@ -499,6 +499,20 @@ export const pages: Record<string, Guide> = {
               Protect the service and other learners. Do not attempt to bypass
               security, access another account, or disrupt calls.
             </p>
+            <p>
+              Do not use PairTalk for dating, sexual solicitation, recruiting,
+              political campaigning, gambling, fraud or collecting personal data.
+              Do not exchange payment details with a practice partner, impersonate
+              a tutor or examiner, or sell access to another account. Gift and
+              campaign limits apply to the person using the account; creating
+              extra accounts to collect them again is abuse.
+            </p>
+            <p>
+              Ask before recording and stop if either partner withdraws agreement.
+              Do not publish, sell, train models on or reuse another person's
+              voice without their permission and any consent required by law.
+              Use reports honestly and include only details needed for review.
+            </p>
           </>
         ),
       },
@@ -544,7 +558,7 @@ export const pages: Record<string, Guide> = {
     eyebrow: "PRIVACY & RECORDING RETENTION",
     heading: "Know what you share.",
     intro:
-      "PairTalk uses account and session information to provide speaking practice. This page explains the service’s existing privacy and retention policy in a readable format.",
+      "Effective 16 October 2026. PairTalk uses account and session information to provide speaking practice, fulfil purchases and respond to safety concerns. This policy explains that processing and your choices.",
     sections: [
       {
         id: "account-data",
@@ -563,6 +577,15 @@ export const pages: Record<string, Guide> = {
               contact information. The public statistics page exposes aggregate
               figures, not account identities, private comments, recordings, or
               payment details.
+            </p>
+            <p>
+              We also keep purchased call, recording and retention balances,
+              checkout totals and status, campaign claims, starter-gift eligibility,
+              notification preferences, last activity and notification delivery
+              outcomes. These records prevent duplicate charges, gifts and claims,
+              recover interrupted work and apply your messaging choices. We check
+              your channel membership through Telegram when you request the starter
+              gift; joining does not subscribe you to private promotional messages.
             </p>
           </>
         ),
@@ -606,6 +629,13 @@ export const pages: Record<string, Guide> = {
               anonymous. Keep identifying information out of conversations and
               avoid publishing another person’s audio without permission.
             </p>
+            <p>
+              Hosting, media delivery and storage providers may process information
+              outside your country. Telegram receives messages and delivered audio
+              under its own privacy policy. Private calls are not represented as
+              public question-library data. Do not submit confidential information
+              in speaking prompts, reports or support messages.
+            </p>
           </>
         ),
       },
@@ -620,12 +650,19 @@ export const pages: Record<string, Guide> = {
               delete account data through{" "}
               <a href="https://t.me/PairTalkSupport">@PairTalkSupport</a> or the
               bot’s billing support command, <code>/paysupport</code>. Its
-              stated account-purge target is within 24 hours.
+              support team will explain the request and any verification needed.
             </p>
             <p>
               Contact support for questions about a recording, payment record,
               or data request. Do not post private account information in a
               public channel.
+            </p>
+            <p>
+              Necessary account, payment, fraud-prevention and dispute records may
+              need to remain after account closure for the purposes for which they
+              are required. Deleting PairTalk data does not delete files already
+              delivered to Telegram, downloaded by another participant or retained
+              by that participant. Ask support about a specific record or request.
             </p>
           </>
         ),
@@ -648,6 +685,22 @@ export const pages: Record<string, Guide> = {
               See the <a href="/terms#payments">subscription terms</a> and
               contact billing support for your specific transaction.
             </p>
+            <p>
+              New UZS pack payments are manually verified. Request a refund
+              through /refund from the paying account. While a full unused-purchase
+              refund is reviewed, its quantities are reserved and cannot be spent.
+              Confirmation completes the refund; a rejected refund restores that
+              reservation once. A provider's pending or uncertain response is not
+              a completed refund. Contact /paysupport before submitting a second
+              payment or another refund for the same transaction.
+            </p>
+            <p>
+              Free gifts and zero-price offers have no payment to return. Partial
+              pack refunds are not automated. Purchase and account checks apply,
+              but this policy does not remove mandatory rights under applicable
+              law. Processing time can depend on the payment provider and review;
+              we do not promise instant settlement.
+            </p>
           </>
         ),
       },
@@ -660,7 +713,7 @@ export const pages: Record<string, Guide> = {
     eyebrow: "TERMS OF SERVICE",
     heading: "The terms of practicing together.",
     intro:
-      "Using PairTalk means agreeing to these service terms and the community guidelines. PairTalk is an independent educational practice tool.",
+      "Effective 16 October 2026. These terms cover PairTalk peer speaking practice, purchases, public offers, recordings and account use. Read them and the privacy policy before agreeing in the bot.",
     sections: [
       {
         id: "eligibility",
@@ -682,7 +735,9 @@ export const pages: Record<string, Guide> = {
               You must be at least 13 years old, or the minimum age of digital
               consent in your jurisdiction. Users under the age of majority
               require parent or guardian permission. A valid Telegram account is
-              required; you are responsible for its security. Creating multiple
+              required and you must meet Telegram's current age rules, including
+              any higher regional minimum. Guardian permission does not bypass
+              Telegram's eligibility rules. You are responsible for your account's security. Creating multiple
               accounts or automated accounts to exploit rewards or rankings is
               prohibited.
             </p>
@@ -717,26 +772,89 @@ export const pages: Record<string, Guide> = {
         body: (
           <>
             <p>
-              New accounts receive three one-time starter calls of up to 15 minutes.
-              Calls and recordings are purchased separately and do not expire.
-              Each call or recording covers up to 15 minutes. Optional storage matches the selected
-              recording quantity and lasts 30 days from creation. Without storage,
-              server copies are removed after confirmed delivery or within a 24-hour
-              recovery window. Telegram may retain a delivered copy independently.
-              Checkout uses Telegram Stars; UZS amounts explain the cost reference.
-              Existing subscription allowances and supported legacy card payments retain
-              their original purchase terms. These pay-as-you-go terms apply to new
-              call and recording purchases.
+              New eligible accounts can claim three one-time 15-minute call units
+              after joining @pairtalk and passing a server membership check.
+              Leaving and rejoining does not repeat the gift. Previously granted
+              balances remain available. Paid calls and recordings do not expire
+              before use and do not renew automatically. Choose a 15- or 30-minute
+              duration; a 30-minute call or recording uses two 15-minute units and
+              costs exactly twice its rounded 15-minute price in the same currency.
+              Recordings cannot exceed the calls in a purchased pack. Optional
+              retention covers every recording in that pack and lasts 30 days
+              from audio creation. Without retention, server copies are removed
+              after confirmed delivery or within a 24-hour recovery window.
+              Telegram may retain a delivered copy independently.
+            </p>
+            <p>
+              Prices are set by the administrator and shown before checkout.
+              The initial 15-minute prices are 3,500 UZS per call and 4,200 UZS
+              per recording, plus 3 UZS per recording for 30-day retention.
+              Stars are calculated separately for each 15-minute service: divide
+              its UZS price by the editable UZS-per-Star reference, add 25 percent
+              and round up to a whole Star. The initial reference is 255 UZS,
+              based on the owner's 100 Stars for 25,500 UZS reference. This gives
+              18 Stars per 15-minute call and 21 Stars per recording. Retention
+              is calculated once for the pack and rounded up separately. Regional
+              taxes, app-store charges and purchase methods can change what you
+              pay to acquire Stars; the reference is not a guaranteed exchange rate.
+              Your approved order keeps its recorded total if prices later change.
+            </p>
+            <p>
+              Stars payments use Telegram's official invoice. Where the UZS
+              option is offered, choosing it queues private bot payment instructions
+              and closes the Mini App. Pending instructions or a submitted receipt
+              do not add a balance: the administrator must verify the transfer.
+              Check the order number, payee and total, and submit proof before the
+              checkout deadline. Contact /paysupport if you transferred money but
+              the checkout expired or delivery is uncertain; do not pay again.
+              Existing subscriptions retain their original purchase terms.
             </p>
             <p>
               A full purchase refund can be requested within 48 hours of
               payment when the complete purchased quantities remain available and
-              unreserved. Calls under five seconds and failed connections return
+              unreserved. Failed connections and calls with fewer than five
+              authorised seconds return
               their reserved call; failed recording exports return recording and
               storage add-ons. Existing subscription refunds keep their original rules. Use{" "}
               <code>/refund</code> or contact support. See the{" "}
               <a href="/refund-policy">refund policy</a> for payment-specific
               settlement information.
+            </p>
+          </>
+        ),
+      },
+      {
+        id: "offers-and-reminders",
+        title: "Public offers and optional reminders",
+        body: (
+          <>
+            <p>
+              Discount packs are published in @pairtalk and shown in Plans.
+              Each campaign can be purchased once per account, subject to the
+              displayed participant count and expiry. The discount is applied
+              to the complete original pack total separately in UZS and Stars,
+              with the result rounded up to whole currency units. A 20 percent
+              discount means paying 80 percent of the original total. A 100
+              percent offer is claimed without a payment invoice.
+            </p>
+            <p>
+              An unpaid checkout can temporarily reserve a place for up to 30
+              minutes or until the offer ends, whichever comes first. Starting
+              checkout does not guarantee a purchase after that deadline. New
+              claims stop when the campaign sells out or expires, even if an old
+              channel message remains visible. Already authorised payments are
+              honoured. Cancel an unpaid checkout before choosing a different
+              currency; a payment awaiting confirmation must be resolved first.
+              Refunds do not make a campaign claim reusable.
+            </p>
+            <p>
+              Practice, unfinished-checkout, peak-activity and community reminders
+              are optional and start off. Choose categories and quiet hours in
+              Account or use /notifications. Use /stop_notifications to stop
+              optional private messages. We apply at least 24 hours between
+              optional reminders and recheck relevance before sending. Joining
+              the channel does not enable these messages. Requested receipts,
+              necessary account notices and safety messages are separate.
             </p>
           </>
         ),
@@ -777,6 +895,16 @@ export const pages: Record<string, Guide> = {
               terms shall not exceed the amount paid by the user to PairTalk in
               the three months preceding the incident.
             </p>
+            <p>
+              PairTalk is intended for educational peer speaking practice. You
+              are responsible for unlawful or prohibited use, your statements,
+              the information you disclose and any unauthorised redistribution
+              of another person's audio. We do not approve private arrangements
+              between participants. These limits do not exclude rights that
+              cannot lawfully be excluded, or remove our responsibility where
+              applicable law requires it. Reports are reviewed but continuous
+              live supervision and immediate moderation are not promised.
+            </p>
           </>
         ),
       },
@@ -787,8 +915,10 @@ export const pages: Record<string, Guide> = {
           <>
             <p>
               The service may amend its terms. Material changes are communicated
-              through the Telegram bot or an updated terms page. Continued use
-              after a change constitutes acceptance of the updated terms.
+              through the Telegram bot or an updated terms page. A new versioned
+              agreement requires explicit acceptance in the bot before registered
+              practice continues. A later price change applies to new checkouts;
+              it does not rewrite an already authorised payment.
             </p>
             <p>
               For account, billing, privacy, or terms questions, contact{" "}
@@ -811,6 +941,6 @@ pages["/refund-policy"] = {
   sections: [
     { id: "eligibility", title: "When a refund may be available", body: pages["/privacy"].sections.find(section => section.id === "refunds")!.body },
     { id: "request", title: "How to request a refund", body: <><p>Use <code>/refund</code> in the PairTalk bot from the account that made the purchase. Choose the purchase and follow the bot’s instructions. The bot checks purchase ownership, payment state and eligibility before proceeding.</p><p>For help with a specific transaction, use <code>/paysupport</code> or contact <a href="https://t.me/PairTalkSupport">PairTalk support</a>. Keep receipt and account information out of public channels.</p></> },
-    { id: "related", title: "Related policies", body: <p>Read the <a href="/terms#payments">subscription terms</a> and <a href="/privacy">privacy policy</a> for payment records and service conditions.</p> },
+    { id: "related", title: "Related policies", body: <p>Read the <a href="/terms#payments">payment terms</a> and <a href="/privacy">privacy policy</a> for payment records and service conditions.</p> },
   ],
 };

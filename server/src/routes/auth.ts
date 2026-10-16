@@ -8,6 +8,7 @@ import { getEffectiveEntitlement, getPaidUserProfile, getUserCallsUsedThisPeriod
 import { getActiveBonusCallsCount } from '../services/referralService';
 import { logger } from '../utils/logger';
 import { setRequestContextUserId } from '../utils/requestContext';
+import { touchUserActivity } from '../services/userActivity';
 
 const router = Router();
 const authLimiter = createActionRateLimiter('AUTH_VERIFY', getClientIp);
@@ -99,6 +100,7 @@ router.post('/verify', authLimiter, async (req, res) => {
 
     if (!dbUser.onboarded) { res.status(403).json({ code: 'registration_required', error: 'Finish registration with /start in the Telegram bot.' }); return; }
     if (!hasAcceptedCurrentTerms(dbUser)) { res.status(403).json({ code: 'terms_required', error: 'Read and accept the current Terms of Use with /start in the Telegram bot.' }); return; }
+    await touchUserActivity(dbUser);
 
     // The account dashboard remains usable when call allowance is exhausted.
     const callsUsed = await getUserCallsUsedThisPeriod(dbUser.id, dbUser);
@@ -157,6 +159,8 @@ router.post('/verify', authLimiter, async (req, res) => {
         plan: dbUser.plan,
         callsRemaining,
         creditOnly:dbUser.creditBilling && entitlement.baseCallLimit===0,
+        preferredCallMinutes:dbUser.preferredCallMinutes,
+        starterGiftClaimed:Boolean(dbUser.starterGiftGrantedAt),
         creditBalance:{calls:dbUser.callCredits,recordings:dbUser.recordingCredits,storage:dbUser.storageCredits},
         includedCallsRemaining: Math.max(0, entitlement.baseCallLimit - callsUsed),
         bonusCallsRemaining: activeBonusCalls,

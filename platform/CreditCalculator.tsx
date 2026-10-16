@@ -63,8 +63,7 @@ export function CreditCalculator({
   return (
     <div className="credit-shop">
       <div className="credit-shop__intro">
-        <span className="credit-shop__eyebrow">Practice on your terms</span>
-        <h2>Buy what you’ll use.</h2>
+        <h2>Choose your practice</h2>
         <p>
           Buy calls and recordings separately. Your purchases do not expire, and
           there is no monthly subscription.

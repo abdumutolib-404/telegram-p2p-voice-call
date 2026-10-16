@@ -1,35 +1,30 @@
 # Shared pricing and comparison
 
-Updated 2026-10-07. PairTalk's landing, client, admin and Telegram bot use the same published plan configuration. The existing Free/Plus/Pro/Boss subscription model remains in force; this change does not introduce lifetime credits, new prices, currency conversion or unit purchases.
+Updated 16 October 2026. Flexible practice packs are the default new purchase flow. Existing Free/Plus/Pro/Boss subscription benefits and historical purchases remain supported under their original terms.
 
-## Publication flow
+## Publication and quotation
 
-1. An authenticated administrator saves the plan editor. Its existing validation and audit record persist the configuration.
-2. `GET /api/public/plans` loads that persisted configuration and exposes only active offers, their public allowances and exact Stars/UZS prices. A revision hash identifies the configuration and `checkedAt` dates the response. Internal audit identities and provider credentials are excluded.
-3. The public `/pricing` comparison, client plan chooser and admin published preview use `platform/usePricing.ts`. They refresh every 30 seconds while visible and on focus. Requests are bounded to eight seconds, deduplicated and cancelled when a view closes. A failed or invalid response removes quoted offers and displays a retry action. No fabricated or stale checkout price substitutes for a failed response.
-4. Telegram plan menus reload the same configuration before quoting prices. Existing server invoice and entitlement checks remain authoritative.
+Administrators save service selling prices, costing assumptions, the UZS-per-Star reference and sales/capacity controls through the existing authenticated editor. Updates are validated, audited and serialized. `GET /api/public/plans` publishes credential-free `credits` compatibility data and the version-two `packs` catalog with a revision and check time.
 
-The public schema and comparison functions live in `server/src/contracts/pricing.ts`. Frontends import only that pure contract module, not server configuration, database clients or secrets. Frontend build contexts must include the repository's `platform/` and `server/src/contracts/` directories. Cloudflare frontend builds run from the repository root so both paths are available. The backend Docker image builds the Go gateway and server; it does not build the frontend apps.
+Landing, Mini App and admin import only pure shared contracts from `server/src/contracts/`; no server credentials or database code enter browser bundles. Build contexts must include `platform/` and those contracts. Cloudflare builds run in each frontend's configured directory within the complete checkout. The backend image builds Node and Go separately.
+
+The builder accepts 15/30-minute packs, calls, recordings and optional retention. Recordings must not exceed calls; retention quantity equals recordings. There is no arbitrary business quantity cap, while safe integer/payment/wallet bounds remain enforced. Server quotation is authoritative. Checkout snapshots bind the account, selection, duration, catalog revision, terms, request identity and currency. Replays cannot change those attributes. [Pricing and balances](unit-pricing.md) contains the formulas and duration-unit explanation.
+
+**Buy credits → Checkout** opens a review dialog with separate UZS and Stars totals. Stars opens Telegram's official invoice. The owner-selected UZS option queues private manual-payment instructions, closes the Mini App and requires receipt approval. This UZS flow retains the acknowledged Telegram digital-payment policy conflict. An owned pending order can be resumed with its original currency and prices; unpaid cancellation releases its hold. Already-authorized totals survive later configuration changes.
+
+`platform/usePricing.ts` refreshes while visible and on focus, validates responses, bounds request duration and cancels closed views. Failed/invalid live data clears current quotations and exposes retry. Persisted order snapshots are distinct from a current public quote.
 
 ## Public comparison
 
-The needs selector compares desired calls, minutes per call, recordings and retention against published allowances. It recommends the least expensive matching active plan in the selected payment currency. Selecting zero recordings makes retention irrelevant. Stars and UZS are independent quoted prices; no exchange rate is inferred.
+One table compares PairTalk, self-organized communities and tutors across matchmaking, level fit, scheduling, prompts, starter practice and the cost of ten 15-minute sessions. PairTalk uses the published call price. The tutoring example is a dated, attributed teaching-time estimate; communities have variable rules and availability. Peer practice and professional teaching are described accurately. Starter practice requires a once-only server membership check in @pairtalk.
 
-Average cost per included call divides the whole bundle price by its included calls. It is explicitly an estimate for comparison, not a separately sold call or a guarantee that every credit will be used. Unlimited and zero-call offers have no finite per-call estimate. Free allowances use calendar months; paid allowances use their configured subscription duration. Purchased allowances and unused-credit expiry continue to follow the current subscription rules. An account may have individual allowances, so the private dashboard displays its authenticated server snapshot rather than substituting public offers.
+## Build and runtime settings
 
-The client sends selected paid plans to the actual Telegram bot with an upgrade payload. Registration remains in Telegram. Public comparison access does not grant dashboard or admin access; their existing authentication boundaries are preserved.
-
-## Build settings and search
-
-- Landing: the browser uses `/api/public/plans` and `/api/public/stats` on the public site's own origin. Its Worker proxies only these two read endpoints to `PUBLIC_API_ORIGIN` in `landing/wrangler.jsonc`. Vite uses the same handler and reads the optional local `PUBLIC_API_ORIGIN` setting. `VITE_PUBLIC_PRICING_URL` and `VITE_PUBLIC_STATS_URL` can override browser URLs when needed.
-- Client: `VITE_SERVER_URL` supplies that same backend origin; `VITE_PUBLIC_SITE_URL` supplies the public comparison link.
-- Admin: `VITE_API_URL` supplies that same backend origin; `VITE_PUBLIC_SITE_URL` supplies the public comparison link.
-- Backend: optional `BOT_USERNAME` supplies a public checkout username before startup; successful bot initialization replaces it with Telegram's verified username. It contains no token.
-
-The existing `/pricing` route has updated comparison metadata and accessible content. Setting `PUBLIC_PRICING_BUILD_URL` in the landing build environment adds a validated, dated catalog snapshot to its pre-rendered HTML for crawlers. The browser validates this snapshot and immediately refreshes it against the live endpoint. Without a successful build snapshot, pre-rendered HTML explains the comparison and the browser loads current offers. A saved snapshot is dated build output, not a perpetual current-price claim; rebuild when published offers change if crawler-visible prices must reflect them immediately.
-
-The October 7 SEO review updates `robots.txt`, `sitemap.xml`, and `llms` documents to describe the current platform. Builds preserve those reviewed source files. Pricing and statistics Markdown exports are generated from public page content and identify quoted figures as dated snapshots. No ranking guarantee or fabricated reviews/statistics are added.
+- Landing proxies only `/api/public/plans` and `/api/public/stats` through its existing Worker to `PUBLIC_API_ORIGIN`. Optional `VITE_PUBLIC_PRICING_URL` and `VITE_PUBLIC_STATS_URL` override browser URLs.
+- Client uses `VITE_SERVER_URL` and `VITE_PUBLIC_SITE_URL`; admin uses `VITE_API_URL` and `VITE_PUBLIC_SITE_URL`.
+- Backend's public bot username comes from configuration until Telegram initialization verifies it. It contains no token.
+- Optional `PUBLIC_PRICING_BUILD_URL` provides a validated, dated prerender snapshot. The browser refreshes it live. Without it, prerendered content explains the builder without inventing a quotation.
 
 ## Verification
 
-Server tests cover authenticated admin publication followed by a changed public catalog and Telegram quote, active-offer filtering, the public allowlist, failure handling, protected publication, and recommendation arithmetic. Browser component tests cover both interfaces consuming the same catalog, live refresh, stale-price removal, request timeout/cancellation and currency-specific recommendations. Production builds include the shared modules without server secrets.
+Shared-contract tests cover whole-number rounding, duration doubling, discounts, capacity, quantity relationships and invalid/injected input. Owned PostgreSQL checks exercise immutable snapshots, replay and approval races, exact unit reservations/refunds and wallet headroom. Browser checks cover both currencies with synthetic provider actions, mobile layouts, themes, keyboard focus and accessibility. They do not prove an actual external payment or live provider entitlement.

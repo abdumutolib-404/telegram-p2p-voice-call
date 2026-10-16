@@ -1,4 +1,7 @@
 import { CreditCalculator } from "../../../platform/CreditCalculator";
+import { PracticeCalculator } from "../../../platform/PracticeCalculator";
+import { SectionFaq } from "../../../platform/SectionFaq";
+import { pricingQuestions } from "../../../platform/practiceQuestions";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Check, RefreshCw } from "lucide-react";
 import { practiceUrl, supportUrl } from "./SiteLayout";
@@ -72,21 +75,22 @@ export function PricingPage({
   if (data?.credits)
     return (
       <>
-        <section className="wrap page-head">
-          <h1>Your practice. Your amount.</h1>
+        <section className="wrap page-head practice-pricing-head">
+          <h1>Pay for the practice you need.</h1>
           <p>
-            Start with three free calls, then choose calls and recordings
-            separately. No subscription required.
+            Join @pairtalk to claim three free 15-minute call units, then choose
+            calls and recordings separately. No subscription required.
           </p>
+          <a className="btn btn--primary" href="#practice-pack">Buy credits</a>
         </section>
-        <section className="wrap section">
-          <CreditCalculator
+        <section className="wrap section practice-pricing-body" id="practice-pack" aria-label="Choose calls and recordings">
+          {data.packs ? <PracticeCalculator catalog={data.packs} busy={loading} checkoutLabel="Continue in Telegram" onCheckout={pack=>{window.location.href=`https://t.me/${data.botUsername}?start=pack_${pack.calls}_${pack.recordings}_${pack.retention?1:0}_${pack.minutes}`;}}/> : <CreditCalculator
             catalog={data.credits}
             busy={loading}
             onCheckout={(basket) => {
               window.location.href = `https://t.me/${data.botUsername}?start=credits_${basket.calls}_${basket.recordings}_${basket.storage ? 1 : 0}`;
             }}
-          />
+          />}
           {error && <p role="alert">{error}</p>}
           <p className="pricing-fineprint">
             Prices checked{" "}
@@ -101,6 +105,7 @@ export function PricingPage({
             <a href="/refund-policy">Refund policy</a> ·{" "}
             <a href="/terms#payments">Payment terms</a>
           </p>
+          <SectionFaq title="Questions about your purchase" questions={pricingQuestions} />
         </section>
       </>
     );

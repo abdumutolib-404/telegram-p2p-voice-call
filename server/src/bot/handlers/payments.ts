@@ -22,6 +22,8 @@ import { logger } from '../../utils/logger';
 import { lockRow } from '../../utils/transactionLock';
 import { completeStarsRefund } from '../../services/starsRefund';
 import { refundPolicyUrl } from '../../services/terms';
+import { attachPracticePaymentProof, cancelPracticeOrder } from '../../services/practiceCheckout';
+import { lockOrderCampaign } from '../../services/packOfferInventory';
 
 async function editMessageOrCaption(ctx: MyContext, text: string, other?: Record<string, unknown>) {
   if (!ctx.callbackQuery) return ctx.reply(text, { parse_mode: 'HTML', ...other });
@@ -399,8 +401,16 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         const request=await tx.manualPaymentRequest.findFirst({where:{id:requestId,telegramId,status:'PENDING'}});
         if(!request)return{count:0};
         await lockRow(tx,'User',request.userId);
-        const changed=await tx.manualPaymentRequest.updateMany({where:{id:requestId,telegramId,status:'PENDING'},data:{status:'REJECTED',adminNote:'Cancelled by user'}});
+        if(request.creditOrderId){
+          const initialOrder=await tx.creditOrder.findUnique({where:{id:request.creditOrderId}});
+          if(!initialOrder)return{count:0};
+          await lockOrderCampaign(tx,initialOrder);await lockRow(tx,'CreditOrder',initialOrder.id);
+          const order=await tx.creditOrder.findUniqueOrThrow({where:{id:initialOrder.id}});
+          if(order.status!=='PENDING'||order.authorizedAt)return{count:0};
+        }
+        const changed=await tx.manualPaymentRequest.updateMany({where:{id:requestId,telegramId,status:'PENDING',...(request.creditOrderId?{paymentProof:null}:{})},data:{status:'REJECTED',adminNote:'Cancelled by user'}});
         if(changed.count===1&&request.discountOfferId)await tx.discountOffer.updateMany({where:{id:request.discountOfferId,status:'SUBMITTED',claimedPaymentId:request.id},data:{status:'AVAILABLE',checkoutCurrency:null,checkoutOrder:null,authorizedAt:null,claimedPaymentId:null}});
+        if(changed.count===1&&request.creditOrderId)await cancelPracticeOrder(tx,request.creditOrderId);
         return changed;
       });
 
@@ -802,12 +812,12 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         ctx.session.step = 'idle';
 
         const orderNum = pendingRequest.orderNumber || `A${pendingRequest.id.slice(0, 4)}`;
-        const inlineKb = new InlineKeyboard().text('✖️ Cancel Current Request', `cancel_manual_pay:${pendingRequest.id}`);
+        const inlineKb = pendingRequest.creditOrderId?new InlineKeyboard().url('Contact payment support','https://t.me/PairTalkSupport'):new InlineKeyboard().text('✖️ Cancel Current Request', `cancel_manual_pay:${pendingRequest.id}`);
         await ctx.reply(
           `⏳ <b>Payment Request Already Under Review</b>\n\n` +
             `You already have a pending request for the <b>${escapeHtml(pendingRequest.plan)} Plan</b> (Order #<code>${escapeHtml(orderNum)}</code>) submitted for administrator verification.\n\n` +
             `You can only have <b>one active payment request</b> at a time. Please wait for approval or rejection before submitting another.\n\n` +
-            `<i>If you made a mistake and want to submit a new receipt, cancel your current request below:</i>`,
+            (pendingRequest.creditOrderId?`<i>Your submitted payment stays under review. Contact support to correct a receipt; do not pay again.</i>`:`<i>If you made a mistake and want to submit a new receipt, cancel your current request below:</i>`),
           { parse_mode: 'HTML', reply_markup: inlineKb }
         );
         return;
@@ -949,10 +959,15 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
         uploadedAt: new Date().toISOString(),
       };
 
-      await prisma.manualPaymentRequest.update({
-        where: { id: authoritativeRequest.id },
-        data: { paymentProof: JSON.stringify(proofMeta), orderNumber },
-      });
+      if (authoritativeRequest.creditOrderId) {
+        try { await attachPracticePaymentProof(authoritativeRequest.id,telegramId,JSON.stringify(proofMeta)); }
+        catch(error) { await ctx.reply(error instanceof Error ? error.message : 'Receipt could not be attached. Contact /paysupport.'); return; }
+      } else {
+        await prisma.manualPaymentRequest.update({
+          where: { id: authoritativeRequest.id },
+          data: { paymentProof: JSON.stringify(proofMeta), orderNumber },
+        });
+      }
 
       ctx.session.pendingPaymentPlan = undefined;
       ctx.session.step = 'idle';
@@ -967,7 +982,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
       await ctx.reply(
         `✅ <b>Payment Receipt Received!</b>\n\n` +
           `Your receipt (<b>${escapeHtml(receiptFileName)}</b>) has been submitted for Order #<b>${escapeHtml(orderNumber)}</b>.\n` +
-          `Our administration team will verify your payment and activate your <b>${escapeHtml(planTier)} Plan</b> subscription shortly.\n\n` +
+          (authoritativeRequest.creditOrderId ? `Your pack purchase is awaiting admin verification. Nothing is added until approval.\n\n` : `Our administration team will verify your payment and activate your <b>${escapeHtml(planTier)} Plan</b> subscription shortly.\n\n`) +
           `Thank you for practicing with us!`,
         { parse_mode: 'HTML' }
       );
@@ -986,7 +1001,7 @@ export function setupPaymentHandlers(bot: Bot<MyContext>) {
           userAlias: user.alias,
           telegramId: user.telegramId,
           plan: planTier,
-          uzsAmount: config.uzsPrice,
+          uzsAmount: authoritativeRequest.uzsAmount,
           paymentMethod: 'MANUAL_UZS',
           receiptBuffer: downloadedReceipt?.buffer || null,
           receiptFileName: receiptFileName,

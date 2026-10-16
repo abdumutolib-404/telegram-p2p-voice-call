@@ -3,7 +3,8 @@ import { Check, ShieldCheck, LockKeyhole } from "lucide-react";
 import { practiceUrl } from "./SiteLayout";
 import { StatsSummary } from "./StatsPage";
 import { usePublicStats } from "../lib/publicStats";
-import { faqs } from "../content";
+import { SectionFaq } from "../../../platform/SectionFaq";
+import { practiceQuestions } from "../../../platform/practiceQuestions";
 import { usePricing } from "../../../platform/usePricing";
 import { planPeriod, type PublicPricing } from "../../../server/src/contracts/pricing";
 import { PracticeComparison } from "./PracticeComparison";
@@ -124,12 +125,12 @@ export function LandingPage({ initialPricing = null }: { initialPricing?: Public
       <div className="wrap split">
         <div className="stack-lg">
           <h2>Your first calls are free.</h2>
-          <p className="body-l muted measure">Start with three free practice calls. Add call or recordings when you need them, with no monthly subscription.</p>
+          <p className="body-l muted measure">Join @pairtalk and verify membership to claim three free 15-minute call units. Add calls or recordings when you need them, with no monthly subscription.</p>
           <div className="row"><a className="btn btn--primary btn--lg" href={practiceUrl}>Start with a free call</a><a className="link" href="/pricing">See prices</a></div>
         </div>
         <FreeTicket data={pricing} /></div></section>
 
-    <section className="section" id="faq"><div className="wrap faq-grid"><div className="stack"><h2>Before you say hello.</h2><a className="link" href="/faq">All questions and answers</a></div><div>{faqs.slice(0,6).map(faq=><details className="acc" name="home-faq" key={faq.q}><summary>{faq.q}</summary><div className="acc__body">{faq.a}</div></details>)}</div></div></section><section className="band section" style={{"paddingBlock": "56px"} as CSSProperties}>
+    <section className="section" id="faq"><div className="wrap"><SectionFaq title="Before your first conversation" questions={practiceQuestions} /><a className="link" href="/faq">All questions and answers</a></div></section><section className="band section" style={{"paddingBlock": "56px"} as CSSProperties}>
       <div className="wrap cta-band">
         <h2 style={{"maxWidth": "18ch"} as CSSProperties}>Ready to speak?</h2>
         <a className="btn btn--primary btn--lg" href={practiceUrl}>Start speaking</a>

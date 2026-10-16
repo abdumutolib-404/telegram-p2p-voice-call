@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../config/database';
 import { lockRow } from '../utils/transactionLock';
-import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, calculateEffectiveCallDuration } from './plan';
+import { getEffectiveEntitlement, getUserCallsUsedThisPeriod, sessionCallMinutes } from './plan';
 import { consumeOldestBonusCall } from './referralService';
 import { isUserSessionRecorder } from '../utils/recordingAccess';
 import { pubClient } from '../config/redis';
@@ -40,7 +40,7 @@ export async function completeCallSession(id: string, completion: Completion): P
     if (completion.reason === 'account_restricted' && !isAccountRestricted(a) && !isAccountRestricted(b)) return { count: 0 };
     const endedAt = new Date(Math.min(Date.now(), completion.endedAt.getTime()));
     if (!Number.isFinite(endedAt.getTime())) throw new Error('Invalid call end time.');
-    const duration = status === 'CANCELLED' || !session.mediaAuthorizedAt ? 0 : Math.min(calculateEffectiveCallDuration(a,b)*60, Math.max(0, Math.floor((endedAt.getTime() - session.mediaAuthorizedAt.getTime()) / 1000)));
+    const duration = status === 'CANCELLED' || !session.mediaAuthorizedAt ? 0 : Math.min(sessionCallMinutes({...session,userA:a,userB:b})*60, Math.max(0, Math.floor((endedAt.getTime() - session.mediaAuthorizedAt.getTime()) / 1000)));
     const charge = status === 'COMPLETED' && duration >= 5;
     const allowances = [];
     if (charge) {

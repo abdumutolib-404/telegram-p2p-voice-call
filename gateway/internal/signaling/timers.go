@@ -38,7 +38,7 @@ func (h *Hub) ScheduleAuthoritativeSessionTeardown(roomName string, durationSeco
 			actualDuration = 1
 		}
 		if session.UserA != nil && session.UserB != nil {
-			limitMinutes := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs)
+			limitMinutes := session.LimitMinutes(h.AdminTelegramIDs)
 			limitSeconds := limitMinutes * 60
 			if actualDuration > limitSeconds {
 				actualDuration = limitSeconds
@@ -184,7 +184,7 @@ func (h *Hub) ScheduleConnectionHandshakeTimer(roomName string, timeoutSeconds i
 				return
 			}
 			h.SetRoomStartedAt(roomName, session.MediaAuthorizedAt.UnixMilli())
-			limit := database.CalculateEffectiveCallDuration(session.UserA, session.UserB, h.AdminTelegramIDs) * 60
+			limit := session.LimitMinutes(h.AdminTelegramIDs) * 60
 			remaining := limit - int(time.Since(session.DurationAnchor()).Seconds())
 			if remaining <= 0 {
 				h.ScheduleAuthoritativeSessionTeardown(roomName, 0)

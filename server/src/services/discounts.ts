@@ -1,14 +1,10 @@
 import crypto from 'node:crypto';
 import type { DiscountCampaign, DiscountOffer, Prisma, User } from '@prisma/client';
 import { prisma } from '../config/database';
-import { discountCampaignInput, discountedPrice, discountPlan } from '../contracts/discounts';
+import { discountPlan } from '../contracts/discounts';
 import { getPaidUserProfile, isDowngrade } from './plan';
-import { loadPlanConfiguration } from './planConfiguration';
 import { hasAcceptedCurrentTerms } from './terms';
 import { lockRow } from '../utils/transactionLock';
-import { persistNotification } from '../bot/notifications';
-import { escapeHtml } from '../utils/sanitize';
-import { logger } from '../utils/logger';
 
 export class DiscountError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -30,32 +26,6 @@ function publicOffer(offer: DiscountOffer, campaign: DiscountCampaign) {
     originalStars: campaign.originalStars, originalUzs: campaign.originalUzs, starsPrice: campaign.starsPrice, uzsPrice: campaign.uzsPrice,
     expiresAt: campaign.expiresAt, status: offer.status };
 }
-export async function createDiscountCampaign(input: unknown, adminId: string) {
-  const data = discountCampaignInput.parse(input);
-  const plans = await loadPlanConfiguration();
-  return prisma.$transaction(async tx => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(736251010)::text`;
-    const previous = await tx.discountCampaign.findUnique({where:{requestId:data.requestId}});
-    if (previous) {
-      if (previous.adminId !== adminId || ['plan','percent','recipientCount','validMinutes'].some(key => previous[key as keyof typeof previous] !== data[key as keyof typeof data])) throw new DiscountError(409,'This submission ID was already used for another campaign.');
-      return previous;
-    }
-    const config = plans[data.plan];
-    if (!config.active || config.starsPrice <= 0 || config.uzsPrice <= 0) throw new DiscountError(400,'Choose an available paid plan with positive published prices.');
-    const pending=new Set((await tx.manualPaymentRequest.findMany({where:{status:'PENDING'}})).map(item=>item.userId));
-    const activeCampaignIds=(await tx.discountCampaign.findMany({where:{expiresAt:{gt:new Date()}},select:{id:true}})).map(item=>item.id);
-    const paying=new Set((await tx.discountOffer.findMany({where:{status:'PAYING',campaignId:{in:activeCampaignIds}}})).map(item=>item.userId));
-    const users = (await tx.user.findMany()).filter(user => eligible(user,data.plan)&&!pending.has(user.id)&&!paying.has(user.id));
-    if (users.length < data.recipientCount) throw new DiscountError(409,`Only ${users.length} eligible users are available. Reduce the recipient count.`);
-    // Partial Fisher–Yates: uniform sampling without replacement, once per campaign.
-    for (let i=0;i<data.recipientCount;i++) { const j=crypto.randomInt(i,users.length);[users[i],users[j]]=[users[j],users[i]]; }
-    const campaign = await tx.discountCampaign.create({data:{...data,adminId,originalStars:config.starsPrice,originalUzs:config.uzsPrice,
-      starsPrice:discountedPrice(config.starsPrice,data.percent),uzsPrice:discountedPrice(config.uzsPrice,data.percent),planSnapshot:JSON.stringify(config),expiresAt:new Date(Date.now()+data.validMinutes*60000)}});
-    await tx.discountOffer.createMany({data:users.slice(0,data.recipientCount).map(user=>({campaignId:campaign.id,userId:user.id,status:'AVAILABLE',noticeQueuedAt:null,checkoutCurrency:null,checkoutOrder:null,preCheckoutId:null,authorizedAt:null,claimedAt:null,claimedPaymentId:null}))});
-    await tx.auditLog.create({data:{action:'DISCOUNT_CAMPAIGN_CREATED',targetId:campaign.id,adminId,afterState:JSON.stringify(data),reason:'Exclusive random-user discount campaign'}});
-    return campaign;
-  },{maxWait:10000,timeout:30000});
-}
 export async function listDiscountCampaigns() {
   const campaigns = await prisma.discountCampaign.findMany({take:20,orderBy:{createdAt:'desc'}});
   return Promise.all(campaigns.map(async campaign=>({id:campaign.id,plan:campaign.plan,planName:discountPlan(campaign.planSnapshot).name,percent:campaign.percent,recipientCount:campaign.recipientCount,
@@ -67,29 +37,6 @@ export async function activeDiscountOffers(user: User) {
   const result=[];
   for(const offer of offers){const campaign=await prisma.discountCampaign.findUnique({where:{id:offer.campaignId}});if(campaign&&campaign.expiresAt>new Date()&&eligible(user,campaign.plan))result.push(publicOffer(offer,campaign));}
   return result;
-}
-export function startDiscountNoticeWorker():()=>Promise<void>{
-  let stopped=false,active:Promise<void>|undefined,timer:NodeJS.Timeout|undefined;
-  const tick=async()=>{if(stopped)return;active=recoverDiscountNotices(()=>stopped).catch(error=>logger.warn('Discount notification recovery unavailable',{service:'discounts'},error));await active;active=undefined;if(!stopped)timer=setTimeout(tick,5000);};
-  timer=setTimeout(tick,1000);
-  return async()=>{stopped=true;clearTimeout(timer);await active;};
-}
-export async function recoverDiscountNotices(stopped:()=>boolean=()=>false) {
-  const offers=await prisma.discountOffer.findMany({where:{noticeQueuedAt:null},take:50,orderBy:{createdAt:'asc'}});
-  for(const offer of offers){
-    if(stopped())return;
-    try { await prisma.$transaction(async tx=>{
-      const current=await tx.discountOffer.findUnique({where:{id:offer.id}});
-      if(!current||current.noticeQueuedAt)return;
-      const campaign=await tx.discountCampaign.findUnique({where:{id:current.campaignId}}),user=await tx.user.findUnique({where:{id:current.userId}});
-      if(campaign&&user&&campaign.expiresAt>new Date()&&current.status==='AVAILABLE'&&eligible(user,campaign.plan)){
-        const name=escapeHtml(discountPlan(campaign.planSnapshot).name);
-        await persistNotification(tx,user.telegramId.toString(),`An exclusive ${campaign.percent}% discount offer for <b>${name}</b> is available for you.\n\n⭐ <s>${campaign.originalStars}</s> → <b>${campaign.starsPrice} Stars</b>\n💳 <s>${campaign.originalUzs.toLocaleString('en-US')}</s> → <b>${campaign.uzsPrice.toLocaleString('en-US')} UZS</b>\n\nValid until ${campaign.expiresAt.toISOString().replace('T',' ').slice(0,16)} UTC. Claim once before it expires.`,
-          {parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'Claim Offer',callback_data:`discount:${current.id}`}]]}},false,`discount-offer:${current.id}`,campaign.expiresAt);
-      }
-      await tx.discountOffer.update({where:{id:current.id},data:{noticeQueuedAt:new Date()}});
-    }); }catch(error){if(error instanceof Error&&error.message==='Notification queue is full.')return;throw error;}
-  }
 }
 async function owned(tx:Prisma.TransactionClient,id:string,user:User,unexpired=true){
   const offer=await tx.discountOffer.findUnique({where:{id}});
