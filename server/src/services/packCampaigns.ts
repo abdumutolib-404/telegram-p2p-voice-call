@@ -11,12 +11,31 @@ const integer=z.number().int().nonnegative().refine(Number.isSafeInteger);
 const campaignInput=z.object({requestId:z.string().uuid(),revision:z.string().regex(/^[a-f0-9]{64}$/),calls:integer.min(1),recordings:integer,retention:z.boolean(),minutes:z.union([z.literal(15),z.literal(30)]),percent:z.number().min(0.01).max(100),maximumClaims:integer.min(1).max(2147483647),validMinutes:z.number().int().min(1).max(2820)}).strict();
 
 export async function checkOfferChannel(bot:Pick<Bot,'api'>) {
+  let me;
   try {
-    const me=await bot.api.getMe();
-    const member=await bot.api.getChatMember(OFFER_CHANNEL_ID,me.id);
-    if(member.status!=='creator'&&(member.status!=='administrator'||!member.can_post_messages))throw new Error('Missing channel permissions.');
-    return {channelId:OFFER_CHANNEL_ID,channelUrl:OFFER_CHANNEL_URL,botUsername:me.username,ready:true};
-  }catch{throw new Error('Channel verification failed. The PairTalk bot must be an administrator in @pairtalk with permission to post messages. Check permissions and retry.');}
+    me=await bot.api.getMe();
+  }catch(error){throw channelCheckRequestError(error,'bot identity');}
+  const botName=me.username&&/^[A-Za-z0-9_]{1,32}$/.test(me.username)?`@${me.username}`:'the configured bot';
+  let member;
+  try {
+    member=await bot.api.getChatMember(OFFER_CHANNEL_ID,me.id);
+  }catch(error){throw channelCheckRequestError(error,'channel access',botName);}
+  if(member.status!=='creator'&&member.status!=='administrator') {
+    throw new Error(`Channel verification failed. Add ${botName} as an administrator in @pairtalk, enable Post Messages, then check again.`);
+  }
+  if(member.status==='administrator'&&!member.can_post_messages) {
+    throw new Error(`Channel verification failed. ${botName} is an administrator in @pairtalk but Post Messages is disabled. Enable that permission, then check again.`);
+  }
+  return {channelId:OFFER_CHANNEL_ID,channelUrl:OFFER_CHANNEL_URL,botUsername:me.username,ready:true};
+}
+
+function channelCheckRequestError(error:unknown,stage:'bot identity'|'channel access',botName='the configured bot') {
+  const code=error&&typeof error==='object'&&'error_code' in error?error.error_code:undefined;
+  // Provider errors can contain request URLs/tokens. Return only fixed, actionable text.
+  if(code===401)return new Error('Channel verification failed. Telegram rejected the configured bot credentials. Check the bot token in Railway, then retry.');
+  if(code===429)return new Error('Channel verification temporarily unavailable. Telegram is rate limiting requests. Wait briefly, then retry; channel permissions have not been verified.');
+  if(stage==='channel access'&&(code===400||code===403))return new Error(`Channel verification failed. Telegram cannot access the configured @pairtalk channel. Add ${botName} as an administrator with Post Messages enabled, and verify that the configured channel ID ${OFFER_CHANNEL_ID} belongs to @pairtalk.`);
+  return new Error(`Channel verification temporarily unavailable while checking ${stage}. Telegram could not complete the request. Retry shortly; this does not establish a missing permission.`);
 }
 
 export async function createPackCampaign(input:unknown,adminId:string,bot:Pick<Bot,'api'>) {

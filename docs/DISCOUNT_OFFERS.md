@@ -26,6 +26,8 @@ Campaign publication uses persistent leases and revision reconciliation. An ambi
 
 **Check channel connection** verifies bot channel capability without publishing a test post. Reliable starter-gift membership checks require the bot to be a channel administrator. The once-only three-unit starter gift is a separate membership-gated flow; public campaign checkout does not independently require channel membership.
 
+If the check identifies a non-admin bot or disabled **Post Messages**, open @pairtalk → Manage Channel → Administrators and enable the indicated capability for the named bot. A channel access rejection can also mean the configured channel ID is wrong. Rejected bot credentials require checking the Railway bot configuration. Rate limiting and temporary request failures require a retry; they do not prove a missing channel permission. Raw Telegram request details and credentials are never included in these errors.
+
 ## Verification and rollout
 
 The October 16 migrations add pack/order snapshots, campaign/claim uniqueness and retire unsent historical offer DMs while preserving authorized purchases. Existing development main triggers deploy the backend and three frontends; no additional site or service is required.

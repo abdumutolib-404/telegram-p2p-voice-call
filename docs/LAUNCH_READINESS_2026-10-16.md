@@ -31,7 +31,7 @@ Gentle reads of the existing development host found eleven intended pages at 200
 
 ## Outstanding phases
 
-All six review phases have been performed. Final publication and existing deployment revision checks are still required. The owner confirmed credential revocation/rotation; provider/device verification limits remain explicit below.
+All six review phases have been performed. Application release `0d88fa7eb572d8875af8cccd8ca9d4309ac3a1e9` was published to origin/main and verified successful on the existing Railway backend and all three Cloudflare frontends. The owner confirmed credential revocation/rotation. Subsequent provider acceptance and the small diagnostic follow-up are recorded below.
 
 ## 3. Make interfaces feel better
 
@@ -72,8 +72,20 @@ Final verification after the dependency change: **1,001 backend tests / 96 files
 
 The repeated 600-request API comparison returned 200 throughout. At concurrency ten, p95 catalog/history/summary was 20.6/135.7/55.8ms, versus 21.1/170.9/48.5ms before; do not overinterpret small local timing differences as hosted capacity. Railway's current existing backend, PostgreSQL and Redis were all online with zero recent failures/pending changes. The backend used approximately 0.104 GB memory over 61 one-minute samples; these idle/light-use observations do not establish saturation capacity.
 
-## Launch decision and remaining gates
+## Provider acceptance after publication
 
-Application changes are verified for the existing development release. Unconditional public launch readiness remains unproven until current provider permissions/payment/refund behavior are established by an authorized live check. The owner confirmed both previously exposed GitHub credentials were revoked or rotated. Earlier device confirmations establish two-way calls, reconnect timing and playable dual-voice Telegram delivery on the prior development revision; they are not fresh paid-transaction evidence. Current public-domain deployment is separately scoped and is not updated by a development release. Docker/Linux race execution is unavailable in this Windows runtime; no passing Linux race result is claimed. Remaining lab speed-budget misses are listed in step one.
+On October 16, in the published development-release context, the owner confirmed that a real Stars purchase and refund of the new call/recording packs both worked, including the purchased quantities appearing once and being removed by the refund. This is owner-observed provider evidence; no charge identifiers, financial details or synthetic acknowledgements are substituted for it.
+
+The owner then exercised Admin → Plans → Discount → Check channel connection. It initially failed with the generic channel-verification error. Railway showed getMe/getChatMember calls completing in approximately 141–182ms, without enough response detail to distinguish access, permission and transient errors. After the owner enabled the bot's channel administrator/Post Messages capability, the same check passed. No test campaign was published. The successful read-only capability check establishes the configured bot can post in @pairtalk; it is not a live campaign send/edit/delete test.
+
+The check previously collapsed all failures into a missing-permission message. The diagnostic follow-up now distinguishes non-admin membership, disabled Post Messages, channel access rejection, rejected bot credentials, rate limiting and temporary request failures. It names the actual configured bot where available, returns fixed safe text instead of raw provider payloads and retains the same permission requirement before publication. Fourteen focused regression cases cover these outcomes and verify the check never publishes a message.
+
+Final follow-up verification: all **1,015 backend tests across 97 files**, the backend production build and the 190-link documentation check passed. No frontend, schema, wallet, settlement or media code changed in this follow-up; the preceding frontend/browser/Go evidence remains applicable to those unchanged sources.
+
+## Launch decision and verification limits
+
+The existing configured bot has launch acceptance evidence for core calls/recovery/recording delivery, the new paid-pack purchase/refund journey and the required channel capability. No unresolved application defect is established by the remaining checks. The owner confirmed both previously exposed GitHub credentials were revoked or rotated. Earlier device confirmations establish two-way calls, reconnect timing and playable dual-voice Telegram delivery on the prior development revision; the paid-pack and channel confirmations above are separate later evidence. This is an initial-launch readiness decision for the existing configured services, not a voice-capacity guarantee or authorization to publish campaigns or deploy to the separately scoped production remote/public domain.
+
+Docker/Linux race execution is unavailable in this Windows runtime; no fresh passing Linux race result is claimed. The owner previously removed the GitHub verification workflow, and this pass does not recreate it. The plan explicitly requires unavailable environment checks to be recorded; their absence is a verification limitation. Remaining lab speed-budget misses are listed in step one. Network-related live-browser timeouts are not passes; the owner reported a lagging connection and asked that extra website-loading checks stop. Twelve HTTP release checks passed, and hosted catalog observations were approximately 36–42ms in the sparse measured buckets. These measurements do not establish field speed or a service-level guarantee.
 
 Cleanup preserves ignored local artifacts, private runtime configuration, databases, dependencies and the pending DOCX. Rejected throttle experiments stay in ignored local output; the shared benchmark folder keeps only the valid baseline/comparison and feedback evidence. Reusable verification tools and the concise plan/evidence ledger remain source files. No production remote, new site/service, hosted deletion, campaign publication or real payment is part of these checks.
